@@ -101,6 +101,7 @@ describe("crawl job layout CSS contract", () => {
 
   it("keeps the command palette focus and dropdown geometry visually stable", () => {
     expect(css).toContain(".command-bar {\n  position: relative;");
+    expect(rule(".palette-shell-compact:has(.command-action-menu),\n.palette-shell-compact:has(.command-menu),\n.palette-shell-compact:has(.ask-session-menu)")).toContain("justify-content: flex-start");
     expect(rule(".palette-shell-compact:has(.command-action-menu) .command-bar")).toContain("border-radius: 14px 14px 0 0");
     expect(rule(".command-input-wrap")).toContain("position: static");
     expect(rule(".command-input-wrap:has(.command-input:focus-visible)")).toContain("inset 0 0 0 1px");

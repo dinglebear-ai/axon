@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeft,
   Check,
   Copy,
   ExternalLink,
@@ -92,7 +93,7 @@ export const OutputPanel = memo(function OutputPanel({
   const status = statusFor(run);
   const conversationMode = active?.subcommand === "ask" || active?.subcommand === "chat";
   const transcript = "transcript" in run ? run.transcript : undefined;
-  const quietConversationChrome = conversationMode && run.kind !== "running" && run.kind !== "streaming";
+  const quietConversationChrome = conversationMode && run.kind !== "running";
   // P-M1: recomputes the scrape/retrieve reading-header metrics only when the run or
   // action changes, not on every unrelated parent re-render / stream token.
   const headerSummary = useMemo(() => readingHeaderSummary(run, active), [run, active]);
@@ -113,9 +114,24 @@ export const OutputPanel = memo(function OutputPanel({
       </span>
       <div className={`output-state output-${run.kind} output-tone-${active?.tone ?? "neutral"}${quietConversationChrome ? " output-conversation" : ""}`}>
         <header className={headerSummary ? "output-header output-header-summary" : "output-header"}>
-          <span className="output-op-tile" aria-hidden="true">
-            <Icon size={19} strokeWidth={1.65} />
-          </span>
+          {quietConversationChrome ? (
+            <Button
+              variant="plain"
+              size="unstyled"
+              className="output-conversation-back"
+              type="button"
+              onClick={onCollapse}
+              aria-label="Back"
+              title="Back"
+            >
+              <ArrowLeft size={15} strokeWidth={1.85} />
+            </Button>
+          ) : null}
+          {quietConversationChrome ? null : (
+            <span className="output-op-tile" aria-hidden="true">
+              <Icon size={19} strokeWidth={1.65} />
+            </span>
+          )}
           <div className="output-meta-info">
             <span className="output-title-line">
               <span className="output-title">{headerSummary?.title ?? (quietConversationChrome && "prompt" in run && run.prompt ? run.prompt : outputTitle(run))}</span>
