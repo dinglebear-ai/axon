@@ -1,5 +1,30 @@
 use super::*;
 
+#[test]
+fn git_source_identity_is_collection_scoped() {
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://example.com/r.git".into(),
+        web_url: "https://example.com/r".into(),
+    };
+    let cfg_a = Config {
+        collection: "axon-a".to_string(),
+        ..Config::default()
+    };
+    let cfg_b = Config {
+        collection: "axon-b".to_string(),
+        ..Config::default()
+    };
+
+    let source_a = git_source_identity(&cfg_a, &target, "main");
+    let source_b = git_source_identity(&cfg_b, &target, "main");
+
+    assert_ne!(source_a.source_id, source_b.source_id);
+    assert!(source_a.source_id.starts_with("git:axon-a:"));
+    assert!(source_b.source_id.starts_with("git:axon-b:"));
+}
+
 #[tokio::test]
 async fn generic_file_docs_chunk_rust_as_code_with_symbols() {
     let tmp = tempfile::TempDir::new().unwrap();
@@ -83,7 +108,7 @@ fn rejects_non_https_generic_git_target() {
 #[tokio::test]
 async fn git_branch_remove_creates_cleanup_debt_without_qdrant_scroll() {
     let pool = open_source_ledger_pool(":memory:").await.unwrap();
-    let store = SourceLedgerStore::new(pool);
+    let store = SourceLedgerStore::new(pool.clone());
     let cfg = Config::default();
     let target = GenericGitTarget {
         host: "example.com".into(),
@@ -104,21 +129,190 @@ async fn git_branch_remove_creates_cleanup_debt_without_qdrant_scroll() {
         .unwrap();
     store.commit_generation(&source.source_id, 1).await.unwrap();
 
-    let generation = commit_git_manifest_with_store(
-        &store,
-        &source,
-        &target,
-        "main",
-        &[ManifestItem::new("src/lib.rs", "new-hash", 30)],
-    )
+    let lease_owner = "test-lease";
+    assert!(
+        store
+            .acquire_lease(&source, lease_owner, 60_000)
+            .await
+            .unwrap()
+    );
+    let manifest = vec![ManifestItem::new("src/lib.rs", "new-hash", 30)];
+    let prepared = prepare_git_manifest_with_store(&store, &source, &manifest)
+        .await
+        .unwrap();
+    let generation = prepared.generation;
+    commit_git_ledger_refresh(&PreparedGitLedgerRefresh {
+        store,
+        source: source.clone(),
+        manifest,
+        stale: prepared.stale,
+        generation,
+        target,
+        reference: "main".to_string(),
+        lease_owner: lease_owner.to_string(),
+    })
     .await
     .unwrap();
 
     assert_eq!(generation, 2);
+    let debt: (i64, String) = sqlx::query_as(
+        "SELECT generation, selector_json FROM axon_source_cleanup_debt WHERE source_id = ?",
+    )
+    .bind(&source.source_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(debt.0, 1);
+    assert!(debt.1.contains("\"source_generation\":1"));
+    let store = SourceLedgerStore::new(pool);
     assert_eq!(
         store.cleanup_debt_count(&source.source_id).await.unwrap(),
         1
     );
+}
+
+#[tokio::test]
+async fn git_branch_modify_creates_cleanup_debt_for_previous_generation() {
+    let pool = open_source_ledger_pool(":memory:").await.unwrap();
+    let store = SourceLedgerStore::new(pool.clone());
+    let cfg = Config::default();
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://example.com/org/repo.git".into(),
+        web_url: "https://example.com/org/repo".into(),
+    };
+    let source = git_source_identity(&cfg, &target, "main");
+    store.ensure_source(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            &source.source_id,
+            1,
+            ManifestItem::new("src/lib.rs", "old-hash", 20),
+        )
+        .await
+        .unwrap();
+    store.commit_generation(&source.source_id, 1).await.unwrap();
+    assert!(
+        store
+            .acquire_lease(&source, "test-lease", 60_000)
+            .await
+            .unwrap()
+    );
+    let manifest = vec![ManifestItem::new("src/lib.rs", "new-hash", 30)];
+    let prepared = prepare_git_manifest_with_store(&store, &source, &manifest)
+        .await
+        .unwrap();
+
+    commit_git_ledger_refresh(&PreparedGitLedgerRefresh {
+        store,
+        source: source.clone(),
+        manifest,
+        stale: prepared.stale,
+        generation: prepared.generation,
+        target,
+        reference: "main".to_string(),
+        lease_owner: "test-lease".to_string(),
+    })
+    .await
+    .unwrap();
+
+    let debt: (i64, String) = sqlx::query_as(
+        "SELECT generation, selector_json FROM axon_source_cleanup_debt WHERE source_id = ?",
+    )
+    .bind(&source.source_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(debt.0, 1);
+    assert!(debt.1.contains("src/lib.rs"));
+}
+
+#[tokio::test]
+async fn git_cleanup_debt_selector_redacts_clone_url_credentials() {
+    let pool = open_source_ledger_pool(":memory:").await.unwrap();
+    let store = SourceLedgerStore::new(pool.clone());
+    let cfg = Config::default();
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://token:secret@example.com/org/repo.git".into(),
+        web_url: "https://example.com/org/repo".into(),
+    };
+    let source = git_source_identity(&cfg, &target, "main");
+    store.ensure_source(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            &source.source_id,
+            1,
+            ManifestItem::new("src/removed.rs", "old-hash", 20),
+        )
+        .await
+        .unwrap();
+    store.commit_generation(&source.source_id, 1).await.unwrap();
+    assert!(
+        store
+            .acquire_lease(&source, "test-lease", 60_000)
+            .await
+            .unwrap()
+    );
+    let manifest = vec![ManifestItem::new("src/lib.rs", "new-hash", 30)];
+    let prepared = prepare_git_manifest_with_store(&store, &source, &manifest)
+        .await
+        .unwrap();
+
+    commit_git_ledger_refresh(&PreparedGitLedgerRefresh {
+        store,
+        source: source.clone(),
+        manifest,
+        stale: prepared.stale,
+        generation: prepared.generation,
+        target,
+        reference: "main".to_string(),
+        lease_owner: "test-lease".to_string(),
+    })
+    .await
+    .unwrap();
+
+    let selector: String = sqlx::query_scalar(
+        "SELECT selector_json FROM axon_source_cleanup_debt WHERE source_id = ?",
+    )
+    .bind(&source.source_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!selector.contains("token"), "{selector}");
+    assert!(!selector.contains("secret"), "{selector}");
+    assert!(selector.contains("***"), "{selector}");
+}
+
+#[test]
+fn git_clone_failure_message_redacts_clone_url_credentials() {
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://token:secret@example.com/org/repo.git".into(),
+        web_url: "https://example.com/org/repo".into(),
+    };
+
+    let message = git_clone_failed_message(&target, "fatal: no auth");
+
+    assert!(!message.contains("token"), "{message}");
+    assert!(!message.contains("secret"), "{message}");
+    assert!(message.contains("***"), "{message}");
+}
+
+#[test]
+fn parse_generic_git_target_redacts_credentials_from_public_identity() {
+    let target =
+        parse_generic_git_target("git:https://token:secret@example.com/org/repo.git").unwrap();
+
+    assert_eq!(
+        target.clone_url,
+        "https://token:secret@example.com/org/repo.git"
+    );
+    assert_eq!(target.web_url, "https://example.com/org/repo");
+    assert!(!git_source_id("axon", &target, "main").contains("secret"));
 }
 
 #[test]

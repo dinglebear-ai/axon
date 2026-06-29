@@ -23,8 +23,11 @@ CREATE TABLE IF NOT EXISTS axon_source_manifest_items (
   indexed_generation INTEGER NOT NULL,
   pending INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (source_id, item_key)
+  PRIMARY KEY (source_id, indexed_generation, item_key)
 );
+
+CREATE INDEX IF NOT EXISTS idx_axon_source_manifest_committed
+  ON axon_source_manifest_items(source_id, pending, item_key);
 
 CREATE TABLE IF NOT EXISTS axon_source_cleanup_debt (
   source_id TEXT NOT NULL,

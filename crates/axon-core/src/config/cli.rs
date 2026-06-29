@@ -66,7 +66,7 @@ pub(super) enum CliCommand {
         arg_required_else_help = true,
         about = "code-search-watch was removed; use `axon embed <path> --watch` to register and watch local code indexing."
     )]
-    CodeSearchWatchRemoved(CodeSearchWatchRemovedArgs),
+    CodeSearchWatchRemoved,
     /// Fetch stored document chunks from Qdrant by URL
     Retrieve(RetrieveArgs),
     /// RAG: retrieve relevant context, then answer with LLM
@@ -685,12 +685,6 @@ pub(super) struct CodeSearchArgs {
 }
 
 #[derive(Debug, Args)]
-pub(super) struct CodeSearchWatchRemovedArgs {
-    #[arg(hide = true)]
-    pub(super) _removed: Option<String>,
-}
-
-#[derive(Debug, Args)]
 pub(super) struct EvaluateArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) diagnostics: bool,
@@ -744,7 +738,7 @@ pub(super) struct EmbedArgs {
     pub(super) job: Option<JobSubcommand>,
     #[arg(value_name = "INPUT")]
     pub(super) input: Option<String>,
-    /// Attach to SourceLedger refresh progress after registering this local path.
+    /// Watch local Git checkout/workspace code-index refresh progress.
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) watch: bool,
     /// Create or update a recurring freshness schedule, e.g. --fresh 1d.

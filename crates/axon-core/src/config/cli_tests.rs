@@ -59,6 +59,12 @@ fn code_search_watch_returns_tombstone_error() {
 }
 
 #[test]
+fn code_search_watch_rejects_extra_args_without_dispatch_panic() {
+    let err = Cli::try_parse_from(["axon", "code-search-watch", "anything"]).unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::UnknownArgument);
+}
+
+#[test]
 fn parse_rejects_active_and_recent_together() {
     let result = Cli::try_parse_from(["axon", "--active", "--recent", "status"]);
     assert!(result.is_err(), "active/recent should conflict");

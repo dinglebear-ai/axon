@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-06-29
+
+### Added
+
+- Add generic lifecycle store
+- Seal source ledger payload fields
+- Register local sources with source ledger
+- Commit source ledger generations after embed
+- Track git branches in source ledger
+- Add refresh coalescing and redacted status
+
+### Fixed
+
+- Harden refresh lifecycle
+
 ## [6.1.5] - 2026-06-28
 
 ## [6.1.4] - 2026-06-28

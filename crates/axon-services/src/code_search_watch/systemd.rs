@@ -20,7 +20,7 @@ pub(super) fn enable_code_search_watch_service(
         .map_err(|error| io::Error::other(error.to_string()))?;
     if roots.is_empty() {
         return Err(io::Error::other(
-            "code-search-watch found no Git checkouts to enable",
+            "local code index watch found no Git checkouts to enable",
         ));
     }
     let config_dir = axon_home_dir()

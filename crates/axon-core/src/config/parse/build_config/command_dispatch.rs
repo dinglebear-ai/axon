@@ -251,7 +251,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.code_search_path_prefix = args.path_prefix;
             out.code_search_no_freshness = args.no_freshness;
         }
-        CliCommand::CodeSearchWatchRemoved(_) => unreachable!(
+        CliCommand::CodeSearchWatchRemoved => unreachable!(
             "code-search-watch tombstone uses arg_required_else_help and should not dispatch"
         ),
         CliCommand::Retrieve(args) => {

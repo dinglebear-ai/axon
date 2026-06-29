@@ -33,10 +33,11 @@ where
 }
 
 fn redact_error(text: &str) -> String {
-    if text.contains("Authorization")
-        || text.contains("Cookie")
-        || text.contains("/home/")
-        || text.contains("\\Users\\")
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("authorization")
+        || lower.contains("cookie")
+        || lower.contains("/home/")
+        || lower.contains("\\users\\")
     {
         "[redacted]".to_string()
     } else {

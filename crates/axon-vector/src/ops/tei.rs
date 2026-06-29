@@ -15,8 +15,8 @@ pub use tei_client::prepend_query_instruction;
 pub use tei_client::{EmbedInput, tei_embed_typed};
 
 // Re-export the embed API for crate callers.
-pub use text_embed::embed_prepared_docs;
 pub use text_embed::{embed_path_native, embed_path_native_with_progress};
+pub use text_embed::{embed_prepared_docs, prepare_path_native_docs};
 
 use crate::ops::sparse;
 use qdrant_store::VectorMode;
@@ -126,6 +126,12 @@ impl PreparedDoc {
 
     pub(super) fn with_local_legacy_fragment_cleanup(mut self) -> Self {
         self.local_legacy_fragment_url = Some(self.url.clone());
+        self
+    }
+
+    #[must_use]
+    pub fn with_ledger_payload(mut self, payload: crate::ops::source_doc::LedgerPayload) -> Self {
+        self.ledger_payload = Some(payload);
         self
     }
 

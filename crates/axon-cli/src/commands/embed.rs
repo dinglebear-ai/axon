@@ -1,4 +1,5 @@
 use crate::commands::CommandFuture;
+use crate::commands::code_search::run_code_search_watch;
 use crate::commands::common::{
     handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors,
     handle_job_list_with_rows, handle_job_recover, handle_job_status, handle_worker_mode,
@@ -8,7 +9,7 @@ use crate::commands::job_progress::embed_progress_summary;
 use crate::commands::status::metrics::{
     collection_from_config, display_embed_input, format_error, job_runtime_text,
 };
-use axon_core::config::Config;
+use axon_core::config::{CodeSearchWatchConfig, Config};
 use axon_core::logging::{log_done, log_info};
 use axon_core::ui::wait_spinner_for;
 use axon_core::ui::{accent, confirm_destructive, error, muted, primary, symbol_for_status};
@@ -19,6 +20,8 @@ use axon_services::jobs as job_service;
 use axon_services::types::StartDisposition;
 use std::error::Error;
 use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
 use uuid::Uuid;
 
 pub(crate) fn render_embed_list(
@@ -138,8 +141,8 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         // Local-path embeds therefore always run in-process here; only URL /
         // free-text inputs go through the shared queue when --wait is false.
         let input_is_local_path = Path::new(&input).exists();
-        if cfg.embed_watch && !input_is_local_path {
-            return Err("embed --watch requires a local file or directory path".into());
+        if cfg.embed_watch {
+            validate_embed_watch_input(&input, input_is_local_path)?;
         }
         if !cfg.wait && !input_is_local_path {
             let result = enqueue_embed_job(cfg, &input, service_context).await;
@@ -159,8 +162,21 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         if cfg.embed_watch && !cfg.json_output {
             println!(
                 "  {}",
-                muted("Watching local embed refresh in the foreground.")
+                muted("Watching local code indexing refresh in the foreground.")
             );
+        }
+        if cfg.embed_watch {
+            let mut watch_cfg = cfg.clone();
+            watch_cfg.code_search_watch = Some(CodeSearchWatchConfig {
+                roots: vec![PathBuf::from(&input)],
+                debounce: Duration::from_millis(500),
+                settle: Duration::from_secs(2),
+                initial_refresh: true,
+                dry_run: false,
+                enable: false,
+                json: cfg.json_output,
+            });
+            return run_code_search_watch(&watch_cfg, service_context).await;
         }
 
         let sp = wait_spinner_for(cfg, &format!("Embedding {}…", input));
@@ -213,6 +229,16 @@ fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>
         .get(1)
         .ok_or_else(|| format!("embed {action} requires <job-id>"))?;
     Ok(Uuid::parse_str(id)?)
+}
+
+fn validate_embed_watch_input(
+    input: &str,
+    input_is_local_path: bool,
+) -> Result<(), Box<dyn Error>> {
+    if !input_is_local_path || !Path::new(input).is_dir() {
+        return Err("embed --watch requires a local Git checkout or workspace directory".into());
+    }
+    Ok(())
 }
 
 async fn handle_embed_status(
@@ -310,4 +336,31 @@ async fn enqueue_embed_job(
     let _ = status;
     render_embed_enqueue_result(cfg, input, &job_id, outcome.disposition, false);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_embed_watch_input;
+
+    #[test]
+    fn embed_watch_rejects_non_local_inputs() {
+        let err = validate_embed_watch_input("https://example.com/repo", false).unwrap_err();
+
+        assert!(err.to_string().contains("Git checkout or workspace"));
+    }
+
+    #[test]
+    fn embed_watch_rejects_files() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let err = validate_embed_watch_input(file.path().to_str().unwrap(), true).unwrap_err();
+
+        assert!(err.to_string().contains("Git checkout or workspace"));
+    }
+
+    #[test]
+    fn embed_watch_accepts_directories() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        validate_embed_watch_input(dir.path().to_str().unwrap(), true).unwrap();
+    }
 }

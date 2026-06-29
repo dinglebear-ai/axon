@@ -236,6 +236,42 @@ fn pipeline_test_doc_with_point_ids(
     doc
 }
 
+#[test]
+fn ledger_payload_stamps_authoritative_source_fields() {
+    use crate::ops::LedgerPayload;
+    use crate::ops::tei::qdrant_store::VectorMode;
+    use axon_core::config::Config;
+
+    let doc = pipeline_test_doc("https://example.com/doc", vec!["body"], false)
+        .with_ledger_payload(
+            LedgerPayload::try_new(
+                "git:https://example.com/org/repo#main".to_string(),
+                "git",
+                7,
+                "src/lib.rs".to_string(),
+                1,
+            )
+            .unwrap(),
+        );
+    let embedded = super::build_embedded_doc_from_vectors(
+        doc,
+        vec![vec![0.1, 0.2]],
+        &Config::test_default(),
+        VectorMode::Unnamed,
+    )
+    .unwrap();
+    let payload = &embedded.points[0]["payload"];
+
+    assert_eq!(
+        payload["source_id"],
+        "git:https://example.com/org/repo#main"
+    );
+    assert_eq!(payload["source_kind"], "git");
+    assert_eq!(payload["source_generation"], 7);
+    assert_eq!(payload["source_item_key"], "src/lib.rs");
+    assert_eq!(payload["source_index_version"], 1);
+}
+
 fn unnamed_collection_body(dim: usize) -> serde_json::Value {
     serde_json::json!({
         "result": {

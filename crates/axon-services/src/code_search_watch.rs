@@ -51,7 +51,7 @@ pub async fn run_code_search_watch(
     let roots = prepare_watch_roots(&watch_dirs, options.initial_refresh, events)?;
     if options.initial_refresh {
         for root in &roots {
-            refresh_code_search_watch_root(ctx, events, root, "initial").await;
+            refresh_code_search_watch_root(ctx, events, root, "initial").await?;
         }
     }
 
@@ -82,7 +82,7 @@ fn prepare_watch_roots(
     let mut roots = discover_code_search_watch_roots_for_dirs(watch_dirs)?;
     if roots.is_empty() {
         return Err(anyhow::anyhow!(
-            "code-search-watch found no Git checkouts to watch"
+            "embed --watch found no Git checkouts to watch"
         ));
     }
     roots.sort();
@@ -173,7 +173,13 @@ async fn refresh_due_roots(
     let due = due_dirty_roots(dirty, refresh_delay);
     for root in due {
         dirty.remove(&root);
-        refresh_code_search_watch_root(ctx, events, &root, "file_change").await;
+        if let Err(error) = refresh_code_search_watch_root(ctx, events, &root, "file_change").await
+        {
+            events.emit(CodeSearchWatchEvent::RefreshFailed {
+                root,
+                error: error.to_string(),
+            });
+        }
     }
 }
 
@@ -197,7 +203,7 @@ async fn refresh_code_search_watch_root(
     events: &dyn CodeSearchWatchEventSink,
     root: &Path,
     reason: &'static str,
-) {
+) -> Result<()> {
     events.emit(CodeSearchWatchEvent::RefreshStarted {
         root: root.to_path_buf(),
         reason,
@@ -211,18 +217,39 @@ async fn refresh_code_search_watch_root(
     )
     .await
     {
-        Ok(result) => events.emit(CodeSearchWatchEvent::RefreshFinished {
-            root: root.to_path_buf(),
-            status: result.freshness.status,
-            warning: result.freshness.warning,
-            indexed_files: result.freshness.indexed_files,
-            removed_files: result.freshness.removed_files,
-            generation: result.generation,
-        }),
-        Err(error) => events.emit(CodeSearchWatchEvent::RefreshFailed {
-            root: root.to_path_buf(),
-            error: error.to_string(),
-        }),
+        Ok(result) => {
+            let status = result.freshness.status;
+            let warning = result.freshness.warning;
+            let indexed_files = result.freshness.indexed_files;
+            let removed_files = result.freshness.removed_files;
+            let generation = result.generation;
+            let failed_initial = reason == "initial" && (status != "fresh" || warning.is_some());
+            let warning_message = warning.clone();
+            events.emit(CodeSearchWatchEvent::RefreshFinished {
+                root: root.to_path_buf(),
+                status,
+                warning,
+                indexed_files,
+                removed_files,
+                generation,
+            });
+            if failed_initial {
+                return Err(anyhow::anyhow!(
+                    "initial local code index refresh failed for {}: {}",
+                    root.display(),
+                    warning_message
+                        .unwrap_or_else(|| "refresh did not produce a fresh index".to_string())
+                ));
+            }
+            Ok(())
+        }
+        Err(error) => {
+            events.emit(CodeSearchWatchEvent::RefreshFailed {
+                root: root.to_path_buf(),
+                error: error.to_string(),
+            });
+            Err(anyhow::anyhow!("{error}"))
+        }
     }
 }
 

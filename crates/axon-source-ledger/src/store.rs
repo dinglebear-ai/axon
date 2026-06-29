@@ -1,14 +1,16 @@
 use crate::{
-    ManifestDiff, ManifestItem, RefreshPreflight, SourceIdentity, SourceKind, SourcePhase,
-    SourceStatus,
+    CleanupDebtItem, ManifestDiff, ManifestItem, RefreshPreflight, SourceIdentity, SourceKind,
+    SourcePhase, SourceStatus, StaleManifestItem,
 };
 use anyhow::Context;
 use sqlx::{Row, SqlitePool};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod cleanup;
+
 #[derive(Debug, Clone)]
 pub struct SourceLedgerStore {
-    pool: SqlitePool,
+    pub(super) pool: SqlitePool,
 }
 
 impl SourceLedgerStore {
@@ -64,6 +66,24 @@ impl SourceLedgerStore {
         .await
         .context("failed to acquire source ledger lease")?;
         Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn release_lease(&self, source_id: &str, owner: &str) -> anyhow::Result<()> {
+        let result = sqlx::query(
+            "UPDATE axon_source_sources
+             SET lease_owner = NULL, lease_expires_at_ms = 0, updated_at_ms = ?
+             WHERE source_id = ? AND lease_owner = ?",
+        )
+        .bind(now_ms())
+        .bind(source_id)
+        .bind(owner)
+        .execute(&self.pool)
+        .await
+        .context("failed to release source ledger lease")?;
+        if result.rows_affected() != 1 {
+            anyhow::bail!("source ledger lease for {source_id} is no longer owned by {owner}");
+        }
+        Ok(())
     }
 
     pub async fn preflight_refresh(
@@ -143,10 +163,9 @@ impl SourceLedgerStore {
             "INSERT INTO axon_source_manifest_items (
                 source_id, item_key, content_hash, size_bytes, indexed_generation, pending, updated_at_ms
              ) VALUES (?, ?, ?, ?, ?, 1, ?)
-             ON CONFLICT(source_id, item_key) DO UPDATE SET
+             ON CONFLICT(source_id, indexed_generation, item_key) DO UPDATE SET
                 content_hash = excluded.content_hash,
                 size_bytes = excluded.size_bytes,
-                indexed_generation = excluded.indexed_generation,
                 pending = excluded.pending,
                 updated_at_ms = excluded.updated_at_ms",
         )
@@ -168,7 +187,7 @@ impl SourceLedgerStore {
         manifest: &[ManifestItem],
     ) -> anyhow::Result<ManifestDiff> {
         let rows = sqlx::query(
-            "SELECT item_key, content_hash
+            "SELECT item_key, content_hash, indexed_generation
              FROM axon_source_manifest_items
              WHERE source_id = ? AND pending = 0",
         )
@@ -177,12 +196,15 @@ impl SourceLedgerStore {
         .await
         .context("failed to read existing source manifest")?;
 
-        let existing: BTreeMap<String, String> = rows
+        let existing: BTreeMap<String, (String, i64)> = rows
             .into_iter()
             .map(|row| {
                 Ok((
                     row.try_get::<String, _>("item_key")?,
-                    row.try_get::<String, _>("content_hash")?,
+                    (
+                        row.try_get::<String, _>("content_hash")?,
+                        row.try_get::<i64, _>("indexed_generation")?,
+                    ),
                 ))
             })
             .collect::<Result<_, sqlx::Error>>()?;
@@ -193,17 +215,23 @@ impl SourceLedgerStore {
         for item in manifest {
             match existing.get(&item.item_key) {
                 None => diff.added.push(item.clone()),
-                Some(hash) if hash != &item.content_hash => {
+                Some((hash, indexed_generation)) if hash != &item.content_hash => {
                     diff.modified.push(item.clone());
-                    diff.removed.push(item.item_key.clone());
+                    diff.removed.push(StaleManifestItem {
+                        item_key: item.item_key.clone(),
+                        indexed_generation: *indexed_generation,
+                    });
                 }
                 Some(_) => {}
             }
         }
 
-        for key in existing.keys() {
+        for (key, (_, indexed_generation)) in &existing {
             if !incoming_keys.contains(key.as_str()) {
-                diff.removed.push(key.clone());
+                diff.removed.push(StaleManifestItem {
+                    item_key: key.clone(),
+                    indexed_generation: *indexed_generation,
+                });
             }
         }
         diff.removed.sort();
@@ -212,34 +240,172 @@ impl SourceLedgerStore {
     }
 
     pub async fn commit_generation(&self, source_id: &str, generation: i64) -> anyhow::Result<()> {
+        self.commit_generation_inner(source_id, generation, None)
+            .await
+    }
+
+    pub async fn commit_generation_for_owner(
+        &self,
+        source_id: &str,
+        generation: i64,
+        owner: &str,
+    ) -> anyhow::Result<()> {
+        self.commit_generation_inner(source_id, generation, Some(owner))
+            .await
+    }
+
+    pub async fn commit_generation_payload_for_owner(
+        &self,
+        source_id: &str,
+        generation: i64,
+        owner: &str,
+        manifest: &[ManifestItem],
+        cleanup_debt: &[CleanupDebtItem],
+    ) -> anyhow::Result<()> {
+        let now_ms = now_ms();
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin source generation payload commit")?;
+        for item in manifest {
+            sqlx::query(
+                "INSERT INTO axon_source_manifest_items (
+                    source_id, item_key, content_hash, size_bytes, indexed_generation, pending, updated_at_ms
+                 ) VALUES (?, ?, ?, ?, ?, 1, ?)
+                 ON CONFLICT(source_id, indexed_generation, item_key) DO UPDATE SET
+                    content_hash = excluded.content_hash,
+                    size_bytes = excluded.size_bytes,
+                    pending = excluded.pending,
+                    updated_at_ms = excluded.updated_at_ms",
+            )
+            .bind(source_id)
+            .bind(&item.item_key)
+            .bind(&item.content_hash)
+            .bind(item.size_bytes)
+            .bind(generation)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .context("failed to record source manifest item")?;
+        }
+        for debt in cleanup_debt {
+            sqlx::query(
+                "INSERT INTO axon_source_cleanup_debt (
+                    source_id, generation, item_key, selector_json, retry_count, last_error, updated_at_ms
+                 ) VALUES (?, ?, ?, ?, 0, NULL, ?)
+                 ON CONFLICT(source_id, generation, item_key) DO UPDATE SET
+                    selector_json = excluded.selector_json,
+                    updated_at_ms = excluded.updated_at_ms",
+            )
+            .bind(source_id)
+            .bind(debt.generation)
+            .bind(&debt.item_key)
+            .bind(&debt.selector_json)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .context("failed to record source cleanup debt")?;
+        }
+        self.commit_generation_in_tx(&mut tx, source_id, generation, Some(owner), now_ms)
+            .await?;
+        tx.commit()
+            .await
+            .context("failed to commit source generation payload transaction")?;
+        Ok(())
+    }
+
+    pub async fn abort_generation_for_owner(
+        &self,
+        source_id: &str,
+        generation: i64,
+        owner: &str,
+    ) -> anyhow::Result<()> {
+        let now_ms = now_ms();
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin source generation abort")?;
+        sqlx::query(
+            "DELETE FROM axon_source_manifest_items
+             WHERE source_id = ? AND indexed_generation = ? AND pending = 1",
+        )
+        .bind(source_id)
+        .bind(generation)
+        .execute(&mut *tx)
+        .await
+        .context("failed to delete aborted source manifest items")?;
+        let result = sqlx::query(
+            "UPDATE axon_source_sources
+             SET max_generation = committed_generation, updated_at_ms = ?
+             WHERE source_id = ? AND lease_owner = ? AND max_generation = ?",
+        )
+        .bind(now_ms)
+        .bind(source_id)
+        .bind(owner)
+        .bind(generation)
+        .execute(&mut *tx)
+        .await
+        .context("failed to abort source generation")?;
+        if result.rows_affected() != 1 {
+            anyhow::bail!("source ledger lease for {source_id} was lost before abort");
+        }
+        tx.commit()
+            .await
+            .context("failed to commit source generation abort")?;
+        Ok(())
+    }
+
+    async fn commit_generation_inner(
+        &self,
+        source_id: &str,
+        generation: i64,
+        owner: Option<&str>,
+    ) -> anyhow::Result<()> {
         let now_ms = now_ms();
         let mut tx = self
             .pool
             .begin()
             .await
             .context("failed to begin source generation commit")?;
+        self.commit_generation_in_tx(&mut tx, source_id, generation, owner, now_ms)
+            .await?;
+        tx.commit()
+            .await
+            .context("failed to commit source generation transaction")?;
+        Ok(())
+    }
+
+    async fn commit_generation_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        source_id: &str,
+        generation: i64,
+        owner: Option<&str>,
+        now_ms: i64,
+    ) -> anyhow::Result<()> {
         sqlx::query(
             "DELETE FROM axon_source_manifest_items
              WHERE source_id = ? AND pending = 0 AND indexed_generation < ?",
         )
         .bind(source_id)
         .bind(generation)
-        .execute(&mut *tx)
+        .execute(tx.as_mut())
         .await
         .context("failed to prune old source manifest items")?;
         sqlx::query(
             "UPDATE axon_source_manifest_items
-             SET pending = 0, indexed_generation = ?, updated_at_ms = ?
+             SET pending = 0, updated_at_ms = ?
              WHERE source_id = ? AND indexed_generation = ?",
         )
-        .bind(generation)
         .bind(now_ms)
         .bind(source_id)
         .bind(generation)
-        .execute(&mut *tx)
+        .execute(tx.as_mut())
         .await
         .context("failed to commit source manifest items")?;
-        sqlx::query(
+        let query = sqlx::query(
             "UPDATE axon_source_sources
              SET committed_generation = MAX(committed_generation, ?),
                  max_generation = MAX(max_generation, ?),
@@ -248,19 +414,23 @@ impl SourceLedgerStore {
                  backoff_until_ms = 0,
                  backoff_dependency = NULL,
                  updated_at_ms = ?
-             WHERE source_id = ?",
+             WHERE source_id = ?
+               AND (? IS NULL OR lease_owner = ?)",
         )
         .bind(generation)
         .bind(generation)
         .bind(now_ms)
         .bind(now_ms)
         .bind(source_id)
-        .execute(&mut *tx)
-        .await
-        .context("failed to commit source generation")?;
-        tx.commit()
+        .bind(owner)
+        .bind(owner);
+        let result = query
+            .execute(tx.as_mut())
             .await
-            .context("failed to commit source generation transaction")?;
+            .context("failed to commit source generation")?;
+        if result.rows_affected() != 1 {
+            anyhow::bail!("source ledger lease for {source_id} was lost before commit");
+        }
         Ok(())
     }
 
@@ -275,12 +445,7 @@ impl SourceLedgerStore {
         .fetch_one(&self.pool)
         .await
         .context("failed to read source status")?;
-        let cleanup_debt_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM axon_source_cleanup_debt WHERE source_id = ?")
-                .bind(source_id)
-                .fetch_one(&self.pool)
-                .await
-                .context("failed to count source cleanup debt")?;
+        let cleanup_debt_count = self.cleanup_debt_count(source_id).await?;
         let source_kind_text: String = row.try_get("source_kind")?;
         let backoff_until_ms: i64 = row.try_get("backoff_until_ms")?;
         let committed_generation: i64 = row.try_get("committed_generation")?;
@@ -300,41 +465,6 @@ impl SourceLedgerStore {
             cleanup_debt_count,
             updated_at_ms: row.try_get("updated_at_ms")?,
         })
-    }
-
-    pub async fn record_cleanup_debt(
-        &self,
-        source_id: &str,
-        generation: i64,
-        item_key: &str,
-        selector_json: &str,
-    ) -> anyhow::Result<()> {
-        let now_ms = now_ms();
-        sqlx::query(
-            "INSERT INTO axon_source_cleanup_debt (
-                source_id, generation, item_key, selector_json, retry_count, last_error, updated_at_ms
-             ) VALUES (?, ?, ?, ?, 0, NULL, ?)
-             ON CONFLICT(source_id, generation, item_key) DO UPDATE SET
-                selector_json = excluded.selector_json,
-                updated_at_ms = excluded.updated_at_ms",
-        )
-        .bind(source_id)
-        .bind(generation)
-        .bind(item_key)
-        .bind(selector_json)
-        .bind(now_ms)
-        .execute(&self.pool)
-        .await
-        .context("failed to record source cleanup debt")?;
-        Ok(())
-    }
-
-    pub async fn cleanup_debt_count(&self, source_id: &str) -> anyhow::Result<i64> {
-        sqlx::query_scalar("SELECT COUNT(*) FROM axon_source_cleanup_debt WHERE source_id = ?")
-            .bind(source_id)
-            .fetch_one(&self.pool)
-            .await
-            .context("failed to count source cleanup debt")
     }
 
     pub async fn set_backoff(

@@ -4,6 +4,13 @@
 
 **Goal:** Build the first working SourceLedger lifecycle slice: generic SQLite lifecycle state, sealed vector payload handoff, local embed/code-search refresh, crawl manifest commit semantics, one Git ingest adapter, durable status/backoff, and final command/docs cutover.
 
+**Implementation correction:** The reviewed implementation keeps plain local
+`axon embed /path` on the existing inline embed path and routes `embed --watch`
+to the existing `axon-code-index` watcher for Git checkouts/workspaces.
+SourceLedger covers the generic store, sealed payload fields, crawl generation
+commits, mutable Git ingest manifests, status/backoff, and cleanup debt. Local
+code-index unification remains future work, not part of this merged MVP slice.
+
 **Architecture:** SourceLedger is a small source-kind-agnostic lifecycle primitive stored in the existing Axon SQLite runtime DB. `axon-source-ledger` owns typed store operations, `axon-jobs` owns SQLx migration execution, `axon-services` orchestrates refreshes, and vector/ingest/crawl crates only build manifests or `SourceDocument` inputs. Qdrant remains the vector store and only receives sealed lifecycle payload fields plus source-specific retrieval metadata.
 
 **Tech Stack:** Rust 2024, Tokio, SQLx SQLite migrations, Qdrant payload filters/indexes, existing Axon Cargo workspace crates, Beads, GitHub CLI.
