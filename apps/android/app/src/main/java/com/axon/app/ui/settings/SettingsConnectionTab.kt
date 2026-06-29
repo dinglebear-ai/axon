@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.data.auth.AuthMode
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.CompactActionButton
 import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.humanizeJsonFragmentText
@@ -148,7 +149,7 @@ private fun ConnectionSetupSummary(
         else -> "Test connection"
     }
     val summary = when {
-        connected -> "Connection is ready for Axon requests."
+        connected -> "Server health endpoint is reachable. Auth and collection are set locally."
         connection is TestConnectionState.Failed -> "Connection test failed. Check the details below and retry."
         !serverReady -> "Start with the Axon server URL."
         !authReady && authMode == AuthMode.Bearer -> "Bearer mode needs a token before testing most Axon servers."

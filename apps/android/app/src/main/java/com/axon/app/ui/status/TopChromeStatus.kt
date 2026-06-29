@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.CompactActionButton
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.theme.AxonTheme
 import java.net.URI
@@ -155,9 +157,17 @@ private fun StatusDetailDialog(
         if (base.isBlank()) "curl -i http://<axon-host>/healthz" else "curl -i $base/healthz"
     }
     fun copyDiagnostics() {
-        context.getSystemService(ClipboardManager::class.java)
-            ?.setPrimaryClip(ClipData.newPlainText("Axon health check", curlCommand))
-        Toast.makeText(context, "Health check copied", Toast.LENGTH_SHORT).show()
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        if (clipboard == null) {
+            Toast.makeText(context, "Clipboard is unavailable", Toast.LENGTH_LONG).show()
+            return
+        }
+        runCatching {
+            clipboard.setPrimaryClip(ClipData.newPlainText("Axon health check", curlCommand))
+        }.fold(
+            onSuccess = { Toast.makeText(context, "Health check copied", Toast.LENGTH_SHORT).show() },
+            onFailure = { Toast.makeText(context, "Could not copy health check", Toast.LENGTH_LONG).show() },
+        )
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -384,44 +394,15 @@ private fun StatusDialogAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     outlined: Boolean = false,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    icon: ImageVector? = null,
 ) {
-    val colors = AxonTheme.colors
-    Row(
-        modifier = modifier
-            .height(42.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (!enabled) colors.control else if (outlined) colors.pageBg else colors.accentPrimary,
-                RoundedCornerShape(8.dp),
-            )
-            .border(
-                1.dp,
-                if (outlined) colors.borderStrong.copy(alpha = 0.42f) else colors.accentPrimary.copy(alpha = 0.86f),
-                RoundedCornerShape(8.dp),
-            )
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (outlined) colors.textMuted else androidx.compose.ui.graphics.Color.White,
-                modifier = Modifier.size(15.dp),
-            )
-        }
-        Text(
-            label,
-            color = if (outlined) colors.textMuted else androidx.compose.ui.graphics.Color.White,
-            fontSize = 13.sp,
-            lineHeight = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = AxonTheme.fonts.body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    CompactActionButton(
+        label = label,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        outlined = outlined,
+        icon = icon,
+        heightDp = 42,
+    )
 }

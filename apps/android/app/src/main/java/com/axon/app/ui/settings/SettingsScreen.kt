@@ -1,5 +1,6 @@
 package com.axon.app.ui.settings
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -72,6 +74,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val saveState by vm.saveState.collectAsStateWithLifecycle()
     val draftAuthMode by vm.draftAuthMode.collectAsStateWithLifecycle()
     val oauthStatus by vm.oauthStatus.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val oauthLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.data == null) vm.cancelOAuthSignIn() else vm.completeOAuthSignIn(result.data)
@@ -156,7 +159,13 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                                 scope.launch {
                                     vm.beginOAuthSignIn(serverUrl).fold(
                                         onSuccess = oauthLauncher::launch,
-                                        onFailure = { },
+                                        onFailure = {
+                                            Toast.makeText(
+                                                context,
+                                                it.message ?: "OAuth sign-in failed to start",
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        },
                                     )
                                 }
                             },
