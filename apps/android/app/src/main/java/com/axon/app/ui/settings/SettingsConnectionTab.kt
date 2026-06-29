@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -32,6 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.data.auth.AuthMode
+import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
@@ -53,11 +59,20 @@ internal fun ConnectionTab(
     onSignOutOAuth: () -> Unit,
     collections: CollectionListUiState,
     onRefreshCollections: () -> Unit,
+    onTestConnection: () -> Unit,
     connection: TestConnectionState,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionLabel("Connection")
+        ConnectionSetupSummary(
+            serverUrl = serverUrl,
+            collection = collection,
+            authMode = authMode,
+            oauthStatus = oauthStatus,
+            connection = connection,
+            onTestConnection = onTestConnection,
+        )
         CompactSettingField("Server", serverUrl, onServerUrl)
         if (serverUrl.startsWith("http://")) {
             AuroraCallout(
@@ -95,6 +110,130 @@ internal fun ConnectionTab(
             )
             else -> {}
         }
+    }
+}
+
+@Composable
+private fun ConnectionSetupSummary(
+    serverUrl: String,
+    collection: String,
+    authMode: AuthMode,
+    oauthStatus: OAuthUiStatus,
+    connection: TestConnectionState,
+    onTestConnection: () -> Unit,
+) {
+    val colors = AxonTheme.colors
+    val serverReady = serverUrl.isNotBlank()
+    val authReady = authMode == AuthMode.Bearer || oauthStatus == OAuthUiStatus.SignedIn
+    val collectionReady = collection.isNotBlank()
+    val connected = connection is TestConnectionState.Ok
+    val actionLabel = when {
+        connection is TestConnectionState.Testing -> "Testing..."
+        !serverReady -> "Add server URL"
+        !authReady && authMode == AuthMode.OAuth -> "Sign in below"
+        else -> "Test connection"
+    }
+    val summary = when {
+        connected -> "Connection is ready for Axon requests."
+        connection is TestConnectionState.Failed -> "Connection test failed. Check the details below and retry."
+        !serverReady -> "Start with the Axon server URL."
+        !authReady && authMode == AuthMode.OAuth -> "OAuth needs a completed sign-in before testing."
+        !collectionReady -> "Pick the Qdrant collection used for requests."
+        else -> "Test the saved endpoint before leaving setup."
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .axonElevation(RoundedCornerShape(12.dp), AxonElevation.Card)
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.panelStrong.copy(alpha = 0.72f), RoundedCornerShape(12.dp))
+            .border(1.dp, colors.borderStrong.copy(alpha = 0.36f), RoundedCornerShape(12.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            SetupStatusIcon(connected = connected, inProgress = connection is TestConnectionState.Testing, failed = connection is TestConnectionState.Failed)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Setup summary",
+                    color = colors.textPrimary,
+                    fontSize = 15.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = AxonTheme.fonts.body,
+                )
+                Text(
+                    summary,
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = AxonTheme.fonts.body,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            SetupStep("Server", serverReady, modifier = Modifier.weight(1f))
+            SetupStep("Auth", authReady, modifier = Modifier.weight(1f))
+            SetupStep("Collection", collectionReady, modifier = Modifier.weight(1f))
+        }
+        CompactActionButton(
+            label = actionLabel,
+            onClick = onTestConnection,
+            enabled = serverReady && connection !is TestConnectionState.Testing && authReady,
+            modifier = Modifier.fillMaxWidth(),
+            outlined = connected,
+            icon = Icons.Rounded.Sync,
+        )
+    }
+}
+
+@Composable
+private fun SetupStatusIcon(connected: Boolean, inProgress: Boolean, failed: Boolean) {
+    val colors = AxonTheme.colors
+    val icon = when {
+        connected -> Icons.Rounded.CheckCircle
+        failed -> Icons.Rounded.ErrorOutline
+        inProgress -> Icons.Rounded.Sync
+        else -> Icons.Rounded.RadioButtonUnchecked
+    }
+    val tint = when {
+        connected -> colors.success
+        failed -> colors.error
+        inProgress -> colors.accentStrong
+        else -> colors.textMuted
+    }
+    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+}
+
+@Composable
+private fun SetupStep(label: String, ready: Boolean, modifier: Modifier = Modifier) {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (ready) colors.tint(colors.success, 8, colors.panelStrong) else colors.control.copy(alpha = 0.34f), RoundedCornerShape(8.dp))
+            .border(1.dp, if (ready) colors.success.copy(alpha = 0.28f) else colors.borderDefault.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (ready) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (ready) colors.success else colors.textMuted,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            label,
+            color = if (ready) colors.textPrimary else colors.textMuted,
+            fontSize = 10.6.sp,
+            lineHeight = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = AxonTheme.fonts.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -25,6 +25,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.axon.app.ui.common.pressScale
@@ -157,12 +161,16 @@ fun FabLauncher(
                     }
                     .background(colors.panelStrong.copy(alpha = 0.76f), RoundedCornerShape(15.dp))
                     .border(1.dp, colors.borderStrong.copy(alpha = 0.74f), RoundedCornerShape(15.dp))
-                    .pressScale { state = FabState.Ring },
+                    .pressScale(role = Role.Button) { state = FabState.Ring }
+                    .semantics {
+                        contentDescription = "Launch operation"
+                        role = Role.Button
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Rounded.Add,
-                    contentDescription = "Launch operation",
+                    contentDescription = null,
                     tint = colors.accentStrong.copy(alpha = 0.88f),
                     modifier = Modifier.size(20.dp),
                 )

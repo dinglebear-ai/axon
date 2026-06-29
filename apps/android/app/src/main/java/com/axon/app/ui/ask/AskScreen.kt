@@ -45,6 +45,7 @@ import tv.tootie.aurora.components.AuroraThinking
 @Composable
 fun AskScreen(
     onOpenDocument: (String) -> Unit = {},
+    onOpenJobs: () -> Unit = {},
     onFabOverlayVisibleChange: (Boolean) -> Unit = {},
     vm: AskViewModel = viewModel(),
 ) {
@@ -119,10 +120,14 @@ fun AskScreen(
     }
     val askSuggestions = remember {
         listOf(
-            "What is Axon and what can it do?",
-            "How do I crawl and index a docs site?",
-            "What embedding model does Axon use?",
+            "What can Axon help me do?",
+            "Help me choose between Ask and Chat mode",
+            "How should I crawl and index a docs site?",
         )
+    }
+    fun submitStarterPrompt(prompt: String) {
+        vm.setMode(ConversationMode.Chat)
+        vm.ask(prompt)
     }
     fun copyMessage(value: String) {
         context.getSystemService(android.content.ClipboardManager::class.java)
@@ -159,7 +164,7 @@ fun AskScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .widthIn(max = 460.dp),
-                    contentPadding = PaddingValues(start = 6.dp, top = 12.dp, end = 6.dp, bottom = 148.dp),
+                    contentPadding = PaddingValues(start = 6.dp, top = 12.dp, end = 6.dp, bottom = 176.dp),
                 ) {
                     when {
                         chatItems.isNotEmpty() -> {
@@ -189,6 +194,7 @@ fun AskScreen(
                                     ChatItemContent(
                                         item = item,
                                         onOpenDocument = onOpenDocument,
+                                        onOpenJobs = onOpenJobs,
                                         isLastAxon = index == lastAxonIdx,
                                         showAvatar = showAvatar,
                                         onCopy = ::copyMessage,
@@ -246,19 +252,33 @@ fun AskScreen(
                                         .fillParentMaxHeight()
                                         .fillMaxWidth(),
                                     suggestions = askSuggestions,
-                                    onSuggestion = { vm.ask(it) },
+                                    onSuggestion = ::submitStarterPrompt,
                                 )
                             }
                         }
                     }
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ModeExplanationPill(
+                    mode = mode,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 460.dp)
+                        .padding(horizontal = 12.dp),
+                )
                 AskPromptBar(
                     value = input,
                     onValueChange = { input = it },
                     loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
-                    placeholder = if (chatItems.isEmpty() && historyPreview.isEmpty()) "Ask Axon…" else if (mode == ConversationMode.Chat) "Chat with Axon…" else "Ask a follow-up…",
+                    placeholder = when {
+                        mode == ConversationMode.Chat -> "Chat with Axon…"
+                        chatItems.isEmpty() && historyPreview.isEmpty() -> "Ask indexed docs…"
+                        else -> "Ask a follow-up…"
+                    },
                     mode = mode,
                     onModeChange = vm::setMode,
                     attachments = attachments,
@@ -284,7 +304,7 @@ fun AskScreen(
                 listState = listState,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 3.dp, bottom = 88.dp),
+                    .padding(end = 3.dp, bottom = 116.dp),
             )
         }
         val lastListIndex = if (chatItems.isNotEmpty()) chatItems.lastIndex else historyPreview.lastIndex
@@ -296,7 +316,7 @@ fun AskScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 92.dp),
+                .padding(bottom = 120.dp),
         )
         FabLauncher(
             onOpSubmit = { op, fabInput -> vm.submitFabOp(op, fabInput) },
@@ -309,6 +329,7 @@ fun AskScreen(
 private fun ChatItemContent(
     item: ChatItem,
     onOpenDocument: (String) -> Unit,
+    onOpenJobs: () -> Unit,
     isLastAxon: Boolean,
     showAvatar: Boolean,
     onCopy: (String) -> Unit,
@@ -343,7 +364,7 @@ private fun ChatItemContent(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            InjectionCard(item)
+            InjectionCard(item, onOpenJobs = onOpenJobs)
         }
     }
 }

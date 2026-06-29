@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.Pending
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -18,6 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -26,9 +31,12 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.ui.fab.FabOp
+import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.AuroraProgressBar
 import com.axon.app.ui.common.ProgressSize
 import com.axon.app.ui.common.ProgressVariant
+import com.axon.app.ui.common.axonElevation
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
@@ -38,6 +46,7 @@ import com.axon.app.ui.theme.toneOf
 fun InjectionCard(
     item: ChatItem.Injection,
     modifier: Modifier = Modifier,
+    onOpenJobs: () -> Unit = {},
 ) {
     val op = item.op
     val jobId = item.jobId
@@ -56,6 +65,7 @@ fun InjectionCard(
         modifier = modifier
             .fillMaxWidth(0.84f)
             .widthIn(max = 356.dp)
+            .axonElevation(shape, AxonElevation.Card)
             .clip(shape)
             .background(colors.panelStrong.copy(alpha = 0.22f), shape)
             .border(1.dp, colors.tint(warm.base, 9, colors.panelStrong), shape)
@@ -121,6 +131,45 @@ fun InjectionCard(
                 if (jobId != null) JobMetaPill("job ${jobId.take(8)}")
             }
         }
+        if (jobId != null || !item.isIndexedEvent()) {
+            OpenJobsAction(onOpenJobs = onOpenJobs)
+        }
+    }
+}
+
+@Composable
+private fun OpenJobsAction(onOpenJobs: () -> Unit) {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.control.copy(alpha = 0.34f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Open Jobs"
+                role = Role.Button
+            }
+            .pressScale(role = Role.Button, onClick = onOpenJobs)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Icon(
+            Icons.Rounded.TaskAlt,
+            contentDescription = null,
+            tint = colors.accentStrong.copy(alpha = 0.86f),
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            "Open Jobs",
+            color = colors.textPrimary.copy(alpha = 0.88f),
+            fontSize = 11.6.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = AxonTheme.fonts.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -38,6 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,7 +59,7 @@ import kotlinx.coroutines.launch
 private enum class SettingsTab(val label: String, val shortLabel: String, val icon: ImageVector) {
     Connection("Connection", "Conn", Icons.Rounded.Link),
     Env("Env", "Env", Icons.Rounded.Key),
-    Config("Config", "Config", Icons.Rounded.Slideshow),
+    Config("Config", "Cfg", Icons.Rounded.Slideshow),
     System("System", "Sys", Icons.Rounded.MonitorHeart),
 }
 
@@ -158,6 +163,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                             onSignOutOAuth = vm::signOutOAuth,
                             collections = collections,
                             onRefreshCollections = vm::refreshCollections,
+                            onTestConnection = { vm.testConnection(serverUrl, token) },
                             connection = connection,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -237,9 +243,17 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             .background(if (selected) colors.tint(colors.accentPrimary, 7, colors.pageBg) else colors.control.copy(alpha = 0.01f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 20, colors.pageBg) else colors.borderDefault.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .height(48.dp)
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append(tab.label)
+                    count?.let { append(", ").append(it).append(" settings") }
+                }
+                role = Role.Button
+                this.selected = selected
+            }
+            .height(50.dp)
+            .padding(horizontal = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(tab.icon, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted.copy(alpha = 0.72f), modifier = Modifier.size(15.dp))
@@ -252,19 +266,20 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
         )
         count?.let {
             Text(
                 it.toString(),
                 modifier = Modifier
-                    .width(32.dp)
-                    .height(22.dp)
+                    .width(24.dp)
+                    .height(18.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(colors.control.copy(alpha = if (selected) 0.34f else 0.18f))
                     .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp)),
                 color = colors.textMuted.copy(alpha = 0.78f),
-                fontSize = 10.4.sp,
-                lineHeight = 22.sp,
+                fontSize = 8.8.sp,
+                lineHeight = 18.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,

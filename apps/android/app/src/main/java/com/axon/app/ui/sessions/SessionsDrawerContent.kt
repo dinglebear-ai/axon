@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BookmarkAdded
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -36,8 +37,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,7 +52,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
 import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.NoticeTone
+import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
@@ -137,6 +143,10 @@ private fun NewSessionRow(onClick: () -> Unit) {
             .background(colors.control.copy(alpha = 0.025f))
             .border(1.dp, colors.tint(colors.accentPrimary, 18, colors.pageBg), RoundedCornerShape(9.dp))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "New session"
+                role = Role.Button
+            }
             .padding(horizontal = 15.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
@@ -192,13 +202,19 @@ private fun AskHistorySessionRow(entry: AskHistoryEntry, modifier: Modifier = Mo
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            "1 query · ask",
+            "Ask history",
             fontSize = 10.2.sp,
             lineHeight = 13.4.sp,
-            color = colors.textMuted.copy(alpha = 0.6f),
-            fontFamily = AxonTheme.fonts.mono,
+            color = colors.tint(colors.accentPrimary, 82, colors.textPrimary),
+            fontFamily = AxonTheme.fonts.body,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(colors.tint(colors.accentPrimary, 11, colors.control), RoundedCornerShape(999.dp))
+                .border(1.dp, colors.tint(colors.accentPrimary, 24, colors.control), RoundedCornerShape(999.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
 }
@@ -251,20 +267,28 @@ private fun SessionRow(
 ) {
     val colors = AxonTheme.colors
     var showMenu by remember { mutableStateOf(false) }
+    val pinned = session.pinnedAt != null
 
     Box(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .axonElevation(RoundedCornerShape(8.dp), AxonElevation.Row)
                 .clip(RoundedCornerShape(8.dp))
                 .background(colors.control.copy(alpha = 0.075f))
                 .border(1.dp, colors.borderDefault.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-                .semantics {
+                .combinedClickable(
+                    onClick = onSelect,
+                    onLongClick = { showMenu = true },
+                )
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${session.title}, ${session.firstMessagePreview}, ${session.turnCount} turns, ${session.injectedOpCount} operations, ${if (pinned) "pinned, " else ""}${relativeTime(session.updatedAt)}"
+                    role = Role.Button
                     customActions = listOf(
                         CustomAccessibilityAction(
-                            label = if (session.pinnedAt == null) "Pin session" else "Unpin session",
+                            label = if (!pinned) "Pin session" else "Unpin session",
                         ) {
-                            if (session.pinnedAt == null) onPin() else onUnpin()
+                            if (!pinned) onPin() else onUnpin()
                             true
                         },
                         CustomAccessibilityAction(label = "Delete session") {
@@ -273,22 +297,10 @@ private fun SessionRow(
                         },
                     )
                 }
-                .combinedClickable(
-                    onClick = onSelect,
-                    onLongClick = { showMenu = true },
-                )
             .padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (session.pinnedAt != null) {
-                    Icon(
-                        imageVector = Icons.Rounded.BookmarkAdded,
-                        contentDescription = "Pinned",
-                        tint = colors.accentStrong.copy(alpha = 0.78f),
-                        modifier = Modifier.size(12.dp),
-                    )
-                }
                 Text(
                     session.title,
                     fontSize = 12.8.sp,
@@ -300,26 +312,6 @@ private fun SessionRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Icon(
-                    imageVector = Icons.Rounded.BookmarkAdded,
-                    contentDescription = if (session.pinnedAt == null) "Pin session" else "Unpin session",
-                    tint = if (session.pinnedAt == null) colors.textMuted.copy(alpha = 0.58f) else colors.accentStrong,
-                    modifier = Modifier
-                        .size(25.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { if (session.pinnedAt == null) onPin() else onUnpin() }
-                        .padding(6.dp),
-                )
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = "Delete session",
-                    tint = colors.textMuted.copy(alpha = 0.58f),
-                    modifier = Modifier
-                        .size(25.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onDelete() }
-                        .padding(6.dp),
-                )
                 Text(
                     relativeTime(session.updatedAt),
                     fontSize = 10.2.sp,
@@ -330,6 +322,40 @@ private fun SessionRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SessionBadge("Session", colors.accentPrimary)
+                if (pinned) SessionBadge("Pinned", colors.accentStrong)
+                SessionBadge("${session.turnCount} turns", colors.textMuted)
+                if (session.injectedOpCount > 0) SessionBadge("${session.injectedOpCount} ops", colors.accentStrong)
+                Box(modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable { showMenu = true }
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Session actions"
+                            role = Role.Button
+                        }
+                        .padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        "Actions",
+                        color = colors.textMuted.copy(alpha = 0.82f),
+                        fontSize = 10.6.sp,
+                        lineHeight = 13.sp,
+                        fontFamily = AxonTheme.fonts.body,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = null,
+                        tint = colors.textMuted.copy(alpha = 0.78f),
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+            }
             Text(
                 session.firstMessagePreview,
                 fontSize = 11.2.sp,
@@ -339,38 +365,49 @@ private fun SessionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                "${session.turnCount} turns · ${session.injectedOpCount} ops",
-                fontSize = 10.2.sp,
-                lineHeight = 13.4.sp,
-                color = colors.textMuted.copy(alpha = 0.6f),
-                fontFamily = AxonTheme.fonts.mono,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
 
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-            if (session.pinnedAt == null) {
+            if (!pinned) {
                 DropdownMenuItem(
-                    text = { Text("Pin") },
+                    text = { Text("Pin session") },
                     leadingIcon = { Icon(Icons.Rounded.BookmarkAdded, contentDescription = null) },
                     onClick = { showMenu = false; onPin() },
                 )
             } else {
                 DropdownMenuItem(
-                    text = { Text("Unpin") },
+                    text = { Text("Unpin session") },
                     leadingIcon = { Icon(Icons.Rounded.BookmarkAdded, contentDescription = null) },
                     onClick = { showMenu = false; onUnpin() },
                 )
             }
             DropdownMenuItem(
-                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                text = { Text("Delete session", color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                 onClick = { showMenu = false; onDelete() },
             )
         }
     }
+}
+
+@Composable
+private fun SessionBadge(text: String, tone: Color) {
+    val colors = AxonTheme.colors
+    Text(
+        text,
+        color = colors.tint(tone, 82, colors.textPrimary),
+        fontSize = 10.2.sp,
+        lineHeight = 13.sp,
+        fontFamily = AxonTheme.fonts.body,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.tint(tone, 10, colors.control), RoundedCornerShape(999.dp))
+            .border(1.dp, colors.tint(tone, 23, colors.control), RoundedCornerShape(999.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+    )
 }
 
 private fun relativeTime(ts: Long): String {
