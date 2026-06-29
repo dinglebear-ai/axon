@@ -21,6 +21,7 @@ use axon_services::types::StartDisposition;
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -141,9 +142,9 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         // Local-path embeds therefore always run in-process here; only URL /
         // free-text inputs go through the shared queue when --wait is false.
         let input_is_local_path = Path::new(&input).exists();
-        let effective_embed_watch =
-            embed_should_watch(cfg.embed_watch, cfg.embed_no_watch, Path::new(&input));
-        if effective_embed_watch {
+        let watch_mode =
+            embed_local_watch_mode(cfg.embed_watch, cfg.embed_no_watch, Path::new(&input));
+        if watch_mode != EmbedLocalWatchMode::None {
             validate_embed_watch_input(&input, input_is_local_path)?;
         }
         if !cfg.wait && !input_is_local_path {
@@ -154,20 +155,24 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             return result;
         }
         if !cfg.wait && input_is_local_path {
-            let reason = if effective_embed_watch {
-                "local_path_watch_runs_in_process"
-            } else {
-                "local_path_runs_in_process"
+            let reason = match watch_mode {
+                EmbedLocalWatchMode::Background => "local_path_watch_started_background",
+                EmbedLocalWatchMode::Foreground => "local_path_watch_runs_in_process",
+                EmbedLocalWatchMode::None => "local_path_runs_in_process",
             };
             log_info(&format!("command=embed {reason}"));
         }
-        if effective_embed_watch && !cfg.json_output {
+        if watch_mode == EmbedLocalWatchMode::Background {
+            spawn_background_embed_watch(cfg, &input)?;
+            return Ok(());
+        }
+        if watch_mode == EmbedLocalWatchMode::Foreground && !cfg.json_output {
             println!(
                 "  {}",
                 muted("Watching local code indexing refresh in the foreground.")
             );
         }
-        if effective_embed_watch {
+        if watch_mode == EmbedLocalWatchMode::Foreground {
             let input_path = watch_root_for_embed_input(Path::new(&input));
             let initial_refresh = is_watchable_code_dir(&input_path);
             let mut watch_cfg = cfg.clone();
@@ -231,8 +236,25 @@ fn is_watchable_code_dir(path: &Path) -> bool {
     path.is_dir()
 }
 
-fn embed_should_watch(explicit_watch: bool, no_watch: bool, input: &Path) -> bool {
-    !no_watch && (explicit_watch || input.exists())
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmbedLocalWatchMode {
+    None,
+    Background,
+    Foreground,
+}
+
+fn embed_local_watch_mode(
+    explicit_watch: bool,
+    no_watch: bool,
+    input: &Path,
+) -> EmbedLocalWatchMode {
+    if no_watch || !input.exists() {
+        EmbedLocalWatchMode::None
+    } else if explicit_watch {
+        EmbedLocalWatchMode::Foreground
+    } else {
+        EmbedLocalWatchMode::Background
+    }
 }
 
 fn watch_root_for_embed_input(input: &Path) -> PathBuf {
@@ -248,6 +270,56 @@ fn nearest_git_root(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .find(|ancestor| ancestor.join(".git").exists())
         .map(Path::to_path_buf)
+}
+
+fn spawn_background_embed_watch(cfg: &Config, input: &str) -> Result<(), Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let args = background_embed_watch_args(cfg, input);
+    let mut child = std::process::Command::new(exe);
+    child
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let process = child.spawn()?;
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "watch_started",
+                "target": input,
+                "collection": cfg.collection,
+                "pid": process.id(),
+            })
+        );
+    } else {
+        println!(
+            "  {} {}",
+            primary("Local code index watcher started"),
+            accent(&process.id().to_string())
+        );
+        println!("  {}", muted(&format!("Input: {input}")));
+    }
+    Ok(())
+}
+
+fn background_embed_watch_args(cfg: &Config, input: &str) -> Vec<String> {
+    let mut args = vec![
+        "--collection".to_string(),
+        cfg.collection.clone(),
+        "--qdrant-url".to_string(),
+        cfg.qdrant_url.clone(),
+    ];
+    if !cfg.tei_url.is_empty() {
+        args.push("--tei-url".to_string());
+        args.push(cfg.tei_url.clone());
+    }
+    args.extend([
+        "embed".to_string(),
+        input.to_string(),
+        "--watch".to_string(),
+    ]);
+    args
 }
 
 fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>> {
@@ -368,9 +440,10 @@ async fn enqueue_embed_job(
 #[cfg(test)]
 mod tests {
     use super::{
-        embed_should_watch, is_watchable_code_dir, validate_embed_watch_input,
-        watch_root_for_embed_input,
+        EmbedLocalWatchMode, background_embed_watch_args, embed_local_watch_mode,
+        is_watchable_code_dir, validate_embed_watch_input, watch_root_for_embed_input,
     };
+    use axon_core::config::Config;
 
     #[test]
     fn embed_watch_rejects_non_local_inputs() {
@@ -410,20 +483,44 @@ mod tests {
     }
 
     #[test]
-    fn embed_watches_local_directories_by_default() -> Result<(), Box<dyn std::error::Error>> {
+    fn embed_background_watches_local_directories_by_default()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::TempDir::new()?;
 
-        assert!(embed_should_watch(false, false, dir.path()));
-        assert!(!embed_should_watch(false, true, dir.path()));
+        assert_eq!(
+            embed_local_watch_mode(false, false, dir.path()),
+            EmbedLocalWatchMode::Background
+        );
+        assert_eq!(
+            embed_local_watch_mode(false, true, dir.path()),
+            EmbedLocalWatchMode::None
+        );
         Ok(())
     }
 
     #[test]
-    fn embed_watches_local_files_by_default() -> Result<(), Box<dyn std::error::Error>> {
+    fn embed_background_watches_local_files_by_default() -> Result<(), Box<dyn std::error::Error>> {
         let file = tempfile::NamedTempFile::new()?;
 
-        assert!(embed_should_watch(false, false, file.path()));
-        assert!(!embed_should_watch(false, true, file.path()));
+        assert_eq!(
+            embed_local_watch_mode(false, false, file.path()),
+            EmbedLocalWatchMode::Background
+        );
+        assert_eq!(
+            embed_local_watch_mode(false, true, file.path()),
+            EmbedLocalWatchMode::None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_flag_forces_foreground_watch() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+
+        assert_eq!(
+            embed_local_watch_mode(true, false, dir.path()),
+            EmbedLocalWatchMode::Foreground
+        );
         Ok(())
     }
 
@@ -438,5 +535,30 @@ mod tests {
 
         assert_eq!(watch_root_for_embed_input(&file), repo.path());
         Ok(())
+    }
+
+    #[test]
+    fn background_embed_watch_args_preserve_service_targets() {
+        let cfg = Config {
+            collection: "code-local".to_string(),
+            qdrant_url: "http://qdrant:6333".to_string(),
+            tei_url: "http://tei:80".to_string(),
+            ..Config::default()
+        };
+
+        assert_eq!(
+            background_embed_watch_args(&cfg, "/repo"),
+            vec![
+                "--collection",
+                "code-local",
+                "--qdrant-url",
+                "http://qdrant:6333",
+                "--tei-url",
+                "http://tei:80",
+                "embed",
+                "/repo",
+                "--watch",
+            ]
+        );
     }
 }
