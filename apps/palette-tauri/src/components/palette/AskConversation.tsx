@@ -1,23 +1,18 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CheckCircle2, Copy, Pencil, Paperclip, RotateCcw, Send, Sparkles, Wrench, X } from "lucide-react";
+import { Brain, CheckCircle2, Paperclip, Send, Wrench, X } from "lucide-react";
 
-import { Message, MessageActionButton, MessageContent } from "@/components/aurora/ai/message";
+import { Message, MessageContent } from "@/components/aurora/ai/message";
 import { Response } from "@/components/aurora/ai/response";
-import { Source } from "@/components/aurora/ai/source";
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { AxonMark } from "@/components/palette/AxonMark";
+import { ChatMessageActions, ChatSuggestionPanel, type SuggestionState } from "@/components/palette/ChatMessageAffordances";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
 import { sortActionsByRelevance } from "@/lib/paletteView";
 import type { AskActivity, AskSource, AskTurn, ChatSuggestion } from "@/lib/runState";
-
-type SuggestionState =
-  | { status: "loading" }
-  | { status: "ready"; rows: ChatSuggestion[] }
-  | { status: "error"; message: string };
 
 function SourceStrip({ sources }: { sources?: AskSource[] }) {
   if (!sources?.length) return null;
@@ -80,6 +75,7 @@ export const ConversationThread = memo(function ConversationThread({
   onSuggestTurn,
   onEditTurn,
   onRegenerateTurn,
+  agentBubbles = false,
 }: {
   prompt?: string;
   answer: string;
@@ -91,6 +87,7 @@ export const ConversationThread = memo(function ConversationThread({
   onSuggestTurn?: (turn: AskTurn) => void;
   onEditTurn?: (turn: AskTurn) => void;
   onRegenerateTurn?: (turn: AskTurn) => void;
+  agentBubbles?: boolean;
 }) {
   const threadTurns = useMemo<AskTurn[]>(
     () =>
@@ -193,7 +190,11 @@ export const ConversationThread = memo(function ConversationThread({
               </span>
               <div className="ask-assistant-stack">
                 <ActivityTrail activities={turn.activities} pending={turn.pending} />
-                <MessageContent tone="assistant" streaming={Boolean(turn.pending)}>
+                <MessageContent
+                  tone="assistant"
+                  streaming={Boolean(turn.pending)}
+                  className={agentBubbles ? undefined : "aurora-message-content-plain"}
+                >
                   {turn.content ? <Response markdown={turn.content} streaming={Boolean(turn.pending)} /> : <span className="ask-waiting">{waiting}</span>}
                 </MessageContent>
                 <SourceStrip sources={turn.sources} />
@@ -207,90 +208,6 @@ export const ConversationThread = memo(function ConversationThread({
   );
 });
 
-function ChatMessageActions({
-  enabled,
-  turn,
-  suggestion,
-  onSuggest,
-  onEdit,
-  onRegenerate,
-}: {
-  enabled: boolean;
-  turn: AskTurn;
-  suggestion?: SuggestionState;
-  onSuggest?: (turn: AskTurn) => void;
-  onEdit?: (turn: AskTurn) => void;
-  onRegenerate?: (turn: AskTurn) => void;
-}) {
-  if (turn.pending || !turn.content.trim()) return null;
-  const loading = suggestion?.status === "loading";
-  return (
-    <div className="chat-message-tools">
-      <MessageActionButton
-        onClick={() => void navigator.clipboard?.writeText(turn.content).catch(() => {})}
-        aria-label={`Copy ${turn.role} message`}
-        title="Copy"
-      >
-        <Copy size={13} strokeWidth={1.8} aria-hidden="true" />
-      </MessageActionButton>
-      {onEdit ? (
-        <MessageActionButton onClick={() => onEdit(turn)} aria-label={`Edit ${turn.role} message`} title="Edit">
-          <Pencil size={13} strokeWidth={1.8} aria-hidden="true" />
-        </MessageActionButton>
-      ) : null}
-      {onRegenerate ? (
-        <MessageActionButton onClick={() => onRegenerate(turn)} aria-label={`Regenerate from ${turn.role} message`} title="Regenerate">
-          <RotateCcw size={13} strokeWidth={1.8} aria-hidden="true" />
-        </MessageActionButton>
-      ) : null}
-      {enabled && onSuggest ? (
-        <MessageActionButton
-          className="chat-message-tool"
-          onClick={() => onSuggest(turn)}
-          disabled={loading}
-          aria-label={`Suggest docs for ${turn.role} message`}
-          title={loading ? "Searching indexed docs" : "Suggest relevant docs"}
-        >
-          <Sparkles size={13} strokeWidth={1.8} aria-hidden="true" />
-        </MessageActionButton>
-      ) : null}
-    </div>
-  );
-}
-
-function ChatSuggestionPanel({ align = "start", suggestion }: { align?: "start" | "end"; suggestion?: SuggestionState }) {
-  if (!suggestion) return null;
-  if (suggestion.status === "loading") {
-    return (
-      <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`} role="status">
-        Searching indexed docs...
-      </div>
-    );
-  }
-  if (suggestion.status === "error") {
-    return (
-      <div className={`chat-suggestion-panel chat-suggestion-panel-${align} chat-suggestion-error`} role="alert">
-        {suggestion.message}
-      </div>
-    );
-  }
-  if (suggestion.rows.length === 0) {
-    return <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`}>No indexed docs matched this message.</div>;
-  }
-  return (
-    <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`} aria-label="Suggested docs">
-      {suggestion.rows.map((row) => (
-        <Source
-          key={`${row.url ?? row.title}-${row.rank}`}
-          className="chat-suggestion-row"
-          source={{ title: row.title, href: row.url, description: row.snippet, badge: row.score !== undefined ? row.score.toFixed(3) : undefined }}
-          index={row.rank}
-        />
-      ))}
-    </div>
-  );
-}
-
 // The full ask view: a conversation thread plus a follow-up compose box.
 export const AskConversation = memo(function AskConversation({
   prompt,
@@ -301,6 +218,7 @@ export const AskConversation = memo(function AskConversation({
   onRunAction,
   suggestionsEnabled = false,
   onSuggestMessage,
+  agentBubbles = false,
 }: {
   prompt?: string;
   answer?: string;
@@ -310,6 +228,7 @@ export const AskConversation = memo(function AskConversation({
   onRunAction?: (subcommand: string, argument: string) => void;
   suggestionsEnabled?: boolean;
   onSuggestMessage?: (message: string) => Promise<ChatSuggestion[]>;
+  agentBubbles?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [selectedCommand, setSelectedCommand] = useState(0);
@@ -425,6 +344,7 @@ export const AskConversation = memo(function AskConversation({
         onSuggestTurn={suggestTurn}
         onEditTurn={editTurn}
         onRegenerateTurn={regenerateTurn}
+        agentBubbles={agentBubbles}
       />
       <form
         className="ask-compose"

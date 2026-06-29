@@ -35,7 +35,13 @@ const completeRun: RunState = {
   kind: "success",
   title: "Ask question",
   subtitle: "RAG over axon | /v1/ask/stream",
-  text: "A skill is a reusable instruction pack that gives an agent domain-specific workflow, tools, and guardrails.",
+  text: [
+    "A skill is a reusable instruction pack that gives an agent domain-specific workflow, tools, and guardrails.",
+    "",
+    "In practice it bundles the steps, checks, and context an agent should follow for a task, so the same behavior can be invoked consistently without pasting the whole process into every prompt.",
+    "",
+    "Good skills stay focused: they name when to use them, point to any supporting scripts or references, and keep the agent inside the project's preferred workflow.",
+  ].join("\n"),
   outputKind: "markdown",
   prompt: "what is a skill?",
   result: {
@@ -50,7 +56,13 @@ const completeRun: RunState = {
     {
       id: "a1",
       role: "assistant",
-      content: "A skill is a reusable instruction pack that gives an agent domain-specific workflow, tools, and guardrails.",
+      content: [
+        "A skill is a reusable instruction pack that gives an agent domain-specific workflow, tools, and guardrails.",
+        "",
+        "In practice it bundles the steps, checks, and context an agent should follow for a task, so the same behavior can be invoked consistently without pasting the whole process into every prompt.",
+        "",
+        "Good skills stay focused: they name when to use them, point to any supporting scripts or references, and keep the agent inside the project's preferred workflow.",
+      ].join("\n"),
       sources: [{ label: "docs.rs", url: "https://docs.rs" }],
     },
   ],
@@ -133,7 +145,9 @@ const fixtureSuggestions: ChatSuggestion[] = [
 ];
 
 export function AskStreamTransitionFixture() {
-  const state = new URLSearchParams(window.location.search).get("state");
+  const params = new URLSearchParams(window.location.search);
+  const state = params.get("state");
+  const agentBubbles = params.get("agentBubbles") === "true";
   const chatMode = state === "chat";
   const chatToolMode = state === "chat-tool";
   const run = chatToolMode ? chatToolRun : chatMode ? chatRun : state === "streaming" ? streamingRun : completeRun;
@@ -155,6 +169,7 @@ export function AskStreamTransitionFixture() {
         onTogglePin={noop}
         onRunAction={noop}
         onSuggestMessage={async () => fixtureSuggestions}
+        agentBubbles={agentBubbles}
       />
     </main>
   );

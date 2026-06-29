@@ -47,6 +47,7 @@ interface OutputPanelProps {
   onCollapse: () => void;
   onTogglePin: () => void;
   pinned: boolean;
+  agentBubbles?: boolean;
   liveRefresh?: LiveRefreshState;
   onToggleLivePause?: () => void;
   onOpenJob?: OpenJobHandler;
@@ -73,6 +74,7 @@ export const OutputPanel = memo(function OutputPanel({
   onCollapse,
   onTogglePin,
   pinned,
+  agentBubbles = false,
   liveRefresh,
   onToggleLivePause,
   onOpenJob,
@@ -241,6 +243,7 @@ export const OutputPanel = memo(function OutputPanel({
             onRunAction={onRunAction}
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
+            agentBubbles={agentBubbles}
           />
         ) : run.kind === "streaming" && conversationMode ? (
           <AskConversation
@@ -251,6 +254,7 @@ export const OutputPanel = memo(function OutputPanel({
             onRunAction={onRunAction}
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
+            agentBubbles={agentBubbles}
           />
         ) : (run.kind === "running" || run.kind === "streaming") ? (
           <PendingBody run={run} />
@@ -290,6 +294,7 @@ export const OutputPanel = memo(function OutputPanel({
             onRunAction={onRunAction}
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
+            agentBubbles={agentBubbles}
           />
         ) : "text" in run ? (
           outputKind === "markdown" ? (

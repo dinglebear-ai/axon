@@ -315,6 +315,7 @@ function OutputRegion(props: PaletteShellProps) {
         onCollapse={props.onCollapse}
         onTogglePin={props.onTogglePin}
         pinned={props.pinned}
+        agentBubbles={props.config?.agentBubbles ?? false}
         liveRefresh={props.liveRefresh}
         onToggleLivePause={props.onToggleLivePause}
         onOpenJob={props.onOpenJob}
