@@ -44,6 +44,25 @@ describe("resolvePaletteWindowSize", () => {
     ).toEqual({ width: 720, height: 480 });
   });
 
+  it("uses the attached crawl strip height for minimized jobs", () => {
+    expect(
+      resolvePaletteWindowSize(
+        {
+          actionSwitcherOpen: false,
+          jobExpanded: false,
+          jobMinimized: true,
+          settingsOpen: false,
+          historyOpen: false,
+          showResultsLayout: false,
+          showContent: false,
+          filteredLength: 0,
+        },
+        { width: 2560, height: 1440 },
+        () => 468,
+      ),
+    ).toEqual({ width: 720, height: 140 });
+  });
+
 });
 
 describe("crawl job layout CSS contract", () => {
@@ -72,9 +91,10 @@ describe("crawl job layout CSS contract", () => {
   it("keeps the minimized running-operation tray aligned to the compact shell", () => {
     const body = rule(".idle-tray");
     expect(body).toContain("display: grid");
-    expect(body).toContain("grid-template-columns: auto auto minmax(0, max-content) minmax(160px, 1fr) auto auto");
+    expect(body).toContain("grid-template-columns: auto minmax(0, max-content) minmax(160px, 1fr) auto auto auto");
     expect(body).toContain("font-family: var(--aurora-font-body)");
     expect(rule(".idle-tray > span:nth-of-type(2)")).toContain("text-overflow: ellipsis");
+    expect(rule(".idle-tray-pages")).toContain("font-family: var(--aurora-font-mono)");
     expect(rule(".idle-tray-bar")).toContain("width: 100%");
     expect(rule(".idle-tray-bar")).toContain("height: 3px");
   });

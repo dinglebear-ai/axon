@@ -151,15 +151,17 @@ export function PaletteShell(props: PaletteShellProps) {
 
 function JobTray(props: PaletteShellProps) {
   if (props.jobMinimized && props.run.kind === "job") {
+    const pct = Math.round(props.run.snapshot.percent);
+    const totalPages = props.run.snapshot.fetched + props.run.snapshot.queued;
     return (
       <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={props.expandJob} title="Expand crawl job">
-        <span className="idle-tray-dot" />
         <Workflow size={14} strokeWidth={1.9} />
         <span>Crawling {props.run.snapshot.host}</span>
         <span className="idle-tray-bar">
-          <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, Math.round(props.run.snapshot.percent))}%` }} />
+          <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, pct)}%` }} />
         </span>
-        <strong>{Math.round(props.run.snapshot.percent)}%</strong>
+        <span className="idle-tray-pages">{totalPages.toLocaleString("en-US")} pages</span>
+        <strong>{pct}%</strong>
         <ChevronRight size={15} />
       </Button>
     );
@@ -168,7 +170,6 @@ function JobTray(props: PaletteShellProps) {
   if (props.jobMinimized && props.run.kind === "asyncJob") {
     return (
       <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={props.expandAsyncJob} title="Expand job">
-        <span className="idle-tray-dot" />
         <Workflow size={14} strokeWidth={1.9} />
         <span>
           {jobFamilyVerb(props.run.family)} {props.run.snapshot.label}

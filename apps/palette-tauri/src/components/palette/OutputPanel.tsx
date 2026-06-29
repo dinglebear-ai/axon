@@ -105,20 +105,20 @@ export const OutputPanel = memo(function OutputPanel({
   );
 
   return (
-    <section className="output-panel">
+    <section className={quietConversationChrome ? "output-panel output-panel-conversation" : "output-panel"}>
       {/* A11Y-C2: terse, polite announcement of run-state transitions for screen
           readers — NOT the per-token streaming text (which would be a firehose). */}
       <span className="sr-only" aria-live="polite">
         {liveStatusMessage(run, active)}
       </span>
-      <div className={`output-state output-${run.kind} output-tone-${active?.tone ?? "neutral"}`}>
+      <div className={`output-state output-${run.kind} output-tone-${active?.tone ?? "neutral"}${quietConversationChrome ? " output-conversation" : ""}`}>
         <header className={headerSummary ? "output-header output-header-summary" : "output-header"}>
           <span className="output-op-tile" aria-hidden="true">
             <Icon size={19} strokeWidth={1.65} />
           </span>
           <div className="output-meta-info">
             <span className="output-title-line">
-              <span className="output-title">{headerSummary?.title ?? outputTitle(run)}</span>
+              <span className="output-title">{headerSummary?.title ?? (quietConversationChrome && "prompt" in run && run.prompt ? run.prompt : outputTitle(run))}</span>
               {headerSummary ? (
                 <span className="output-summary-chips" role="group" aria-label="Result summary">
                   {headerSummary.metrics.map(([label, value]) => (
@@ -130,7 +130,7 @@ export const OutputPanel = memo(function OutputPanel({
                 </span>
               ) : null}
             </span>
-            <span className="output-subtitle">{outputSubtitle(run, active)}</span>
+            {quietConversationChrome ? null : <span className="output-subtitle">{outputSubtitle(run, active)}</span>}
           </div>
           {liveRefresh?.active ? (
             <LiveBadge state={liveRefresh} onTogglePause={onToggleLivePause} onRefreshNow={liveRefresh.refreshNow} />
