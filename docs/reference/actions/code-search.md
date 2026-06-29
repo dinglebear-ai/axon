@@ -49,14 +49,15 @@ local files first.
 | `--no-freshness` | flag | `false` | Skip manifest refresh and search the committed index only. |
 | `--json` | flag | `false` | Emit machine-readable JSON output. |
 
-### Foreground Watching
+### Background Watching
 
 `code-search` performs an on-demand freshness pass before querying. To keep a
-local checkout refreshed in the foreground, register the checkout through
-`embed`:
+local checkout refreshed in the background, register the checkout through
+`embed`. Add `--watch` when you want the watcher attached in the foreground:
 
 ```bash
 axon embed /path/to/repo
+axon embed /path/to/repo --watch
 ```
 
 The removed `code-search-watch` command is retained only as a tombstone that
@@ -100,16 +101,17 @@ If a foreground refresh times out after embedding every file but before committi
 the generation, the next freshness pass detects the complete uncommitted
 generation and finishes the commit/cleanup without re-embedding it. Plain
 `code-search` does not continue refreshing in the background after the command
-returns; run `axon embed /path/to/repo` when you want foreground refresh
-progress for a local source.
+returns; run `axon embed /path/to/repo` when you want background refreshes for a
+local source, or `axon embed /path/to/repo --watch` when you want foreground
+progress.
 
 ## File Selection
 
 `code-search` indexes the Git checkout resolved from `cwd`. It does not
 automatically crawl all workspace repositories. Each default search performs a
 foreground freshness pass unless `--no-freshness` is set or the checkout is still
-inside the short freshness TTL. Use `embed` for attached refresh progress on a
-local source.
+inside the short freshness TTL. Use `embed` for background refreshes, or
+`embed --watch` for attached refresh progress on a local source.
 
 This is separate from Axon's other automatic systems:
 
