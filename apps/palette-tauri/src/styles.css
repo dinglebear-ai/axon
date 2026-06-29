@@ -603,13 +603,23 @@ textarea {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.palette-shell-compact .axon-brand {
+  min-width: 44px;
+  justify-content: center;
+}
+
+.palette-shell-compact .axon-word,
+.palette-shell-compact .axon-status-dot {
+  display: none;
+}
+
 .idle-tray {
   all: unset;
   display: grid;
-  grid-template-columns: auto auto minmax(0, max-content) minmax(160px, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, max-content) minmax(160px, 1fr) auto auto auto;
   align-items: center;
   gap: 10px;
-  height: 36px;
+  height: 48px;
   padding: 0 16px;
   color: var(--aurora-text-muted);
   background: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
@@ -669,6 +679,13 @@ textarea {
   font-size: 13px;
   font-weight: 760;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idle-tray-pages {
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1840,6 +1857,46 @@ textarea {
   flex: 0 1 auto;
 }
 
+.output-panel-conversation {
+  padding: 0;
+  background: transparent;
+}
+
+.output-conversation {
+  overflow: hidden;
+  background: color-mix(in srgb, var(--aurora-panel-strong) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 55%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 18px 42px rgba(0, 0, 0, 0.18);
+}
+
+.output-conversation .output-header {
+  min-height: 66px;
+  padding: 0 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 62%, transparent);
+}
+
+.output-conversation .output-op-tile {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  color: var(--aurora-text-muted);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.output-conversation .output-title {
+  font-size: 17px;
+}
+
+.output-conversation .output-tool-menu summary {
+  background: transparent;
+  border-color: transparent;
+}
+
 .history-panel {
   display: flex;
   min-width: 0;
@@ -2152,8 +2209,8 @@ textarea {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
-  padding: 7px 6px 6px;
+  gap: 0;
+  padding: 0;
 }
 
 .ask-thread {
@@ -2161,9 +2218,9 @@ textarea {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: 20px;
   overflow-y: auto;
-  padding: 0 2px 4px;
+  padding: 52px 64px 44px;
 }
 
 .ask-thread-reader {
@@ -2174,7 +2231,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-width: min(720px, 88%);
+  max-width: min(760px, 86%);
 }
 
 .ask-message-user {
@@ -2195,7 +2252,7 @@ textarea {
 
 .ask-message > p {
   margin: 0;
-  padding: 8px 10px;
+  padding: 14px 18px;
   color: var(--aurora-text-primary);
   background: var(--aurora-control-surface);
   border: 1px solid var(--aurora-border-default);
@@ -2206,17 +2263,18 @@ textarea {
 
 .ask-message-user > p {
   background: color-mix(in srgb, var(--aurora-accent-primary) 10%, var(--aurora-control-surface));
-  border-color: color-mix(in srgb, var(--aurora-accent-primary) 24%, transparent);
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 45%, transparent);
+  border-radius: 12px;
 }
 
 .ask-answer {
-  padding: 9px 11px;
+  padding: 0;
   color: var(--aurora-text-primary);
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
-  border-radius: 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   font-family: var(--aurora-font-body);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.6;
 }
 
@@ -2298,7 +2356,7 @@ textarea {
 }
 
 .ask-sources {
-  max-width: min(720px, 88%);
+  max-width: min(760px, 86%);
   color: var(--aurora-text-muted);
   font-size: 11px;
 }
@@ -2414,9 +2472,10 @@ textarea {
   display: flex;
   align-items: center;
   gap: 9px;
+  margin: 0 16px 16px;
   padding: 8px 8px 8px 13px;
-  background: var(--aurora-control-surface);
-  border: 1px solid var(--aurora-border-default);
+  background: color-mix(in srgb, var(--aurora-page-bg) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 46%, transparent);
   border-radius: 12px;
 }
 
