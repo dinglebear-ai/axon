@@ -20,6 +20,41 @@ const PLANNER_OWNED_PAYLOAD_KEYS: &[&str] = &[
     "code_chunk_source",
 ];
 
+const LEDGER_OWNED_EXTRA_KEYS: &[&str] = &[
+    "source_id",
+    "source_kind",
+    "source_generation",
+    "source_item_key",
+    "source_item_hash",
+    "source_index_version",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LedgerPayload {
+    source_id: String,
+    generation: i64,
+    item_key: String,
+    index_version: i64,
+}
+
+impl LedgerPayload {
+    pub fn new(source_id: String, generation: i64, item_key: String, index_version: i64) -> Self {
+        Self {
+            source_id,
+            generation,
+            item_key,
+            index_version,
+        }
+    }
+
+    pub(in crate::ops) fn apply_to_payload(&self, payload: &mut Value) {
+        payload["source_id"] = Value::String(self.source_id.clone());
+        payload["source_generation"] = Value::Number(self.generation.into());
+        payload["source_item_key"] = Value::String(self.item_key.clone());
+        payload["source_index_version"] = Value::Number(self.index_version.into());
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceOrigin {
     LocalFile,
@@ -49,6 +84,7 @@ pub struct SourceDocument {
     extra: Option<Value>,
     extractor_name: Option<String>,
     structured: Option<StructuredPayload>,
+    ledger_payload: Option<LedgerPayload>,
     chunk_hint: SourceChunkHint,
 }
 
@@ -65,19 +101,20 @@ impl SourceDocument {
         extractor_name: Option<String>,
         structured: Option<StructuredPayload>,
         chunk_hint: SourceChunkHint,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, String> {
+        Ok(Self {
             origin,
             url,
             domain,
             text,
             source_type: source_type.into(),
             title,
-            extra: sanitize_doc_extra(extra),
+            extra: sanitize_doc_extra(extra)?,
             extractor_name,
             structured,
+            ledger_payload: None,
             chunk_hint,
-        }
+        })
     }
 
     pub fn try_new_web_markdown(
@@ -90,7 +127,7 @@ impl SourceDocument {
         structured: Option<StructuredPayload>,
     ) -> Result<Self, String> {
         let domain = domain_from_web_url(&url)?;
-        Ok(Self::new(
+        Self::new(
             SourceOrigin::ScrapeResult,
             url,
             domain,
@@ -101,7 +138,7 @@ impl SourceDocument {
             extractor_name,
             structured,
             SourceChunkHint::MarkdownOrPlainText,
-        ))
+        )
     }
 
     pub(crate) fn try_new_crawl_manifest(
@@ -111,7 +148,7 @@ impl SourceDocument {
         structured: Option<StructuredPayload>,
     ) -> Result<Self, String> {
         let domain = domain_from_web_url(&url)?;
-        Ok(Self::new(
+        Self::new(
             SourceOrigin::CrawlManifest,
             url,
             domain,
@@ -122,7 +159,7 @@ impl SourceDocument {
             None,
             structured,
             SourceChunkHint::MarkdownOrPlainText,
-        ))
+        )
     }
 
     pub(crate) fn new_local_markdown(
@@ -145,6 +182,7 @@ impl SourceDocument {
             None,
             SourceChunkHint::MarkdownOrPlainText,
         )
+        .expect("local markdown source extra must not use ledger-owned payload keys")
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -162,7 +200,7 @@ impl SourceDocument {
             return Err("file chunking is only allowed for local and git file origins".to_string());
         }
         let domain = domain_for_origin(origin, &url);
-        Ok(Self::new(
+        Self::new(
             origin,
             url,
             domain,
@@ -173,7 +211,7 @@ impl SourceDocument {
             None,
             None,
             SourceChunkHint::File { path, extension },
-        ))
+        )
     }
 
     pub(crate) fn new_plain_text(
@@ -196,6 +234,7 @@ impl SourceDocument {
             None,
             SourceChunkHint::PlainText,
         )
+        .expect("plain text source extra must not use ledger-owned payload keys")
     }
 
     pub fn new_memory(
@@ -217,6 +256,12 @@ impl SourceDocument {
             None,
             SourceChunkHint::AtomicText { point_id },
         )
+        .expect("memory source extra must not use ledger-owned payload keys")
+    }
+
+    pub fn with_ledger_payload(mut self, payload: LedgerPayload) -> Self {
+        self.ledger_payload = Some(payload);
+        self
     }
 
     fn into_prepared(
@@ -235,6 +280,7 @@ impl SourceDocument {
             self.extra,
             self.extractor_name,
             self.structured,
+            self.ledger_payload,
             chunk_extra,
         )
     }
@@ -486,7 +532,9 @@ fn ensure_file_doc_extra(
     ext: &str,
     symbol_status: &str,
 ) -> Option<Value> {
-    let mut map = match sanitize_doc_extra(extra) {
+    let mut map = match sanitize_doc_extra(extra)
+        .expect("file source extra must not use ledger-owned payload keys")
+    {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     };
@@ -504,15 +552,23 @@ fn insert_missing_or_null(map: &mut Map<String, Value>, key: &str, value: Value)
     }
 }
 
-fn sanitize_doc_extra(extra: Option<Value>) -> Option<Value> {
+fn sanitize_doc_extra(extra: Option<Value>) -> Result<Option<Value>, String> {
     match extra {
         Some(Value::Object(mut map)) => {
+            if let Some(key) = LEDGER_OWNED_EXTRA_KEYS
+                .iter()
+                .find(|key| map.contains_key(**key))
+            {
+                return Err(format!(
+                    "ledger-owned payload key `{key}` cannot be set via extra"
+                ));
+            }
             for key in PLANNER_OWNED_PAYLOAD_KEYS {
                 map.remove(*key);
             }
-            Some(Value::Object(map))
+            Ok(Some(Value::Object(map)))
         }
-        other => other,
+        other => Ok(other),
     }
 }
 

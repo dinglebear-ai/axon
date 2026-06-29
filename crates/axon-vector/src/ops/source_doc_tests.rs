@@ -4,6 +4,24 @@ use super::{
 use crate::ops::input::chunk_markdown_with_offsets;
 use crate::ops::tei::StructuredPayload;
 
+#[test]
+fn source_document_rejects_spoofed_ledger_extra() {
+    let err = SourceDocument::try_new_file(
+        SourceOrigin::LocalFile,
+        "file:///safe/src/lib.rs".to_string(),
+        "src/lib.rs".to_string(),
+        "rs".to_string(),
+        "fn safe() {}\n".to_string(),
+        "local_code",
+        Some("src/lib.rs".to_string()),
+        Some(serde_json::json!({
+            "source_id": "evil"
+        })),
+    )
+    .unwrap_err();
+    assert!(err.contains("ledger-owned payload key"));
+}
+
 #[tokio::test]
 async fn markdown_with_control_chars_falls_back_to_plain_text_chunking() {
     let source = SourceDocument::try_new_web_markdown(

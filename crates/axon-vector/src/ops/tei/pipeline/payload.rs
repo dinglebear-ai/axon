@@ -50,6 +50,12 @@ pub const RESERVED_PAYLOAD_KEYS: &[&str] = &[
     "structured_type",
     "structured_id",
     "structured_blob",
+    "source_id",
+    "source_kind",
+    "source_generation",
+    "source_item_key",
+    "source_item_hash",
+    "source_index_version",
 ];
 
 /// Merge source-specific metadata from `extra` into `payload`, skipping any key that
@@ -193,6 +199,9 @@ pub(super) fn build_embedded_doc_from_vectors(
         // Per-chunk overrides win over doc-level extra (reserved system keys excepted).
         if let Some(chunk_override) = chunk_extra.get(idx) {
             apply_extra(&mut payload, chunk_override);
+        }
+        if let Some(ledger_payload) = &doc.ledger_payload {
+            ledger_payload.apply_to_payload(&mut payload);
         }
         // System fields — written after extra so they are always authoritative.
         payload["url"] = serde_json::Value::String(url.clone());
