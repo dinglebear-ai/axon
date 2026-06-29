@@ -1,8 +1,9 @@
-import { ArrowLeft, ChevronDown, CircleHelp, Menu, Search, Send, Settings, SlidersHorizontal, TerminalSquare } from "lucide-react";
+import { ArrowLeft, ChevronDown, CircleHelp, History, Menu, Search, Send, Settings, SlidersHorizontal, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { AxonMark } from "@/components/palette/AxonMark";
+import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { Kbd } from "@/components/ui/aurora/kbd";
@@ -26,11 +27,15 @@ interface PaletteCommandBarProps {
   showBackButton: boolean;
   submitDisabled: boolean;
   validation: string;
+  askSessions: HistoryItem[];
+  askSessionsOpen: boolean;
+  onAskSessionsOpenChange: (open: boolean) => void;
   onBack: () => void;
   onHelp: (action?: PaletteAction, unknownTarget?: string) => void;
   onInputKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
   onQueryChange: (value: string) => void;
   onReset: () => void;
+  onResumeAskSession: (item: HistoryItem) => void;
   onSubmit: (action: PaletteAction) => void;
   onSwitchAction: (action: PaletteAction) => void;
   onSwitcherOpenChange: (open: boolean) => void;
@@ -71,11 +76,15 @@ export function PaletteCommandBar({
   showBackButton,
   submitDisabled,
   validation,
+  askSessions,
+  askSessionsOpen,
+  onAskSessionsOpenChange,
   onBack,
   onHelp,
   onInputKeyDown,
   onQueryChange,
   onReset,
+  onResumeAskSession,
   onSubmit,
   onSwitchAction,
   onSwitcherOpenChange,
@@ -87,6 +96,7 @@ export function PaletteCommandBar({
   const switcherTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const askSessionsRef = useRef<HTMLDivElement | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const switcherActions = useMemo(
@@ -108,25 +118,28 @@ export function PaletteCommandBar({
   }, [switcherActions]);
 
   useEffect(() => {
-    if (!switcherOpen && !menuOpen) return;
+    if (!switcherOpen && !menuOpen && !askSessionsOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       if (switcherRef.current?.contains(event.target as Node)) return;
       if (menuRef.current?.contains(event.target as Node)) return;
+      if (askSessionsRef.current?.contains(event.target as Node)) return;
       setSwitcherOpen(false);
       setMenuOpen(false);
+      onAskSessionsOpenChange(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [switcherOpen, menuOpen]);
+  }, [askSessionsOpen, menuOpen, onAskSessionsOpenChange, switcherOpen]);
 
   useEffect(() => {
     setSwitcherOpen(false);
     setMenuOpen(false);
+    onAskSessionsOpenChange(false);
   }, []);
 
   useEffect(() => {
-    onSwitcherOpenChange(switcherOpen || menuOpen);
-  }, [menuOpen, onSwitcherOpenChange, switcherOpen]);
+    onSwitcherOpenChange(switcherOpen || menuOpen || askSessionsOpen);
+  }, [askSessionsOpen, menuOpen, onSwitcherOpenChange, switcherOpen]);
 
   // A11Y-M2 — surface submit validation as text tied to the input via
   // aria-describedby (not just a `title` tooltip). The id is referenced only when
@@ -165,7 +178,13 @@ export function PaletteCommandBar({
       <span className="axon-divider" aria-hidden="true" />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users focus the input directly; this wrapper only expands the pointer target */}
-      <div className="command-input-wrap" onClick={() => focusInput()}>
+      <div
+        className="command-input-wrap"
+        onClick={() => {
+          focusInput();
+          if (modeAction?.subcommand === "ask" && askSessions.length > 0) onAskSessionsOpenChange(true);
+        }}
+      >
         {modeAction && ModeIcon ? (
           // A11Y-H1 — the action switcher is an `aria-expanded` disclosure of plain
           // Tab-focusable buttons (not a `role="menu"`), so each item is reachable
@@ -255,12 +274,15 @@ export function PaletteCommandBar({
           unstyled
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
+          onFocus={() => {
+            if (modeAction?.subcommand === "ask" && askSessions.length > 0) onAskSessionsOpenChange(true);
+          }}
           onKeyDown={onInputKeyDown}
           placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
           className="command-input"
           role="combobox"
-          aria-expanded={listboxOpen}
-          aria-controls={listboxOpen ? "palette-action-list" : undefined}
+          aria-expanded={listboxOpen || askSessionsOpen}
+          aria-controls={listboxOpen ? "palette-action-list" : askSessionsOpen ? "ask-session-list" : undefined}
           aria-activedescendant={listboxOpen ? activeDescendantId : undefined}
           aria-autocomplete="list"
           aria-describedby={validation ? validationId : undefined}
@@ -270,6 +292,46 @@ export function PaletteCommandBar({
           <span id={validationId} className="sr-only" role="status">
             {validation}
           </span>
+        )}
+        {askSessionsOpen && askSessions.length > 0 && (
+          <div
+            id="ask-session-list"
+            className="ask-session-menu"
+            ref={askSessionsRef}
+            role="listbox"
+            aria-label="Previous Ask sessions"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                onAskSessionsOpenChange(false);
+              }
+            }}
+          >
+            <div className="ask-session-options aurora-scrollbar">
+              {askSessions.map((item, index) => (
+                <Button
+                  variant="plain"
+                  size="unstyled"
+                  className="ask-session-option"
+                  type="button"
+                  role="option"
+                  aria-selected="false"
+                  key={`${item.prompt ?? item.target}-${item.when}-${index}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onResumeAskSession(item);
+                  }}
+                >
+                  <History size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>
+                    <strong>{item.prompt ?? item.target}</strong>
+                    <small>{item.text}</small>
+                  </span>
+                  <em>{item.when}</em>
+                </Button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
       <Button

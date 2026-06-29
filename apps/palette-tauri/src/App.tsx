@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { actionOptionId } from "@/components/palette/ActionList";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
@@ -19,6 +19,7 @@ import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
+import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
 import {
   argumentFor,
@@ -53,6 +54,47 @@ import { useWindowChrome } from "@/lib/useWindowChrome";
 import { hostLabel } from "@/lib/url";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
+const HISTORY_STORAGE_KEY = "axon.palette.history.v1";
+
+type StoredHistoryItem = Omit<HistoryItem, "action"> & { actionSubcommand: string };
+
+function serializeHistoryItem(item: HistoryItem): StoredHistoryItem {
+  const { action, ...rest } = item;
+  return { ...rest, actionSubcommand: action.subcommand };
+}
+
+function hydrateHistoryItem(raw: unknown): HistoryItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Partial<StoredHistoryItem>;
+  const action = ACTIONS.find((candidate) => candidate.subcommand === record.actionSubcommand);
+  if (!action || typeof record.target !== "string" || typeof record.status !== "number") return null;
+  if (typeof record.title !== "string" || typeof record.subtitle !== "string" || typeof record.when !== "string") return null;
+  const { actionSubcommand: _actionSubcommand, ...rest } = record;
+  return { ...(rest as Omit<HistoryItem, "action">), action };
+}
+
+function loadPaletteHistory(): HistoryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(hydrateHistoryItem).filter((item): item is HistoryItem => Boolean(item));
+  } catch {
+    return [];
+  }
+}
+
+function persistPaletteHistory(items: HistoryItem[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items.map(serializeHistoryItem)));
+  } catch {
+    // History persistence is best-effort; the live palette must keep working.
+  }
+}
+
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
 
 export default function App() {
@@ -62,18 +104,23 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const { config, draftConfig, setDraftConfig, configError, saveSettings } = usePaletteConfig(dispatchView);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>(() => loadPaletteHistory());
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingActionConfirmation | null>(null);
   const [actionSwitcherOpen, setActionSwitcherOpen] = useState(false);
+  const [askSessionsOpen, setAskSessionsOpen] = useState(false);
 
   const modeAction = modeOf(view);
   const settingsOpen = isSettingsOpen(view);
   const historyOpen = isHistoryOpen(view);
   const browseOpen = isBrowseOpen(view);
   usePaletteLifecycle(dispatchView, setShownTick);
+
+  useEffect(() => {
+    persistPaletteHistory(history);
+  }, [history]);
 
   // R-M1/H3/P-H2 — ref-for-latest-value; the keydown listener binds once.
   const keyStateRef = useRef({ settingsOpen, historyOpen, browseOpen, query, modeAction, run });
@@ -119,6 +166,10 @@ export default function App() {
   selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
   const suggestedAction = filtered[selectedIndex];
   const active = modeAction ?? suggestedAction;
+  const askSessions = useMemo(
+    () => history.filter((item) => item.action.subcommand === "ask" && item.text && (item.prompt || item.target)),
+    [history],
+  );
   const askFallback = active?.subcommand === "ask" && !modeAction && !parsed.invoked && parsed.search.trim().length > 0 && !actionMatches(active, parsed.search);
   const activeArgument = active ? (askFallback ? parsed.search : argumentFor(active, modeAction, parsed, query)) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
@@ -167,6 +218,42 @@ export default function App() {
   });
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
+
+  useEffect(() => {
+    if (modeAction?.subcommand !== "ask") setAskSessionsOpen(false);
+  }, [modeAction?.subcommand]);
+
+  const lastAskHistorySignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (active?.subcommand !== "ask") return;
+    if (run.kind !== "success" && run.kind !== "error") return;
+    const prompt = run.prompt?.trim();
+    if (!prompt) return;
+    const signature = `${run.kind}\0${prompt}\0${run.text}\0${run.result.status}`;
+    if (lastAskHistorySignatureRef.current === signature) return;
+    lastAskHistorySignatureRef.current = signature;
+    const item: HistoryItem = {
+      action: active,
+      target: prompt,
+      status: run.result.status,
+      title: run.title,
+      subtitle: run.subtitle,
+      text: run.text,
+      outputKind: run.outputKind,
+      result: run.result,
+      prompt,
+      transcript: run.transcript,
+      when: "just now",
+      duration: run.result.status === 0 ? "fail" : undefined,
+    };
+    setHistory((items) => [
+      item,
+      ...items.filter((existing) => {
+        if (existing.action.subcommand !== "ask") return true;
+        return (existing.prompt ?? existing.target) !== prompt || existing.text !== run.text;
+      }),
+    ]);
+  }, [active, run]);
 
   // A-M2 — the runner dispatches view intents + resets orthogonal query/run via
   // these stable callbacks instead of 5 raw setters; the view rules live in the reducer.
@@ -346,12 +433,16 @@ export default function App() {
     dispatchView({ type: "showHelp", action: localHelpAction });
     setQuery(action?.subcommand ?? cleanUnknownTarget ?? "");
     setRun(helpRun);
-    setHistory((items) => [historyItem, ...items].slice(0, 18));
+    setHistory((items) => [historyItem, ...items]);
   }
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      if (modeAction?.subcommand === "ask" && askSessions.length > 0) {
+        setAskSessionsOpen(true);
+        return;
+      }
       // Arrow-down is the keyboard affordance to browse all actions without
       // typing (focus alone no longer expands the palette).
       if (!modeAction) dispatchView({ type: "openBrowse" });
@@ -419,6 +510,14 @@ export default function App() {
     setRun({ kind: "idle" });
     dispatchView({ type: "openHistory" });
   }, []);
+  const onResumeAskSession = useCallback((item: HistoryItem) => {
+    setPendingConfirmation(null);
+    setAskSessionsOpen(false);
+    dispatchView({ type: "openHistoryItem", action: item.action });
+    setQuery(item.prompt ?? item.target);
+    const historyRun = runStateFromHistory(item);
+    if (historyRun) setRun(historyRun);
+  }, []);
   const onCollapse = useCallback(() => {
     setRun({ kind: "idle" });
     setQuery("");
@@ -428,9 +527,9 @@ export default function App() {
     active, activeDescendantId, cancelAsyncJob, cancelJob, canceling, commandRunning, compact, config,
     configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode,
     expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, history, historyFocusRef, historyOpen,
-    jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs,
+    askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs,
     onBack: goBackToBrowse, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown,
-    onOpenJob, onReset, onRetry, onRunAction, onSaveSettings: () => {
+    onAskSessionsOpenChange: setAskSessionsOpen, onOpenJob, onReset, onResumeAskSession, onRetry, onRunAction, onSaveSettings: () => {
       setPendingConfirmation(null);
       void saveSettings();
     }, onSubmitAction, onSwitcherOpenChange: setActionSwitcherOpen,

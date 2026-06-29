@@ -44,6 +44,8 @@ interface PaletteShellProps {
   filtered: PaletteAction[];
   guardMessage: string;
   hasQuery: boolean;
+  askSessions: HistoryItem[];
+  askSessionsOpen: boolean;
   history: HistoryItem[];
   historyFocusRef: RefObject<HTMLDivElement | null>;
   historyOpen: boolean;
@@ -61,9 +63,11 @@ interface PaletteShellProps {
   onDrillDomain: (domain: string) => void;
   onFollowUp: (text: string) => void;
   onHistory: () => void;
+  onAskSessionsOpenChange: (open: boolean) => void;
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   onOpenJob: (family: string, jobId: string, label: string) => void;
   onReset: () => void;
+  onResumeAskSession: (item: HistoryItem) => void;
   onRetry: () => void;
   onRunAction: (subcommand: string, argument: string) => void;
   onSaveSettings: () => void;
@@ -129,11 +133,15 @@ export function PaletteShell(props: PaletteShellProps) {
         showBackButton={props.showBackButton}
         submitDisabled={props.submitDisabled}
         validation={props.validation || props.guardMessage}
+        askSessions={props.askSessions}
+        askSessionsOpen={props.askSessionsOpen}
         onBack={props.onBack}
+        onAskSessionsOpenChange={props.onAskSessionsOpenChange}
         onHelp={props.showHelpFor}
         onInputKeyDown={props.onInputKeyDown}
         onQueryChange={props.setQuery}
         onReset={props.onReset}
+        onResumeAskSession={props.onResumeAskSession}
         onSubmit={props.onSubmitAction}
         onSwitchAction={props.switchActionMode}
         onSwitcherOpenChange={props.onSwitcherOpenChange}
