@@ -45,7 +45,7 @@ async fn await_code_returns_code_for_matching_state() {
     let port = listener.listener.local_addr().unwrap().port();
     assert_eq!(
         listener.redirect_uri,
-        format!("http://127.0.0.1:{port}/callback")
+        format!("http://localhost:{port}/callback")
     );
 
     let client = tokio::spawn(async move {

@@ -5,6 +5,8 @@ fn meta() -> AuthServerMetadata {
         authorization_endpoint: "https://axon.example.com/authorize".to_string(),
         token_endpoint: "https://axon.example.com/token".to_string(),
         registration_endpoint: Some("https://axon.example.com/register".to_string()),
+        native_callback_endpoint: Some("https://axon.example.com/native/callback".to_string()),
+        native_poll_endpoint: Some("https://axon.example.com/native/poll".to_string()),
     }
 }
 
@@ -31,6 +33,26 @@ fn metadata_deserializes_ignoring_extra_fields_and_optional_registration() {
     assert_eq!(
         parsed.registration_endpoint.as_deref(),
         Some("https://axon.example.com/register")
+    );
+    assert!(parsed.native_callback_endpoint.is_none());
+    assert!(parsed.native_poll_endpoint.is_none());
+
+    let native = r#"{
+        "issuer": "https://axon.example.com",
+        "authorization_endpoint": "https://axon.example.com/authorize",
+        "token_endpoint": "https://axon.example.com/token",
+        "registration_endpoint": "https://axon.example.com/register",
+        "native_callback_endpoint": "https://axon.example.com/native/callback",
+        "native_poll_endpoint": "https://axon.example.com/native/poll"
+    }"#;
+    let parsed: AuthServerMetadata = serde_json::from_str(native).unwrap();
+    assert_eq!(
+        parsed.native_callback_endpoint.as_deref(),
+        Some("https://axon.example.com/native/callback")
+    );
+    assert_eq!(
+        parsed.native_poll_endpoint.as_deref(),
+        Some("https://axon.example.com/native/poll")
     );
 
     // DCR-disabled server omits registration_endpoint → None, not a parse error.
