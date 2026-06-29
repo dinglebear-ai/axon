@@ -5,6 +5,7 @@ use std::error::Error;
 
 use super::super::filter::{
     build_schema_version_filter, build_scraped_at_filter, combine_must_filters,
+    exclude_uncommitted_source_filter,
 };
 use super::super::hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
 use super::super::search;
@@ -43,6 +44,12 @@ impl<'a> VectorSearchRequest<'a> {
         }
         let filter = build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref())
             .map_err(|e| -> Box<dyn Error + Send + Sync> { e.into() })?;
+        let filter = Some(match filter {
+            Some(existing) => {
+                combine_must_filters(&[existing, exclude_uncommitted_source_filter()])
+            }
+            None => exclude_uncommitted_source_filter(),
+        });
         Ok(Self {
             dense,
             sparse: Some(sparse::compute_sparse_vector(query)),

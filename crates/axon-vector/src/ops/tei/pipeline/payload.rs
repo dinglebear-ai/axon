@@ -188,7 +188,12 @@ pub(super) fn build_embedded_doc_from_vectors(
     let chunk_point_ids = std::mem::take(&mut doc.chunk_point_ids);
     for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors).enumerate() {
         let point_id = chunk_point_ids.get(idx).copied().unwrap_or_else(|| {
-            Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{}:{}", url, idx).as_bytes())
+            let seed = doc
+                .ledger_payload
+                .as_ref()
+                .map(|ledger| ledger.point_id_seed(&url, idx))
+                .unwrap_or_else(|| format!("{}:{}", url, idx));
+            Uuid::new_v5(&Uuid::NAMESPACE_URL, seed.as_bytes())
         });
         // Apply extra metadata first so that system fields written below always win.
         // RESERVED_PAYLOAD_KEYS in apply_extra() provides a second line of defense. (S-M1)

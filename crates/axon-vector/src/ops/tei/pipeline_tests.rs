@@ -270,6 +270,30 @@ fn ledger_payload_stamps_authoritative_source_fields() {
     assert_eq!(payload["source_generation"], 7);
     assert_eq!(payload["source_item_key"], "src/lib.rs");
     assert_eq!(payload["source_index_version"], 1);
+    assert_eq!(payload["source_committed"], false);
+
+    let doc_generation_8 = pipeline_test_doc("https://example.com/doc", vec!["body"], false)
+        .with_ledger_payload(
+            LedgerPayload::try_new(
+                "git:https://example.com/org/repo#main".to_string(),
+                "git",
+                8,
+                "src/lib.rs".to_string(),
+                1,
+            )
+            .unwrap(),
+        );
+    let embedded_generation_8 = super::build_embedded_doc_from_vectors(
+        doc_generation_8,
+        vec![vec![0.1, 0.2]],
+        &Config::test_default(),
+        VectorMode::Unnamed,
+    )
+    .unwrap();
+    assert_ne!(
+        embedded.points[0]["id"],
+        embedded_generation_8.points[0]["id"]
+    );
 }
 
 fn unnamed_collection_body(dim: usize) -> serde_json::Value {

@@ -1,7 +1,5 @@
 mod event;
 mod roots;
-mod systemd;
-
 use crate::context::ServiceContext;
 use crate::query;
 use crate::types::CodeSearchCaller;
@@ -23,7 +21,6 @@ use roots::{
     build_code_search_watch_dry_run_plan, code_search_watch_dirs, code_search_watch_dirty_roots,
     discover_code_search_watch_roots_for_dirs,
 };
-use systemd::enable_code_search_watch_service;
 
 const WATCH_EVENT_BUFFER: usize = 1024;
 
@@ -39,13 +36,9 @@ pub async fn run_code_search_watch(
         return Ok(());
     }
     if options.enable {
-        let report = enable_code_search_watch_service(&watch_dirs, &options)?;
-        events.emit(CodeSearchWatchEvent::Enabled {
-            unit_path: report.unit_path,
-            env_path: report.env_path,
-            roots: report.roots,
-        });
-        return Ok(());
+        anyhow::bail!(
+            "persistent code-search-watch service installation was removed; run `axon embed <path> --watch` under your supervisor instead"
+        );
     }
 
     let roots = prepare_watch_roots(&watch_dirs, options.initial_refresh, events)?;
@@ -172,13 +165,17 @@ async fn refresh_due_roots(
     }
     let due = due_dirty_roots(dirty, refresh_delay);
     for root in due {
-        dirty.remove(&root);
         if let Err(error) = refresh_code_search_watch_root(ctx, events, &root, "file_change").await
         {
+            if let Some(state) = dirty.get_mut(&root) {
+                state.since = Instant::now();
+            }
             events.emit(CodeSearchWatchEvent::RefreshFailed {
                 root,
                 error: error.to_string(),
             });
+        } else {
+            dirty.remove(&root);
         }
     }
 }

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Harden refresh lifecycle
+- Verify SourceLedger Qdrant publish and cleanup visibility before clearing ledger state
+- Keep local code-index watch roots queued after refresh failures
+- Exclude uncommitted SourceLedger points from URL/full-document retrieval
 
 ## [6.1.5] - 2026-06-28
 

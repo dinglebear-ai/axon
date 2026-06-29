@@ -48,6 +48,13 @@ fn safe_url_hash(url: &str) -> u64 {
     hasher.finish()
 }
 
+fn retrieve_visibility_filter(base: serde_json::Value) -> serde_json::Value {
+    super::super::filter::combine_must_filters(&[
+        base,
+        super::super::filter::exclude_uncommitted_source_filter(),
+    ])
+}
+
 #[tracing::instrument(
     skip(cfg),
     fields(
@@ -78,6 +85,7 @@ pub async fn qdrant_retrieve_by_url_details(
         Ok(None) => url_filter,
         Err(err) => return Err(anyhow::anyhow!(err)),
     };
+    let filter = retrieve_visibility_filter(filter);
     let max_points = super::super::utils::retrieve_max_points(max_points);
     let page_limit = retrieve_scroll_limit(Some(max_points));
     tracing::Span::current().record("max_points", max_points as u64);
@@ -180,6 +188,7 @@ pub async fn qdrant_batch_retrieve_by_urls(
                 Some(df) => super::super::filter::combine_must_filters(&[url_f, df.clone()]),
                 None => url_f,
             };
+            let filter = retrieve_visibility_filter(filter);
             serde_json::json!({
                 "filter": filter,
                 "limit": limit,

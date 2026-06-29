@@ -36,7 +36,8 @@ pub use client::{
     qdrant_delete_by_url, qdrant_delete_by_url_filter,
     qdrant_delete_local_code_files_for_generation, qdrant_delete_local_file_fragments,
     qdrant_delete_repo_file_fragments, qdrant_delete_source_cleanup_selector,
-    qdrant_delete_stale_repo_file_urls, qdrant_delete_stale_tail, qdrant_domain_facets,
-    qdrant_facet, qdrant_facet_filtered, qdrant_retrieve_by_url, qdrant_scroll_pages_selective,
+    qdrant_delete_source_cleanup_selectors, qdrant_delete_stale_repo_file_urls,
+    qdrant_delete_stale_tail, qdrant_domain_facets, qdrant_facet, qdrant_facet_filtered,
+    qdrant_publish_source_generation, qdrant_retrieve_by_url, qdrant_scroll_pages_selective,
 };
 pub use utils::{env_usize_clamped, payload_domain, payload_url};

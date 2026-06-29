@@ -47,10 +47,11 @@ pub struct Config {
     /// Flag: `code-search --no-freshness`.
     pub code_search_no_freshness: bool,
 
-    /// Options for `code-search-watch`.
+    /// Local code-index watch options. `code-search-watch` is a tombstone;
+    /// supported foreground use is `axon embed <path> --watch`.
     pub code_search_watch: Option<super::session_watch::CodeSearchWatchConfig>,
 
-    /// Attach foreground output to SourceLedger refresh progress for `embed --watch`.
+    /// Attach foreground local code-index watch progress for `embed --watch`.
     pub embed_watch: bool,
 
     /// Optional CLI intent to create or update a recurring freshness schedule.

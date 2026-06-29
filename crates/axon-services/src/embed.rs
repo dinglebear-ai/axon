@@ -177,6 +177,7 @@ pub async fn embed_now_with_source(
 }
 
 pub async fn refresh_local_source_with_ledger(
+    cfg: &Config,
     store: &SourceLedgerStore,
     source_id: &str,
 ) -> Result<i64, Box<dyn Error + Send + Sync>> {
@@ -193,7 +194,7 @@ pub async fn refresh_local_source_with_ledger(
             .into());
         }
     }
-    let source = SourceIdentity::new(source_id, SourceKind::LocalCode, "axon", 1);
+    let source = SourceIdentity::new(source_id, SourceKind::LocalCode, cfg.collection.clone(), 1);
     Ok(store.begin_generation(&source).await?)
 }
 

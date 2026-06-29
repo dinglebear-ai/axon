@@ -1,6 +1,7 @@
 use crate::{
     CleanupDebtItem, ManifestItem, RefreshPreflight, SourceIdentity, SourceKind, SourceLedgerStore,
 };
+use std::collections::BTreeSet;
 
 #[tokio::test]
 async fn diff_manifest_reports_added_modified_removed_and_unchanged() {
@@ -193,6 +194,71 @@ async fn payload_commit_atomically_commits_manifest_and_cleanup_debt() {
         .await
         .unwrap();
     assert_eq!(diff, Default::default());
+}
+
+#[tokio::test]
+async fn delta_commit_preserves_unchanged_item_generation_for_later_cleanup() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("crawl-source", SourceKind::Crawl, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+
+    let generation_1 = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+    store
+        .commit_generation_payload_for_owner(
+            "crawl-source",
+            generation_1,
+            "owner-a",
+            &[
+                ManifestItem::new("https://example.com/a", "hash-a1", 10),
+                ManifestItem::new("https://example.com/b", "hash-b1", 20),
+            ],
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let generation_2 = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+    let live_keys = BTreeSet::from([
+        "https://example.com/a".to_string(),
+        "https://example.com/b".to_string(),
+    ]);
+    store
+        .commit_generation_delta_for_owner(
+            "crawl-source",
+            generation_2,
+            "owner-a",
+            &[ManifestItem::new("https://example.com/a", "hash-a2", 11)],
+            &live_keys,
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let diff = store
+        .diff_manifest(
+            "crawl-source",
+            &[ManifestItem::new("https://example.com/a", "hash-a2", 11)],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(diff.removed.len(), 1);
+    assert_eq!(diff.removed[0].item_key, "https://example.com/b");
+    assert_eq!(diff.removed[0].indexed_generation, generation_1);
 }
 
 #[tokio::test]

@@ -7,6 +7,7 @@ use sqlx::{Row, SqlitePool};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod cleanup;
+mod commit;
 
 #[derive(Debug, Clone)]
 pub struct SourceLedgerStore {
@@ -86,6 +87,32 @@ impl SourceLedgerStore {
         Ok(())
     }
 
+    pub async fn extend_lease_for_owner(
+        &self,
+        source_id: &str,
+        owner: &str,
+        ttl_ms: i64,
+    ) -> anyhow::Result<()> {
+        let now_ms = now_ms();
+        let expires_at = now_ms.saturating_add(ttl_ms.max(0));
+        let result = sqlx::query(
+            "UPDATE axon_source_sources
+             SET lease_expires_at_ms = ?, updated_at_ms = ?
+             WHERE source_id = ? AND lease_owner = ?",
+        )
+        .bind(expires_at)
+        .bind(now_ms)
+        .bind(source_id)
+        .bind(owner)
+        .execute(&self.pool)
+        .await
+        .context("failed to extend source ledger lease")?;
+        if result.rows_affected() != 1 {
+            anyhow::bail!("source ledger lease for {source_id} is no longer owned by {owner}");
+        }
+        Ok(())
+    }
+
     pub async fn preflight_refresh(
         &self,
         source_id: &str,
@@ -120,6 +147,22 @@ impl SourceLedgerStore {
     }
 
     pub async fn begin_generation(&self, source: &SourceIdentity) -> anyhow::Result<i64> {
+        self.begin_generation_inner(source, None).await
+    }
+
+    pub async fn begin_generation_for_owner(
+        &self,
+        source: &SourceIdentity,
+        owner: &str,
+    ) -> anyhow::Result<i64> {
+        self.begin_generation_inner(source, Some(owner)).await
+    }
+
+    async fn begin_generation_inner(
+        &self,
+        source: &SourceIdentity,
+        owner: Option<&str>,
+    ) -> anyhow::Result<i64> {
         self.ensure_source(source).await?;
         let now_ms = now_ms();
         let mut tx = self
@@ -135,17 +178,26 @@ impl SourceLedgerStore {
         .await
         .context("failed to read current source generation")?;
         let next = current.saturating_add(1);
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE axon_source_sources
              SET max_generation = ?, updated_at_ms = ?
-             WHERE source_id = ?",
+             WHERE source_id = ?
+               AND (? IS NULL OR lease_owner = ?)",
         )
         .bind(next)
         .bind(now_ms)
         .bind(&source.source_id)
+        .bind(owner)
+        .bind(owner)
         .execute(&mut *tx)
         .await
         .context("failed to allocate source generation")?;
+        if result.rows_affected() != 1 {
+            anyhow::bail!(
+                "source ledger lease for {} was lost before generation allocation",
+                source.source_id
+            );
+        }
         tx.commit()
             .await
             .context("failed to commit source generation allocation")?;
@@ -239,201 +291,6 @@ impl SourceLedgerStore {
         Ok(diff)
     }
 
-    pub async fn commit_generation(&self, source_id: &str, generation: i64) -> anyhow::Result<()> {
-        self.commit_generation_inner(source_id, generation, None)
-            .await
-    }
-
-    pub async fn commit_generation_for_owner(
-        &self,
-        source_id: &str,
-        generation: i64,
-        owner: &str,
-    ) -> anyhow::Result<()> {
-        self.commit_generation_inner(source_id, generation, Some(owner))
-            .await
-    }
-
-    pub async fn commit_generation_payload_for_owner(
-        &self,
-        source_id: &str,
-        generation: i64,
-        owner: &str,
-        manifest: &[ManifestItem],
-        cleanup_debt: &[CleanupDebtItem],
-    ) -> anyhow::Result<()> {
-        let now_ms = now_ms();
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("failed to begin source generation payload commit")?;
-        for item in manifest {
-            sqlx::query(
-                "INSERT INTO axon_source_manifest_items (
-                    source_id, item_key, content_hash, size_bytes, indexed_generation, pending, updated_at_ms
-                 ) VALUES (?, ?, ?, ?, ?, 1, ?)
-                 ON CONFLICT(source_id, indexed_generation, item_key) DO UPDATE SET
-                    content_hash = excluded.content_hash,
-                    size_bytes = excluded.size_bytes,
-                    pending = excluded.pending,
-                    updated_at_ms = excluded.updated_at_ms",
-            )
-            .bind(source_id)
-            .bind(&item.item_key)
-            .bind(&item.content_hash)
-            .bind(item.size_bytes)
-            .bind(generation)
-            .bind(now_ms)
-            .execute(&mut *tx)
-            .await
-            .context("failed to record source manifest item")?;
-        }
-        for debt in cleanup_debt {
-            sqlx::query(
-                "INSERT INTO axon_source_cleanup_debt (
-                    source_id, generation, item_key, selector_json, retry_count, last_error, updated_at_ms
-                 ) VALUES (?, ?, ?, ?, 0, NULL, ?)
-                 ON CONFLICT(source_id, generation, item_key) DO UPDATE SET
-                    selector_json = excluded.selector_json,
-                    updated_at_ms = excluded.updated_at_ms",
-            )
-            .bind(source_id)
-            .bind(debt.generation)
-            .bind(&debt.item_key)
-            .bind(&debt.selector_json)
-            .bind(now_ms)
-            .execute(&mut *tx)
-            .await
-            .context("failed to record source cleanup debt")?;
-        }
-        self.commit_generation_in_tx(&mut tx, source_id, generation, Some(owner), now_ms)
-            .await?;
-        tx.commit()
-            .await
-            .context("failed to commit source generation payload transaction")?;
-        Ok(())
-    }
-
-    pub async fn abort_generation_for_owner(
-        &self,
-        source_id: &str,
-        generation: i64,
-        owner: &str,
-    ) -> anyhow::Result<()> {
-        let now_ms = now_ms();
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("failed to begin source generation abort")?;
-        sqlx::query(
-            "DELETE FROM axon_source_manifest_items
-             WHERE source_id = ? AND indexed_generation = ? AND pending = 1",
-        )
-        .bind(source_id)
-        .bind(generation)
-        .execute(&mut *tx)
-        .await
-        .context("failed to delete aborted source manifest items")?;
-        let result = sqlx::query(
-            "UPDATE axon_source_sources
-             SET max_generation = committed_generation, updated_at_ms = ?
-             WHERE source_id = ? AND lease_owner = ? AND max_generation = ?",
-        )
-        .bind(now_ms)
-        .bind(source_id)
-        .bind(owner)
-        .bind(generation)
-        .execute(&mut *tx)
-        .await
-        .context("failed to abort source generation")?;
-        if result.rows_affected() != 1 {
-            anyhow::bail!("source ledger lease for {source_id} was lost before abort");
-        }
-        tx.commit()
-            .await
-            .context("failed to commit source generation abort")?;
-        Ok(())
-    }
-
-    async fn commit_generation_inner(
-        &self,
-        source_id: &str,
-        generation: i64,
-        owner: Option<&str>,
-    ) -> anyhow::Result<()> {
-        let now_ms = now_ms();
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("failed to begin source generation commit")?;
-        self.commit_generation_in_tx(&mut tx, source_id, generation, owner, now_ms)
-            .await?;
-        tx.commit()
-            .await
-            .context("failed to commit source generation transaction")?;
-        Ok(())
-    }
-
-    async fn commit_generation_in_tx(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        source_id: &str,
-        generation: i64,
-        owner: Option<&str>,
-        now_ms: i64,
-    ) -> anyhow::Result<()> {
-        sqlx::query(
-            "DELETE FROM axon_source_manifest_items
-             WHERE source_id = ? AND pending = 0 AND indexed_generation < ?",
-        )
-        .bind(source_id)
-        .bind(generation)
-        .execute(tx.as_mut())
-        .await
-        .context("failed to prune old source manifest items")?;
-        sqlx::query(
-            "UPDATE axon_source_manifest_items
-             SET pending = 0, updated_at_ms = ?
-             WHERE source_id = ? AND indexed_generation = ?",
-        )
-        .bind(now_ms)
-        .bind(source_id)
-        .bind(generation)
-        .execute(tx.as_mut())
-        .await
-        .context("failed to commit source manifest items")?;
-        let query = sqlx::query(
-            "UPDATE axon_source_sources
-             SET committed_generation = MAX(committed_generation, ?),
-                 max_generation = MAX(max_generation, ?),
-                 last_success_at_ms = ?,
-                 last_error = NULL,
-                 backoff_until_ms = 0,
-                 backoff_dependency = NULL,
-                 updated_at_ms = ?
-             WHERE source_id = ?
-               AND (? IS NULL OR lease_owner = ?)",
-        )
-        .bind(generation)
-        .bind(generation)
-        .bind(now_ms)
-        .bind(now_ms)
-        .bind(source_id)
-        .bind(owner)
-        .bind(owner);
-        let result = query
-            .execute(tx.as_mut())
-            .await
-            .context("failed to commit source generation")?;
-        if result.rows_affected() != 1 {
-            anyhow::bail!("source ledger lease for {source_id} was lost before commit");
-        }
-        Ok(())
-    }
-
     pub async fn source_status(&self, source_id: &str) -> anyhow::Result<SourceStatus> {
         let row = sqlx::query(
             "SELECT source_kind, committed_generation, max_generation, backoff_until_ms,
@@ -502,7 +359,38 @@ impl SourceLedgerStore {
     }
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn validate_cleanup_debt_item(
+    source_id: &str,
+    debt: &CleanupDebtItem,
+) -> anyhow::Result<()> {
+    let selector: serde_json::Value = serde_json::from_str(&debt.selector_json)
+        .context("failed to parse source cleanup selector json")?;
+    if selector
+        .get("source_id")
+        .and_then(|value| value.as_str())
+        .is_some_and(|selector_source_id| selector_source_id != source_id)
+    {
+        anyhow::bail!("cleanup selector source_id does not match debt source_id");
+    }
+    if selector
+        .get("source_generation")
+        .and_then(|value| value.as_i64())
+        .is_some_and(|selector_generation| selector_generation != debt.generation)
+    {
+        anyhow::bail!("cleanup selector source_generation does not match debt generation");
+    }
+    if selector
+        .get("item_key")
+        .or_else(|| selector.get("source_item_key"))
+        .and_then(|value| value.as_str())
+        .is_some_and(|selector_item_key| selector_item_key != debt.item_key)
+    {
+        anyhow::bail!("cleanup selector item_key does not match debt item_key");
+    }
+    Ok(())
+}
+
+pub(super) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

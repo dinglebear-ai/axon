@@ -137,7 +137,7 @@ async fn git_branch_remove_creates_cleanup_debt_without_qdrant_scroll() {
             .unwrap()
     );
     let manifest = vec![ManifestItem::new("src/lib.rs", "new-hash", 30)];
-    let prepared = prepare_git_manifest_with_store(&store, &source, &manifest)
+    let prepared = prepare_git_manifest_with_store(&store, &source, lease_owner, &manifest)
         .await
         .unwrap();
     let generation = prepared.generation;
@@ -147,8 +147,6 @@ async fn git_branch_remove_creates_cleanup_debt_without_qdrant_scroll() {
         manifest,
         stale: prepared.stale,
         generation,
-        target,
-        reference: "main".to_string(),
         lease_owner: lease_owner.to_string(),
     })
     .await
@@ -200,7 +198,7 @@ async fn git_branch_modify_creates_cleanup_debt_for_previous_generation() {
             .unwrap()
     );
     let manifest = vec![ManifestItem::new("src/lib.rs", "new-hash", 30)];
-    let prepared = prepare_git_manifest_with_store(&store, &source, &manifest)
+    let prepared = prepare_git_manifest_with_store(&store, &source, "test-lease", &manifest)
         .await
         .unwrap();
 
@@ -210,8 +208,6 @@ async fn git_branch_modify_creates_cleanup_debt_for_previous_generation() {
         manifest,
         stale: prepared.stale,
         generation: prepared.generation,
-        target,
-        reference: "main".to_string(),
         lease_owner: "test-lease".to_string(),
     })
     .await
@@ -257,7 +253,7 @@ async fn git_cleanup_debt_selector_redacts_clone_url_credentials() {
             .unwrap()
     );
     let manifest = vec![ManifestItem::new("src/lib.rs", "new-hash", 30)];
-    let prepared = prepare_git_manifest_with_store(&store, &source, &manifest)
+    let prepared = prepare_git_manifest_with_store(&store, &source, "test-lease", &manifest)
         .await
         .unwrap();
 
@@ -267,8 +263,6 @@ async fn git_cleanup_debt_selector_redacts_clone_url_credentials() {
         manifest,
         stale: prepared.stale,
         generation: prepared.generation,
-        target,
-        reference: "main".to_string(),
         lease_owner: "test-lease".to_string(),
     })
     .await
@@ -283,7 +277,10 @@ async fn git_cleanup_debt_selector_redacts_clone_url_credentials() {
     .unwrap();
     assert!(!selector.contains("token"), "{selector}");
     assert!(!selector.contains("secret"), "{selector}");
-    assert!(selector.contains("***"), "{selector}");
+    assert!(
+        !selector.contains("https://token:secret@example.com"),
+        "{selector}"
+    );
 }
 
 #[test]

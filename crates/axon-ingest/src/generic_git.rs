@@ -2,12 +2,11 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
-use axon_source_ledger::{
-    CleanupDebtItem, ManifestItem, SourceIdentity, SourceKind, SourceLedgerStore,
-};
+#[cfg(test)]
+use axon_source_ledger::SourceLedgerStore;
+use axon_source_ledger::{ManifestItem, SourceIdentity, SourceKind};
 use reqwest::Url;
 use sha2::{Digest, Sha256};
-use sqlx::SqlitePool;
 
 use crate::progress::PhaseReporter;
 use crate::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
@@ -15,17 +14,28 @@ use axon_core::config::Config;
 use axon_core::content::redact_url;
 use axon_core::http::validate_url;
 use axon_core::logging::{log_done, log_info, log_warn};
+use axon_vector::ops::PreparedDoc;
 use axon_vector::ops::embed_prepared_docs;
 use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files};
-use axon_vector::ops::qdrant::{
-    CleanupSelectorV1, qdrant_delete_repo_file_fragments, qdrant_delete_source_cleanup_selector,
-};
-use axon_vector::ops::{LedgerPayload, PreparedDoc};
+use axon_vector::ops::qdrant::qdrant_delete_repo_file_fragments;
 
 const GIT_SOURCE_INDEX_VERSION: i64 = 1;
+const SOURCE_LEDGER_LEASE_TTL_MS: i64 = 30 * 60 * 1000;
+const SOURCE_LEDGER_BACKOFF_MS: i64 = 60 * 1000;
+const SOURCE_CLEANUP_BATCH_SIZE: usize = 128;
 
 mod file_docs;
+mod ledger;
 pub(crate) use file_docs::file_docs;
+#[cfg(test)]
+pub(crate) use ledger::{
+    PreparedGitLedgerRefresh, commit_git_ledger_refresh, open_source_ledger_pool,
+    prepare_git_manifest_with_store,
+};
+use ledger::{
+    finalize_git_ledger_refresh, prepare_git_ledger_refresh, release_git_ledger_after_error,
+    stamp_git_docs_with_ledger, start_source_lease_heartbeat, stop_source_lease_heartbeat,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericGitTarget {
@@ -39,10 +49,12 @@ pub fn normalize_generic_git_target(input: &str) -> Result<String> {
     Ok(parse_generic_git_target(input)?.clone_url)
 }
 
+#[cfg(test)]
 pub(crate) fn git_ref_is_immutable_commit_sha(reference: &str) -> bool {
     reference.len() == 40 && reference.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+#[cfg(test)]
 pub(crate) fn git_ref_schedules_refresh(reference: &str) -> bool {
     !git_ref_is_immutable_commit_sha(reference)
 }
@@ -187,12 +199,13 @@ pub(crate) async fn ingest_git_repository(
     let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url().to_string()).collect();
     let manifest = git_manifest_from_docs(&docs);
     let mut lease = None;
-    if include_source && skipped_files == 0 {
+    if include_source {
         lease = Some(prepare_git_ledger_refresh(cfg, &target, &branch, &manifest).await?);
         if let Some(prepared) = &lease {
             docs = stamp_git_docs_with_ledger(docs, prepared)?;
         }
     }
+    let heartbeat = lease.as_ref().map(start_source_lease_heartbeat);
     let summary_result: Result<_> = async {
         embed_prepared_docs(cfg, docs, None)
             .await
@@ -204,6 +217,7 @@ pub(crate) async fn ingest_git_repository(
     let summary = match summary_result {
         Ok(summary) => summary,
         Err(err) => {
+            stop_source_lease_heartbeat(heartbeat).await;
             if let Some(prepared) = &lease {
                 return release_git_ledger_after_error(prepared, err).await;
             }
@@ -211,7 +225,10 @@ pub(crate) async fn ingest_git_repository(
         }
     };
     if let Some(prepared) = lease {
-        finalize_git_ledger_refresh(cfg, &prepared).await?;
+        let finalize_result =
+            finalize_git_ledger_refresh(cfg, &prepared, summary.chunks_embedded).await;
+        stop_source_lease_heartbeat(heartbeat).await;
+        finalize_result?;
         if let Err(err) = qdrant_delete_repo_file_fragments(
             cfg,
             provider,
@@ -267,220 +284,6 @@ fn git_manifest_item_from_doc(doc: &PreparedDoc) -> ManifestItem {
         hasher.update([0]);
     }
     ManifestItem::new(item_key, hex::encode(hasher.finalize()), size_bytes)
-}
-
-#[derive(Debug)]
-struct PreparedGitLedgerRefresh {
-    store: SourceLedgerStore,
-    source: SourceIdentity,
-    manifest: Vec<ManifestItem>,
-    stale: Vec<axon_source_ledger::StaleManifestItem>,
-    generation: i64,
-    target: GenericGitTarget,
-    reference: String,
-    lease_owner: String,
-}
-
-async fn prepare_git_ledger_refresh(
-    cfg: &Config,
-    target: &GenericGitTarget,
-    reference: &str,
-    manifest: &[ManifestItem],
-) -> Result<PreparedGitLedgerRefresh> {
-    let pool = open_source_ledger_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    let store = SourceLedgerStore::new(pool);
-    let source = git_source_identity(cfg, target, reference);
-    let lease_owner = format!("ingest-git-{}", uuid::Uuid::new_v4());
-    if !store
-        .acquire_lease(&source, &lease_owner, 5 * 60 * 1000)
-        .await?
-    {
-        bail!(
-            "source ledger refresh already running for {}",
-            source.source_id
-        );
-    }
-    match prepare_git_manifest_with_store(&store, &source, manifest).await {
-        Ok(prepared) => Ok(PreparedGitLedgerRefresh {
-            store,
-            source,
-            manifest: manifest.to_vec(),
-            stale: prepared.stale,
-            generation: prepared.generation,
-            target: target.clone(),
-            reference: reference.to_string(),
-            lease_owner,
-        }),
-        Err(err) => match store.release_lease(&source.source_id, &lease_owner).await {
-            Ok(()) => Err(err),
-            Err(release_err) => Err(anyhow!(
-                "{err}; additionally failed to release source ledger lease: {release_err}"
-            )),
-        },
-    }
-}
-
-async fn open_source_ledger_pool(path: &str) -> Result<SqlitePool> {
-    let pool = axon_core::sqlite::open_pool(path)
-        .await
-        .map_err(|err| anyhow!("open source ledger sqlite: {err}"))?;
-    sqlx::migrate!("../axon-jobs/src/migrations")
-        .run(&pool)
-        .await
-        .map_err(|err| anyhow!("run source ledger migrations: {err}"))?;
-    Ok(pool)
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PreparedGitManifest {
-    pub stale: Vec<axon_source_ledger::StaleManifestItem>,
-    pub generation: i64,
-}
-
-pub(crate) async fn prepare_git_manifest_with_store(
-    store: &SourceLedgerStore,
-    source: &SourceIdentity,
-    manifest: &[ManifestItem],
-) -> Result<PreparedGitManifest> {
-    let diff = store.diff_manifest(&source.source_id, manifest).await?;
-    let generation = store.begin_generation(source).await?;
-    Ok(PreparedGitManifest {
-        stale: diff.removed,
-        generation,
-    })
-}
-
-fn stamp_git_docs_with_ledger(
-    docs: Vec<PreparedDoc>,
-    prepared: &PreparedGitLedgerRefresh,
-) -> Result<Vec<PreparedDoc>> {
-    docs.into_iter()
-        .map(|doc| {
-            let item_key = git_manifest_item_from_doc(&doc).item_key;
-            let payload = LedgerPayload::try_new(
-                prepared.source.source_id.clone(),
-                prepared.source.source_kind.as_str(),
-                prepared.generation,
-                item_key,
-                prepared.source.index_version,
-            )
-            .map_err(|err| anyhow!("invalid git ledger payload: {err}"))?;
-            Ok(doc.with_ledger_payload(payload))
-        })
-        .collect()
-}
-
-async fn finalize_git_ledger_refresh(
-    cfg: &Config,
-    prepared: &PreparedGitLedgerRefresh,
-) -> Result<()> {
-    commit_git_ledger_refresh(prepared).await?;
-    drain_git_source_cleanup_debt(cfg, prepared).await
-}
-
-async fn commit_git_ledger_refresh(prepared: &PreparedGitLedgerRefresh) -> Result<()> {
-    let result: Result<()> = async {
-        let mut cleanup_debt = Vec::new();
-        for stale in &prepared.stale {
-            let selector = serde_json::json!({
-                "kind": "source_cleanup_v1",
-                "selector_kind": "git_file",
-                "collection": prepared.source.collection.as_str(),
-                "source_id": prepared.source.source_id.as_str(),
-                "source_kind": prepared.source.source_kind.as_str(),
-                "source_generation": stale.indexed_generation,
-                "clone_url": redact_url(&prepared.target.clone_url),
-                "host": prepared.target.host.as_str(),
-                "repo": prepared.target.name.as_str(),
-                "reference": prepared.reference.as_str(),
-                "refreshable": git_ref_schedules_refresh(&prepared.reference),
-                "source_item_key": stale.item_key.as_str(),
-                "source_index_version": prepared.source.index_version,
-            });
-            cleanup_debt.push(CleanupDebtItem::new(
-                stale.indexed_generation,
-                stale.item_key.clone(),
-                selector.to_string(),
-            ));
-        }
-        prepared
-            .store
-            .commit_generation_payload_for_owner(
-                &prepared.source.source_id,
-                prepared.generation,
-                &prepared.lease_owner,
-                &prepared.manifest,
-                &cleanup_debt,
-            )
-            .await?;
-        Ok(())
-    }
-    .await;
-    let release_result = prepared
-        .store
-        .release_lease(&prepared.source.source_id, &prepared.lease_owner)
-        .await;
-    match (result, release_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(err), Ok(())) => Err(err),
-        (Ok(()), Err(release_err)) => Err(release_err),
-        (Err(err), Err(release_err)) => Err(anyhow!(
-            "{err}; additionally failed to release source ledger lease: {release_err}"
-        )),
-    }
-}
-
-async fn drain_git_source_cleanup_debt(
-    cfg: &Config,
-    prepared: &PreparedGitLedgerRefresh,
-) -> Result<()> {
-    let debt = prepared
-        .store
-        .cleanup_debt_items(&prepared.source.source_id)
-        .await?;
-    for item in debt {
-        let selector: CleanupSelectorV1 = serde_json::from_str(&item.selector_json)?;
-        qdrant_delete_source_cleanup_selector(cfg, &selector).await?;
-        prepared
-            .store
-            .clear_cleanup_debt_item(&prepared.source.source_id, item.generation, &item.item_key)
-            .await?;
-    }
-    Ok(())
-}
-
-async fn release_git_ledger_after_error<T>(
-    prepared: &PreparedGitLedgerRefresh,
-    err: anyhow::Error,
-) -> Result<T> {
-    let abort_result = prepared
-        .store
-        .abort_generation_for_owner(
-            &prepared.source.source_id,
-            prepared.generation,
-            &prepared.lease_owner,
-        )
-        .await;
-    match prepared
-        .store
-        .release_lease(&prepared.source.source_id, &prepared.lease_owner)
-        .await
-    {
-        Ok(()) => match abort_result {
-            Ok(()) => Err(err),
-            Err(abort_err) => Err(anyhow!(
-                "{err}; additionally failed to abort source ledger generation: {abort_err}"
-            )),
-        },
-        Err(release_err) => match abort_result {
-            Ok(()) => Err(anyhow!(
-                "{err}; additionally failed to release source ledger lease: {release_err}"
-            )),
-            Err(abort_err) => Err(anyhow!(
-                "{err}; additionally failed to abort source ledger generation: {abort_err}; additionally failed to release source ledger lease: {release_err}"
-            )),
-        },
-    }
 }
 
 #[cfg(test)]
