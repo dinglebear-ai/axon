@@ -46,6 +46,7 @@ interface PaletteShellProps {
   hasQuery: boolean;
   askSessions: HistoryItem[];
   askSessionsOpen: boolean;
+  hideCommandBar: boolean;
   history: HistoryItem[];
   historyFocusRef: RefObject<HTMLDivElement | null>;
   historyOpen: boolean;
@@ -118,36 +119,38 @@ export function PaletteShell(props: PaletteShellProps) {
   return (
     <div className={`aurora-page-shell palette-shell${props.compact ? " palette-shell-compact" : ""}${props.showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${props.jobExpanded ? " palette-shell-job" : ""}`}>
       <AuthNotice />
-      <PaletteCommandBar
-        active={props.active}
-        activeDescendantId={props.activeDescendantId}
-        config={props.config}
-        endpointLabel={props.endpointLabel}
-        endpointTone={props.endpointTone}
-        hasQuery={props.hasQuery}
-        listboxOpen={props.listboxOpen}
-        modeAction={props.modeAction}
-        query={props.query}
-        running={props.commandRunning}
-        settingsOpen={props.settingsOpen}
-        showBackButton={props.showBackButton}
-        submitDisabled={props.submitDisabled}
-        validation={props.validation || props.guardMessage}
-        askSessions={props.askSessions}
-        askSessionsOpen={props.askSessionsOpen}
-        onBack={props.onBack}
-        onAskSessionsOpenChange={props.onAskSessionsOpenChange}
-        onHelp={props.showHelpFor}
-        onInputKeyDown={props.onInputKeyDown}
-        onQueryChange={props.setQuery}
-        onReset={props.onReset}
-        onResumeAskSession={props.onResumeAskSession}
-        onSubmit={props.onSubmitAction}
-        onSwitchAction={props.switchActionMode}
-        onSwitcherOpenChange={props.onSwitcherOpenChange}
-        onToggleMaximize={props.onToggleMaximize}
-        onToggleSettings={props.onToggleSettings}
-      />
+      {!props.hideCommandBar && (
+        <PaletteCommandBar
+          active={props.active}
+          activeDescendantId={props.activeDescendantId}
+          config={props.config}
+          endpointLabel={props.endpointLabel}
+          endpointTone={props.endpointTone}
+          hasQuery={props.hasQuery}
+          listboxOpen={props.listboxOpen}
+          modeAction={props.modeAction}
+          query={props.query}
+          running={props.commandRunning}
+          settingsOpen={props.settingsOpen}
+          showBackButton={props.showBackButton}
+          submitDisabled={props.submitDisabled}
+          validation={props.validation || props.guardMessage}
+          askSessions={props.askSessions}
+          askSessionsOpen={props.askSessionsOpen}
+          onBack={props.onBack}
+          onAskSessionsOpenChange={props.onAskSessionsOpenChange}
+          onHelp={props.showHelpFor}
+          onInputKeyDown={props.onInputKeyDown}
+          onQueryChange={props.setQuery}
+          onReset={props.onReset}
+          onResumeAskSession={props.onResumeAskSession}
+          onSubmit={props.onSubmitAction}
+          onSwitchAction={props.switchActionMode}
+          onSwitcherOpenChange={props.onSwitcherOpenChange}
+          onToggleMaximize={props.onToggleMaximize}
+          onToggleSettings={props.onToggleSettings}
+        />
+      )}
 
       <JobTray {...props} />
       <SettingsRegion {...props} />

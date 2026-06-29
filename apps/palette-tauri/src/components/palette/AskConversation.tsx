@@ -3,6 +3,7 @@ import { Brain, CheckCircle2, Paperclip, Send, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
+import { AxonMark } from "@/components/palette/AxonMark";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import type { AskActivity, AskSource, AskTurn } from "@/lib/runState";
 
@@ -88,14 +89,12 @@ export const ConversationThread = memo(function ConversationThread({
   prompt,
   answer,
   turns,
-  assistantLabel = "Axon",
   waiting = "Waiting for response...",
   reader = false,
 }: {
   prompt?: string;
   answer: string;
   turns?: AskTurn[];
-  assistantLabel?: string;
   waiting?: string;
   reader?: boolean;
 }) {
@@ -152,7 +151,9 @@ export const ConversationThread = memo(function ConversationThread({
           </div>
         ) : (
           <div key={turn.id} className="ask-message ask-message-assistant">
-            <span>{assistantLabel}</span>
+            <span className="ask-assistant-avatar" aria-label="Axon">
+              <AxonMark size={18} />
+            </span>
             <ActivityTrail activities={turn.activities} pending={turn.pending} />
             <div className="ask-answer">
               {turn.content ? <AskAnswerBody answer={turn.content} /> : <span className="ask-waiting">{waiting}</span>}
@@ -206,14 +207,14 @@ export const AskConversation = memo(function AskConversation({
           <Paperclip size={18} strokeWidth={1.75} />
         </Button>
         <div className="ask-compose-input">
-        <Input
-          unstyled
-          value={draft}
-          disabled={pending}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
-          aria-label="Ask a follow-up"
-        />
+          <Input
+            unstyled
+            value={draft}
+            disabled={pending}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
+            aria-label="Ask a follow-up"
+          />
         </div>
         {/* Scoped by `.ask-compose button`. type="submit" MUST be explicit — the
             Button primitive never defaults it, and this is the app's only submit

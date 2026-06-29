@@ -191,6 +191,7 @@ export default function App() {
     settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
+  const hideCommandBar = showOutput && (active?.subcommand === "ask" || active?.subcommand === "chat");
   const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
   // A11Y-C1 — the listbox is only mounted when the action panel is shown AND there
   // is content to show. The combobox must only reference ids that exist in the DOM,
@@ -526,7 +527,7 @@ export default function App() {
   const shellProps = {
     active, activeDescendantId, cancelAsyncJob, cancelJob, canceling, commandRunning, compact, config,
     configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode,
-    expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, history, historyFocusRef, historyOpen,
+    expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, hideCommandBar, history, historyFocusRef, historyOpen,
     askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs,
     onBack: goBackToBrowse, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown,
     onAskSessionsOpenChange: setAskSessionsOpen, onOpenJob, onReset, onResumeAskSession, onRetry, onRunAction, onSaveSettings: () => {
