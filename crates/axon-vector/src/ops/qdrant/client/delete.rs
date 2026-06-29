@@ -15,6 +15,54 @@ use super::scroll::{qdrant_scroll_pages_selective, scroll_url_set};
 // surface can consume it. Aliased so the existing call sites read unchanged.
 pub use axon_api::purge::PurgeResult as QdrantDeleteByUrlResult;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CleanupSelectorV1 {
+    pub collection: String,
+    pub source_id: String,
+    pub source_index_version: i64,
+    pub source_generation: i64,
+    pub item_key: String,
+}
+
+impl CleanupSelectorV1 {
+    pub fn new(
+        collection: impl Into<String>,
+        source_id: impl Into<String>,
+        source_index_version: i64,
+        source_generation: i64,
+        item_key: impl Into<String>,
+    ) -> Result<Self> {
+        let selector = Self {
+            collection: collection.into(),
+            source_id: source_id.into(),
+            source_index_version,
+            source_generation,
+            item_key: item_key.into(),
+        };
+        if selector.collection.trim().is_empty() {
+            return Err(anyhow!("cleanup selector collection cannot be empty"));
+        }
+        if selector.source_id.trim().is_empty() {
+            return Err(anyhow!("cleanup selector source_id cannot be empty"));
+        }
+        if selector.item_key.trim().is_empty() {
+            return Err(anyhow!("cleanup selector item_key cannot be empty"));
+        }
+        Ok(selector)
+    }
+
+    pub fn filter(&self) -> serde_json::Value {
+        serde_json::json!({
+            "must": [
+                {"key": "source_id", "match": {"value": self.source_id}},
+                {"key": "source_index_version", "match": {"value": self.source_index_version}},
+                {"key": "source_generation", "match": {"value": self.source_generation}},
+                {"key": "source_item_key", "match": {"value": self.item_key}}
+            ]
+        })
+    }
+}
+
 /// Delete with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
 async fn qdrant_delete_with_retry(
     client: &reqwest::Client,

@@ -217,6 +217,7 @@ fn pipeline_test_doc(url: &str, chunks: Vec<&str>, local_cleanup: bool) -> super
         content_type: "text",
         title: Some("Test".to_string()),
         extra: None,
+        ledger_payload: None,
         extractor_name: None,
         structured: None,
         chunk_extra: Vec::new(),

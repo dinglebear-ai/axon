@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn cleanup_selector_v1_rejects_empty_scope() {
+    let selector = CleanupSelectorV1::new("axon", "", 1, 2, "src/lib.rs");
+    assert!(selector.is_err());
+
+    let selector =
+        CleanupSelectorV1::new("axon", "source-a", 1, 2, "src/lib.rs").expect("selector");
+    let filter = selector.filter();
+    let must = filter["must"].as_array().expect("must array");
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_id",
+        "match": {"value": "source-a"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_item_key",
+        "match": {"value": "src/lib.rs"}
+    })));
+}
+
+#[test]
 fn repo_code_delete_body_is_scoped_to_one_repo_file_points() {
     let body = repo_code_points_delete_body("github", "owner-a", "repo-a");
     let must = body["filter"]["must"]

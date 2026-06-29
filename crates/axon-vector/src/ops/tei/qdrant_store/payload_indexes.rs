@@ -15,6 +15,8 @@ const KEYWORD_INDEX_FIELDS: &[&str] = &[
     "url",
     "domain",
     "source_type",
+    "source_id",
+    "source_kind",
     // Crawl/ingest origin marker — faceted by `axon refresh` to re-enqueue origins.
     "seed_url",
     "extractor_name",
@@ -61,6 +63,8 @@ const CORE_KEYWORD_INDEX_FIELDS: &[&str] = &[
     "url",
     "domain",
     "source_type",
+    "source_id",
+    "source_kind",
     "seed_url",
     "extractor_name",
     "local_project_key",
@@ -72,6 +76,8 @@ const CORE_KEYWORD_INDEX_FIELDS: &[&str] = &[
 const CORE_TYPED_FIELDS: &[(&str, &str)] = &[
     ("chunk_index", "integer"),
     ("payload_schema_version", "integer"),
+    ("source_generation", "integer"),
+    ("source_index_version", "integer"),
     ("local_index_version", "integer"),
     ("local_generation", "integer"),
     ("scraped_at", "datetime"),
@@ -257,6 +263,8 @@ fn push_non_keyword_indexes<'a>(
 
 const FULL_TYPED_FIELDS: &[(&str, &str)] = &[
     ("chunk_index", "integer"),
+    ("source_generation", "integer"),
+    ("source_index_version", "integer"),
     ("git_number", "integer"),
     ("git_comment_count", "integer"),
     ("git_repo_stars", "integer"),
