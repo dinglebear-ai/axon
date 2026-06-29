@@ -64,7 +64,7 @@ pub(super) enum CliCommand {
         name = "code-search-watch",
         hide = true,
         arg_required_else_help = true,
-        about = "code-search-watch was removed; use `axon embed <path> --watch` to register and watch local code indexing."
+        about = "code-search-watch was removed; use `axon embed <path>` to register and watch local code indexing."
     )]
     CodeSearchWatchRemoved,
     /// Fetch stored document chunks from Qdrant by URL
@@ -738,9 +738,12 @@ pub(super) struct EmbedArgs {
     pub(super) job: Option<JobSubcommand>,
     #[arg(value_name = "INPUT")]
     pub(super) input: Option<String>,
-    /// Watch local Git checkout/workspace code-index refresh progress.
+    /// Force local code-index watch progress for local paths.
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) watch: bool,
+    /// Run a one-shot local embed instead of the default local watch/index flow.
+    #[arg(long = "no-watch", action = ArgAction::SetTrue, conflicts_with = "watch")]
+    pub(super) no_watch: bool,
     /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
     #[arg(long, value_parser = parse_fresh_arg)]
     pub(super) fresh: Option<FreshDuration>,

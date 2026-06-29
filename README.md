@@ -137,22 +137,17 @@ The warm-path setup goal is under 2 minutes once images and model weights are ca
 
 ## Local Indexing
 
-Use `axon embed /path` to write local files to Qdrant. Existing local file and
-directory inputs run inline when the path exists; they do not register a
-long-lived SourceLedger source.
+Use `axon embed /path` to register local files with the foreground local
+code-index watcher. Existing local file and directory inputs watch by default;
+use `axon embed /path --no-watch` for a one-shot local embed that exits after
+writing vectors.
 
 SourceLedger currently tracks generation and cleanup state for crawl refreshes
 and mutable Git ingest sources in the same SQLite runtime DB as Axon jobs.
 
-For a foreground watcher, use:
-
-```bash
-axon embed /path/to/git-checkout-or-workspace --watch
-```
-
 The removed `code-search-watch` command now exits as a tombstone; use
-`embed --watch` for local Git checkout/workspace code-indexing refresh progress.
-That watcher uses the existing `axon-code-index` lifecycle tables.
+`embed` for local Git checkout/workspace code-indexing refresh progress. That
+watcher uses the existing `axon-code-index` lifecycle tables.
 
 ## Docker Stack
 

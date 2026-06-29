@@ -92,7 +92,11 @@ const EMBED_OPTIONS: &[(&str, &str)] = &[
     ),
     (
         "--watch",
-        "Attach foreground local code-index watch progress for Git checkout/workspace directories",
+        "Force foreground local code-index watch progress for local paths",
+    ),
+    (
+        "--no-watch",
+        "Run one-shot local embedding instead of watching",
     ),
     ("--tei-url <url>", "Text Embeddings Inference endpoint"),
     ("--qdrant-url <url>", "Qdrant endpoint"),

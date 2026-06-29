@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Commit source ledger generations after embed
 - Track git branches in source ledger
 - Add refresh coalescing and redacted status
+- Watch local file/directory embeds by default with `--no-watch` for one-shot local embedding
 
 ### Fixed
 

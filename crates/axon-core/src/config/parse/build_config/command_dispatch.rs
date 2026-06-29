@@ -46,6 +46,7 @@ pub(super) struct DispatchOutput {
     pub code_search_no_freshness: bool,
     pub code_search_watch: Option<CodeSearchWatchConfig>,
     pub embed_watch: bool,
+    pub embed_no_watch: bool,
     pub freshness: Option<FreshnessRequest>,
     pub fresh_action: Option<FreshAction>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
@@ -109,6 +110,7 @@ impl DispatchOutput {
             code_search_no_freshness: false,
             code_search_watch: None,
             embed_watch: false,
+            embed_no_watch: false,
             freshness: None,
             fresh_action: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
@@ -217,6 +219,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Embed(args) => {
             out.command = CommandKind::Embed;
             out.embed_watch = args.watch;
+            out.embed_no_watch = args.no_watch;
             out.freshness = freshness_request(args.fresh, FreshnessCommand::Embed);
             out.positional = if let Some(job) = args.job {
                 positional_from_job(job)

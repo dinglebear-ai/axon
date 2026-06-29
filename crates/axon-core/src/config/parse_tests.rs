@@ -59,6 +59,28 @@ fn parse_embed_watch_sets_embed_watch_mode() {
     assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
 }
 
+#[allow(unsafe_code)]
+#[test]
+fn parse_embed_no_watch_sets_embed_no_watch_mode() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "embed",
+        "/workspace",
+        "--no-watch",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("embed --no-watch should parse");
+    assert!(matches!(cfg.command, CommandKind::Embed));
+    assert!(!cfg.embed_watch);
+    assert!(cfg.embed_no_watch);
+    assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
+}
+
 #[test]
 fn help_mentions_embed_watch_not_code_search_watch() {
     let mut command = super::build_cli_command();
@@ -72,6 +94,7 @@ fn help_mentions_embed_watch_not_code_search_watch() {
 
     assert!(help.contains("embed"));
     assert!(help.contains("--watch"));
+    assert!(help.contains("--no-watch"));
     assert!(!help.contains("code-search-watch"));
 }
 
