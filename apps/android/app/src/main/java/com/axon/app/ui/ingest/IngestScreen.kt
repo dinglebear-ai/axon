@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.jobs.JobRow
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
@@ -97,7 +98,13 @@ fun IngestScreen(vm: IngestViewModel = viewModel()) {
                 ) { Text("Submit another") }
             }
             is IngestUi.Error -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ErrorContent(message = s.message, onRetry = { vm.reset() })
+                RecoveryActionCard(
+                    title = "Ingest could not start",
+                    message = s.message,
+                    primaryLabel = "Edit request",
+                    onPrimary = vm::reset,
+                    icon = Icons.Outlined.CloudUpload,
+                )
                 IngestForm(
                     selectedSource = selectedSource,
                     onSourceChange = { selectedSource = it },

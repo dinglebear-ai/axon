@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.AppNoticeBanner
 import com.axon.app.ui.common.NoticeTone
+import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.knowledge.sections.DomainsSection
 import com.axon.app.ui.knowledge.sections.SourcesSection
 import com.axon.app.ui.knowledge.sections.StatsSection
@@ -109,7 +110,25 @@ fun KnowledgeScreen(
                 } else {
                     "${failures.size} knowledge views are unavailable. Check auth and Axon server status."
                 }
-                KnowledgeNotice(message)
+                if (failures.size == KnowledgeTab.entries.size) {
+                    RecoveryActionCard(
+                        title = "Knowledge is unavailable",
+                        message = message,
+                        primaryLabel = "Reload",
+                        onPrimary = {
+                            vm.loadSuggest(focus = null)
+                            vm.loadSources()
+                            vm.loadDomains(limit = 200)
+                            vm.loadStats()
+                        },
+                        icon = Icons.Rounded.Public,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 440.dp),
+                    )
+                } else {
+                    KnowledgeNotice(message)
+                }
             }
             KnowledgeMenu(
                 selected = selected,
