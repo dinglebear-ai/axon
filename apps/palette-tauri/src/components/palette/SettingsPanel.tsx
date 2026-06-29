@@ -247,6 +247,12 @@ function ConnectionPanel({
           on={draftConfig.openResultsInline ?? true}
           onChange={(value) => updateConfig("openResultsInline", value)}
         />
+        <ToggleRow
+          label="Agent replies in a bubble"
+          sub="Frame assistant messages like user messages"
+          on={draftConfig.agentBubbles ?? false}
+          onChange={(value) => updateConfig("agentBubbles", value)}
+        />
       </div>
     </div>
   );
