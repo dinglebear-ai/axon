@@ -166,12 +166,14 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             );
         }
         if cfg.embed_watch {
+            let input_path = PathBuf::from(&input);
+            let initial_refresh = is_watchable_code_dir(&input_path);
             let mut watch_cfg = cfg.clone();
             watch_cfg.code_search_watch = Some(CodeSearchWatchConfig {
-                roots: vec![PathBuf::from(&input)],
+                roots: vec![input_path],
                 debounce: Duration::from_millis(500),
                 settle: Duration::from_secs(2),
-                initial_refresh: true,
+                initial_refresh,
                 dry_run: false,
                 enable: false,
                 json: cfg.json_output,
@@ -221,6 +223,10 @@ async fn maybe_handle_embed_subcommand(
     }
 
     Ok(true)
+}
+
+fn is_watchable_code_dir(path: &Path) -> bool {
+    path.is_dir()
 }
 
 fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>> {
@@ -340,7 +346,7 @@ async fn enqueue_embed_job(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_embed_watch_input;
+    use super::{is_watchable_code_dir, validate_embed_watch_input};
 
     #[test]
     fn embed_watch_rejects_non_local_inputs() {
@@ -350,17 +356,33 @@ mod tests {
     }
 
     #[test]
-    fn embed_watch_rejects_files() {
-        let file = tempfile::NamedTempFile::new().unwrap();
-        let err = validate_embed_watch_input(file.path().to_str().unwrap(), true).unwrap_err();
+    fn embed_watch_rejects_files() -> Result<(), Box<dyn std::error::Error>> {
+        let file = tempfile::NamedTempFile::new()?;
+        let path = file.path().to_string_lossy();
+        let err = validate_embed_watch_input(&path, true).unwrap_err();
 
         assert!(err.to_string().contains("Git checkout or workspace"));
+        Ok(())
     }
 
     #[test]
-    fn embed_watch_accepts_directories() {
-        let dir = tempfile::TempDir::new().unwrap();
+    fn embed_watch_accepts_directories() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+        let path = dir.path().to_string_lossy();
 
-        validate_embed_watch_input(dir.path().to_str().unwrap(), true).unwrap();
+        validate_embed_watch_input(&path, true)?;
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_initial_refreshes_git_checkouts_and_workspaces()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let checkout = tempfile::TempDir::new()?;
+        std::fs::write(checkout.path().join(".git"), "gitdir: ../real")?;
+        let workspace = tempfile::TempDir::new()?;
+
+        assert!(is_watchable_code_dir(checkout.path()));
+        assert!(is_watchable_code_dir(workspace.path()));
+        Ok(())
     }
 }

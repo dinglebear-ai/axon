@@ -25,11 +25,14 @@ fn config_scrape_format_llm_round_trips() {
 #[test]
 fn crawl_source_identity_is_collection_scoped() {
     let source_a = crawl_source_identity("https://example.com/docs", "axon-a");
+    let source_a_again = crawl_source_identity("https://example.com/docs", "axon-a");
     let source_b = crawl_source_identity("https://example.com/docs", "axon-b");
 
     assert_ne!(source_a.source_id, source_b.source_id);
-    assert_eq!(source_a.source_id, "crawl:axon-a:https://example.com/docs");
-    assert_eq!(source_b.source_id, "crawl:axon-b:https://example.com/docs");
+    assert_eq!(source_a.source_id, source_a_again.source_id);
+    assert!(source_a.source_id.starts_with("crawl:axon-a:"));
+    assert!(source_b.source_id.starts_with("crawl:axon-b:"));
+    assert!(!source_a.source_id.contains("https://example.com/docs"));
 }
 
 /// When `format` is anything other than `Llm`, the LLM stream pass is skipped.

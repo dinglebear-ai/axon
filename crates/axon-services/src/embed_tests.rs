@@ -119,7 +119,8 @@ async fn qdrant_down_does_not_allocate_local_generation() -> Result<(), Box<dyn 
         .set_backoff("local-source", i64::MAX / 2, "qdrant", "connection refused")
         .await?;
 
-    let result = refresh_local_source_with_ledger(&store, "local-source").await;
+    let cfg = Config::default();
+    let result = refresh_local_source_with_ledger(&cfg, &store, "local-source").await;
     assert!(result.is_err());
     assert_eq!(store.max_generation("local-source").await?, 0);
     Ok(())

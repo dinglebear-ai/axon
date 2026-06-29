@@ -74,7 +74,7 @@ axon embed worker            # run embed worker inline
 ## Examples
 
 ```bash
-# Default mode: start embed job and return job JSON
+# Local path mode: embed inline and return completion JSON
 axon embed ./docs
 
 # Synchronous inline embedding
@@ -92,7 +92,7 @@ axon embed status 550e8400-e29b-41d4-a716-446655440000
 # JSON list output
 axon embed list --json
 
-# URL/text input
+# URL/text input: enqueue by default when --wait true is not set
 axon embed https://example.com/docs --json
 
 # Keep local docs fresh weekly
@@ -106,7 +106,7 @@ axon embed ./docs --fresh 7d
 - `embed clear` is destructive and prompts unless `--yes` is set.
 - Existing local file and directory inputs run inline, even when `--wait false` is omitted or explicit. URL/free-text inputs return a queued job by default, and jobs stay pending until a worker process (`axon embed worker`) or long-running server process consumes them.
 - `--wait true` runs the submitted embed job in-process and blocks until it finishes. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.
-- `--watch` is only valid for local Git checkout or workspace directories. It runs the local code-search watcher in the foreground, including its initial refresh, and uses the existing `axon-code-index` lifecycle tables.
+- `--watch` is only valid for local Git checkout or workspace directories. It runs the local code-search watcher in the foreground, performs the initial refresh for discovered Git checkouts, and uses the existing `axon-code-index` lifecycle tables.
 - `--fresh` is CLI-only in v1. It stores a safe replay snapshot and scheduled runs enqueue normal embed jobs through the service layer; REST/MCP freshness management is not exposed yet.
 - `axon embed status <job_id> --json` returns a single top-level job object. The stable fields for automation are `id`, `status`, `target`, `collection`, `metrics`, `result_json`, and `config_json`.
 - The local source identifier for file embeds is the `target` field. Do not expect a nested `data.url` / `data.collection` envelope from the CLI.

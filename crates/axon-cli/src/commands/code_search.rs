@@ -212,28 +212,6 @@ fn render_code_search_watch_event(event: CodeSearchWatchEvent) {
             );
         }
         CodeSearchWatchEvent::DryRun { plan } => render_code_search_watch_dry_run(plan),
-        CodeSearchWatchEvent::Enabled {
-            unit_path,
-            env_path,
-            roots,
-        } => {
-            println!("{}", success("✓ Code search watcher enabled"));
-            println!(
-                "  {} {}",
-                metric(roots.len(), if roots.len() == 1 { "repo" } else { "repos" }),
-                muted("configured"),
-            );
-            println!(
-                "  {} {}",
-                muted("Unit:"),
-                accent(&unit_path.display().to_string())
-            );
-            println!(
-                "  {} {}",
-                muted("Env:"),
-                accent(&env_path.display().to_string())
-            );
-        }
         CodeSearchWatchEvent::Stopped => {
             println!(
                 "  {} {}",

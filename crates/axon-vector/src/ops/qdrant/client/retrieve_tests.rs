@@ -81,3 +81,67 @@ async fn batch_retrieve_result_count_mismatch_returns_err() {
         "unexpected error: {msg}"
     );
 }
+
+#[test]
+fn retrieve_visibility_filter_excludes_uncommitted_source_points() {
+    let filter = super::retrieve_visibility_filter(serde_json::json!({
+        "must": [{"key": "url", "match": {"value": "https://example.com/a"}}]
+    }));
+    assert_eq!(
+        filter["must_not"][0],
+        serde_json::json!({"key":"source_committed","match":{"value":false}})
+    );
+    assert!(
+        filter["must"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!({
+                "key": "url",
+                "match": {"value": "https://example.com/a"}
+            }))
+    );
+}
+
+#[tokio::test]
+async fn retrieve_by_url_excludes_uncommitted_source_points() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST).path("/collections/test/points/scroll");
+            then.status(200)
+                .json_body(serde_json::json!({"result": {"points": []}}));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "test".to_string();
+
+    super::qdrant_retrieve_by_url_details(&cfg, "https://example.com/a", Some(10))
+        .await
+        .unwrap();
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn batch_retrieve_excludes_uncommitted_source_points() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/test/points/query/batch");
+            then.status(200).json_body(serde_json::json!({
+                "result": [{"points": []}]
+            }));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "test".to_string();
+
+    super::qdrant_batch_retrieve_by_urls(&cfg, &["https://example.com/a".to_string()], Some(10))
+        .await
+        .unwrap();
+
+    mock.assert_async().await;
+}

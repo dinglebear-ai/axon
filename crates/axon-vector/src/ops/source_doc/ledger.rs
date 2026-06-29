@@ -16,6 +16,7 @@ const LEDGER_OWNED_EXTRA_KEYS: &[&str] = &[
     "source_item_key",
     "source_item_hash",
     "source_index_version",
+    "source_committed",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +67,14 @@ impl LedgerPayload {
         payload["source_generation"] = Value::Number(self.generation.into());
         payload["source_item_key"] = Value::String(self.item_key.clone());
         payload["source_index_version"] = Value::Number(self.index_version.into());
+        payload["source_committed"] = Value::Bool(false);
+    }
+
+    pub(in crate::ops) fn point_id_seed(&self, url: &str, chunk_index: usize) -> String {
+        format!(
+            "ledger:{}:{}:{}:{}",
+            self.source_id, self.generation, url, chunk_index
+        )
     }
 }
 

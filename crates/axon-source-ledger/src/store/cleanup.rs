@@ -12,6 +12,10 @@ impl SourceLedgerStore {
         selector_json: &str,
     ) -> anyhow::Result<()> {
         let now_ms = super::now_ms();
+        super::validate_cleanup_debt_item(
+            source_id,
+            &CleanupDebtItem::new(generation, item_key, selector_json),
+        )?;
         sqlx::query(
             "INSERT INTO axon_source_cleanup_debt (
                 source_id, generation, item_key, selector_json, retry_count, last_error, updated_at_ms
@@ -81,6 +85,32 @@ impl SourceLedgerStore {
         .execute(&self.pool)
         .await
         .context("failed to clear source cleanup debt")?;
+        Ok(())
+    }
+
+    pub async fn mark_cleanup_debt_failed(
+        &self,
+        source_id: &str,
+        generation: i64,
+        item_key: &str,
+        error: &str,
+    ) -> anyhow::Result<()> {
+        let now_ms = super::now_ms();
+        sqlx::query(
+            "UPDATE axon_source_cleanup_debt
+             SET retry_count = retry_count + 1,
+                 last_error = ?,
+                 updated_at_ms = ?
+             WHERE source_id = ? AND generation = ? AND item_key = ?",
+        )
+        .bind(error)
+        .bind(now_ms)
+        .bind(source_id)
+        .bind(generation)
+        .bind(item_key)
+        .execute(&self.pool)
+        .await
+        .context("failed to mark source cleanup debt failure")?;
         Ok(())
     }
 }

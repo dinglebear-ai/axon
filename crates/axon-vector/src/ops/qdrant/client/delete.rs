@@ -16,7 +16,10 @@ use super::scroll::{qdrant_scroll_pages_selective, scroll_url_set};
 pub use axon_api::purge::PurgeResult as QdrantDeleteByUrlResult;
 
 mod source_cleanup;
-pub use source_cleanup::{CleanupSelectorV1, qdrant_delete_source_cleanup_selector};
+pub use source_cleanup::{
+    CleanupSelectorV1, qdrant_delete_source_cleanup_selector,
+    qdrant_delete_source_cleanup_selectors,
+};
 
 /// Delete with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
 async fn qdrant_delete_with_retry(

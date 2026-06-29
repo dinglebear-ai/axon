@@ -90,6 +90,10 @@ const EMBED_OPTIONS: &[(&str, &str)] = &[
         "--batch-concurrency <n>",
         "Concurrent embed batch operations",
     ),
+    (
+        "--watch",
+        "Attach foreground local code-index watch progress for Git checkout/workspace directories",
+    ),
     ("--tei-url <url>", "Text Embeddings Inference endpoint"),
     ("--qdrant-url <url>", "Qdrant endpoint"),
     ("--json", "Output machine-readable JSON"),
