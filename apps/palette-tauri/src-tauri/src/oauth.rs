@@ -6,6 +6,7 @@
 //! token refresh (single-flight), while a separate guard serializes interactive
 //! logins.
 
+#[cfg(test)]
 pub(crate) mod callback_server;
 pub(crate) mod flow;
 pub(crate) mod pkce;
@@ -377,9 +378,19 @@ async fn run_login(
     flow::require_secure_url(&meta.token_endpoint)?;
     flow::require_secure_url(&registration_endpoint)?;
 
-    let listener = callback_server::bind().await?;
+    let native_callback_endpoint = meta.native_callback_endpoint.clone().ok_or_else(|| {
+        "this server does not support native OAuth callback polling — update the Axon server, then try signing in again"
+            .to_string()
+    })?;
+    let native_poll_endpoint = meta.native_poll_endpoint.clone().ok_or_else(|| {
+        "this server does not support native OAuth callback polling — update the Axon server, then try signing in again"
+            .to_string()
+    })?;
+    flow::require_secure_url(&native_callback_endpoint)?;
+    flow::require_secure_url(&native_poll_endpoint)?;
+
     let client_id =
-        flow::register_client(client, &registration_endpoint, &listener.redirect_uri).await?;
+        flow::register_client(client, &registration_endpoint, &native_callback_endpoint).await?;
 
     let verifier = pkce::generate_code_verifier();
     let challenge = pkce::code_challenge_s256(&verifier);
@@ -387,7 +398,7 @@ async fn run_login(
     let authorize_url = flow::build_authorize_url(
         &meta,
         &client_id,
-        &listener.redirect_uri,
+        &native_callback_endpoint,
         SCOPE,
         &state,
         &challenge,
@@ -399,8 +410,7 @@ async fn run_login(
         ));
     }
 
-    let code = listener
-        .await_code(&state, LOGIN_TIMEOUT)
+    let code = flow::poll_native_code(client, &native_poll_endpoint, &state, LOGIN_TIMEOUT)
         .await
         .map_err(|err| {
             format!("{err}. If the browser did not open, sign in here:\n{authorize_url}")
@@ -411,7 +421,7 @@ async fn run_login(
         &meta.token_endpoint,
         &code,
         &client_id,
-        &listener.redirect_uri,
+        &native_callback_endpoint,
         &verifier,
     )
     .await?;

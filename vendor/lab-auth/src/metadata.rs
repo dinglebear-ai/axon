@@ -1,4 +1,4 @@
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 
 use crate::state::AuthState;
 use crate::types::{AuthorizationServerMetadata, ProtectedResourceMetadata};
@@ -12,6 +12,8 @@ pub async fn authorization_server_metadata(
         authorization_endpoint: format!("{base}/authorize"),
         token_endpoint: format!("{base}/token"),
         registration_endpoint: format!("{base}/register"),
+        native_callback_endpoint: Some(native_callback_endpoint(&state)),
+        native_poll_endpoint: Some(native_poll_endpoint(&state)),
         jwks_uri: format!("{base}/jwks"),
         response_types_supported: vec!["code".to_string()],
         grant_types_supported: vec![
@@ -51,6 +53,14 @@ pub(crate) fn public_base_url(state: &AuthState) -> String {
         .as_str()
         .trim_end_matches('/')
         .to_string()
+}
+
+pub(crate) fn native_callback_endpoint(state: &AuthState) -> String {
+    format!("{}/native/callback", public_base_url(state))
+}
+
+pub(crate) fn native_poll_endpoint(state: &AuthState) -> String {
+    format!("{}/native/poll", public_base_url(state))
 }
 
 pub fn canonical_resource_url(state: &AuthState) -> String {
