@@ -106,9 +106,11 @@
       "platform": "android",
       "file_paths": [
         "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/common/CompactActionButton.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConnectionTab.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/status/TopChromeStatus.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/common/AxonSensitiveTextField.kt"
@@ -251,9 +253,11 @@
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "ToolbarIconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "SendButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/CompactActionButton.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConnectionTab.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "CompactActionButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/status/TopChromeStatus.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/AxonSensitiveTextField.kt", "pattern": "IconButton" },
