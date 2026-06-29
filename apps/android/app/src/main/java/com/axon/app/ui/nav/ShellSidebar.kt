@@ -31,6 +31,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -142,6 +147,11 @@ private fun AxonSidebarRow(
             .background(rowBg, shape)
             .border(1.dp, rowBorder, shape)
             .pressScale(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = item.label
+                role = Role.Button
+                this.selected = selected
+            }
             .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -155,7 +165,7 @@ private fun AxonSidebarRow(
         )
         Icon(
             imageVector = item.icon,
-            contentDescription = item.label,
+            contentDescription = null,
             tint = iconTint,
             modifier = Modifier.size(20.dp),
         )

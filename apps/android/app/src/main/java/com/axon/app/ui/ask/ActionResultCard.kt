@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
@@ -46,6 +48,7 @@ fun ActionResultCard(
         modifier = modifier
             .fillMaxWidth(0.88f)
             .widthIn(max = 390.dp)
+            .axonElevation(shape, AxonElevation.Card)
             .clip(shape)
             .background(colors.panelStrong.copy(alpha = 0.20f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.20f), shape)

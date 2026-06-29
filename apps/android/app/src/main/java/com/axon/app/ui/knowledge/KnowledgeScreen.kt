@@ -31,6 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -203,6 +208,11 @@ private fun KnowledgeMenuRow(
             .background(if (selected) colors.tint(colors.accentPrimary, 4, colors.pageBg) else colors.control.copy(alpha = 0.12f), shape)
             .border(1.dp, if (selected) colors.borderStrong.copy(alpha = 0.22f) else colors.borderDefault.copy(alpha = 0.08f), shape)
             .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (detail.isBlank()) label else "$label, $detail"
+                role = Role.Button
+                this.selected = selected
+            }
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

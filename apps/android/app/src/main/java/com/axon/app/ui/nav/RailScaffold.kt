@@ -156,6 +156,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                             navController = navController,
                             askVm = askVm,
                             onShowAsk = { activePage = null },
+                            onOpenJobs = { activePage = DrawerSection.Jobs },
                             onOpenOverlay = ::openOverlay,
                         )
                         else -> ShellPageContent(
@@ -163,6 +164,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                             navController = navController,
                             askVm = askVm,
                             onShowAsk = { activePage = null },
+                            onOpenJobs = { activePage = DrawerSection.Jobs },
                             onOpenOverlay = ::openOverlay,
                         )
                     }
@@ -224,11 +226,13 @@ private fun ShellPageContent(
     navController: NavController,
     askVm: AskViewModel,
     onShowAsk: () -> Unit,
+    onOpenJobs: () -> Unit,
     onOpenOverlay: (ShellOverlay) -> Unit,
 ) {
     when (page) {
         null -> AskScreen(
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
+            onOpenJobs = onOpenJobs,
             vm = askVm,
         )
         DrawerSection.Sessions -> SessionsDrawerContent(

@@ -171,7 +171,7 @@ private fun SubmittedCard(
             Text(target, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("ID:", style = MaterialTheme.typography.labelSmall)
-                AuroraKbd(key = jobId)
+                AuroraKbd(key = jobId, contentDescription = "Job ID $jobId")
             }
             AuroraButton(
                 onClick = onCheckStatus,
