@@ -1,9 +1,10 @@
 //! Loopback HTTP listener that captures the OAuth `?code&state` redirect.
-//! RFC 8252 §7.3 native-app pattern: bind 127.0.0.1:0, register that exact
-//! `redirect_uri`, then accept browser requests until one carries the matching
-//! state. A non-matching request (favicon, a racing local process with a wrong
-//! state) is answered and ignored — only a state-matching code/error ends the
-//! loop — so a hostile local request cannot abort a legitimate login.
+//! RFC 8252 §7.3 native-app pattern: bind loopback on an ephemeral port,
+//! register that port as a loopback `redirect_uri`, then accept browser requests
+//! until one carries the matching state. A non-matching request (favicon, a
+//! racing local process with a wrong state) is answered and ignored — only a
+//! state-matching code/error ends the loop — so a hostile local request cannot
+//! abort a legitimate login.
 
 use std::time::Duration;
 
@@ -39,7 +40,11 @@ pub(crate) async fn bind() -> Result<CallbackListener, String> {
         .await
         .map_err(|err| format!("failed to bind loopback callback listener: {err}"))?;
     let port = listener.local_addr().map_err(|err| err.to_string())?.port();
-    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+    // Chrome HTTPS upgrade modes can attempt TLS for IP-literal loopback URLs
+    // (`https://127.0.0.1:...`), which fails against this intentionally-plain
+    // native-app HTTP listener. `localhost` remains a loopback redirect URI but
+    // is treated as a trustworthy local origin by browsers.
+    let redirect_uri = format!("http://localhost:{port}/callback");
     Ok(CallbackListener {
         listener,
         redirect_uri,

@@ -1,5 +1,5 @@
 use axum::extract::{Query, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect};
 use axum::{Json, response::Response};
 use base64::Engine;
@@ -15,7 +15,7 @@ use crate::state::AuthState;
 use crate::types::{
     AuthorizationCodeRow, AuthorizationRequestRow, AuthorizeQuery, BrowserLoginQuery,
     BrowserLoginStateRow, CallbackQuery, ClientRegistrationRequest, ClientRegistrationResponse,
-    RegisteredClient,
+    NativeAuthorizationResultRow, NativePollQuery, NativePollResponse, RegisteredClient,
 };
 use crate::util::{expires_at, fingerprint, now_unix, random_token};
 
@@ -129,15 +129,19 @@ pub async fn register_client(
             "at least one redirect URI is required".to_string(),
         ));
     }
+    let native_callback_endpoint = crate::metadata::native_callback_endpoint(&state);
     for redirect_uri in &request.redirect_uris {
-        if !is_allowed_redirect_uri(redirect_uri, &state.config.allowed_client_redirect_uris) {
+        if redirect_uri != &native_callback_endpoint
+            && !is_allowed_redirect_uri(redirect_uri, &state.config.allowed_client_redirect_uris)
+        {
             warn!(
                 redirect_uri = %redirect_uri,
+                native_callback_endpoint = %native_callback_endpoint,
                 allowed_patterns = ?state.config.allowed_client_redirect_uris,
-                "oauth register rejected: redirect URI is not in the allowlist or loopback set"
+                "oauth register rejected: redirect URI is not in the allowlist, native callback, or loopback set"
             );
             return Err(AuthError::Validation(format!(
-                "redirect URI `{redirect_uri}` must target a loopback host or match an allowed redirect pattern"
+                "redirect URI `{redirect_uri}` must target a loopback host, match the native callback endpoint, or match an allowed redirect pattern"
             )));
         }
     }
@@ -401,6 +405,77 @@ pub async fn callback(
     );
 
     Ok(Redirect::to(redirect_uri.as_str()).into_response())
+}
+
+pub async fn native_callback(
+    State(state): State<AuthState>,
+    Query(query): Query<NativePollQuery>,
+) -> Result<Response, AuthError> {
+    let code = query
+        .code
+        .ok_or_else(|| AuthError::Validation("missing `code` parameter".to_string()))?;
+    let state_param = query.state.trim();
+    if state_param.is_empty() {
+        return Err(AuthError::Validation(
+            "missing `state` parameter".to_string(),
+        ));
+    }
+    let now = now_unix();
+    state
+        .store
+        .insert_native_authorization_result(NativeAuthorizationResultRow {
+            state: state_param.to_string(),
+            code,
+            created_at: now,
+            expires_at: expires_at(now, state.config.auth_code_ttl, "LAB_AUTH_CODE_TTL_SECS")?,
+        })
+        .await?;
+
+    let mut response = axum::response::Html(
+        r#"<!doctype html><html><body style="font-family:sans-serif;background:#07131c;color:#e6f4fb;text-align:center;padding-top:4rem"><h2>Signed in to Axon</h2><p>You can close this tab and return to the palette.</p></body></html>"#,
+    )
+    .into_response();
+    no_store(&mut response);
+    Ok(response)
+}
+
+pub async fn native_poll(
+    State(state): State<AuthState>,
+    Query(query): Query<NativePollQuery>,
+) -> Result<Response, AuthError> {
+    let state_param = query.state.trim();
+    if state_param.is_empty() {
+        return Err(AuthError::Validation(
+            "missing `state` parameter".to_string(),
+        ));
+    }
+    let mut response = if let Some(row) = state
+        .store
+        .take_native_authorization_result(state_param)
+        .await?
+    {
+        Json(NativePollResponse {
+            code: Some(row.code),
+        })
+        .into_response()
+    } else {
+        (
+            StatusCode::ACCEPTED,
+            Json(NativePollResponse { code: None }),
+        )
+            .into_response()
+    };
+    no_store(&mut response);
+    Ok(response)
+}
+
+fn no_store(response: &mut Response) {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
 }
 
 fn sanitize_return_to(state: &AuthState, requested: Option<&str>) -> String {
@@ -701,6 +776,31 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn register_accepts_native_callback_without_redirect_allowlist() {
+        let mut config = test_auth_config();
+        config.enable_dynamic_registration = true;
+        config.allowed_client_redirect_uris.clear();
+        let app = router(test_auth_state_with_config(config).await);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/register")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "redirect_uris": ["https://lab.example.com/native/callback"]
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
     async fn register_is_rate_limited_after_configured_burst() {
         let mut config = test_auth_config();
         config.enable_dynamic_registration = true;
@@ -743,6 +843,50 @@ pub mod tests {
             .await
             .unwrap();
         assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn native_callback_stashes_code_for_one_poll() {
+        let app = router(test_auth_state().await);
+        let callback = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/native/callback?code=code-123&state=state-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), StatusCode::OK);
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/native/poll?state=state-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(first.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], "code-123");
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .uri("/native/poll?state=state-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), StatusCode::ACCEPTED);
     }
 
     #[test]
@@ -1193,15 +1337,33 @@ pub mod tests {
     #[test]
     fn validate_scope_accepts_configured_default_and_rejects_others() {
         // Empty scope falls back to configured default.
-        assert_eq!(super::validate_scope("", "syslog:read", &["syslog:read".to_string(), "syslog:admin".to_string()]).unwrap(), "syslog:read");
+        assert_eq!(
+            super::validate_scope(
+                "",
+                "syslog:read",
+                &["syslog:read".to_string(), "syslog:admin".to_string()]
+            )
+            .unwrap(),
+            "syslog:read"
+        );
         // Matching scope passes through.
         assert_eq!(
-            super::validate_scope("syslog:read", "syslog:read", &["syslog:read".to_string(), "syslog:admin".to_string()]).unwrap(),
+            super::validate_scope(
+                "syslog:read",
+                "syslog:read",
+                &["syslog:read".to_string(), "syslog:admin".to_string()]
+            )
+            .unwrap(),
             "syslog:read"
         );
         // Anything else is rejected — and the error mentions the configured
         // default (proving the LAB_SCOPE constant is gone).
-        let err = super::validate_scope("lab", "syslog:read", &["syslog:read".to_string(), "syslog:admin".to_string()]).unwrap_err();
+        let err = super::validate_scope(
+            "lab",
+            "syslog:read",
+            &["syslog:read".to_string(), "syslog:admin".to_string()],
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("syslog:read"), "got: {err}");
     }
 
@@ -1404,32 +1566,30 @@ pub mod tests {
     //
     // PRRT_kwDORS2O8s6AnbM5: replaced hardcoded PEM literal with runtime
     // keygen so secret-scanners no longer flag this file.
-    static TEST_RSA_KEY: std::sync::LazyLock<rsa::RsaPrivateKey> =
-        std::sync::LazyLock::new(|| {
-            use rsa::rand_core::{TryCryptoRng, TryRng, UnwrapErr};
-            #[derive(Default, Clone, Copy)]
-            struct SystemRng;
-            impl TryRng for SystemRng {
-                type Error = getrandom::Error;
-                fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
-                    let mut b = [0u8; 4];
-                    self.try_fill_bytes(&mut b)?;
-                    Ok(u32::from_le_bytes(b))
-                }
-                fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
-                    let mut b = [0u8; 8];
-                    self.try_fill_bytes(&mut b)?;
-                    Ok(u64::from_le_bytes(b))
-                }
-                fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
-                    getrandom::fill(dst)
-                }
+    static TEST_RSA_KEY: std::sync::LazyLock<rsa::RsaPrivateKey> = std::sync::LazyLock::new(|| {
+        use rsa::rand_core::{TryCryptoRng, TryRng, UnwrapErr};
+        #[derive(Default, Clone, Copy)]
+        struct SystemRng;
+        impl TryRng for SystemRng {
+            type Error = getrandom::Error;
+            fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+                let mut b = [0u8; 4];
+                self.try_fill_bytes(&mut b)?;
+                Ok(u32::from_le_bytes(b))
             }
-            impl TryCryptoRng for SystemRng {}
-            let mut rng = UnwrapErr(SystemRng);
-            RsaPrivateKey::new(&mut rng, 2048)
-                .expect("test RSA key generation failed")
-        });
+            fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+                let mut b = [0u8; 8];
+                self.try_fill_bytes(&mut b)?;
+                Ok(u64::from_le_bytes(b))
+            }
+            fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+                getrandom::fill(dst)
+            }
+        }
+        impl TryCryptoRng for SystemRng {}
+        let mut rng = UnwrapErr(SystemRng);
+        RsaPrivateKey::new(&mut rng, 2048).expect("test RSA key generation failed")
+    });
 
     fn test_rsa_key() -> &'static RsaPrivateKey {
         &TEST_RSA_KEY

@@ -6,6 +6,10 @@ pub struct AuthorizationServerMetadata {
     pub authorization_endpoint: String,
     pub token_endpoint: String,
     pub registration_endpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_callback_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_poll_endpoint: Option<String>,
     pub jwks_uri: String,
     pub response_types_supported: Vec<String>,
     pub grant_types_supported: Vec<String>,
@@ -58,6 +62,19 @@ pub struct CallbackQuery {
 pub struct BrowserLoginQuery {
     #[serde(default)]
     pub return_to: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativePollQuery {
+    pub state: String,
+    #[serde(default)]
+    pub code: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativePollResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,6 +165,14 @@ pub struct BrowserLoginStateRow {
     pub state: String,
     pub return_to: String,
     pub provider_code_verifier: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeAuthorizationResultRow {
+    pub state: String,
+    pub code: String,
     pub created_at: i64,
     pub expires_at: i64,
 }
