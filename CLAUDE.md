@@ -72,7 +72,7 @@ MCP docs:
 | `extract <urls...>` | LLM-powered structured data extraction | Yes (default) |
 | `search <query>` | Web search (SearXNG when `AXON_SEARXNG_URL` set, else Tavily), auto-queues crawl jobs for results | No |
 | `research <query>` | Web research with LLM synthesis. Backend: SearXNG when `AXON_SEARXNG_URL` set, else Tavily. Synthesizes over **full-page content** of the top sources (`AXON_RESEARCH_FULL_CONTENT=false` for snippet-only/fast), then auto-queues bounded crawl/index jobs for result URLs. | No |
-| `embed [input]` | Embed file/dir/URL into Qdrant; local paths register SourceLedger refresh state, and `--watch` attaches foreground refresh progress | Yes (default) |
+| `embed [input]` | Embed file/dir/URL into Qdrant; existing local paths run inline, and `--watch` attaches foreground local code-index refresh progress for Git checkouts/workspaces | Yes (default) |
 | `fresh <sub>` | CLI-only freshness schedules created by `--fresh <Nd>` on scrape/crawl/embed/ingest. Subcommands: `list`, `run-now`, `history`. | No |
 | `memory <sub>` | Persistent agent memory: `remember`, `search`, `show`, `link`, `supersede`, `context` backed by Qdrant content + SQLite metadata/edges | No |
 | `query <text>` | Semantic vector search | No |

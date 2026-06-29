@@ -93,11 +93,38 @@ impl ManifestItem {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct StaleManifestItem {
+    pub item_key: String,
+    pub indexed_generation: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CleanupDebtItem {
+    pub generation: i64,
+    pub item_key: String,
+    pub selector_json: String,
+}
+
+impl CleanupDebtItem {
+    pub fn new(
+        generation: i64,
+        item_key: impl Into<String>,
+        selector_json: impl Into<String>,
+    ) -> Self {
+        Self {
+            generation,
+            item_key: item_key.into(),
+            selector_json: selector_json.into(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ManifestDiff {
     pub added: Vec<ManifestItem>,
     pub modified: Vec<ManifestItem>,
-    pub removed: Vec<String>,
+    pub removed: Vec<StaleManifestItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -85,10 +85,6 @@ const VECTOR_OPTIONS: &[(&str, &str)] = &[
 
 const EMBED_OPTIONS: &[(&str, &str)] = &[
     ("--collection <name>", "Qdrant collection name"),
-    (
-        "--watch",
-        "Attach to SourceLedger refresh progress after registering this local path",
-    ),
     ("--wait <bool>", "Block until the embed job completes"),
     (
         "--batch-concurrency <n>",

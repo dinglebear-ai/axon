@@ -1,4 +1,6 @@
-use crate::{ManifestItem, RefreshPreflight, SourceIdentity, SourceKind, SourceLedgerStore};
+use crate::{
+    CleanupDebtItem, ManifestItem, RefreshPreflight, SourceIdentity, SourceKind, SourceLedgerStore,
+};
 
 #[tokio::test]
 async fn diff_manifest_reports_added_modified_removed_and_unchanged() {
@@ -12,17 +14,56 @@ async fn diff_manifest_reports_added_modified_removed_and_unchanged() {
         .record_manifest_item("source-a", 1, ManifestItem::new("src/lib.rs", "hash-a", 10))
         .await
         .unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            1,
+            ManifestItem::new("README.md", "hash-readme", 10),
+        )
+        .await
+        .unwrap();
     store.commit_generation("source-a", 1).await.unwrap();
 
     let manifest = vec![
         ManifestItem::new("src/lib.rs", "hash-b", 11),
         ManifestItem::new("src/main.rs", "hash-c", 12),
+        ManifestItem::new("README.md", "hash-readme", 10),
     ];
     let diff = store.diff_manifest("source-a", &manifest).await.unwrap();
 
     assert_eq!(diff.modified[0].item_key, "src/lib.rs");
     assert_eq!(diff.added[0].item_key, "src/main.rs");
-    assert_eq!(diff.removed, vec!["src/lib.rs".to_string()]);
+    assert_eq!(diff.removed[0].item_key, "src/lib.rs");
+    assert_eq!(diff.removed[0].indexed_generation, 1);
+    assert!(!diff.removed.iter().any(|item| item.item_key == "README.md"));
+}
+
+#[tokio::test]
+async fn failed_pending_generation_preserves_committed_baseline() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    store.ensure_source(&source).await.unwrap();
+    store
+        .record_manifest_item("source-a", 1, ManifestItem::new("src/lib.rs", "hash-a", 10))
+        .await
+        .unwrap();
+    store.commit_generation("source-a", 1).await.unwrap();
+    store
+        .record_manifest_item("source-a", 2, ManifestItem::new("src/lib.rs", "hash-b", 11))
+        .await
+        .unwrap();
+
+    let diff = store
+        .diff_manifest("source-a", &[ManifestItem::new("src/lib.rs", "hash-a", 10)])
+        .await
+        .unwrap();
+
+    assert!(diff.added.is_empty());
+    assert!(diff.modified.is_empty());
+    assert!(diff.removed.is_empty());
 }
 
 #[tokio::test]
@@ -43,4 +84,152 @@ async fn preflight_backoff_blocks_generation_allocation() {
         RefreshPreflight::BackingOff { .. }
     ));
     assert_eq!(store.max_generation("source-a").await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn owner_guarded_commit_fails_after_lease_is_lost() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    assert!(store.acquire_lease(&source, "owner-a", 1).await.unwrap());
+    store.release_lease("source-a", "owner-a").await.unwrap();
+    assert!(
+        store
+            .acquire_lease(&source, "owner-b", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store.begin_generation(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            generation,
+            ManifestItem::new("src/lib.rs", "hash", 10),
+        )
+        .await
+        .unwrap();
+
+    let err = store
+        .commit_generation_for_owner("source-a", generation, "owner-a")
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("lease"),
+        "owner mismatch must fail clearly: {err}"
+    );
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        0
+    );
+}
+
+#[tokio::test]
+async fn release_lease_fails_when_owner_is_lost() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+
+    let err = store
+        .release_lease("source-a", "owner-b")
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("no longer owned"),
+        "lost ownership should be visible: {err}"
+    );
+}
+
+#[tokio::test]
+async fn payload_commit_atomically_commits_manifest_and_cleanup_debt() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store.begin_generation(&source).await.unwrap();
+
+    store
+        .commit_generation_payload_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-a", 10)],
+            &[CleanupDebtItem::new(
+                3,
+                "src/old.rs",
+                r#"{"kind":"source_cleanup_v1"}"#,
+            )],
+        )
+        .await
+        .unwrap();
+
+    let status = store.source_status("source-a").await.unwrap();
+    assert_eq!(status.committed_generation, generation);
+    assert_eq!(status.cleanup_debt_count, 1);
+    let diff = store
+        .diff_manifest("source-a", &[ManifestItem::new("src/lib.rs", "hash-a", 10)])
+        .await
+        .unwrap();
+    assert_eq!(diff, Default::default());
+}
+
+#[tokio::test]
+async fn abort_generation_removes_pending_rows_and_restores_max_generation() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store.begin_generation(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            generation,
+            ManifestItem::new("src/lib.rs", "hash-a", 10),
+        )
+        .await
+        .unwrap();
+
+    store
+        .abort_generation_for_owner("source-a", generation, "owner-a")
+        .await
+        .unwrap();
+
+    let status = store.source_status("source-a").await.unwrap();
+    assert_eq!(status.committed_generation, 0);
+    assert_eq!(status.active_generation, None);
+    assert_eq!(store.max_generation("source-a").await.unwrap(), 0);
+    let diff = store
+        .diff_manifest("source-a", &[ManifestItem::new("src/lib.rs", "hash-a", 10)])
+        .await
+        .unwrap();
+    assert_eq!(diff.added[0].item_key, "src/lib.rs");
 }

@@ -1,6 +1,6 @@
 use crate::crawl_sync::{
-    chrome_fallback::plan_chrome_fallback, crawl_manifest_to_ledger_items,
-    crawl_sync_effective_config,
+    chrome_fallback::plan_chrome_fallback, crawl_changed_manifest_keys,
+    crawl_manifest_to_ledger_items, crawl_source_identity, crawl_sync_effective_config,
 };
 use axon_core::config::{Config, ScrapeFormat};
 use axon_crawl::engine::CrawlSummary;
@@ -20,6 +20,16 @@ fn config_scrape_format_llm_round_trips() {
     };
     assert_eq!(cfg.format, ScrapeFormat::Llm);
     assert!(cfg.wait);
+}
+
+#[test]
+fn crawl_source_identity_is_collection_scoped() {
+    let source_a = crawl_source_identity("https://example.com/docs", "axon-a");
+    let source_b = crawl_source_identity("https://example.com/docs", "axon-b");
+
+    assert_ne!(source_a.source_id, source_b.source_id);
+    assert_eq!(source_a.source_id, "crawl:axon-a:https://example.com/docs");
+    assert_eq!(source_b.source_id, "crawl:axon-b:https://example.com/docs");
 }
 
 /// When `format` is anything other than `Llm`, the LLM stream pass is skipped.
@@ -142,6 +152,40 @@ async fn crawl_manifest_adapter_uses_url_hash_and_markdown_size()
     assert_eq!(items[0].item_key, "https://example.com/a");
     assert_eq!(items[0].content_hash, "hash-a");
     assert_eq!(items[0].size_bytes, 42);
+    Ok(())
+}
+
+#[tokio::test]
+async fn crawl_changed_manifest_keys_excludes_reused_pages()
+-> Result<(), Box<dyn std::error::Error>> {
+    let manifest = tempfile::NamedTempFile::new()?;
+    tokio::fs::write(
+        manifest.path(),
+        serde_json::json!({
+            "url": "https://example.com/reused",
+            "relative_path": "markdown/reused.md",
+            "markdown_chars": 42,
+            "content_hash": "hash-reused",
+            "changed": false
+        })
+        .to_string()
+            + "\n"
+            + &serde_json::json!({
+                "url": "https://example.com/changed",
+                "relative_path": "markdown/changed.md",
+                "markdown_chars": 50,
+                "content_hash": "hash-changed",
+                "changed": true
+            })
+            .to_string()
+            + "\n",
+    )
+    .await?;
+
+    let keys = crawl_changed_manifest_keys(manifest.path()).await?;
+
+    assert_eq!(keys.len(), 1);
+    assert!(keys.contains("https://example.com/changed"));
     Ok(())
 }
 
