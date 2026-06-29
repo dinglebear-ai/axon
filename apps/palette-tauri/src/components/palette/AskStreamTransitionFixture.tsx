@@ -116,6 +116,20 @@ const fixtureSuggestions: ChatSuggestion[] = [
     snippet: "Use @plugin-creator to scaffold plugin files and package metadata.",
     score: 0.874,
   },
+  {
+    rank: 3,
+    title: "Plugin manifest reference",
+    url: "https://developers.openai.com/codex/plugin-manifest",
+    snippet: "Declare commands, skills, hooks, agents, and marketplace metadata in plugin.json.",
+    score: 0.831,
+  },
+  {
+    rank: 4,
+    title: "Local plugin workflow",
+    url: "https://developers.openai.com/codex/local-plugins",
+    snippet: "Iterate locally with a plugin directory, reload plugins, and validate the package before sharing.",
+    score: 0.802,
+  },
 ];
 
 export function AskStreamTransitionFixture() {

@@ -149,7 +149,33 @@ describe("AskConversation", () => {
 
     expect(onSuggestMessage).toHaveBeenCalledWith("how do hooks work?");
     expect(await screen.findByText("Claude Code hooks")).toBeInTheDocument();
-    expect(screen.getByText("https://docs.example/hooks")).toBeInTheDocument();
+    const sourceLink = screen.getByRole("link", { name: /Claude Code hooks/ });
+    expect(sourceLink).toHaveAttribute("href", "https://docs.example/hooks");
+    expect(screen.getByText("docs.example")).toBeInTheDocument();
     expect(screen.getByText(/Hooks run commands/)).toBeInTheDocument();
+  });
+
+  it("renders icon-only message reactions and edits a message into the composer", () => {
+    const onFollowUp = vi.fn();
+    render(
+      <AskConversation
+        transcript={[
+          { id: "u1", role: "user", content: "how do hooks work?" },
+          { id: "a1", role: "assistant", content: "Hooks run at configured lifecycle points." },
+        ]}
+        onFollowUp={onFollowUp}
+        suggestionsEnabled
+        onSuggestMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Copy user message" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit user message" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Regenerate from user message" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Suggest docs for user message" })).toBeInTheDocument();
+    expect(screen.queryByText("Suggest")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit user message" }));
+    expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toHaveValue("how do hooks work?");
   });
 });

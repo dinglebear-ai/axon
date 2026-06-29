@@ -1,6 +1,9 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CheckCircle2, Paperclip, Send, Sparkles, Wrench, X } from "lucide-react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { Brain, CheckCircle2, Copy, Pencil, Paperclip, RotateCcw, Send, Sparkles, Wrench, X } from "lucide-react";
 
+import { Message, MessageActionButton, MessageContent } from "@/components/aurora/ai/message";
+import { Response } from "@/components/aurora/ai/response";
+import { Source } from "@/components/aurora/ai/source";
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
@@ -15,34 +18,6 @@ type SuggestionState =
   | { status: "loading" }
   | { status: "ready"; rows: ChatSuggestion[] }
   | { status: "error"; message: string };
-
-function hasRichMarkdown(value: string): boolean {
-  return /```|^\s{0,3}#{1,6}\s|^\s{0,3}(?:[-*+]|\d+\.)\s|^\s{0,3}>\s|\n\|.+\|\n|\[[^\]]+\]\([^)]+\)/m.test(value);
-}
-
-function AskAnswerBody({ answer }: { answer: string }) {
-  if (hasRichMarkdown(answer)) {
-    return <MarkdownBody>{answer}</MarkdownBody>;
-  }
-
-  return (
-    <div className="ask-answer-prose">
-      {answer.split(/\n{2,}/).map((paragraph, index) => {
-        const lines = paragraph.split("\n");
-        return (
-          <p key={`${index}-${paragraph.slice(0, 16)}`}>
-            {lines.map((line, lineIndex) => (
-              <span key={`${lineIndex}-${line.slice(0, 16)}`}>
-                {line}
-                {lineIndex < lines.length - 1 ? <br /> : null}
-              </span>
-            ))}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
 
 function SourceStrip({ sources }: { sources?: AskSource[] }) {
   if (!sources?.length) return null;
@@ -103,6 +78,8 @@ export const ConversationThread = memo(function ConversationThread({
   suggestionsEnabled = false,
   suggestionsByTurn = {},
   onSuggestTurn,
+  onEditTurn,
+  onRegenerateTurn,
 }: {
   prompt?: string;
   answer: string;
@@ -112,6 +89,8 @@ export const ConversationThread = memo(function ConversationThread({
   suggestionsEnabled?: boolean;
   suggestionsByTurn?: Record<string, SuggestionState>;
   onSuggestTurn?: (turn: AskTurn) => void;
+  onEditTurn?: (turn: AskTurn) => void;
+  onRegenerateTurn?: (turn: AskTurn) => void;
 }) {
   const threadTurns = useMemo<AskTurn[]>(
     () =>
@@ -140,6 +119,13 @@ export const ConversationThread = memo(function ConversationThread({
     stickToBottom.current = distanceFromBottom < 36;
   }
 
+  function previousUserTurn(turnIndex: number): AskTurn | undefined {
+    for (let index = turnIndex - 1; index >= 0; index -= 1) {
+      if (threadTurns[index]?.role === "user") return threadTurns[index];
+    }
+    return undefined;
+  }
+
   if (reader) {
     return (
       <div className="ask-thread ask-thread-reader aurora-scrollbar">
@@ -158,35 +144,63 @@ export const ConversationThread = memo(function ConversationThread({
 
   return (
     <div ref={threadRef} className="ask-thread aurora-scrollbar" role="group" aria-label="Ask conversation" onScroll={onThreadScroll}>
-      {threadTurns.map((turn) =>
+      {threadTurns.map((turn, turnIndex) =>
         turn.role === "user" ? (
-          <div key={turn.id} className="ask-message ask-message-user">
-            <span>You</span>
-            <p>{turn.content}</p>
-            <ChatMessageActions
-              enabled={suggestionsEnabled}
-              turn={turn}
-              suggestion={suggestionsByTurn[turn.id]}
-              onSuggest={onSuggestTurn}
-            />
-          </div>
+          <Fragment key={turn.id}>
+            <Message
+              role="user"
+              className="ask-message ask-message-user"
+              time="now"
+              actions={(
+                <ChatMessageActions
+                  enabled={suggestionsEnabled}
+                  turn={turn}
+                  suggestion={suggestionsByTurn[turn.id]}
+                  onSuggest={onSuggestTurn}
+                  onEdit={onEditTurn}
+                  onRegenerate={onRegenerateTurn}
+                />
+              )}
+            >
+              <MessageContent tone="user">
+                <p>{turn.content}</p>
+              </MessageContent>
+            </Message>
+            <ChatSuggestionPanel align="end" suggestion={suggestionsByTurn[turn.id]} />
+          </Fragment>
         ) : (
-          <div key={turn.id} className="ask-message ask-message-assistant">
-            <span className="ask-assistant-avatar" aria-label="Axon">
-              <AxonMark size={18} />
-            </span>
-            <ActivityTrail activities={turn.activities} pending={turn.pending} />
-            <div className="ask-answer">
-              {turn.content ? <AskAnswerBody answer={turn.content} /> : <span className="ask-waiting">{waiting}</span>}
-            </div>
-            <SourceStrip sources={turn.sources} />
-            <ChatMessageActions
-              enabled={suggestionsEnabled}
-              turn={turn}
-              suggestion={suggestionsByTurn[turn.id]}
-              onSuggest={onSuggestTurn}
-            />
-          </div>
+          <Fragment key={turn.id}>
+            <Message
+              role="assistant"
+              className="ask-message ask-message-assistant"
+              time="now"
+              actions={(
+                <ChatMessageActions
+                  enabled={suggestionsEnabled}
+                  turn={turn}
+                  suggestion={suggestionsByTurn[turn.id]}
+                  onSuggest={onSuggestTurn}
+                  onEdit={onEditTurn}
+                  onRegenerate={() => {
+                    const userTurn = previousUserTurn(turnIndex);
+                    onRegenerateTurn?.(userTurn ?? turn);
+                  }}
+                />
+              )}
+            >
+              <span className="ask-assistant-avatar" aria-label="Axon">
+                <AxonMark size={18} />
+              </span>
+              <div className="ask-assistant-stack">
+                <ActivityTrail activities={turn.activities} pending={turn.pending} />
+                <MessageContent tone="assistant" streaming={Boolean(turn.pending)}>
+                  {turn.content ? <Response markdown={turn.content} streaming={Boolean(turn.pending)} /> : <span className="ask-waiting">{waiting}</span>}
+                </MessageContent>
+                <SourceStrip sources={turn.sources} />
+              </div>
+            </Message>
+            <ChatSuggestionPanel align="start" suggestion={suggestionsByTurn[turn.id]} />
+          </Fragment>
         ),
       )}
     </div>
@@ -198,71 +212,80 @@ function ChatMessageActions({
   turn,
   suggestion,
   onSuggest,
+  onEdit,
+  onRegenerate,
 }: {
   enabled: boolean;
   turn: AskTurn;
   suggestion?: SuggestionState;
   onSuggest?: (turn: AskTurn) => void;
+  onEdit?: (turn: AskTurn) => void;
+  onRegenerate?: (turn: AskTurn) => void;
 }) {
-  if (!enabled || turn.pending || !turn.content.trim() || !onSuggest) return null;
+  if (turn.pending || !turn.content.trim()) return null;
   const loading = suggestion?.status === "loading";
   return (
     <div className="chat-message-tools">
-      <Button
-        variant="plain"
-        size="unstyled"
-        className="chat-message-tool"
-        type="button"
-        onClick={() => onSuggest(turn)}
-        disabled={loading}
-        aria-label={`Suggest docs for ${turn.role} message`}
-        title="Suggest relevant docs"
+      <MessageActionButton
+        onClick={() => void navigator.clipboard?.writeText(turn.content).catch(() => {})}
+        aria-label={`Copy ${turn.role} message`}
+        title="Copy"
       >
-        <Sparkles size={12} strokeWidth={1.9} />
-        <span>{loading ? "Searching" : "Suggest"}</span>
-      </Button>
-      <ChatSuggestionPanel suggestion={suggestion} />
+        <Copy size={13} strokeWidth={1.8} aria-hidden="true" />
+      </MessageActionButton>
+      {onEdit ? (
+        <MessageActionButton onClick={() => onEdit(turn)} aria-label={`Edit ${turn.role} message`} title="Edit">
+          <Pencil size={13} strokeWidth={1.8} aria-hidden="true" />
+        </MessageActionButton>
+      ) : null}
+      {onRegenerate ? (
+        <MessageActionButton onClick={() => onRegenerate(turn)} aria-label={`Regenerate from ${turn.role} message`} title="Regenerate">
+          <RotateCcw size={13} strokeWidth={1.8} aria-hidden="true" />
+        </MessageActionButton>
+      ) : null}
+      {enabled && onSuggest ? (
+        <MessageActionButton
+          className="chat-message-tool"
+          onClick={() => onSuggest(turn)}
+          disabled={loading}
+          aria-label={`Suggest docs for ${turn.role} message`}
+          title={loading ? "Searching indexed docs" : "Suggest relevant docs"}
+        >
+          <Sparkles size={13} strokeWidth={1.8} aria-hidden="true" />
+        </MessageActionButton>
+      ) : null}
     </div>
   );
 }
 
-function ChatSuggestionPanel({ suggestion }: { suggestion?: SuggestionState }) {
+function ChatSuggestionPanel({ align = "start", suggestion }: { align?: "start" | "end"; suggestion?: SuggestionState }) {
   if (!suggestion) return null;
   if (suggestion.status === "loading") {
     return (
-      <div className="chat-suggestion-panel" role="status">
+      <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`} role="status">
         Searching indexed docs...
       </div>
     );
   }
   if (suggestion.status === "error") {
     return (
-      <div className="chat-suggestion-panel chat-suggestion-error" role="alert">
+      <div className={`chat-suggestion-panel chat-suggestion-panel-${align} chat-suggestion-error`} role="alert">
         {suggestion.message}
       </div>
     );
   }
   if (suggestion.rows.length === 0) {
-    return <div className="chat-suggestion-panel">No indexed docs matched this message.</div>;
+    return <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`}>No indexed docs matched this message.</div>;
   }
   return (
-    <div className="chat-suggestion-panel" aria-label="Suggested docs">
+    <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`} aria-label="Suggested docs">
       {suggestion.rows.map((row) => (
-        <a
+        <Source
           key={`${row.url ?? row.title}-${row.rank}`}
           className="chat-suggestion-row"
-          href={row.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-disabled={row.url ? undefined : true}
-        >
-          <span>
-            <strong>{row.title}</strong>
-            {row.url ? <small>{row.url}</small> : null}
-          </span>
-          {row.snippet ? <p>{row.snippet}</p> : null}
-          {row.score !== undefined ? <code>{row.score.toFixed(3)}</code> : null}
-        </a>
+          source={{ title: row.title, href: row.url, description: row.snippet, badge: row.score !== undefined ? row.score.toFixed(3) : undefined }}
+          index={row.rank}
+        />
       ))}
     </div>
   );
@@ -379,6 +402,18 @@ export const AskConversation = memo(function AskConversation({
     }
   }
 
+  function editTurn(turn: AskTurn) {
+    setSelectedSlashAction(null);
+    setDraft(turn.content);
+  }
+
+  function regenerateTurn(turn: AskTurn) {
+    const value = turn.content.trim();
+    if (!value || pending) return;
+    setDraft("");
+    onFollowUp(value);
+  }
+
   return (
     <div className="ask-body">
       <ConversationThread
@@ -388,6 +423,8 @@ export const AskConversation = memo(function AskConversation({
         suggestionsEnabled={suggestionsEnabled && Boolean(onSuggestMessage)}
         suggestionsByTurn={suggestionsByTurn}
         onSuggestTurn={suggestTurn}
+        onEditTurn={editTurn}
+        onRegenerateTurn={regenerateTurn}
       />
       <form
         className="ask-compose"
