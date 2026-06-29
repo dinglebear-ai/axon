@@ -2620,11 +2620,9 @@ textarea {
 }
 
 .ask-activity-row small {
-  overflow: hidden;
   color: var(--aurora-text-muted);
   font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .ask-activity-row:not(:has(small)) {
