@@ -221,7 +221,7 @@ export const AskConversation = memo(function AskConversation({
         <Button
           variant="plain"
           size="unstyled"
-          className="command-submit command-submit-rose disabled:opacity-100"
+          className={`command-submit command-submit-rose${canSend ? " command-submit-armed" : ""} disabled:opacity-100`}
           type="submit"
           disabled={!canSend}
           aria-label="Send follow-up"
