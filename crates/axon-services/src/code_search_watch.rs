@@ -6,7 +6,6 @@ use crate::context::ServiceContext;
 use crate::query;
 use crate::types::CodeSearchCaller;
 use anyhow::Result;
-use axon_code_index::ReindexProgressSink;
 use axon_core::config::CodeSearchWatchConfig;
 use notify::Watcher;
 use std::collections::BTreeMap;
@@ -15,7 +14,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-pub use axon_code_index::ReindexProgress;
+pub use axon_code_index::{ReindexProgress, ReindexProgressSink};
 pub use event::{
     CodeSearchWatchDryRunPlan, CodeSearchWatchDryRunRoot, CodeSearchWatchEvent,
     CodeSearchWatchEventSink,
