@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CheckCircle2, Paperclip, Send, Sparkles, Wrench } from "lucide-react";
+import { Brain, CheckCircle2, Paperclip, Send, Sparkles, Wrench, X } from "lucide-react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
@@ -8,6 +8,7 @@ import { AxonMark } from "@/components/palette/AxonMark";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
+import { sortActionsByRelevance } from "@/lib/paletteView";
 import type { AskActivity, AskSource, AskTurn, ChatSuggestion } from "@/lib/runState";
 
 type SuggestionState =
@@ -289,14 +290,15 @@ export const AskConversation = memo(function AskConversation({
 }) {
   const [draft, setDraft] = useState("");
   const [selectedCommand, setSelectedCommand] = useState(0);
+  const [selectedSlashAction, setSelectedSlashAction] = useState<PaletteAction | null>(null);
   const [suggestionsByTurn, setSuggestionsByTurn] = useState<Record<string, SuggestionState>>({});
   const canSend = draft.trim().length > 0 && !pending;
-  const slashQuery = draft.startsWith("/") ? draft.slice(1).trimStart() : null;
+  const slashQuery = !selectedSlashAction && draft.startsWith("/") ? draft.slice(1).trimStart() : null;
   const slashMenuOpen = slashQuery !== null && !pending && Boolean(onRunAction);
   const slashCommands = useMemo(() => {
     if (slashQuery === null) return [];
     const needle = slashQuery.split(/\s+/, 1)[0]?.toLowerCase() ?? "";
-    return ACTIONS.filter((action) => {
+    return sortActionsByRelevance(ACTIONS.filter((action) => {
       if (action.subcommand === "chat" || action.subcommand === "ask") return false;
       if (!needle) return true;
       const meta = actionDisplayMeta(action);
@@ -306,7 +308,7 @@ export const AskConversation = memo(function AskConversation({
         meta.label.toLowerCase().includes(needle) ||
         action.aliases.some((alias) => alias.toLowerCase().includes(needle))
       );
-    }).slice(0, 10);
+    }), needle).slice(0, 10);
   }, [slashQuery]);
   const clampedSelectedCommand = Math.min(selectedCommand, Math.max(slashCommands.length - 1, 0));
 
@@ -314,12 +316,27 @@ export const AskConversation = memo(function AskConversation({
     setSelectedCommand(0);
   }, [slashQuery]);
 
+  function resetSlashAction() {
+    setSelectedSlashAction(null);
+    setDraft("");
+  }
+
+  function selectSlashCommand(action: PaletteAction, argument: string) {
+    if (action.argMode === "none") {
+      runSlashCommand(action, "");
+      return;
+    }
+    setSelectedSlashAction(action);
+    setDraft(argument.trimStart());
+  }
+
   function runSlashCommand(action: PaletteAction, argument: string) {
     if (!onRunAction) return;
     if (action.argMode !== "none" && !argument.trim()) {
-      setDraft(`/${action.subcommand} `);
+      selectSlashCommand(action, "");
       return;
     }
+    setSelectedSlashAction(null);
     setDraft("");
     onRunAction(action.subcommand, argument.trim());
   }
@@ -327,6 +344,10 @@ export const AskConversation = memo(function AskConversation({
   function submitDraft() {
     const value = draft.trim();
     if (!value || pending) return;
+    if (selectedSlashAction) {
+      runSlashCommand(selectedSlashAction, value);
+      return;
+    }
     if (value.startsWith("/") && onRunAction) {
       const [token = "", ...rest] = value.slice(1).trim().split(/\s+/);
       const normalizedToken = token.toLowerCase();
@@ -334,7 +355,11 @@ export const AskConversation = memo(function AskConversation({
         (candidate) => candidate.subcommand === normalizedToken || candidate.aliases.some((alias) => alias.toLowerCase() === normalizedToken),
       );
       if (action && action.subcommand !== "ask" && action.subcommand !== "chat") {
-        runSlashCommand(action, rest.join(" "));
+        if (rest.length === 0 && action.argMode !== "none") {
+          selectSlashCommand(action, "");
+        } else {
+          runSlashCommand(action, rest.join(" "));
+        }
         return;
       }
     }
@@ -389,7 +414,7 @@ export const AskConversation = memo(function AskConversation({
                   onMouseEnter={() => setSelectedCommand(index)}
                   onClick={() => {
                     const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
-                    runSlashCommand(action, argument);
+                    selectSlashCommand(action, argument);
                   }}
                 >
                   <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
@@ -415,12 +440,38 @@ export const AskConversation = memo(function AskConversation({
           <Paperclip size={18} strokeWidth={1.75} />
         </Button>
         <div className="ask-compose-input">
+          {selectedSlashAction ? (
+            <Button
+              variant="plain"
+              size="unstyled"
+              className={`ask-action-chip ask-action-chip-${selectedSlashAction.tone}`}
+              type="button"
+              onClick={resetSlashAction}
+              aria-label={`Clear ${actionDisplayMeta(selectedSlashAction).label} selection`}
+              title={`/${selectedSlashAction.subcommand}`}
+            >
+              {(() => {
+                const Icon = actionIcon(selectedSlashAction.subcommand);
+                return <Icon size={14} strokeWidth={1.85} aria-hidden="true" />;
+              })()}
+              <span>{actionDisplayMeta(selectedSlashAction).label}</span>
+              <X size={12} strokeWidth={1.9} aria-hidden="true" />
+            </Button>
+          ) : null}
           <Input
             unstyled
             value={draft}
             disabled={pending}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              if (selectedSlashAction && event.target.value.startsWith("/")) setSelectedSlashAction(null);
+            }}
             onKeyDown={(event) => {
+              if (selectedSlashAction && event.key === "Escape") {
+                event.preventDefault();
+                resetSlashAction();
+                return;
+              }
               if (!slashMenuOpen || slashCommands.length === 0) return;
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -428,16 +479,21 @@ export const AskConversation = memo(function AskConversation({
               } else if (event.key === "ArrowUp") {
                 event.preventDefault();
                 setSelectedCommand((index) => Math.max(index - 1, 0));
-              } else if (event.key === "Tab" || event.key === "Enter") {
+              } else if (event.key === "Tab") {
                 event.preventDefault();
                 const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
-                runSlashCommand(slashCommands[clampedSelectedCommand], argument);
+                selectSlashCommand(slashCommands[clampedSelectedCommand], argument);
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
+                if (argument.trim()) runSlashCommand(slashCommands[clampedSelectedCommand], argument);
+                else selectSlashCommand(slashCommands[clampedSelectedCommand], argument);
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 setDraft("");
               }
             }}
-            placeholder={pending ? "Waiting for response..." : "Ask a follow-up..."}
+            placeholder={pending ? "Waiting for response..." : selectedSlashAction ? selectedSlashAction.example.replace(new RegExp(`^${selectedSlashAction.subcommand}\\s*`, "i"), "") : "Ask a follow-up..."}
             aria-label="Ask a follow-up"
           />
         </div>

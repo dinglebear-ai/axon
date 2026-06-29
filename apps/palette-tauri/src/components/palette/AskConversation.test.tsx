@@ -96,6 +96,33 @@ describe("AskConversation", () => {
     expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
   });
 
+  it("selects slash commands into an action chip with Tab", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scr" } });
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(screen.queryByRole("listbox", { name: "Palette commands" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Scrape selection" })).toBeInTheDocument();
+    expect(input).toHaveValue("");
+    expect(onRunAction).not.toHaveBeenCalled();
+  });
+
+  it("runs the selected slash command chip with the prompt input", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scrape" } });
+    fireEvent.click(screen.getByRole("option", { name: /Scrape/i }));
+    fireEvent.change(input, { target: { value: "https://example.com" } });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
+  });
+
   it("shows chat message suggestions from indexed docs", async () => {
     const onSuggestMessage = vi.fn().mockResolvedValue([
       {

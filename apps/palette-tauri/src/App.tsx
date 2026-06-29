@@ -19,6 +19,8 @@ import {
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient, executeAction } from "@/lib/axonClient";
+import { appendAskPendingTurn, completeLastAssistantTurn } from "@/lib/askTranscript";
+import { chatToolMessage } from "@/lib/chatToolActions";
 import { outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
@@ -523,12 +525,72 @@ export default function App() {
   const onCopy = useCallback((text: string) => void copyOutput(text), [copyOutput]);
   const onRetry = useCallback(() => active && void submit(active), [active, submit]);
   const onFollowUp = useCallback((text: string) => {
-    const askAction = ACTIONS.find((action) => action.subcommand === "ask");
-    if (!askAction) return;
-    dispatchView({ type: "enterModeForRun", action: askAction });
+    const conversationAction = active?.subcommand === "chat" ? active : ACTIONS.find((action) => action.subcommand === "ask");
+    if (!conversationAction) return;
+    dispatchView({ type: "enterModeForRun", action: conversationAction });
     setQuery(text);
-    void submit(askAction, text);
-  }, [submit]);
+    void submit(conversationAction, text);
+  }, [active, submit]);
+  const onConversationRunAction = useCallback((subcommand: string, argument: string) => {
+    if (active?.subcommand !== "chat") {
+      onRunAction(subcommand, argument);
+      return;
+    }
+    const action = ACTIONS.find((candidate) => candidate.subcommand === subcommand);
+    if (!action) return;
+    const selectedAction = action;
+    const requestId = `chat-tool:${Date.now()}`;
+    const commandLine = `/${selectedAction.subcommand}${argument ? ` ${argument}` : ""}`;
+    const previousTranscript = "transcript" in run ? run.transcript : undefined;
+    const pendingTranscript = appendAskPendingTurn(previousTranscript, commandLine, requestId);
+    setRun((current) =>
+      "transcript" in current
+        ? {
+            ...current,
+            transcript: pendingTranscript,
+          }
+        : current,
+    );
+
+    async function runTool() {
+      if (selectedAction.subcommand === "help") {
+        const helpRun = buildHelpRun(undefined, argument.trim() || undefined);
+        setRun((current) =>
+          "transcript" in current
+            ? { ...current, transcript: completeLastAssistantTurn(pendingTranscript, helpRun.text) }
+            : current,
+        );
+        return;
+      }
+      if (selectedAction.kind === "local") return;
+      if (!client || !config) {
+        setRun((current) =>
+          "transcript" in current
+            ? {
+                ...current,
+                transcript: completeLastAssistantTurn(
+                  pendingTranscript,
+                  "Axon is not connected. Configure a server URL and token in Settings, then try again.",
+                ),
+              }
+            : current,
+        );
+        return;
+      }
+      const result = await executeAction(client, selectedAction, argument, config);
+      const message = chatToolMessage(selectedAction, argument, result);
+      setRun((current) =>
+        "transcript" in current
+          ? {
+              ...current,
+              transcript: completeLastAssistantTurn(pendingTranscript, message),
+            }
+          : current,
+      );
+    }
+
+    void runTool();
+  }, [active, client, config, onRunAction, run]);
   const onSuggestMessage = useCallback(async (message: string): Promise<ChatSuggestion[]> => {
     if (!client || !config) throw new Error("Axon is not connected.");
     const queryAction = ACTIONS.find((action): action is RemotePaletteAction => action.subcommand === "query" && action.kind !== "local");
@@ -563,7 +625,7 @@ export default function App() {
     expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, hideCommandBar, history, historyFocusRef, historyOpen,
     askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs,
     onBack: goBackToBrowse, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown,
-    onAskSessionsOpenChange: setAskSessionsOpen, onOpenJob, onReset, onResumeAskSession, onRetry, onRunAction, onSaveSettings: () => {
+    onAskSessionsOpenChange: setAskSessionsOpen, onOpenJob, onReset, onResumeAskSession, onRetry, onRunAction: onConversationRunAction, onSaveSettings: () => {
       setPendingConfirmation(null);
       void saveSettings();
     }, onSubmitAction, onSuggestMessage, onSwitcherOpenChange: setActionSwitcherOpen,

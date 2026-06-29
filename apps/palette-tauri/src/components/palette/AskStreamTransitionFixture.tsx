@@ -80,6 +80,27 @@ const chatRun: RunState = {
   ],
 };
 
+const chatToolRun: RunState = {
+  ...chatRun,
+  transcript: [
+    ...(chatRun.transcript ?? []),
+    { id: "tool-u1", role: "user", content: "/crawl https://developers.openai.com/codex" },
+    {
+      id: "tool-a1",
+      role: "assistant",
+      content: [
+        "### Crawl queued",
+        "",
+        "- Command: `/crawl https://developers.openai.com/codex`",
+        "- Request: `POST /v1/crawl`",
+        "- HTTP: 202",
+        "- Job id: `crawl_01JZ0PALETTE`",
+        "- Status: queued",
+      ].join("\n"),
+    },
+  ],
+};
+
 const fixtureSuggestions: ChatSuggestion[] = [
   {
     rank: 1,
@@ -100,8 +121,9 @@ const fixtureSuggestions: ChatSuggestion[] = [
 export function AskStreamTransitionFixture() {
   const state = new URLSearchParams(window.location.search).get("state");
   const chatMode = state === "chat";
-  const run = chatMode ? chatRun : state === "streaming" ? streamingRun : completeRun;
-  const active = chatMode ? chatAction : askAction;
+  const chatToolMode = state === "chat-tool";
+  const run = chatToolMode ? chatToolRun : chatMode ? chatRun : state === "streaming" ? streamingRun : completeRun;
+  const active = chatMode || chatToolMode ? chatAction : askAction;
   if (!active) return null;
   return (
     <main className="fixture-shell fixture-shell-ask">
