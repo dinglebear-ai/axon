@@ -6,12 +6,12 @@ use axon_core::config::{CommandKind, Config, parse_args};
 use axon_core::logging::{init_tracing, log_done, log_info, log_warn};
 use axon_services::context::ServiceContext;
 use commands::{
-    run_ask, run_brand, run_code_search, run_code_search_watch, run_completions, run_config,
-    run_crawl, run_debug, run_dedupe, run_diff, run_doctor, run_domains, run_embed, run_endpoints,
-    run_evaluate, run_extract, run_fresh, run_ingest, run_map, run_mcp, run_memory, run_migrate,
-    run_monitor, run_palette, run_purge, run_query, run_refresh, run_research, run_retrieve,
-    run_scrape, run_screenshot, run_search, run_serve, run_sessions, run_setup, run_sources,
-    run_stats, run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
+    run_ask, run_brand, run_code_search, run_completions, run_config, run_crawl, run_debug,
+    run_dedupe, run_diff, run_doctor, run_domains, run_embed, run_endpoints, run_evaluate,
+    run_extract, run_fresh, run_ingest, run_map, run_mcp, run_memory, run_migrate, run_monitor,
+    run_palette, run_purge, run_query, run_refresh, run_research, run_retrieve, run_scrape,
+    run_screenshot, run_search, run_serve, run_sessions, run_setup, run_sources, run_stats,
+    run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
     start_url_from_cfg,
 };
 use std::error::Error;
@@ -49,7 +49,6 @@ async fn run_once(
         CommandKind::Doctor => run_doctor(cfg).await?,
         CommandKind::Query => run_query(cfg).await?,
         CommandKind::CodeSearch => run_code_search(cfg, service_context).await?,
-        CommandKind::CodeSearchWatch => run_code_search_watch(cfg, service_context).await?,
         CommandKind::Retrieve => run_retrieve(cfg).await?,
         CommandKind::Ask => run_ask(cfg).await?,
         CommandKind::Summarize => run_summarize(cfg).await?,

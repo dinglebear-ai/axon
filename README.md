@@ -135,6 +135,21 @@ OAuth mode also requires
 
 The warm-path setup goal is under 2 minutes once images and model weights are cached. Cold starts that pull images and model weights can take longer; target-hardware timing still needs to be measured against published release artifacts.
 
+## Local Indexing
+
+Use `axon embed /path` to register local mutable files with SourceLedger and
+write their vectors to Qdrant. SourceLedger tracks generations, cleanup debt,
+and dependency backoff in the same SQLite runtime DB as Axon jobs.
+
+For a foreground watcher, use:
+
+```bash
+axon embed /path --watch
+```
+
+The removed `code-search-watch` command now exits as a tombstone; use
+`embed --watch` for local code indexing refresh progress.
+
 ## Docker Stack
 
 The production compose file starts:
