@@ -1192,18 +1192,33 @@ textarea {
 }
 
 .settings-footer {
-  gap: 10px;
-  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "test meta actions"
+    "error error error";
+  column-gap: 10px;
+  row-gap: 5px;
+  align-items: center;
+  min-height: 72px;
   padding: 12px var(--settings-pad);
   border-top: 1px solid var(--aurora-border-default);
 }
 
+.settings-footer > button:first-child {
+  grid-area: test;
+}
+
 .settings-footer-meta {
+  grid-area: meta;
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--aurora-text-muted);
   font-size: 10.5px;
 }
 
 .settings-connection-result {
+  grid-area: meta;
   display: inline-flex;
   min-width: 0;
   max-width: min(460px, 45vw);
@@ -1317,16 +1332,18 @@ textarea {
 }
 
 .settings-error {
+  grid-area: error;
   min-width: 0;
-  overflow: hidden;
   color: var(--aurora-error-foreground);
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .settings-footer-actions {
+  grid-area: actions;
   display: flex;
+  flex: 0 0 auto;
   gap: 10px;
   margin-left: auto;
 }
