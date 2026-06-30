@@ -3,7 +3,11 @@ Last Modified: 2026-06-09
 
 The async-job state machine for axon. Jobs use SQLite persistence and in-process tokio workers; there is no message broker, Postgres, or Redis runtime.
 
-For module layout, helper-function index, and the `JobBackend` / `ServiceJobRuntime` distinction, see [`src/jobs/CLAUDE.md`](../../src/jobs/CLAUDE.md) and [`src/services/CLAUDE.md`](../../src/services/CLAUDE.md).
+> Current runtime only. The #298 target replaces the four family-specific job
+> tables with the unified source job model in
+> [`../pipeline-unification/runtime/job-contract.md`](../pipeline-unification/runtime/job-contract.md).
+
+For module layout, helper-function index, and the `JobBackend` / `ServiceJobRuntime` distinction, see [`../../crates/axon-jobs/src/CLAUDE.md`](../../crates/axon-jobs/src/CLAUDE.md) and [`../../crates/axon-services/src/CLAUDE.md`](../../crates/axon-services/src/CLAUDE.md).
 
 ## Table of Contents
 
@@ -24,14 +28,14 @@ For module layout, helper-function index, and the `JobBackend` / `ServiceJobRunt
 
 Four async job families are persisted in SQLite and processed by in-process workers spawned by `SqliteJobBackend::new_with_workers`:
 
-- **Crawl** — site/URL crawling (`src/jobs/workers/runners/crawl.rs`)
-- **Extract** — LLM structured extraction (`src/jobs/workers/runners/extract.rs`)
-- **Embed** — TEI embedding + Qdrant upsert (`src/jobs/workers/runners/embed.rs`)
-- **Ingest** — GitHub / Reddit / YouTube / sessions (`src/jobs/workers/runners/ingest.rs`)
+- **Crawl** — site/URL crawling (`crates/axon-jobs/src/workers/runners/crawl.rs`)
+- **Extract** — LLM structured extraction (`crates/axon-jobs/src/workers/runners/extract.rs`)
+- **Embed** — TEI embedding + Qdrant upsert (`crates/axon-jobs/src/workers/runners/embed.rs`)
+- **Ingest** — GitHub / GitLab / Gitea / Git / RSS / Reddit / YouTube / sessions (`crates/axon-jobs/src/workers/runners/ingest.rs`)
 
 Refresh and graph job runners were removed with the legacy queue runtime. No migration, `JobKind`, runner, or service code creates or references those old tables.
 
-Watch (recurring scheduler) is **not** part of `JobBackend`/`JobKind`. It is a separate SQLite-backed scheduler in `src/jobs/watch.rs` whose CRUD shim lives in `src/services/watch.rs`. It dispatches into the four queues above when a watch fires.
+Watch (recurring scheduler) is **not** part of `JobBackend`/`JobKind`. It is a separate SQLite-backed scheduler in `crates/axon-jobs/src/watch.rs` whose CRUD shim lives in `crates/axon-services/src/watch.rs`. It dispatches into the four queues above when a watch fires.
 
 ## Job Kinds and Tables
 

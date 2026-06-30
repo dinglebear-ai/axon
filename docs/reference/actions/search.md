@@ -20,6 +20,19 @@ Last Updated: 20:29:46 | 03/03/2026 EST
 
 Web search via SearXNG when `AXON_SEARXNG_URL` is configured, otherwise Tavily. Returns ranked results (title, URL, snippet), then auto-enqueues one bounded crawl job per result URL so the hits are indexed into Qdrant. Runs synchronously.
 
+## Related Retrieval Commands
+
+| Command | Meaning |
+|---|---|
+| `search` | External web discovery; current runtime also auto-queues bounded crawl/index jobs for results. |
+| `query` | Ranked semantic search over content already indexed in Qdrant. |
+| `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
+| `ask` | RAG synthesis over indexed context with an LLM answer. |
+
+The #298 source-pipeline target may route durable indexing side effects through
+`axon <source>` rather than preserving `search` auto-indexing as a future
+contract.
+
 ## Synopsis
 
 ```bash

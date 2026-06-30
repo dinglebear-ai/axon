@@ -17,6 +17,15 @@ Parity notes: Uses canonical request DTO and typed query service result.
 
 Semantic vector search against the local Qdrant collection. The command embeds the query with TEI, searches Qdrant, reranks candidates, and returns diversified results with snippets.
 
+## Related Retrieval Commands
+
+| Command | Meaning |
+|---|---|
+| `search` | External web discovery; current runtime also auto-queues bounded crawl/index jobs for results. |
+| `query` | Ranked semantic search over content already indexed in Qdrant. |
+| `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
+| `ask` | RAG synthesis over indexed context with an LLM answer. |
+
 ## Synopsis
 
 ```bash

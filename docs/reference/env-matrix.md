@@ -2,7 +2,10 @@
 
 Generated: 2026-05-15 from source-derived inventory.
 
-**This is the authoritative classification.** Docs/templates are drift outputs.
+**Current snapshot only.** This file is stale-prone and no longer the
+authoritative future config contract. The target `.env`/`config.toml` split is
+tracked in `docs/pipeline-unification/configuration/`; regenerate this matrix
+from the current env registry before treating it as operational truth.
 
 ## Classification Key
 

@@ -1,5 +1,11 @@
 # Axon Architecture
-Last Modified: 2026-06-01
+Last Modified: 2026-06-30
+
+> Current pre-unification architecture. The clean-break target that replaces
+> separate crawl/embed/ingest/code-search lifecycle families with one
+> `SourceRequest -> ... -> CleanupDebt` pipeline lives in
+> [`../pipeline-unification/`](../pipeline-unification/README.md) and GitHub
+> issue #298.
 
 ## Table of Contents
 
@@ -58,13 +64,13 @@ flowchart LR
 
 | Component | Role |
 |---|---|
-| `main.rs` + `lib.rs` | Binary entry and top-level command loop/dispatch |
-| `src/cli/*` | Command handlers and subcommand routing |
-| `src/core/*` | Config parsing, HTTP safety, content transforms, logging |
-| `src/crawl/*` | Crawl engine, render mode strategy, sitemap backfill |
-| `src/jobs/*` | SQLite-backed worker runtime + job state transitions |
-| `src/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
-| `src/core/llm/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
+| `src/main.rs` + `src/lib.rs` | Binary entry and re-export of `axon_cli::run` |
+| `crates/axon-cli/src/*` | Command handlers and subcommand routing |
+| `crates/axon-core/src/*` | Config parsing, HTTP safety, content transforms, logging |
+| `crates/axon-crawl/src/*` | Crawl engine, render mode strategy, sitemap backfill |
+| `crates/axon-jobs/src/*` | SQLite-backed worker runtime + job state transitions |
+| `crates/axon-vector/src/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
+| `crates/axon-core/src/llm/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
 | `docker-compose.prod.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
@@ -104,10 +110,14 @@ sequenceDiagram
 
 Key points:
 
-- Argument schema is defined in `src/core/config/cli.rs` and `src/core/config/cli/global_args.rs`.
-- Parsing/normalization is in `src/core/config/parse.rs`.
-- Effective runtime settings are stored in `src/core/config/types/config.rs::Config`.
-- URL seed handling is consolidated in `src/cli/commands/common.rs` (`parse_urls`, `start_url_from_cfg`).
+- Argument schema is defined in `crates/axon-core/src/config/cli.rs` and
+  `crates/axon-core/src/config/cli/global_args.rs`.
+- Parsing/normalization is under `crates/axon-core/src/config/parse/`.
+- Effective runtime settings are stored in
+  `crates/axon-core/src/config/types/config.rs::Config`.
+- URL seed handling is consolidated in
+  `crates/axon-cli/src/commands/common.rs` (`parse_urls`,
+  `start_url_from_cfg`).
 
 ## Crawl and Content Pipeline
 

@@ -3,6 +3,11 @@
 Status: active
 Last updated: 2026-05-21
 
+> Current payload metadata spec. The #298 target should map vertical extractor
+> outputs into `SourceParseFacts` and `GraphCandidate` records before shared
+> payload construction; this document describes the existing Qdrant payload
+> behavior.
+
 ## Problem
 
 Vertical extractors call provider APIs and produce rich `ScrapedDoc` structs with metadata

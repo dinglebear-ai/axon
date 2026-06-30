@@ -8,6 +8,10 @@ description: Use Axon for RAG, web search, scrape, crawl, extract, ingest, memor
 axon is a self-hosted RAG engine. Two surfaces, same backend
 (Spider.rs/Chrome -> Qdrant, SQLite jobs, SearXNG/Tavily for web search):
 
+> Current pre-#298 skill behavior. The future clean-break source-pipeline
+> contract lives in `docs/pipeline-unification/`; do not treat legacy
+> scrape/crawl/embed/ingest action families as future compatibility aliases.
+
 - **MCP (preferred)** — the Axon MCP server exposes a single tool named `axon`; use the host-generated tool name for the current environment. It is routed by `action` (and `subaction` for lifecycle families). Large results are written to a local artifact file under `~/.axon/artifacts/<context>` and the response returns the file `path` plus a compact `shape` summary; small results (≤ ~8 KB) come back inline. See **Response handling (MCP)** below.
 - **CLI (fallback)** — `axon <command> [flags]`. Use for shell scripting, cron, or when the MCP server is down.
 
@@ -66,6 +70,7 @@ URL or query → discover → fetch + embed → query / ask
 | GitHub / GitLab / Gitea / Git repo | — | `action: "ingest", source_type: "github", target: "owner/repo"` | `query` / `ask` |
 | Reddit thread or subreddit | — | `action: "ingest", source_type: "reddit", target: "r/name"` | `query` / `ask` |
 | YouTube video | — | `action: "ingest", source_type: "youtube", target: "<url>"` | `query` / `ask` |
+| RSS/Atom/JSON feed | — | `action: "ingest", source_type: "rss", target: "<url>"` | `query` / `ask` |
 | Past Claude/Codex/Gemini sessions | — | CLI only: `axon sessions` | `query` / `ask` |
 
 `scrape`, `crawl`, `embed`, and the `ingest` paths all auto-embed unless you set `embed: false`.
@@ -198,16 +203,18 @@ CLI: `axon summarize <url>` / `axon endpoints <url>` / `axon brand <url>` / `axo
 { "action": "ingest", "source_type": "reddit", "target": "https://reddit.com/r/rust/comments/abc123/..." }
 
 { "action": "ingest", "source_type": "youtube", "target": "https://youtube.com/watch?v=abc" }
+{ "action": "ingest", "source_type": "rss",     "target": "https://example.com/feed.xml" }
 ```
 
 > **Note:** `source_type: "sessions"` is **not** accepted over MCP (it's rejected server-side). Ingest local AI sessions with the CLI `axon sessions` instead — see below.
 
-`source_type` ∈ `github | gitlab | gitea | git | reddit | youtube | sessions`:
+`source_type` ∈ `github | gitlab | gitea | git | reddit | youtube | rss | sessions`:
 
 - **`github` / `gitlab` / `gitea`** — hosted-forge repos, indexing code + metadata + issues/PRs (or merge requests). `target` is `owner/repo` (or a full URL for self-hosted instances).
 - **`git`** — any generic Git remote by clone URL (code only, no forge API).
 - **`reddit`** — a subreddit (`r/name`) or a specific thread URL.
 - **`youtube`** — a video URL (transcript ingest).
+- **`rss`** — RSS, Atom, or JSON feed URL. Each feed entry is embedded as a document.
 - **`sessions`** — local Claude/Codex/Gemini session transcripts. **CLI-only** via `axon sessions` (enqueues a local sessions ingest job). The MCP `ingest` action rejects `source_type: "sessions"`; remote callers must use the prepared-documents HTTP endpoint (`/v1/ingest/sessions/prepared`).
 
 Lifecycle subactions (`status`, `cancel`, `list`, `cleanup`, `clear`, `recover`) work the same as crawl/embed/extract.
@@ -260,7 +267,7 @@ CLI: `axon sources` / `axon domains` / `axon stats` / `axon status`.
 
 The server runs in-process, so responses are size-routed automatically: payloads ≤ ~8 KB come back **inline** in `data`; larger ones are written to a local **artifact file** and the response returns its `path` plus a compact `shape` summary. **Read `shape` first** — it usually answers the question (counts, status, the URLs touched).
 
-When you need the *content*, reach for RAG, not the raw file: everything axon fetches is already embedded, so **`ask`** (synthesized answer), **`query`** (semantic chunks), or **`retrieve`** (a specific URL's indexed content) get you what you need without parsing megabytes of JSON/markdown. Open the artifact `path` from disk only as a last resort — e.g. you need the exact raw bytes the RAG path doesn't surface. There is **no `artifacts` MCP action**; don't send `{ "action": "artifacts", ... }`. To force a payload in-band instead of a file, set `response_mode: "inline"` (or `"auto_inline"`).
+When you need the *content*, reach for RAG, not the raw file: everything axon fetches is already embedded, so **`ask`** (synthesized answer), **`query`** (semantic chunks), or **`retrieve`** (a specific URL's indexed content) get you what you need without parsing megabytes of JSON/markdown. Open the artifact `path` from disk only as a last resort — e.g. you need the exact raw bytes the RAG path doesn't surface. There is no current-runtime `artifacts` MCP action; don't send `{ "action": "artifacts", ... }`. The #298 target tracks a future operational artifacts surface. To force a payload in-band instead of a file, set `response_mode: "inline"` (or `"auto_inline"`).
 
 Full response-mode contract and the JSON-RPC error model: [`references/mcp-response-protocol.md`](references/mcp-response-protocol.md).
 

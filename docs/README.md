@@ -2,6 +2,11 @@
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
+> Current runtime docs describe the pre-#298 implementation. The clean-break
+> source-pipeline contracts live in
+> [`pipeline-unification/`](pipeline-unification/README.md) and supersede old
+> command/action/route shapes when that refactor lands.
+
 ## What is Axon
 
 Axon is a trimodal application:
@@ -54,6 +59,12 @@ reviews, plans) live under the history directories at the bottom.
 | [architecture/overview.md](architecture/overview.md) | System architecture diagrams and data flow |
 | [architecture/stack/](architecture/stack/) | Trimodal architecture, technology choices, prerequisites |
 | [architecture/specs/](architecture/specs/) | Feature specifications (vertical extractors, android, active design notes) |
+
+### `pipeline-unification/` — active future contract
+
+| Doc | Description |
+|-----|-------------|
+| [pipeline-unification/](pipeline-unification/README.md) | Clean-break contract packet for the unified source pipeline tracked by GitHub issue #298 |
 
 ### `operations/` — running it in production
 
