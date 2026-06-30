@@ -80,7 +80,7 @@ export function ChatSuggestionPanel({ align = "start", suggestion }: { align?: "
     return <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`}>No indexed docs matched this message.</div>;
   }
   return (
-    <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`} aria-label="Suggested docs">
+    <section className={`chat-suggestion-panel chat-suggestion-panel-${align}`} aria-label="Suggested docs">
       {suggestion.rows.map((row) => (
         <Source
           key={`${row.url ?? row.title}-${row.rank}`}
@@ -89,6 +89,6 @@ export function ChatSuggestionPanel({ align = "start", suggestion }: { align?: "
           index={row.rank}
         />
       ))}
-    </div>
+    </section>
   );
 }
