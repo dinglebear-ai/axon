@@ -414,7 +414,13 @@ export default function App() {
     setPendingConfirmation(null);
     clearSourcesForAction(action);
     dispatchView({ type: "enterMode", action });
-    setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
+    setQuery(
+      parsed.invoked?.subcommand === action.subcommand
+        ? parsed.arg
+        : action.subcommand === "ask" && parsed.search.trim().length > 0 && !actionMatches(action, parsed.search)
+          ? parsed.search
+          : "",
+    );
     setSelected(0);
     setRun({ kind: "idle" });
     focusInput(true);
