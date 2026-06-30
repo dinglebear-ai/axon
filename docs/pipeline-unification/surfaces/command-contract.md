@@ -1,0 +1,780 @@
+# Command Contract
+Last Modified: 2026-06-30
+
+## Contract
+
+This is the target clean-break CLI contract. The current implementation still
+exposes the older command-first surface described below.
+
+The CLI is a first-class transport over the same Axon service contracts as MCP
+and REST. It must not invent alternate semantics, hidden compatibility aliases,
+or CLI-only data paths for source acquisition.
+
+```text
+argv
+  -> CommandParser
+  -> axon-api request DTO
+  -> axon-services
+  -> axon-api result DTO
+  -> human renderer or JSON renderer
+```
+
+The CLI is allowed to provide ergonomic syntax, color, progress bars, and
+terminal affordances. It is not allowed to bypass `axon-api`, `axon-services`,
+`SourceLedger`, `SourceGraph`, `EmbeddingProvider`, or `VectorStore`.
+
+## Design Rules
+
+- `axon <source>` is the source acquisition/indexing happy path.
+- `axon embed`, `axon ingest`, `axon scrape`, `axon crawl`, and
+  `axon code-search-watch` are removed user-facing commands.
+- `axon map <source>` remains a top-level discovery command.
+- `axon watch <source>` remains the explicit watch-management entrypoint.
+- `axon extract` remains top-level for structured LLM extraction.
+- `axon memory` remains top-level for durable memory lifecycle.
+- Search/retrieval/RAG commands remain distinct: `search`, `query`,
+  `retrieve`, and `ask` must not blur.
+- Operational commands call the same service DTOs as REST/MCP.
+- CLI output may be human-friendly, but `--json` output must be strict DTO
+  envelopes with no prose-only fields.
+- No backwards compatibility aliases are required or desired.
+
+## Current Implementation Snapshot
+
+Implemented today:
+
+- `Cli` requires a subcommand; there is no default `axon <source>` parser path.
+- Current implemented subcommands include `scrape`, `crawl`, `embed`, `ingest`,
+  `code-search`, `code-search-watch`, `query`, `retrieve`, `ask`, `search`,
+  `research`, `map`, `watch`, `memory`, `sessions`, `purge`, `dedupe`,
+  `refresh`, `fresh`, `stats`, `sources`, `domains`, `doctor`, `serve`, `mcp`,
+  `config`, `sync`, `update`, and `palette`.
+- Async job subcommands are family-specific for `crawl`, `extract`, `embed`,
+  and `ingest`: `status`, `cancel`, `errors`, `list`, `cleanup`, `clear`,
+  `worker`, and `recover`.
+- `--json` output is command-specific today. For example, `search --json`,
+  `query --json`, and async crawl job output do not share one strict envelope.
+
+Planned by this contract:
+
+- `axon <source>` becomes the acquisition/indexing happy path.
+- `embed`, `ingest`, `scrape`, `crawl`, and `code-search-watch` are removed
+  user-facing commands rather than compatibility aliases.
+- CLI JSON output is rendered from the same `axon-api` envelopes as MCP/REST.
+- Job, watch, artifact, prune, graph, provider, and collection operations move
+  under canonical grouped commands.
+
+## Top-Level Grammar
+
+```text
+axon [global-options] <source> [source-options]
+axon [global-options] map <source> [map-options]
+axon [global-options] watch <source> [watch-options]
+axon [global-options] watch <subcommand> [watch-options]
+axon [global-options] extract <source> --schema <schema> [extract-options]
+axon [global-options] ask <question> [ask-options]
+axon [global-options] query <query> [query-options]
+axon [global-options] retrieve <source-or-url> [retrieve-options]
+axon [global-options] chat <message> [chat-options]
+axon [global-options] evaluate <question> [evaluate-options]
+axon [global-options] suggest [focus] [suggest-options]
+axon [global-options] search <query> [search-options]
+axon [global-options] research <query> [research-options]
+axon [global-options] summarize <source> [summarize-options]
+axon [global-options] endpoints <source> [endpoint-options]
+axon [global-options] brand <source> [brand-options]
+axon [global-options] diff <source-a> <source-b> [diff-options]
+axon [global-options] screenshot <source> [screenshot-options]
+axon [global-options] memory <subcommand> [memory-options]
+axon [global-options] jobs <subcommand> [job-options]
+axon [global-options] artifacts <subcommand> [artifact-options]
+axon [global-options] uploads <subcommand> [upload-options]
+axon [global-options] prune <subcommand> [prune-options]
+axon [global-options] collections <subcommand> [collection-options]
+axon [global-options] graph <subcommand> [graph-options]
+axon [global-options] providers <subcommand> [provider-options]
+axon [global-options] capabilities [options]
+axon [global-options] status [options]
+axon [global-options] doctor [options]
+axon help [topic]
+axon --help
+axon --version
+```
+
+Parser rule: if the first positional token is not a canonical command, removed
+command, or global flag, treat it as `<source>` and route to `SourceRequest`.
+
+## Canonical Command Registry
+
+| Command | DTO Request | DTO Result | Mutates | Async | Purpose |
+|---|---|---|---:|---:|---|
+| `axon <source>` | `SourceRequest` | `SourceResult` | yes | yes | Acquire, normalize, embed, refresh, and optionally watch a source. |
+| `axon map <source>` | `SourceRequest` | `SourceResult` | no | maybe | Discover source items/URLs with `scope=map`, `embed=false`. |
+| `axon watch <source>` | `WatchRequest` | `WatchResult` | yes | no | Create or ensure a watch for a source. |
+| `axon watch <sub>` | `Watch*Request` | `Watch*Result` | yes | maybe | Manage watch lifecycle. |
+| `axon extract <source>` | `ExtractRequest` | `ExtractResult` | artifact/graph optional | yes | Structured LLM extraction. |
+| `axon search <query>` | `SearchRequest` | `SearchResult` | optional | no | External web discovery. |
+| `axon query <query>` | `QueryRequest` | `QueryResult` | no | no | Indexed vector/graph retrieval. |
+| `axon retrieve <source-or-url>` | `RetrievalRequest` | `RetrievalResult` | no | no | Stored content lookup by known identity. |
+| `axon ask <question>` | `AskRequest` | `AskResult` | trace only | maybe | RAG answer from indexed context. |
+| `axon chat <message>` | `ChatRequest` | `ChatResult` | trace only | maybe | Direct LLM chat without retrieval. |
+| `axon evaluate <question>` | `EvaluationRequest` | `EvaluationResult` | trace only | yes | Evaluate RAG answer and baseline. |
+| `axon suggest [focus]` | `SuggestRequest` | `SuggestResult` | no | maybe | Suggest source acquisition targets. |
+| `axon research <query>` | `ResearchRequest` | `ResearchResult` | optional | yes | Web search/fetch/synthesis. |
+| `axon summarize <source>` | `SummarizeRequest` | `SummarizeResult` | artifact only | maybe | Fetch and summarize without indexing by default. |
+| `axon endpoints <source>` | `EndpointDiscoveryRequest` | `EndpointDiscoveryResult` | artifact only | maybe | Discover network/API endpoints. |
+| `axon brand <source>` | `BrandRequest` | `BrandResult` | artifact only | maybe | Extract brand identity assets. |
+| `axon diff <a> <b>` | `DiffRequest` | `DiffResult` | artifact only | maybe | Compare two sources. |
+| `axon screenshot <source>` | `ScreenshotRequest` | `ScreenshotResult` | artifact | maybe | Capture screenshot artifact. |
+| `axon memory <sub>` | `Memory*Request` | `Memory*Result` | yes | maybe | Durable memory lifecycle. |
+| `axon jobs <sub>` | `Job*Request` | `Job*Result` | yes | no | Job status/control. |
+| `axon artifacts <sub>` | `Artifact*Request` | `Artifact*Result` | no | no | Artifact listing/detail/content. |
+| `axon uploads <sub>` | `Upload*Request` | `Upload*Result` | yes | no | Staged uploads. |
+| `axon prune <sub>` | `Prune*Request` | `Prune*Result` | yes | yes | Cleanup, purge, dedupe. |
+| `axon collections <sub>` | `Collection*Request` | `Collection*Result` | maybe | no | Collection listing/detail. |
+| `axon graph <sub>` | `Graph*Request` | `Graph*Result` | no | no | SourceGraph query/resolve/detail. |
+| `axon providers <sub>` | `Provider*Request` | `Provider*Result` | no | no | Provider capabilities/health. |
+| `axon capabilities` | `CapabilityRequest` | `CapabilityDocument` | no | no | Machine-readable server capability contract. |
+| `axon status` | `StatusRequest` | `StatusReport` | no | no | Runtime status. |
+| `axon doctor` | `DoctorRequest` | `DoctorReport` | no | maybe | Diagnostic checks. |
+
+## Source Command
+
+`axon <source>` is the only normal way to acquire/index a source.
+
+Examples:
+
+```bash
+axon shadcn.com
+axon shadcn.com --scope docs --refresh
+axon /home/jmagar/workspace/axon --watch
+axon github.com/jmagar/axon --scope repo
+axon crates:serde
+axon npm:@modelcontextprotocol/sdk
+```
+
+Normalized request:
+
+```json
+{
+  "source": "shadcn.com",
+  "scope": "docs",
+  "embed": true,
+  "refresh": "if_stale",
+  "watch": "disabled",
+  "wait": false,
+  "options": {}
+}
+```
+
+Rules:
+
+- `source` is required.
+- `embed` defaults to true.
+- `scope` defaults through adapter capability rules.
+- `--watch` creates or ensures a durable watch in addition to the source run.
+- Plain local file/directory sources should become watched when source policy
+  says local mutable sources stay fresh by default.
+- `--refresh` forces refresh even when the ledger says current.
+- `--no-embed` acquires/normalizes without vector storage.
+- `--wait` blocks until the current job reaches terminal state.
+- Without `--wait`, async work returns immediately with a job descriptor.
+
+## Target Resolution
+
+Command parsing must preserve the target string and call shared resolution.
+Parser-level heuristics are limited to flags and subcommand routing.
+
+Resolution precedence:
+
+1. Explicit scheme or prefix: `https://`, `file://`, `git:`, `rss:`, `npm:`.
+2. Existing local path for path-collidable strings.
+3. Adapter-declared shorthand: `owner/repo`, `r/rust`, `@handle`.
+4. Scheme-less host normalization.
+5. Unknown source error with suggested prefixes.
+
+The CLI must not bake in source-specific URL hacks that bypass
+`SourceResolver`/`SourceRouter`.
+
+## Source Flags
+
+| Flag | Type | Default | Meaning |
+|---|---|---|---|
+| `--scope <scope>` | string | adapter default | Adapter-declared acquisition strategy. |
+| `--watch` | bool | false unless source policy says otherwise | Create/ensure freshness lifecycle. |
+| `--no-embed` | bool | false | Acquire and normalize without vector storage. |
+| `--refresh` | bool | false | Force refresh. |
+| `--wait` | bool | false | Block until terminal state. |
+| `--json` | bool | false | Emit JSON envelope/events. |
+| `--adapter <name>` | string | resolved | Force adapter when supported. |
+| `--collection <name>` | string | config | Vector collection override. |
+| `--limit <n>` | integer | adapter default | Source-specific item/page/file cap. |
+| `--render-mode <mode>` | enum | adapter default | Web rendering strategy. |
+| `--header <header>` | repeatable | none | Fetch header; redacted in logs/status. |
+| `--output <path>` | path | none | Write result/artifact to explicit path when supported. |
+| `--response-mode <mode>` | enum | `auto` | `inline`, `summary`, `artifact`, `path`, `auto`. |
+
+## Map Command
+
+`axon map <source>` discovers source items without embedding.
+
+```bash
+axon map shadcn.com
+axon map github.com/jmagar/axon --scope repo
+axon map mcp://labby/server --scope schema
+```
+
+Rules:
+
+- `map` is a projection over `SourceRequest`.
+- `scope` defaults to `map`.
+- `embed` defaults to false and must not be enabled unless explicitly requested.
+- `map` may fetch sitemaps, package indexes, repo trees, tool schemas, or MCP
+  server capabilities.
+- `map` must not publish vectors as a side effect.
+- Human output is a discovered item list; JSON output is `SourceResult`.
+
+## Watch Commands
+
+Watch commands manage freshness lifecycle.
+
+```bash
+axon watch <source>
+axon watch exec <source>
+axon watch list
+axon watch get <watch_id>
+axon watch status <watch_id>
+axon watch pause <watch_id>
+axon watch resume <watch_id>
+axon watch delete <watch_id>
+axon watch history <watch_id>
+```
+
+Subcommand matrix:
+
+| Command | Required | Optional | Result |
+|---|---|---|---|
+| `axon watch <source>` | `source` | `--scope`, `--every`, `--embed`, `--refresh` | watch descriptor |
+| `axon watch exec <source>` | `source` or watch id | `--wait`, `--refresh` | job descriptor/result |
+| `axon watch list` | none | `--status`, `--source-id`, `--limit`, `--cursor` | paged watches |
+| `axon watch get <watch_id>` | `watch_id` | `--include-history` | watch detail |
+| `axon watch status <watch_id>` | `watch_id` | none | heartbeat/progress |
+| `axon watch pause <watch_id>` | `watch_id` | `--reason` | watch detail |
+| `axon watch resume <watch_id>` | `watch_id` | none | watch detail |
+| `axon watch delete <watch_id>` | `watch_id` | `--delete-state`, `--reason` | deletion result |
+| `axon watch history <watch_id>` | `watch_id` | `--limit`, `--cursor` | run history |
+
+`exec` is the contract spelling. Do not reintroduce `run-now`.
+
+## Retrieval and Search Command Boundaries
+
+These commands must stay sharply distinct. They all answer "find something",
+but they touch different systems and have different side effects.
+
+| Command | Primary Question | Input Interpreted As | Reads | Writes | Calls Web Search | Calls LLM | Output |
+|---|---|---|---|---|---:|---:|---|
+| `axon search <query>` | "What does the outside web say exists for this query?" | Search-engine query text | `SearchProvider` | optional source jobs only when explicitly enabled | yes | no | web result list, source hints, optional queued jobs |
+| `axon query <query>` | "Which indexed chunks match this text?" | Semantic/vector query text | `VectorStore`, optional `SourceGraph`, optional `DocumentCache` | no | no | no | ranked chunks/documents with scores and metadata |
+| `axon retrieve <source-or-url>` | "Show me the stored content for this known source/document/url." | Source id, document id, chunk id, URL, or canonical source URI | `SourceLedger`, `DocumentCache`, `ArtifactStore`, `VectorStore` metadata | no | no | no | stored documents/chunks/content in source order |
+| `axon ask <question>` | "Answer my question from indexed knowledge." | Natural-language question | retrieval stack: `VectorStore`, `SourceGraph`, `DocumentCache`, `MemoryStore` when requested | optional trace/job/event rows | no | yes | synthesized answer with citations and retrieval trace |
+
+Decision rules:
+
+- Use `search` when the target may not be indexed yet or the user wants current
+  web discovery. It returns search results, not Axon's stored knowledge.
+- Use `query` when the user wants raw retrieval results from what Axon has
+  already embedded. It must not synthesize an answer.
+- Use `retrieve` when the caller already knows the source, URL, document, or
+  chunk and wants stored content back. It is lookup by identity.
+- Use `ask` when the user wants an answer. It performs retrieval and calls
+  `LlmProvider` to synthesize from cited indexed context.
+
+Validation:
+
+- `search` requires query text.
+- `query` requires query text.
+- `retrieve` requires a source, URL, source id, document id, or chunk id.
+- `ask` requires a question.
+- `ask` with only a URL/source id should fail with a suggestion to use
+  `retrieve` or `axon <source>`.
+
+## Retrieval Command Schemas
+
+### search
+
+```bash
+axon search "latest qdrant payload indexing" --limit 10
+```
+
+DTO:
+
+```json
+{
+  "query": "latest qdrant payload indexing",
+  "limit": 10,
+  "time_range": null,
+  "auto_source": false
+}
+```
+
+### query
+
+```bash
+axon query "source ledger generation cleanup" --content-kind code --limit 10
+```
+
+DTO:
+
+```json
+{
+  "query": "source ledger generation cleanup",
+  "filters": {
+    "content_kind": "code"
+  },
+  "generation": "committed",
+  "limit": 10,
+  "include_graph": false
+}
+```
+
+### retrieve
+
+```bash
+axon retrieve github.com/jmagar/axon --include-content --limit 50
+```
+
+DTO:
+
+```json
+{
+  "source": "github.com/jmagar/axon",
+  "include_content": true,
+  "limit": 50
+}
+```
+
+### ask
+
+```bash
+axon ask "How should source generations be published?" --include-trace
+```
+
+DTO:
+
+```json
+{
+  "question": "How should source generations be published?",
+  "filters": {},
+  "include_trace": true
+}
+```
+
+## Analysis and Inspection Commands
+
+These commands may fetch, render, call providers, and write artifacts, but they
+do not index by default.
+
+| Command | Required | Optional | Result |
+|---|---|---|---|
+| `axon chat <message>` | message | `--system`, `--model`, `--temperature`, `--stream` | `ChatResult` |
+| `axon evaluate <question>` | question | `--expected`, `--judge`, `--limit` | `EvaluationResult` |
+| `axon suggest [focus]` | none | `--source-id`, `--limit`, `--constraints` | `SuggestResult` |
+| `axon research <query>` | query | `--limit`, `--depth`, `--full-content`, `--auto-source` | `ResearchResult` |
+| `axon summarize <source>` | source | `--instructions`, `--format`, `--header` | `SummarizeResult` |
+| `axon endpoints <source>` | source | `--render-mode`, `--capture`, `--limit` | `EndpointDiscoveryResult` |
+| `axon brand <source>` | source | `--render-mode`, `--include-screenshot` | `BrandResult` |
+| `axon diff <source-a> <source-b>` | two sources | `--mode`, `--header` | `DiffResult` |
+| `axon screenshot <source>` | source | `--viewport`, `--full-page`, `--wait-for` | `ScreenshotResult` |
+| `axon extract <source>` | source, schema | `--instructions`, `--persist-artifact`, `--trusted-graph-write` | `ExtractResult` |
+
+Rules:
+
+- `research` may create source jobs only when explicitly requested.
+- `summarize` fetches and summarizes without indexing by default.
+- `extract` is structured LLM extraction, not indexing.
+- `chat` has no retrieval by default. Use `ask` for RAG.
+
+## Memory Commands
+
+```bash
+axon memory remember <text>
+axon memory search <query>
+axon memory context <prompt-or-source>
+axon memory show <memory_id>
+axon memory link <memory_id> <target>
+axon memory supersede <old_memory_id> <new_memory_id>
+axon memory reinforce <memory_id>
+axon memory contradict <memory_id> <other_memory_id>
+axon memory pin <memory_id>
+axon memory archive <memory_id>
+axon memory forget <memory_id>
+axon memory review
+axon memory compact <memory_id>...
+```
+
+Subcommand matrix:
+
+| Command | Required | Optional | Mutates |
+|---|---|---|---:|
+| `remember` | text | `--type`, `--scope`, `--no-embed`, `--graph-link` | yes |
+| `search` | query | `--scope`, `--limit`, `--include-archived` | no |
+| `context` | prompt/source | `--budget-tokens`, `--scope`, `--include-working` | no |
+| `show` | memory id | `--include-graph`, `--include-events` | no |
+| `link` | memory id, target | `--edge-kind`, `--confidence` | yes |
+| `supersede` | old id, new id | `--reason` | yes |
+| `reinforce` | memory id | `--signal`, `--amount`, `--context` | yes |
+| `contradict` | memory id, other id | `--reason` | yes |
+| `pin` | memory id | `--reason` | yes |
+| `archive` | memory id | `--reason` | yes |
+| `forget` | memory id | `--reason`, `--hard-delete` | yes |
+| `review` | none | `--reason`, `--limit`, `--cursor` | maybe |
+| `compact` | memory ids | `--instructions`, `--target-scope` | yes |
+
+Memory is not a source adapter.
+
+## Operational Commands
+
+### jobs
+
+| Command | Required | Optional | Result |
+|---|---|---|---|
+| `axon jobs list` | none | `--status`, `--kind`, `--limit`, `--cursor` | paged job summaries |
+| `axon jobs get <job_id>` | job id | `--include`, `--include-events` | job detail |
+| `axon jobs events <job_id>` | job id | `--after-sequence`, `--limit`, `--cursor` | event page |
+| `axon jobs cancel <job_id>` | job id | `--reason` | cancellation result |
+| `axon jobs retry <job_id>` | job id | `--from-phase`, `--idempotency-key` | new job descriptor |
+| `axon jobs recover` | none | `--kind`, `--older-than` | recovery summary |
+| `axon jobs cleanup` | none | `--older-than`, `--dry-run` | cleanup summary |
+| `axon jobs clear` | none | `--status`, `--older-than`, `--confirm` | clear summary |
+
+### artifacts and uploads
+
+| Command | Required | Optional | Result |
+|---|---|---|---|
+| `axon artifacts list` | none | `--kind`, `--source-id`, `--job-id`, `--limit`, `--cursor` | artifact page |
+| `axon artifacts get <artifact_id>` | artifact id | `--include-content-url` | artifact metadata |
+| `axon artifacts content <artifact_id>` | artifact id | `--download`, `--range`, `--output` | content pointer/file |
+| `axon uploads create <path>` | path | `--purpose`, `--source-hint` | upload descriptor |
+| `axon uploads complete <upload_id>` | upload id | `--sha256`, `--source-options` | artifact/source ref |
+| `axon uploads abort <upload_id>` | upload id | `--reason` | abort result |
+
+### prune, collections, graph, providers
+
+| Command | Required | Optional | Result |
+|---|---|---|---|
+| `axon prune plan <target>` | target | `--include`, `--retention`, `--filter` | prune plan |
+| `axon prune exec <plan_id>` | plan id | `--confirm` | job descriptor |
+| `axon prune dedupe` | none | `--collection`, `--threshold`, `--source-id`, `--dry-run` | summary/job |
+| `axon prune purge <target>` | target | `--prefix`, `--dry-run`, `--confirm` | summary/job |
+| `axon collections list` | none | none | collection summaries |
+| `axon collections get <collection>` | collection | `--include-schema`, `--include-indexes` | collection detail |
+| `axon graph kinds` | none | none | kind catalog |
+| `axon graph resolve <identifier>` | identifier | `--kind`, `--limit` | graph matches |
+| `axon graph query <query>` | query | `--limit`, `--cursor` | graph query result |
+| `axon graph node <node_id>` | node id | `--include-edges`, `--include-evidence` | node detail |
+| `axon graph edge <edge_id>` | edge id | `--include-evidence` | edge detail |
+| `axon providers list` | none | `--kind`, `--status` | provider summaries |
+| `axon providers get <provider>` | provider id | `--include-health`, `--include-limits` | provider detail |
+
+## Global Output Modes
+
+Human mode is default. JSON mode is selected with `--json`.
+
+Human mode:
+
+- uses Aurora CLI tokens/colors where supported
+- shows resolved source, adapter, scope, and reason
+- shows whether embedding is enabled
+- shows job id and watch id when backgrounded
+- shows progress in foreground or with `--wait`
+- shows warnings/degraded state clearly
+- prints next commands for polling only when useful
+- never hides fatal errors behind success-looking prose
+
+JSON mode:
+
+- emits one strict envelope for immediate results
+- emits newline-delimited `SourceProgressEvent` objects for progress streams
+- never emits human prose outside JSON
+- includes `job_id`, `source_id`, `status`, `phase`, warnings, and errors
+- uses the same result DTOs as MCP/REST
+
+## CLI Response Envelope
+
+JSON success:
+
+```json
+{
+  "ok": true,
+  "command": "source",
+  "request_id": "req_...",
+  "contract_version": "2026-06-30",
+  "data": {},
+  "job": null,
+  "watch": null,
+  "artifacts": [],
+  "warnings": [],
+  "pagination": null,
+  "trace": {
+    "job_id": "job_...",
+    "trace_id": "trace_..."
+  }
+}
+```
+
+JSON failure:
+
+```json
+{
+  "ok": false,
+  "command": "source",
+  "request_id": "req_...",
+  "contract_version": "2026-06-30",
+  "error": {
+    "code": "source.resolve.unsupported",
+    "message": "No adapter can resolve this source.",
+    "stage": "resolving",
+    "retryable": false,
+    "severity": "failed",
+    "details": {}
+  },
+  "warnings": [],
+  "trace": {
+    "job_id": null,
+    "trace_id": "trace_..."
+  }
+}
+```
+
+## Background, Foreground, and Progress
+
+Default behavior:
+
+- fast read-only commands run foreground and return results
+- mutating/long source jobs may enqueue and return immediately
+- `--wait` blocks and renders progress until terminal state
+- `--json --wait` streams progress events then final envelope
+- `--json` without `--wait` returns a job descriptor immediately
+
+Job descriptor:
+
+```json
+{
+  "job_id": "job_...",
+  "kind": "source",
+  "status": "running",
+  "phase": "embedding",
+  "poll_after_ms": 1000,
+  "poll": {
+    "command": "axon jobs get job_..."
+  },
+  "events": {
+    "command": "axon jobs events job_..."
+  }
+}
+```
+
+Progress event shape:
+
+```json
+{
+  "event_id": "evt_...",
+  "sequence": 42,
+  "job_id": "job_...",
+  "source_id": "src_...",
+  "phase": "embedding",
+  "status": "running",
+  "severity": "info",
+  "visibility": "public",
+  "message": "embedding changed files",
+  "timestamp": "2026-06-30T20:20:00Z",
+  "counts": {
+    "items_total": 1200,
+    "items_done": 431,
+    "chunks_total": 5200,
+    "chunks_done": 1800,
+    "bytes_total": 1234567,
+    "bytes_done": 456789
+  },
+  "current": {
+    "source_item_key": "src/lib.rs",
+    "adapter": "github"
+  }
+}
+```
+
+## Pagination
+
+CLI list commands use cursor pagination in JSON mode.
+
+Flags:
+
+```text
+--limit <n>
+--cursor <opaque_cursor>
+```
+
+Envelope:
+
+```json
+{
+  "pagination": {
+    "limit": 50,
+    "next_cursor": "opaque_cursor_or_null",
+    "has_more": true
+  }
+}
+```
+
+Human mode may show "next: ..." with the next command using the cursor.
+
+## Response Modes and Artifacts
+
+| Mode | Behavior |
+|---|---|
+| `inline` | Print full content when below size and visibility limits. |
+| `summary` | Print concise summary plus ids/cursors/artifacts. |
+| `artifact` | Write full output to ArtifactStore and print artifact refs. |
+| `path` | Print local path/content pointer when safe. |
+| `auto` | Choose inline for small output and artifact/path for large output. |
+
+Large `retrieve`, `research`, `summarize`, `endpoints`, `screenshot`, and
+`extract` outputs must use artifacts or files rather than silent truncation.
+
+## Errors and Exit Codes
+
+Exit codes:
+
+| Code | Meaning |
+|---:|---|
+| 0 | success |
+| 1 | generic failure |
+| 2 | CLI parse or validation error |
+| 3 | provider unavailable/degraded beyond allowed policy |
+| 4 | auth/permission denied |
+| 5 | source resolution/acquisition failure |
+| 6 | job failed or canceled |
+| 7 | output/write/artifact failure |
+| 8 | removed command invoked |
+
+Structured error fields:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `code` | yes | Stable machine code. |
+| `message` | yes | Redacted human message. |
+| `stage` | yes | parse/resolve/acquire/prepare/embed/publish/etc. |
+| `retryable` | yes | Whether retry may succeed. |
+| `severity` | yes | warning/degraded/failed/fatal. |
+| `details` | no | Redacted structured details. |
+
+## Removed Commands
+
+These must not remain user-facing commands, parser variants, help entries, or
+completion entries:
+
+```text
+axon embed <source>
+axon ingest <source>
+axon scrape <url>
+axon crawl <url>
+axon code-search <query>
+axon code-search-watch <path>
+axon purge <target>
+axon dedupe
+```
+
+The final parser should treat removed commands like any other unknown command.
+Documentation can explain the new command model, but runtime aliases/remap
+handlers are not part of the contract.
+
+## Help and Completions
+
+`axon --help`, `axon help`, and `axon help <topic>` are contract surfaces.
+
+Help must include:
+
+- canonical commands
+- source syntax examples
+- global flags
+- source flags
+- search/query/retrieve/ask differences
+- watch commands
+- memory commands
+- operational commands
+- examples
+- pointer to machine-readable capabilities
+
+Shell completions must be generated from the same command registry, not a
+separate hand-maintained list.
+
+## Auth and Visibility
+
+CLI auth uses the same policy as REST/MCP.
+
+| Operation Class | Required Scope |
+|---|---|
+| status/help/capabilities | read |
+| query/retrieve/ask/search/research/summarize | read |
+| source/watch/upload/prune/memory mutation | write |
+| destructive prune/purge/forget/hard delete | write plus confirmation |
+| diagnostics revealing local config | local/admin policy |
+
+Visibility rules:
+
+- redact secrets in stdout, stderr, logs, progress, and JSON
+- hide local absolute paths unless local policy permits them
+- include artifact ids instead of raw large/sensitive content
+- never print raw auth headers, cookies, tokens, signed URLs, or env values
+
+## Crosswalk to MCP and REST
+
+| CLI | MCP | REST | API DTO |
+|---|---|---|---|
+| `axon <source>` | `action=source` | `POST /v1/sources` | `SourceRequest` |
+| `axon map <source>` | `action=map` | `POST /v1/map` | `SourceRequest` |
+| `axon search <query>` | `action=search` | `POST /v1/search` | `SearchRequest` |
+| `axon query <query>` | `action=query` | `POST /v1/query` | `QueryRequest` |
+| `axon retrieve <source-or-url>` | `action=retrieve` | `POST /v1/retrieve` | `RetrievalRequest` |
+| `axon ask <question>` | `action=ask` | `POST /v1/ask` | `AskRequest` |
+| `axon chat <message>` | `action=chat` | `POST /v1/chat` | `ChatRequest` |
+| `axon evaluate <question>` | `action=evaluate` | `POST /v1/evaluate` | `EvaluationRequest` |
+| `axon suggest [focus]` | `action=suggest` | `POST /v1/suggest` | `SuggestRequest` |
+| `axon research <query>` | `action=research` | `POST /v1/research` | `ResearchRequest` |
+| `axon summarize <source>` | `action=summarize` | `POST /v1/summarize` | `SummarizeRequest` |
+| `axon endpoints <source>` | `action=endpoints` | `POST /v1/endpoints` | `EndpointDiscoveryRequest` |
+| `axon brand <source>` | `action=brand` | `POST /v1/brand` | `BrandRequest` |
+| `axon diff <a> <b>` | `action=diff` | `POST /v1/diff` | `DiffRequest` |
+| `axon screenshot <source>` | `action=screenshot` | `POST /v1/screenshot` | `ScreenshotRequest` |
+| `axon extract <source>` | `action=extract` | `POST /v1/extract` | `ExtractRequest` |
+| `axon memory <sub>` | `action=memory` | `/v1/memories/*` | `Memory*` |
+| `axon jobs <sub>` | `action=jobs` | `/v1/jobs/*` | `Job*` |
+| `axon watch <sub>` | `action=watches` | `/v1/watches/*` | `Watch*` |
+| `axon artifacts <sub>` | `action=artifacts` | `/v1/artifacts/*` | `Artifact*` |
+| `axon uploads <sub>` | `action=uploads` | `/v1/uploads/*` | `Upload*` |
+| `axon prune <sub>` | `action=prune` | `/v1/prune/*` | `Prune*` |
+| `axon collections <sub>` | `action=collections` | `/v1/collections/*` | `Collection*` |
+| `axon graph <sub>` | `action=graph` | `/v1/graph/*` | `Graph*` |
+| `axon providers <sub>` | `action=providers` | `/v1/providers/*` | `Provider*` |
+| `axon capabilities` | `action=capabilities` | `GET /v1/capabilities` | `CapabilityDocument` |
+| `axon status` | `action=status` | `GET /v1/status` | `StatusReport` |
+| `axon doctor` | `action=doctor` | `GET /v1/doctor` | `DoctorReport` |
+
+## Validation Checklist
+
+Implementation is incomplete until all of these pass:
+
+- `axon --help` matches `axon-help.md`.
+- The command registry drives help and shell completions.
+- Every command maps to an `axon-api` DTO.
+- Removed commands are absent from help/completions and cannot dispatch.
+- `search`, `query`, `retrieve`, and `ask` obey their boundary rules.
+- `axon <source>` is the only source acquisition happy path.
+- `axon map` uses `scope=map` and `embed=false`.
+- `watch exec` is the only immediate-run watch spelling.
+- `--json` emits strict JSON with no human prose.
+- `--wait` streams progress and returns final status.
+- Background work always returns a job/watch descriptor.
+- Large output uses artifacts, files, cursors, or explicit truncation warnings.
+- Public output follows `metadata-payload.md` redaction rules.
+- CLI/MCP/REST crosswalk stays aligned.
