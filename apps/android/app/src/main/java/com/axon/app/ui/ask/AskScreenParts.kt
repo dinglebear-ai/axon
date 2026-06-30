@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -53,7 +54,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.ui.common.pressScale
@@ -133,6 +138,44 @@ internal fun AskModeSwitch(
 }
 
 @Composable
+internal fun ModeExplanationPill(
+    mode: ConversationMode,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AxonTheme.colors
+    val text = when (mode) {
+        ConversationMode.Ask -> "Ask uses indexed docs. Chat answers without indexed context."
+        ConversationMode.Chat -> "Chat is general. Switch to Ask when you want indexed-doc grounding."
+    }
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.control.copy(alpha = 0.52f), RoundedCornerShape(999.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.34f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            Icons.Rounded.Info,
+            contentDescription = null,
+            tint = colors.textMuted.copy(alpha = 0.66f),
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            text,
+            color = colors.textMuted.copy(alpha = 0.78f),
+            fontSize = 10.5.sp,
+            lineHeight = 14.sp,
+            fontFamily = AxonTheme.fonts.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
 internal fun EmptyAskState(
     modifier: Modifier = Modifier,
     suggestions: List<String> = emptyList(),
@@ -172,15 +215,15 @@ internal fun EmptyAskState(
                 AxonMarkGlyph(Modifier.size(34.dp))
             }
             Text(
-            "No active conversation",
-            color = colors.textPrimary,
+                "No active conversation",
+                color = colors.textPrimary,
                 fontSize = 17.sp,
                 lineHeight = 23.sp,
                 fontFamily = AxonTheme.fonts.display,
             )
             if (suggestions.isNotEmpty()) {
                 Text(
-                    "Start with",
+                    "Start in Chat",
                     color = colors.textMuted.copy(alpha = 0.7f),
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -218,6 +261,10 @@ private fun SuggestionChip(text: String, index: Int, onClick: () -> Unit) {
             .background(colors.control.copy(alpha = 0.025f), RoundedCornerShape(10.dp))
             .border(1.dp, colors.borderDefault.copy(alpha = 0.055f), RoundedCornerShape(10.dp))
             .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Start with $text"
+                role = Role.Button
+            }
             .padding(horizontal = 14.dp, vertical = 10.dp)
             .graphicsLayer {
                 alpha = anim
