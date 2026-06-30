@@ -5,11 +5,10 @@
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
 use super::super::super::cli::{
-    CliCommand, CodeSearchWatchSubcommand, ComposeArgs, ComposeSubcommand, ConfigArgs,
-    ConfigSubcommand, DoctorSubcommand, FreshSubcommand, IngestArgs, MemoryCliSubcommand,
-    MonitorSubcommand, PaletteArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand,
-    SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand,
-    SyncSubcommand, UpdateArgs,
+    CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
+    FreshSubcommand, IngestArgs, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs,
+    ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs,
+    SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
@@ -46,6 +45,8 @@ pub(super) struct DispatchOutput {
     pub code_search_path_prefix: Option<String>,
     pub code_search_no_freshness: bool,
     pub code_search_watch: Option<CodeSearchWatchConfig>,
+    pub embed_watch: bool,
+    pub embed_no_watch: bool,
     pub freshness: Option<FreshnessRequest>,
     pub fresh_action: Option<FreshAction>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
@@ -108,6 +109,8 @@ impl DispatchOutput {
             code_search_path_prefix: None,
             code_search_no_freshness: false,
             code_search_watch: None,
+            embed_watch: false,
+            embed_no_watch: false,
             freshness: None,
             fresh_action: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
@@ -215,6 +218,8 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
         CliCommand::Embed(args) => {
             out.command = CommandKind::Embed;
+            out.embed_watch = args.watch;
+            out.embed_no_watch = args.no_watch;
             out.freshness = freshness_request(args.fresh, FreshnessCommand::Embed);
             out.positional = if let Some(job) = args.job {
                 positional_from_job(job)
@@ -249,18 +254,9 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.code_search_path_prefix = args.path_prefix;
             out.code_search_no_freshness = args.no_freshness;
         }
-        CliCommand::CodeSearchWatch(args) => {
-            out.command = CommandKind::CodeSearchWatch;
-            out.code_search_watch = Some(CodeSearchWatchConfig {
-                roots: args.cwd,
-                debounce: Duration::from_millis(args.debounce_ms),
-                settle: Duration::from_millis(args.settle_ms),
-                initial_refresh: args.initial_refresh,
-                dry_run: args.dry_run,
-                enable: matches!(args.action, Some(CodeSearchWatchSubcommand::Enable)),
-                json: args.json,
-            });
-        }
+        CliCommand::CodeSearchWatchRemoved => unreachable!(
+            "code-search-watch tombstone uses arg_required_else_help and should not dispatch"
+        ),
         CliCommand::Retrieve(args) => {
             out.retrieve_max_points = args.max_points;
             set_simple(

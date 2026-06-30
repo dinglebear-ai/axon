@@ -15,8 +15,8 @@ pub use tei_client::prepend_query_instruction;
 pub use tei_client::{EmbedInput, tei_embed_typed};
 
 // Re-export the embed API for crate callers.
-pub use text_embed::embed_prepared_docs;
 pub use text_embed::{embed_path_native, embed_path_native_with_progress};
+pub use text_embed::{embed_prepared_docs, prepare_path_native_docs};
 
 use crate::ops::sparse;
 use qdrant_store::VectorMode;
@@ -60,6 +60,9 @@ pub struct PreparedDoc {
     pub(in crate::ops) title: Option<String>,
     /// Source-specific metadata fields (gh_*, reddit_*, yt_*).
     pub(in crate::ops) extra: Option<serde_json::Value>,
+    /// Sealed source-lifecycle payload fields. These are never accepted through
+    /// arbitrary `extra`; source adapters must construct the typed payload.
+    pub(in crate::ops) ledger_payload: Option<crate::ops::source_doc::LedgerPayload>,
     /// Optional vertical-extractor identifier (e.g. `"docs"`, `"github-issue"`).
     /// `None` for generic scrape/embed paths — leave absent from payload rather
     /// than writing a placeholder. See bead `axon_rust-lu6a`.
@@ -101,6 +104,7 @@ impl PreparedDoc {
         extra: Option<serde_json::Value>,
         extractor_name: Option<String>,
         structured: Option<StructuredPayload>,
+        ledger_payload: Option<crate::ops::source_doc::LedgerPayload>,
         chunk_extra: Vec<serde_json::Value>,
     ) -> Self {
         Self {
@@ -111,6 +115,7 @@ impl PreparedDoc {
             content_type,
             title,
             extra,
+            ledger_payload,
             extractor_name,
             structured,
             chunk_extra,
@@ -121,6 +126,12 @@ impl PreparedDoc {
 
     pub(super) fn with_local_legacy_fragment_cleanup(mut self) -> Self {
         self.local_legacy_fragment_url = Some(self.url.clone());
+        self
+    }
+
+    #[must_use]
+    pub fn with_ledger_payload(mut self, payload: crate::ops::source_doc::LedgerPayload) -> Self {
+        self.ledger_payload = Some(payload);
         self
     }
 

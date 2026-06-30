@@ -26,6 +26,18 @@ pub async fn embed_prepared_docs(
         .map_err(|e| -> Box<dyn Error> { format!("embed pipeline failed: {e}").into() })
 }
 
+/// Prepare a local path/URL/free-text input into embed-ready documents without
+/// upserting them. Service orchestrators that must attach sealed lifecycle
+/// metadata can call this, stamp the returned docs, then use
+/// `embed_prepared_docs`.
+pub async fn prepare_path_native_docs(
+    cfg: &Config,
+    input: &str,
+    source_type: Option<&str>,
+) -> Result<Vec<PreparedDoc>, Box<dyn Error>> {
+    prepare::prepare_embed_docs(cfg, input, &cfg.exclude_path_prefix, source_type).await
+}
+
 /// Embed a file or directory from the local filesystem into Qdrant.
 pub async fn embed_path_native(cfg: &Config, input: &str) -> Result<EmbedSummary, Box<dyn Error>> {
     embed_path_native_with_progress(cfg, input, None, None).await
@@ -44,8 +56,7 @@ pub async fn embed_path_native_with_progress(
     if cfg.qdrant_url.is_empty() {
         return Err("QDRANT_URL not configured".into());
     }
-    let prepared =
-        prepare::prepare_embed_docs(cfg, input, &cfg.exclude_path_prefix, source_type).await?;
+    let prepared = prepare_path_native_docs(cfg, input, source_type).await?;
     if prepared.is_empty() {
         return Err(format!("embed prepared zero documents for input '{input}'").into());
     }

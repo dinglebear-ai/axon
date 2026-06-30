@@ -191,6 +191,7 @@ fn prepared_doc_with_ingest_metadata_compiles() {
         content_type: "text",
         title: Some("src/lib.rs".to_string()),
         extra: Some(serde_json::json!({"gh_owner": "owner", "gh_repo": "repo"})),
+        ledger_payload: None,
         extractor_name: None,
         structured: None,
         chunk_extra: Vec::new(),

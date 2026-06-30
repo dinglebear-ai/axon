@@ -177,6 +177,15 @@ pub(crate) fn combine_must_filters(filters: &[serde_json::Value]) -> serde_json:
     serde_json::Value::Object(filter)
 }
 
+pub(crate) fn exclude_uncommitted_source_filter() -> serde_json::Value {
+    serde_json::json!({
+        "must_not": [{
+            "key": "source_committed",
+            "match": {"value": false}
+        }]
+    })
+}
+
 pub fn exclude_local_code_filter() -> serde_json::Value {
     serde_json::json!({
         "must_not": [{

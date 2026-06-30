@@ -18,6 +18,7 @@ fn prepared_doc_for_guard(chunks: Vec<&str>) -> PreparedDoc {
         content_type: "markdown",
         title: None,
         extra: None,
+        ledger_payload: None,
         extractor_name: None,
         structured: None,
         chunk_extra: Vec::new(),
