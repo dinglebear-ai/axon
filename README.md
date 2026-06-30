@@ -1,6 +1,6 @@
 # Axon
 
-Version: 6.1.7
+Version: 6.2.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -134,6 +134,21 @@ OAuth mode also requires
 `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`.
 
 The warm-path setup goal is under 2 minutes once images and model weights are cached. Cold starts that pull images and model weights can take longer; target-hardware timing still needs to be measured against published release artifacts.
+
+## Local Indexing
+
+Use `axon embed /path` to register local files with a background local
+code-index watcher. Existing local file and directory inputs start watching by
+default; use `axon embed /path --watch` to keep the watcher attached in the
+foreground, or `axon embed /path --no-watch` for a one-shot local embed that
+exits after writing vectors.
+
+SourceLedger currently tracks generation and cleanup state for crawl refreshes
+and mutable Git ingest sources in the same SQLite runtime DB as Axon jobs.
+
+The removed `code-search-watch` command now exits as a tombstone; use `embed`
+for local Git checkout/workspace code-indexing. The watcher uses the existing
+`axon-code-index` lifecycle tables.
 
 ## Docker Stack
 

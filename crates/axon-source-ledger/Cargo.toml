@@ -1,0 +1,26 @@
+[package]
+name = "axon-source-ledger"
+version.workspace = true
+edition = "2024"
+rust-version = "1.94.0"
+description = "Axon source lifecycle ledger backed by the jobs SQLite runtime"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
+
+[dev-dependencies]
+axon-jobs = { path = "../axon-jobs" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"

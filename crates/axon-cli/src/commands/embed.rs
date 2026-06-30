@@ -1,4 +1,5 @@
 use crate::commands::CommandFuture;
+use crate::commands::code_search::run_code_search_watch;
 use crate::commands::common::{
     handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors,
     handle_job_list_with_rows, handle_job_recover, handle_job_status, handle_worker_mode,
@@ -8,7 +9,7 @@ use crate::commands::job_progress::embed_progress_summary;
 use crate::commands::status::metrics::{
     collection_from_config, display_embed_input, format_error, job_runtime_text,
 };
-use axon_core::config::Config;
+use axon_core::config::{CodeSearchWatchConfig, Config};
 use axon_core::logging::{log_done, log_info};
 use axon_core::ui::wait_spinner_for;
 use axon_core::ui::{accent, confirm_destructive, error, muted, primary, symbol_for_status};
@@ -19,6 +20,9 @@ use axon_services::jobs as job_service;
 use axon_services::types::StartDisposition;
 use std::error::Error;
 use std::path::Path;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::time::Duration;
 use uuid::Uuid;
 
 pub(crate) fn render_embed_list(
@@ -138,6 +142,15 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         // Local-path embeds therefore always run in-process here; only URL /
         // free-text inputs go through the shared queue when --wait is false.
         let input_is_local_path = Path::new(&input).exists();
+        let watch_mode = embed_local_watch_mode(
+            cfg.embed_watch,
+            cfg.embed_no_watch,
+            cfg.wait,
+            Path::new(&input),
+        );
+        if watch_mode != EmbedLocalWatchMode::None {
+            validate_embed_watch_input(&input, input_is_local_path)?;
+        }
         if !cfg.wait && !input_is_local_path {
             let result = enqueue_embed_job(cfg, &input, service_context).await;
             if result.is_ok() {
@@ -146,7 +159,37 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
             return result;
         }
         if !cfg.wait && input_is_local_path {
-            log_info("command=embed local_path_runs_in_process");
+            let reason = match watch_mode {
+                EmbedLocalWatchMode::Background => "local_path_watch_started_background",
+                EmbedLocalWatchMode::Foreground => "local_path_watch_runs_in_process",
+                EmbedLocalWatchMode::None => "local_path_runs_in_process",
+            };
+            log_info(&format!("command=embed {reason}"));
+        }
+        if watch_mode == EmbedLocalWatchMode::Background {
+            spawn_background_embed_watch(cfg, &input)?;
+            return Ok(());
+        }
+        if watch_mode == EmbedLocalWatchMode::Foreground && !cfg.json_output {
+            println!(
+                "  {}",
+                muted("Watching local code indexing refresh in the foreground.")
+            );
+        }
+        if watch_mode == EmbedLocalWatchMode::Foreground {
+            let input_path = watch_root_for_embed_input(Path::new(&input));
+            let initial_refresh = is_watchable_code_dir(&input_path);
+            let mut watch_cfg = cfg.clone();
+            watch_cfg.code_search_watch = Some(CodeSearchWatchConfig {
+                roots: vec![input_path],
+                debounce: Duration::from_millis(500),
+                settle: Duration::from_secs(2),
+                initial_refresh,
+                dry_run: false,
+                enable: false,
+                json: cfg.json_output,
+            });
+            return run_code_search_watch(&watch_cfg, service_context).await;
         }
 
         let sp = wait_spinner_for(cfg, &format!("Embedding {}…", input));
@@ -193,12 +236,115 @@ async fn maybe_handle_embed_subcommand(
     Ok(true)
 }
 
+fn is_watchable_code_dir(path: &Path) -> bool {
+    path.is_dir()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmbedLocalWatchMode {
+    None,
+    Background,
+    Foreground,
+}
+
+fn embed_local_watch_mode(
+    explicit_watch: bool,
+    no_watch: bool,
+    wait: bool,
+    input: &Path,
+) -> EmbedLocalWatchMode {
+    if no_watch || !input.exists() {
+        EmbedLocalWatchMode::None
+    } else if explicit_watch {
+        EmbedLocalWatchMode::Foreground
+    } else if wait {
+        EmbedLocalWatchMode::None
+    } else {
+        EmbedLocalWatchMode::Background
+    }
+}
+
+fn watch_root_for_embed_input(input: &Path) -> PathBuf {
+    let start = if input.is_file() {
+        input.parent().unwrap_or(input)
+    } else {
+        input
+    };
+    nearest_git_root(start).unwrap_or_else(|| start.to_path_buf())
+}
+
+fn nearest_git_root(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .find(|ancestor| ancestor.join(".git").exists())
+        .map(Path::to_path_buf)
+}
+
+fn spawn_background_embed_watch(cfg: &Config, input: &str) -> Result<(), Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let args = background_embed_watch_args(cfg, input);
+    let mut child = std::process::Command::new(exe);
+    child
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let process = child.spawn()?;
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "watch_started",
+                "target": input,
+                "collection": cfg.collection,
+                "pid": process.id(),
+            })
+        );
+    } else {
+        println!(
+            "  {} {}",
+            primary("Local code index watcher started"),
+            accent(&process.id().to_string())
+        );
+        println!("  {}", muted(&format!("Input: {input}")));
+    }
+    Ok(())
+}
+
+fn background_embed_watch_args(cfg: &Config, input: &str) -> Vec<String> {
+    let mut args = vec![
+        "--collection".to_string(),
+        cfg.collection.clone(),
+        "--qdrant-url".to_string(),
+        cfg.qdrant_url.clone(),
+    ];
+    if !cfg.tei_url.is_empty() {
+        args.push("--tei-url".to_string());
+        args.push(cfg.tei_url.clone());
+    }
+    args.extend([
+        "embed".to_string(),
+        input.to_string(),
+        "--watch".to_string(),
+    ]);
+    args
+}
+
 fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>> {
     let id = cfg
         .positional
         .get(1)
         .ok_or_else(|| format!("embed {action} requires <job-id>"))?;
     Ok(Uuid::parse_str(id)?)
+}
+
+fn validate_embed_watch_input(
+    _input: &str,
+    input_is_local_path: bool,
+) -> Result<(), Box<dyn Error>> {
+    if !input_is_local_path {
+        return Err("embed watch mode requires a local file or directory".into());
+    }
+    Ok(())
 }
 
 async fn handle_embed_status(
@@ -296,4 +442,141 @@ async fn enqueue_embed_job(
     let _ = status;
     render_embed_enqueue_result(cfg, input, &job_id, outcome.disposition, false);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        EmbedLocalWatchMode, background_embed_watch_args, embed_local_watch_mode,
+        is_watchable_code_dir, validate_embed_watch_input, watch_root_for_embed_input,
+    };
+    use axon_core::config::Config;
+
+    #[test]
+    fn embed_watch_rejects_non_local_inputs() {
+        let err = validate_embed_watch_input("https://example.com/repo", false).unwrap_err();
+
+        assert!(err.to_string().contains("local file or directory"));
+    }
+
+    #[test]
+    fn embed_watch_accepts_files() -> Result<(), Box<dyn std::error::Error>> {
+        let file = tempfile::NamedTempFile::new()?;
+        let path = file.path().to_string_lossy();
+
+        validate_embed_watch_input(&path, true)?;
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_accepts_directories() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+        let path = dir.path().to_string_lossy();
+
+        validate_embed_watch_input(&path, true)?;
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_initial_refreshes_git_checkouts_and_workspaces()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let checkout = tempfile::TempDir::new()?;
+        std::fs::write(checkout.path().join(".git"), "gitdir: ../real")?;
+        let workspace = tempfile::TempDir::new()?;
+
+        assert!(is_watchable_code_dir(checkout.path()));
+        assert!(is_watchable_code_dir(workspace.path()));
+        Ok(())
+    }
+
+    #[test]
+    fn embed_background_watches_local_directories_by_default()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+
+        assert_eq!(
+            embed_local_watch_mode(false, false, false, dir.path()),
+            EmbedLocalWatchMode::Background
+        );
+        assert_eq!(
+            embed_local_watch_mode(false, true, false, dir.path()),
+            EmbedLocalWatchMode::None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn embed_background_watches_local_files_by_default() -> Result<(), Box<dyn std::error::Error>> {
+        let file = tempfile::NamedTempFile::new()?;
+
+        assert_eq!(
+            embed_local_watch_mode(false, false, false, file.path()),
+            EmbedLocalWatchMode::Background
+        );
+        assert_eq!(
+            embed_local_watch_mode(false, true, false, file.path()),
+            EmbedLocalWatchMode::None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn embed_wait_keeps_local_embeds_synchronous() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+
+        assert_eq!(
+            embed_local_watch_mode(false, false, true, dir.path()),
+            EmbedLocalWatchMode::None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_flag_forces_foreground_watch() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+
+        assert_eq!(
+            embed_local_watch_mode(true, false, true, dir.path()),
+            EmbedLocalWatchMode::Foreground
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn embed_watch_roots_file_inputs_at_nearest_git_checkout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let repo = tempfile::TempDir::new()?;
+        std::fs::create_dir(repo.path().join(".git"))?;
+        std::fs::create_dir_all(repo.path().join("src"))?;
+        let file = repo.path().join("src/lib.rs");
+        std::fs::write(&file, "fn main() {}\n")?;
+
+        assert_eq!(watch_root_for_embed_input(&file), repo.path());
+        Ok(())
+    }
+
+    #[test]
+    fn background_embed_watch_args_preserve_service_targets() {
+        let cfg = Config {
+            collection: "code-local".to_string(),
+            qdrant_url: "http://qdrant:6333".to_string(),
+            tei_url: "http://tei:80".to_string(),
+            ..Config::default()
+        };
+
+        assert_eq!(
+            background_embed_watch_args(&cfg, "/repo"),
+            vec![
+                "--collection",
+                "code-local",
+                "--qdrant-url",
+                "http://qdrant:6333",
+                "--tei-url",
+                "http://tei:80",
+                "embed",
+                "/repo",
+                "--watch",
+            ]
+        );
+    }
 }

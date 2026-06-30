@@ -72,12 +72,11 @@ MCP docs:
 | `extract <urls...>` | LLM-powered structured data extraction | Yes (default) |
 | `search <query>` | Web search (SearXNG when `AXON_SEARXNG_URL` set, else Tavily), auto-queues crawl jobs for results | No |
 | `research <query>` | Web research with LLM synthesis. Backend: SearXNG when `AXON_SEARXNG_URL` set, else Tavily. Synthesizes over **full-page content** of the top sources (`AXON_RESEARCH_FULL_CONTENT=false` for snippet-only/fast), then auto-queues bounded crawl/index jobs for result URLs. | No |
-| `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
+| `embed [input]` | Embed file/dir/URL into Qdrant; existing local paths start a background local code-index watcher by default (`--watch` attaches foreground progress, `--no-watch` keeps one-shot local embedding) | Yes (default) |
 | `fresh <sub>` | CLI-only freshness schedules created by `--fresh <Nd>` on scrape/crawl/embed/ingest. Subcommands: `list`, `run-now`, `history`. | No |
 | `memory <sub>` | Persistent agent memory: `remember`, `search`, `show`, `link`, `supersede`, `context` backed by Qdrant content + SQLite metadata/edges | No |
 | `query <text>` | Semantic vector search | No |
 | `code-search <text>` | Local Git checkout semantic code search with foreground freshness | No |
-| `code-search-watch` | Host-local watcher that refreshes code-search indexes for Git repos under a workspace/project directory | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. | No |
 | `summarize <url>...` | Scrape URL content and summarize it with the configured LLM | No |

@@ -36,11 +36,6 @@ pub enum CodeSearchWatchEvent {
     DryRun {
         plan: CodeSearchWatchDryRunPlan,
     },
-    Enabled {
-        unit_path: PathBuf,
-        env_path: PathBuf,
-        roots: Vec<PathBuf>,
-    },
     Stopped,
 }
 

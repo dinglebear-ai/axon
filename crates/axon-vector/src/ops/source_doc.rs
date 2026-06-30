@@ -7,18 +7,12 @@ use super::input::{chunk_markdown_with_offsets, chunk_text_with_offsets};
 use super::tei::{PreparedDoc, StructuredPayload};
 use axon_core::logging::log_warn;
 
+mod ledger;
 mod support;
 
+pub use ledger::LedgerPayload;
+use ledger::sanitize_doc_extra;
 use support::{LineIndex, domain_for_origin, domain_from_web_url, file_locator};
-
-const PLANNER_OWNED_PAYLOAD_KEYS: &[&str] = &[
-    "content_kind",
-    "chunk_content_kind",
-    "chunk_locator",
-    "source_range",
-    "chunking_fallback",
-    "code_chunk_source",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceOrigin {
@@ -49,6 +43,7 @@ pub struct SourceDocument {
     extra: Option<Value>,
     extractor_name: Option<String>,
     structured: Option<StructuredPayload>,
+    ledger_payload: Option<LedgerPayload>,
     chunk_hint: SourceChunkHint,
 }
 
@@ -65,19 +60,20 @@ impl SourceDocument {
         extractor_name: Option<String>,
         structured: Option<StructuredPayload>,
         chunk_hint: SourceChunkHint,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, String> {
+        Ok(Self {
             origin,
             url,
             domain,
             text,
             source_type: source_type.into(),
             title,
-            extra: sanitize_doc_extra(extra),
+            extra: sanitize_doc_extra(extra)?,
             extractor_name,
             structured,
+            ledger_payload: None,
             chunk_hint,
-        }
+        })
     }
 
     pub fn try_new_web_markdown(
@@ -90,7 +86,7 @@ impl SourceDocument {
         structured: Option<StructuredPayload>,
     ) -> Result<Self, String> {
         let domain = domain_from_web_url(&url)?;
-        Ok(Self::new(
+        Self::new(
             SourceOrigin::ScrapeResult,
             url,
             domain,
@@ -101,7 +97,7 @@ impl SourceDocument {
             extractor_name,
             structured,
             SourceChunkHint::MarkdownOrPlainText,
-        ))
+        )
     }
 
     pub(crate) fn try_new_crawl_manifest(
@@ -111,7 +107,7 @@ impl SourceDocument {
         structured: Option<StructuredPayload>,
     ) -> Result<Self, String> {
         let domain = domain_from_web_url(&url)?;
-        Ok(Self::new(
+        Self::new(
             SourceOrigin::CrawlManifest,
             url,
             domain,
@@ -122,7 +118,7 @@ impl SourceDocument {
             None,
             structured,
             SourceChunkHint::MarkdownOrPlainText,
-        ))
+        )
     }
 
     pub(crate) fn new_local_markdown(
@@ -145,6 +141,7 @@ impl SourceDocument {
             None,
             SourceChunkHint::MarkdownOrPlainText,
         )
+        .expect("local markdown source extra must not use ledger-owned payload keys")
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -162,7 +159,7 @@ impl SourceDocument {
             return Err("file chunking is only allowed for local and git file origins".to_string());
         }
         let domain = domain_for_origin(origin, &url);
-        Ok(Self::new(
+        Self::new(
             origin,
             url,
             domain,
@@ -173,7 +170,7 @@ impl SourceDocument {
             None,
             None,
             SourceChunkHint::File { path, extension },
-        ))
+        )
     }
 
     pub(crate) fn new_plain_text(
@@ -196,6 +193,7 @@ impl SourceDocument {
             None,
             SourceChunkHint::PlainText,
         )
+        .expect("plain text source extra must not use ledger-owned payload keys")
     }
 
     pub fn new_memory(
@@ -217,6 +215,12 @@ impl SourceDocument {
             None,
             SourceChunkHint::AtomicText { point_id },
         )
+        .expect("memory source extra must not use ledger-owned payload keys")
+    }
+
+    pub fn with_ledger_payload(mut self, payload: LedgerPayload) -> Self {
+        self.ledger_payload = Some(payload);
+        self
     }
 
     fn into_prepared(
@@ -235,6 +239,7 @@ impl SourceDocument {
             self.extra,
             self.extractor_name,
             self.structured,
+            self.ledger_payload,
             chunk_extra,
         )
     }
@@ -486,7 +491,9 @@ fn ensure_file_doc_extra(
     ext: &str,
     symbol_status: &str,
 ) -> Option<Value> {
-    let mut map = match sanitize_doc_extra(extra) {
+    let mut map = match sanitize_doc_extra(extra)
+        .expect("file source extra must not use ledger-owned payload keys")
+    {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     };
@@ -501,18 +508,6 @@ fn ensure_file_doc_extra(
 fn insert_missing_or_null(map: &mut Map<String, Value>, key: &str, value: Value) {
     if !map.contains_key(key) || map.get(key).is_some_and(Value::is_null) {
         map.insert(key.to_string(), value);
-    }
-}
-
-fn sanitize_doc_extra(extra: Option<Value>) -> Option<Value> {
-    match extra {
-        Some(Value::Object(mut map)) => {
-            for key in PLANNER_OWNED_PAYLOAD_KEYS {
-                map.remove(*key);
-            }
-            Some(Value::Object(map))
-        }
-        other => other,
     }
 }
 

@@ -180,6 +180,15 @@ fn combine_must_filters_preserves_must_not_conditions() {
 }
 
 #[test]
+fn exclude_uncommitted_source_filter_excludes_only_false_visibility() {
+    let filter = exclude_uncommitted_source_filter();
+    let must_not = filter["must_not"].as_array().unwrap();
+    assert_eq!(must_not.len(), 1);
+    assert_eq!(must_not[0]["key"].as_str(), Some("source_committed"));
+    assert_eq!(must_not[0]["match"]["value"].as_bool(), Some(false));
+}
+
+#[test]
 fn local_project_code_filter_requires_project_and_prefix_bucket() {
     let filter = build_local_project_code_filter("project-1", 7, Some("src/vector/"));
     let must = filter["must"].as_array().unwrap();
