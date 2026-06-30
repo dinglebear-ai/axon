@@ -53,6 +53,8 @@ import com.axon.app.data.local.Session
 import com.axon.app.ui.common.AppNoticeBanner
 import com.axon.app.ui.common.AxonBadge
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
@@ -81,6 +83,19 @@ fun SessionsDrawerContent(
                 .padding(start = 6.dp, top = 10.dp, end = 6.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
+            item {
+                CommandConsoleHeader(
+                    eyebrow = "memory",
+                    title = "Session Matrix",
+                    description = "Pinned conversations, recent asks, and operation-heavy threads ready to resume.",
+                    icon = Icons.Rounded.History,
+                    tone = AxonTheme.colors.accentStrong,
+                ) {
+                    MetricPill("sessions", sessions.size.toString())
+                    MetricPill("pinned", sessions.count { it.pinnedAt != null }.toString(), tone = AxonTheme.colors.accentPink)
+                    MetricPill("asks", recentAsks.size.toString(), tone = AxonTheme.colors.orange)
+                }
+            }
             item {
                 NewSessionRow(onClick = { onSelect("new") })
             }

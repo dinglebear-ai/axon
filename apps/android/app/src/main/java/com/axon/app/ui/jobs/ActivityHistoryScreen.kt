@@ -46,6 +46,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
@@ -121,7 +123,19 @@ fun ActivityHistoryScreen(
                     .padding(start = 6.dp, top = 10.dp, end = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item { SectionLabel("Recent activity") }
+                item {
+                    CommandConsoleHeader(
+                        eyebrow = "timeline",
+                        title = "Activity Stream",
+                        description = "Recent work, local history, and job handoffs in one recoverable event trail.",
+                        icon = Icons.Rounded.History,
+                        tone = AxonTheme.colors.accentPink,
+                    ) {
+                        MetricPill("recent", rows.size.toString(), tone = AxonTheme.colors.accentPink)
+                        MetricPill("active", rows.count { isActiveJobStatus(it.job.status) }.toString())
+                        MetricPill("failed", rows.count { it.job.status.lowercase() in setOf("failed", "error", "cancelled", "canceled") }.toString(), tone = AxonTheme.colors.orange)
+                    }
+                }
                 if (error != null && rows.isEmpty()) {
                     item {
                         JobsErrorCard(

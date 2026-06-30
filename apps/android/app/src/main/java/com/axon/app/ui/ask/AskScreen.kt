@@ -3,7 +3,6 @@ package com.axon.app.ui.ask
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +18,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.fab.FabLauncher
+import com.axon.app.ui.common.CommandConsoleBackground
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
@@ -151,7 +155,7 @@ fun AskScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(AxonTheme.colors.pageBg)) {
+    CommandConsoleBackground(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
@@ -166,6 +170,22 @@ fun AskScreen(
                         .widthIn(max = 460.dp),
                     contentPadding = PaddingValues(start = 6.dp, top = 12.dp, end = 6.dp, bottom = 176.dp),
                 ) {
+                    item {
+                        CommandConsoleHeader(
+                            eyebrow = "Axon command console",
+                            title = "Agent Console",
+                            description = "Ask, chat, and launch indexed operations from one live workspace surface.",
+                            icon = Icons.Rounded.Hub,
+                            tone = AxonTheme.colors.accentPrimary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 14.dp),
+                        ) {
+                            MetricPill("mode", mode.label)
+                            MetricPill("turns", chatItems.count { it is ChatItem.UserMsg }.toString(), tone = AxonTheme.colors.accentPink)
+                            MetricPill("ops", chatItems.count { it is ChatItem.Activity || it is ChatItem.ActionResult || it is ChatItem.Injection }.toString(), tone = AxonTheme.colors.orange)
+                        }
+                    }
                     when {
                         chatItems.isNotEmpty() -> {
                             itemsIndexed(

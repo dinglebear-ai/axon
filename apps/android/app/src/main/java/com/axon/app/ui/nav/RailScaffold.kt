@@ -33,6 +33,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +53,7 @@ import com.axon.app.ui.settings.SettingsScreen
 import com.axon.app.ui.status.StatusDiagnostics
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.theme.AxonTheme
+import com.axon.app.ui.theme.tint
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 sealed interface ShellOverlay {
@@ -350,8 +352,15 @@ private fun AxonTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
-            .background(colors.navBg)
+            .height(64.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.tint(colors.accentPrimary, 5, colors.navBg),
+                        colors.navBg,
+                    ),
+                ),
+            )
             .padding(horizontal = 12.dp),
     ) {
         // Sidebar toggle + brand — present on every screen, overlays included.
@@ -374,7 +383,7 @@ private fun AxonTopBar(
         Text(
             title,
             color = colors.textPrimary.copy(alpha = 0.95f),
-            fontSize = 17.2.sp,
+            fontSize = 18.2.sp,
             lineHeight = 22.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = AxonTheme.fonts.display,
@@ -383,6 +392,22 @@ private fun AxonTopBar(
             modifier = Modifier
                 .align(Alignment.Center)
                 .widthIn(max = 200.dp),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.78f)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            colors.borderDefault.copy(alpha = 0f),
+                            colors.accentPrimary.copy(alpha = 0.48f),
+                            colors.accentPink.copy(alpha = 0.22f),
+                            colors.borderDefault.copy(alpha = 0f),
+                        ),
+                    ),
+                ),
         )
         Box(modifier = Modifier.align(Alignment.CenterEnd)) {
             if (overlayActive) {
