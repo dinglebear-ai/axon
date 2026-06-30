@@ -6,7 +6,7 @@ use axon_core::ui::{
 };
 use axon_services::code_search_watch::{
     CodeSearchWatchDryRunPlan, CodeSearchWatchEvent, CodeSearchWatchEventSink, ReindexProgress,
-    run_code_search_watch as run_code_search_watch_service,
+    ReindexProgressSink, run_code_search_watch as run_code_search_watch_service,
 };
 use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
@@ -26,7 +26,9 @@ pub async fn run_code_search(
         ));
     }
 
-    let result = query_svc::code_search(
+    let progress = CliCodeSearchProgressSink;
+    let progress = (!cfg.json_output).then_some(&progress as &dyn ReindexProgressSink);
+    let result = query_svc::code_search_with_progress(
         service_context,
         &query,
         CodeSearchOptions {
@@ -37,6 +39,7 @@ pub async fn run_code_search(
             ensure_fresh: !cfg.code_search_no_freshness,
             caller: CodeSearchCaller::Cli,
         },
+        progress,
     )
     .await
     .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
@@ -102,6 +105,14 @@ pub async fn run_code_search_watch(
 
 struct CliCodeSearchWatchEventSink {
     json: bool,
+}
+
+struct CliCodeSearchProgressSink;
+
+impl ReindexProgressSink for CliCodeSearchProgressSink {
+    fn emit(&self, progress: ReindexProgress) {
+        render_code_search_refresh_progress(progress);
+    }
 }
 
 impl CodeSearchWatchEventSink for CliCodeSearchWatchEventSink {

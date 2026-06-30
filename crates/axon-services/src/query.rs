@@ -181,6 +181,16 @@ pub async fn code_search(
     text: &str,
     opts: CodeSearchOptions,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    code_search_with_progress(ctx, text, opts, None).await
+}
+
+#[must_use = "code_search_with_progress returns a Result that should be handled"]
+pub async fn code_search_with_progress(
+    ctx: &ServiceContext,
+    text: &str,
+    opts: CodeSearchOptions,
+    progress: Option<&dyn ReindexProgressSink>,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     if text.len() > MAX_CODE_SEARCH_QUERY_LEN_BYTES {
         return Err(format!(
             "code_search query exceeds {MAX_CODE_SEARCH_QUERY_LEN_BYTES}-byte cap (got {} bytes)",
@@ -197,7 +207,9 @@ pub async fn code_search(
         .flatten();
     let root = resolve_code_search_root(opts.cwd.as_deref(), opts.caller).await?;
     let identity = code_search_identity(ctx.cfg(), root).await;
-    let freshness = resolve_code_search_freshness(ctx, &identity, opts.ensure_fresh).await;
+    let freshness =
+        resolve_code_search_freshness_with_progress(ctx, &identity, opts.ensure_fresh, progress)
+            .await;
     let Some(committed_generation) = code_search_committed_generation(ctx, &identity).await? else {
         return Ok(code_search_missing_index_result(text, freshness));
     };
@@ -295,14 +307,6 @@ pub async fn refresh_code_search_index_with_progress(
         generation,
         freshness,
     })
-}
-
-async fn resolve_code_search_freshness(
-    ctx: &ServiceContext,
-    identity: &CodeIndexIdentity,
-    ensure: bool,
-) -> CodeSearchFreshness {
-    resolve_code_search_freshness_with_progress(ctx, identity, ensure, None).await
 }
 
 async fn resolve_code_search_freshness_with_progress(
