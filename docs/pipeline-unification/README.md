@@ -188,6 +188,7 @@ How the clean break is tested, cut over, and old surfaces are removed.
 | [delivery/docs-generator-contract.md](delivery/docs-generator-contract.md) | `xtask` docs generator architecture, examples, fixtures, and CI contract. |
 | [delivery/current-implementation-sweep.md](delivery/current-implementation-sweep.md) | Current codebase implementation inventory used to ground the clean-break contracts. |
 | [delivery/implementation-checklist.md](delivery/implementation-checklist.md) | Pre-plan phase checklist and exit criteria. |
+| [delivery/implementation-plan.md](delivery/implementation-plan.md) | Ordered execution plan, guardrails, phase proofs, and the selected one-vertical spike. |
 | [delivery/issue-pr-draft.md](delivery/issue-pr-draft.md) | GitHub issue and PR body draft for the contract packet. |
 | [delivery/contradiction-review.md](delivery/contradiction-review.md) | Cross-contract and current-implementation contradiction sweep. |
 | [delivery/cutover-contract.md](delivery/cutover-contract.md) | Empty-database clean-slate cutover and reindex assumptions. |
