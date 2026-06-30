@@ -84,6 +84,37 @@ fn collection_name_rejects_empty_and_oversize() {
     assert!(validate_collection_name(&huge).is_err());
 }
 
+#[test]
+fn vector_search_request_excludes_uncommitted_source_points() {
+    let cfg = Config::test_default();
+    let vector = vec![0.1, 0.2, 0.3, 0.4];
+    let request =
+        VectorSearchRequest::from_query(&cfg, &vector, "source ledger", 5).expect("request builds");
+    let filter = request.filter.as_ref().expect("visibility filter");
+    assert_eq!(
+        filter["must_not"][0],
+        serde_json::json!({"key":"source_committed","match":{"value":false}})
+    );
+
+    let request = request.with_filter(serde_json::json!({
+        "must": [{"key": "domain", "match": {"value": "example.com"}}]
+    }));
+    let filter = request.filter.as_ref().expect("composed filter");
+    assert_eq!(
+        filter["must_not"][0],
+        serde_json::json!({"key":"source_committed","match":{"value":false}})
+    );
+    assert!(
+        filter["must"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!({
+                "key": "domain",
+                "match": {"value": "example.com"}
+            }))
+    );
+}
+
 #[tokio::test]
 async fn dispatch_rejects_invalid_collection_name() {
     let mut cfg = Config::test_default();

@@ -1,4 +1,119 @@
 use super::*;
+use axon_core::config::Config;
+use httpmock::prelude::*;
+
+#[test]
+fn cleanup_selector_v1_rejects_empty_scope() {
+    let selector = CleanupSelectorV1::new("axon", "", 1, 2, "src/lib.rs");
+    assert!(selector.is_err());
+
+    let selector =
+        CleanupSelectorV1::new("axon", "source-a", 1, 2, "src/lib.rs").expect("selector");
+    let filter = selector.filter();
+    let must = filter["must"].as_array().expect("must array");
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_id",
+        "match": {"value": "source-a"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_item_key",
+        "match": {"any": ["src/lib.rs"]}
+    })));
+}
+
+#[tokio::test]
+async fn cleanup_selector_batch_delete_verifies_stale_points_are_gone() {
+    let server = MockServer::start_async().await;
+    let delete = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/test_col/points/delete")
+                .query_param("wait", "true");
+            then.status(200)
+                .json_body(serde_json::json!({"result": {"status": "ok"}}));
+        })
+        .await;
+    let count = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/test_col/points/count")
+                .json_body_includes(r#"{"exact":true}"#);
+            then.status(200)
+                .json_body(serde_json::json!({"result": {"count": 0}}));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "test_col".to_string();
+    let selectors = vec![
+        CleanupSelectorV1::new("test_col", "source-a", 1, 7, "src/a.rs").unwrap(),
+        CleanupSelectorV1::new("test_col", "source-a", 1, 7, "src/b.rs").unwrap(),
+    ];
+
+    qdrant_delete_source_cleanup_selectors(&cfg, &selectors)
+        .await
+        .unwrap();
+
+    delete.assert_async().await;
+    count.assert_async().await;
+}
+
+#[test]
+fn cleanup_selector_batch_filter_scopes_all_item_keys() {
+    let selectors = vec![
+        CleanupSelectorV1::new("test_col", "source-a", 1, 7, "src/a.rs").unwrap(),
+        CleanupSelectorV1::new("test_col", "source-a", 1, 7, "src/b.rs").unwrap(),
+    ];
+    let filter = source_cleanup::batch_filter(&selectors).unwrap();
+    let must = filter["must"].as_array().unwrap();
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_id",
+        "match": {"value": "source-a"}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_generation",
+        "match": {"value": 7}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_index_version",
+        "match": {"value": 1}
+    })));
+    assert!(must.contains(&serde_json::json!({
+        "key": "source_item_key",
+        "match": {"any": ["src/a.rs", "src/b.rs"]}
+    })));
+}
+
+#[tokio::test]
+async fn cleanup_selector_batch_delete_fails_when_stale_points_remain() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/collections/test_col/points/delete")
+                .query_param("wait", "true");
+            then.status(200)
+                .json_body(serde_json::json!({"result": {"status": "ok"}}));
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/collections/test_col/points/count");
+            then.status(200)
+                .json_body(serde_json::json!({"result": {"count": 1}}));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "test_col".to_string();
+    let selectors = vec![CleanupSelectorV1::new("test_col", "source-a", 1, 7, "src/a.rs").unwrap()];
+
+    let err = qdrant_delete_source_cleanup_selectors(&cfg, &selectors)
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("left 1 matching stale points"));
+}
 
 #[test]
 fn repo_code_delete_body_is_scoped_to_one_repo_file_points() {

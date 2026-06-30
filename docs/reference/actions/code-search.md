@@ -21,7 +21,7 @@ files.
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon code-search ...`, `axon code-search-watch ...` |
+| CLI | `axon code-search ...` |
 | MCP | `{ "action": "code_search" }` |
 | REST | Deferred |
 | Service | `services::query::code_search` |
@@ -30,7 +30,7 @@ files.
 
 ```bash
 axon code-search "freshness lease" --cwd /path/to/repo --path-prefix src/vector --json
-axon code-search-watch --cwd ~/workspace --json
+axon embed /path/to/repo
 ```
 
 `--cwd` defaults to the current directory and is resolved to the containing Git root.
@@ -49,38 +49,19 @@ local files first.
 | `--no-freshness` | flag | `false` | Skip manifest refresh and search the committed index only. |
 | `--json` | flag | `false` | Emit machine-readable JSON output. |
 
-### `code-search-watch`
+### Background Watching
 
-`axon code-search-watch` is a host-local long-running watcher for one or more
-workspace/project directories. Each `--cwd` adds a watched directory. If a
-watched directory is itself a Git checkout, Axon watches that repo; otherwise it
-discovers immediate child directories that contain a `.git` directory or
-worktree `.git` file. It watches each repo recursively, debounces
-create/modify/remove events, then refreshes only the changed repo's code-search
-index through the same manifest/generation path used by `axon code-search`.
-
-Startup is watch-only by default: it does not index every existing repo under the
-workspace unless `--initial-refresh` is explicitly set.
+`code-search` performs an on-demand freshness pass before querying. To keep a
+local checkout refreshed in the background, register the checkout through
+`embed`. Add `--watch` when you want the watcher attached in the foreground:
 
 ```bash
-axon code-search-watch --cwd ~/workspace --json
-axon code-search-watch --cwd ~/workspace --cwd ~/src --debounce-ms 1000 --settle-ms 750
-axon code-search-watch --cwd ~/workspace --dry-run --json
-axon code-search-watch enable --cwd ~/workspace --cwd ~/src --json
+axon embed /path/to/repo
+axon embed /path/to/repo --watch
 ```
 
-| Flag | Type | Default | Description |
-|---|---|---|---|
-| `--cwd <path>` | repeatable path | Current directory | Workspace/project directory to add to the watched set. If it is a Git checkout, watches that repo; otherwise watches immediate Git checkout children. |
-| `--debounce-ms <n>` | u64 | `750` | Debounce file events by this many milliseconds before refreshing. |
-| `--settle-ms <n>` | u64 | `500` | Require no further events for this many milliseconds before refreshing. |
-| `--initial-refresh` | flag | `false` | Refresh all discovered repos once before watching. Off by default. |
-| `--dry-run` | flag | `false` | Print discovered repos and eligible files, then exit without writing SQLite or Qdrant. |
-| `--json` | flag | `false` | Emit newline-delimited JSON watcher events. |
-
-`code-search-watch enable` installs and enables the user systemd service for the
-same watcher command. It writes the service unit and starts it with the supplied
-repeatable `--cwd` set.
+The removed `code-search-watch` command is retained only as a tombstone that
+points callers to `embed`.
 
 ## MCP
 
@@ -120,15 +101,17 @@ If a foreground refresh times out after embedding every file but before committi
 the generation, the next freshness pass detects the complete uncommitted
 generation and finishes the commit/cleanup without re-embedding it. Plain
 `code-search` does not continue refreshing in the background after the command
-returns; run `code-search-watch` when you want a long-running repo watcher.
+returns; run `axon embed /path/to/repo` when you want background refreshes for a
+local source, or `axon embed /path/to/repo --watch` when you want foreground
+progress.
 
 ## File Selection
 
 `code-search` indexes the Git checkout resolved from `cwd`. It does not
 automatically crawl all workspace repositories. Each default search performs a
 foreground freshness pass unless `--no-freshness` is set or the checkout is still
-inside the short freshness TTL. `code-search-watch` watches a workspace/project
-directory and refreshes the changed child checkout as file events arrive.
+inside the short freshness TTL. Use `embed` for background refreshes, or
+`embed --watch` for attached refresh progress on a local source.
 
 This is separate from Axon's other automatic systems:
 

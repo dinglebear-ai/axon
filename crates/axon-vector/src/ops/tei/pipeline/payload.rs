@@ -50,6 +50,12 @@ pub const RESERVED_PAYLOAD_KEYS: &[&str] = &[
     "structured_type",
     "structured_id",
     "structured_blob",
+    "source_id",
+    "source_kind",
+    "source_generation",
+    "source_item_key",
+    "source_item_hash",
+    "source_index_version",
 ];
 
 /// Merge source-specific metadata from `extra` into `payload`, skipping any key that
@@ -182,7 +188,12 @@ pub(super) fn build_embedded_doc_from_vectors(
     let chunk_point_ids = std::mem::take(&mut doc.chunk_point_ids);
     for (idx, (chunk, vecv)) in doc.chunks.into_iter().zip(vectors).enumerate() {
         let point_id = chunk_point_ids.get(idx).copied().unwrap_or_else(|| {
-            Uuid::new_v5(&Uuid::NAMESPACE_URL, format!("{}:{}", url, idx).as_bytes())
+            let seed = doc
+                .ledger_payload
+                .as_ref()
+                .map(|ledger| ledger.point_id_seed(&url, idx))
+                .unwrap_or_else(|| format!("{}:{}", url, idx));
+            Uuid::new_v5(&Uuid::NAMESPACE_URL, seed.as_bytes())
         });
         // Apply extra metadata first so that system fields written below always win.
         // RESERVED_PAYLOAD_KEYS in apply_extra() provides a second line of defense. (S-M1)
@@ -193,6 +204,9 @@ pub(super) fn build_embedded_doc_from_vectors(
         // Per-chunk overrides win over doc-level extra (reserved system keys excepted).
         if let Some(chunk_override) = chunk_extra.get(idx) {
             apply_extra(&mut payload, chunk_override);
+        }
+        if let Some(ledger_payload) = &doc.ledger_payload {
+            ledger_payload.apply_to_payload(&mut payload);
         }
         // System fields — written after extra so they are always authoritative.
         payload["url"] = serde_json::Value::String(url.clone());

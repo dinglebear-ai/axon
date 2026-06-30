@@ -3,6 +3,7 @@ use crate::context::ServiceContext;
 use async_trait::async_trait;
 use axon_core::config::Config;
 use axon_jobs::backend::BackendResult;
+use axon_source_ledger::{SourceIdentity, SourceKind, SourceLedgerStore};
 use std::sync::{Arc, Mutex};
 
 struct CaptureRuntime {
@@ -105,6 +106,23 @@ async fn embed_start_with_context_enqueues_without_blocking_when_wait_false()
     assert_eq!(outcome.disposition, StartDisposition::Enqueued);
     assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
     assert_eq!(runtime.payloads.lock().expect("lock").len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn qdrant_down_does_not_allocate_local_generation() -> Result<(), Box<dyn Error + Send + Sync>>
+{
+    let store = SourceLedgerStore::new(axon_jobs::store::open_sqlite_pool(":memory:").await?);
+    let source = SourceIdentity::new("local-source", SourceKind::LocalCode, "axon", 1);
+    store.ensure_source(&source).await?;
+    store
+        .set_backoff("local-source", i64::MAX / 2, "qdrant", "connection refused")
+        .await?;
+
+    let cfg = Config::default();
+    let result = refresh_local_source_with_ledger(&cfg, &store, "local-source").await;
+    assert!(result.is_err());
+    assert_eq!(store.max_generation("local-source").await?, 0);
     Ok(())
 }
 

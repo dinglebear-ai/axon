@@ -40,7 +40,7 @@ fn parse_watch_create_with_every_and_type() {
 
 #[allow(unsafe_code)]
 #[test]
-fn parse_code_search_watch_is_watch_only_by_default_and_accepts_multiple_roots() {
+fn parse_embed_watch_sets_embed_watch_mode() {
     let _guard = ENV_LOCK.lock().unwrap();
 
     let cli = super::Cli::parse_from([
@@ -49,27 +49,53 @@ fn parse_code_search_watch_is_watch_only_by_default_and_accepts_multiple_roots()
         "http://127.0.0.1:52000",
         "--qdrant-url",
         "http://127.0.0.1:53333",
-        "code-search-watch",
-        "--cwd",
+        "embed",
         "/workspace",
-        "--cwd",
-        "/opt/projects",
-        "--dry-run",
+        "--watch",
     ]);
-    let cfg = super::build_config::into_config(cli).expect("code-search-watch should parse");
-    assert!(matches!(cfg.command, CommandKind::CodeSearchWatch));
-    let watch = cfg
-        .code_search_watch
-        .expect("code-search-watch config should be set");
-    assert_eq!(
-        watch.roots,
-        vec![
-            std::path::PathBuf::from("/workspace"),
-            std::path::PathBuf::from("/opt/projects"),
-        ]
-    );
-    assert!(!watch.initial_refresh);
-    assert!(watch.dry_run);
+    let cfg = super::build_config::into_config(cli).expect("embed --watch should parse");
+    assert!(matches!(cfg.command, CommandKind::Embed));
+    assert!(cfg.embed_watch);
+    assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_embed_no_watch_sets_embed_no_watch_mode() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "embed",
+        "/workspace",
+        "--no-watch",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("embed --no-watch should parse");
+    assert!(matches!(cfg.command, CommandKind::Embed));
+    assert!(!cfg.embed_watch);
+    assert!(cfg.embed_no_watch);
+    assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
+}
+
+#[test]
+fn help_mentions_embed_watch_not_code_search_watch() {
+    let mut command = super::build_cli_command();
+    let top_help = command.render_long_help().to_string();
+    let embed_help = command
+        .find_subcommand_mut("embed")
+        .expect("embed subcommand")
+        .render_long_help()
+        .to_string();
+    let help = format!("{top_help}\n{embed_help}");
+
+    assert!(help.contains("embed"));
+    assert!(help.contains("--watch"));
+    assert!(help.contains("--no-watch"));
+    assert!(!help.contains("code-search-watch"));
 }
 
 #[allow(unsafe_code)]

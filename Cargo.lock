@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "async-trait",
  "axon-cli",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "chrono",
  "percent-encoding",
@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "axum",
  "lab-auth",
@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "axon-cli"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "axon-code-index"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "anyhow",
  "axon-core",
@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "axon-crawl"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "axon-core",
  "base64",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "axon-api",
  "axon-core",
@@ -594,12 +594,13 @@ dependencies = [
 
 [[package]]
 name = "axon-ingest"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "axon-api",
  "axon-core",
+ "axon-source-ledger",
  "axon-vector",
  "base64",
  "chrono",
@@ -629,7 +630,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -664,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -695,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -706,6 +707,7 @@ dependencies = [
  "axon-extract",
  "axon-ingest",
  "axon-jobs",
+ "axon-source-ledger",
  "axon-vector",
  "base64",
  "chrono",
@@ -743,8 +745,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon-source-ledger"
+version = "6.2.0"
+dependencies = [
+ "anyhow",
+ "axon-jobs",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "axon-vector"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -787,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "6.1.7"
+version = "6.2.0"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -1685,9 +1699,9 @@ dependencies = [
 
 [[package]]
 name = "crypto-bigint"
-version = "0.7.3"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42a0d26b245348befa0c121944541476763dcc46ede886c88f9d12e1697d27c3"
+checksum = "1a52aa3fcda4e6302a9f48734f234d35d4721b96f8fe07d073f07ce9df4f0271"
 dependencies = [
  "cpubits",
  "ctutils",
@@ -1722,7 +1736,7 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34caa94a67aadf36b12807811390033f73eff0e3789feb596925ace787b13efe"
 dependencies = [
- "crypto-bigint 0.7.3",
+ "crypto-bigint 0.7.5",
  "libm",
  "rand_core 0.10.1",
 ]
@@ -5604,7 +5618,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b2aa4ba0d89f73d1e332df05be0eeab8840351c36ca5654341dfdb57bb3caf"
 dependencies = [
  "const-oid 0.10.2",
- "crypto-bigint 0.7.3",
+ "crypto-bigint 0.7.5",
  "crypto-primes",
  "digest 0.11.3",
  "pkcs1 0.8.0-rc.4",

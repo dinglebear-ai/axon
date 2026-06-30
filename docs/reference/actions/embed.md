@@ -46,6 +46,8 @@ All global flags apply. Key flags for this command:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--wait <bool>` | `false` | `false`: enqueue job and return immediately. `true`: run inline and block until embedding completes. |
+| `--watch` | `false` | Force foreground code-index watch mode for local file/directory inputs. Local paths start a background watcher by default. |
+| `--no-watch` | `false` | Run one-shot local embedding instead of the default local watch/index flow. |
 | `--collection <name>` | `axon` | Qdrant collection to write to. Also settable via `AXON_COLLECTION`. |
 | `--fresh <Nd>` | — | CLI-only: create or update a recurring freshness schedule, for example `--fresh 7d`. |
 | `--json` | `false` | Machine-readable JSON output. |
@@ -73,14 +75,20 @@ axon embed worker            # run embed worker inline
 ## Examples
 
 ```bash
-# Default mode: start embed job and return job JSON
+# Local path mode: start background watch/index for local changes by default
 axon embed ./docs
 
-# Synchronous inline embedding
-axon embed ./docs --wait true
+# One-shot local embedding without ongoing watch/index refresh
+axon embed ./docs --no-watch
 
-# Embed into a specific collection
-axon embed ./README.md --wait true --collection docs-local
+# Synchronous inline embedding
+axon embed ./docs --no-watch --wait true
+
+# Explicitly force local code-index refreshes in the foreground
+axon embed ./workspace --watch
+
+# Embed one local file without watching
+axon embed ./README.md --no-watch --wait true --collection docs-local
 
 # Check status
 axon embed status 550e8400-e29b-41d4-a716-446655440000
@@ -88,7 +96,7 @@ axon embed status 550e8400-e29b-41d4-a716-446655440000
 # JSON list output
 axon embed list --json
 
-# URL/text input
+# URL/text input: enqueue by default when --wait true is not set
 axon embed https://example.com/docs --json
 
 # Keep local docs fresh weekly
@@ -100,8 +108,10 @@ axon embed ./docs --fresh 7d
 - Subcommands and input names can collide. If you need to embed a local path named `status`, pass it as a real path (`./status`) so it is treated as input, not a subcommand.
 - Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon embed` through HTTP; call the `/v1/embed` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.
 - `embed clear` is destructive and prompts unless `--yes` is set.
-- `--wait false` returns a queued job by default, and jobs stay pending until a worker process (`axon embed worker`) or long-running server process consumes them.
+- Existing local file and directory inputs start a background local watch/index process by default, even when `--wait false` is omitted or explicit. URL/free-text inputs return a queued job by default, and jobs stay pending until a worker process (`axon embed worker`) or long-running server process consumes them.
 - `--wait true` runs the submitted embed job in-process and blocks until it finishes. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.
+- `--no-watch` restores one-shot local embedding for scripts or ad hoc local files that should not stay attached to the watcher.
+- `--watch` is only valid for local file and directory inputs. It runs the local code-search watcher in the foreground, performs the initial refresh for discovered Git checkouts, and uses the existing `axon-code-index` lifecycle tables.
 - `--fresh` is CLI-only in v1. It stores a safe replay snapshot and scheduled runs enqueue normal embed jobs through the service layer; REST/MCP freshness management is not exposed yet.
 - `axon embed status <job_id> --json` returns a single top-level job object. The stable fields for automation are `id`, `status`, `target`, `collection`, `metrics`, `result_json`, and `config_json`.
 - The local source identifier for file embeds is the `target` field. Do not expect a nested `data.url` / `data.collection` envelope from the CLI.

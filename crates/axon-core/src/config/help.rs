@@ -28,7 +28,6 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "embed",
             "query",
             "code-search",
-            "code-search-watch",
             "retrieve",
             "ask",
             "evaluate",
@@ -91,6 +90,14 @@ const EMBED_OPTIONS: &[(&str, &str)] = &[
         "--batch-concurrency <n>",
         "Concurrent embed batch operations",
     ),
+    (
+        "--watch",
+        "Force foreground local code-index watch progress for local paths",
+    ),
+    (
+        "--no-watch",
+        "Run one-shot local embedding instead of watching",
+    ),
     ("--tei-url <url>", "Text Embeddings Inference endpoint"),
     ("--qdrant-url <url>", "Qdrant endpoint"),
     ("--json", "Output machine-readable JSON"),
@@ -136,30 +143,6 @@ const JOB_VIEW_OPTIONS: &[(&str, &str)] = &[
 const SERVICE_OPTIONS: &[(&str, &str)] = &[
     ("--tei-url <url>", "Text Embeddings Inference endpoint"),
     ("--qdrant-url <url>", "Qdrant endpoint"),
-    ("--json", "Output machine-readable JSON"),
-];
-
-const CODE_SEARCH_WATCH_OPTIONS: &[(&str, &str)] = &[
-    (
-        "--cwd <PATH>",
-        "Workspace/project directory to watch; repeat for multiple roots",
-    ),
-    (
-        "--initial-refresh",
-        "Refresh discovered repos once before watching",
-    ),
-    (
-        "--dry-run",
-        "Print repos/files that would be indexed without writing SQLite/Qdrant",
-    ),
-    (
-        "--debounce-ms <n>",
-        "Debounce file events before refreshing",
-    ),
-    (
-        "--settle-ms <n>",
-        "Require a quiet period before refreshing",
-    ),
     ("--json", "Output machine-readable JSON"),
 ];
 
@@ -494,12 +477,6 @@ fn command_options(command: &Command, path: &[&str]) -> Vec<(String, String)> {
 fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, String)> {
     if matches!(path, ["setup", "session-watch-service", "status"]) {
         return Vec::new();
-    }
-    if matches!(path.first(), Some(&"code-search-watch")) {
-        return CODE_SEARCH_WATCH_OPTIONS
-            .iter()
-            .map(|(label, desc)| ((*label).to_string(), (*desc).to_string()))
-            .collect();
     }
     let specs: &[(&str, &str)] = match command_name {
         "scrape" | "crawl" | "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
