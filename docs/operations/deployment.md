@@ -129,7 +129,9 @@ AXON_BIN=/workspace/axon/target/release/axon
 ### Optional tuning
 
 - Worker tuning in `~/.axon/config.toml` (`workers.ingest-lanes`, `workers.embed-doc-timeout-secs`, etc.)
-- Watchdog and performance settings in `~/.axon/.env` until typed TOML fields exist
+- Worker, watchdog, queue cap, Qdrant, ask, and performance tuning belong in
+  `~/.axon/config.toml`; env overrides are temporary/CI only. Keep `.env` for
+  URLs, secrets, bootstrap/runtime values, and Compose interpolation.
 
 Ensure `.env` is never committed. `.env.example` remains tracked.
 
@@ -181,16 +183,17 @@ whenever the port is exposed beyond loopback.
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 
-# Start the local Axon HTTP server:
-cargo run --bin axon -- serve
+# Start the local Axon MCP worker daemon:
+cargo run --bin axon -- mcp
 
 # Or via just:
 just dev
 ```
 
 `axon serve` starts the unified HTTP server for MCP, the web panel, `/v1/ask`,
-and first-party client/server routes. `just dev` starts infra first, builds the
-debug binary, then runs the Axon server locally for development.
+and first-party client/server routes. Current `just dev` starts TEI + Chrome,
+builds the debug binary, then runs `axon mcp` locally as the worker daemon for
+fire-and-forget CLI jobs.
 
 1. Verify health:
 

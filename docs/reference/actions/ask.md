@@ -17,6 +17,15 @@ Parity notes: `/v1/ask/stream` is advertised in `supported_routes()` and serves 
 
 RAG-powered Q&A. Retrieves relevant chunks from the local Qdrant knowledge base, reranks them by relevance, builds a context window, and calls the configured LLM to generate a grounded answer.
 
+## Related Retrieval Commands
+
+| Command | Meaning |
+|---|---|
+| `search` | External web discovery; current runtime also auto-queues bounded crawl/index jobs for results. |
+| `query` | Ranked semantic search over content already indexed in Qdrant. |
+| `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
+| `ask` | RAG synthesis over indexed context with an LLM answer. |
+
 ## Synopsis
 
 ```bash

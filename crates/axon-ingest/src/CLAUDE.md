@@ -186,7 +186,7 @@ summary.require_success("new ingest source embed")?;
 
 ## ingest_jobs Schema
 `axon_ingest_jobs` differs from other job tables:
-- Uses `source_type TEXT` (`github`/`reddit`/`youtube`/`sessions`) + `target TEXT` (repo name, subreddit, video URL, session target)
+- Uses `source_type TEXT` (`github`/`gitlab`/`gitea`/`git`/`reddit`/`youtube`/`rss`/`sessions`) + `target TEXT` (repo name, subreddit, video URL, feed URL, session target)
 - Does **NOT** have `url` or `urls_json` columns
 - Ingest worker lifecycle is owned by the SQLite worker subsystem (`crates/axon-jobs/src/workers.rs`); the legacy `worker_lane.rs` was removed with the old queue runtime. `AXON_INGEST_LANES` is wired through config and clamped to 1-16.
 
@@ -212,4 +212,10 @@ Install: `pip install yt-dlp` or `brew install yt-dlp`. Verify: `yt-dlp --versio
 2. Extend `classify_target()` in `crates/axon-ingest/src/classify.rs` to recognize the new source
 3. Add a per-source variant in the relevant ingest service entry point (`crates/axon-services/src/ingest.rs`)
 4. Add `source_type` variant handling in the SQLite ingest worker (`crates/axon-jobs/src/workers.rs` and the ingest payload schema)
-5. Add env vars to `.env.example`
+5. Add or update `axon-api` DTO/schema variants and MCP/REST/action docs.
+6. Add source-specific parser facts / graph candidates where the source exposes dependencies, manifests, sessions, tools, issues, PRs, or other graphable entities.
+7. Add env vars to `.env.example` only for URLs/secrets/runtime values; durable tuning belongs in `config.toml`.
+
+For the #298 clean-break target, new sources should follow
+`docs/pipeline-unification/sources/new-source-contract.md` and be implemented
+as adapters emitting `SourceDocument`, not as new standalone ingest families.

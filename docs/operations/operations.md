@@ -331,11 +331,11 @@ This is faster for one-shot full backups and includes index state.
 
 ### Application logs (Rust)
 
-`init_tracing()` in `src/core/logging.rs` writes to two sinks:
+`init_tracing()` in `crates/axon-core/src/logging.rs` writes to two sinks:
 
 - **stderr**, default level `WARN` (overridable with `RUST_LOG=info`)
-- **size-rotated JSON file** at `${AXON_LOG_DIR}/${AXON_LOG_FILE}` (defaults
-  to `${AXON_DATA_DIR}/logs/axon.log` → `~/.axon/logs/axon.log`), `INFO` level. Rotation triggers
+- **size-rotated JSON file** at `AXON_LOG_PATH` when set, otherwise
+  `${AXON_DATA_DIR}/logs/axon.log` (`~/.axon/logs/axon.log`), `INFO` level. Rotation triggers
   when the active file exceeds `AXON_LOG_MAX_BYTES` (default 10 MiB);
   archives are renamed `<file>.1`, `<file>.2`, … up to `AXON_LOG_MAX_FILES`
   (default `3`). The oldest archive is pruned on each rotation.
@@ -479,7 +479,7 @@ The `to` collection is created if missing; re-running is idempotent.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `axon doctor` shows `tei.ok=false` | TEI container down or model still loading | `docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps`; wait for healthcheck (`start_period: 20s`); check `docker logs axon-tei` for CUDA OOM |
-| `tei` returns `429`/`503` mid-run | Model overload / CUDA pressure, or `TEI_MAX_BATCH_REQUESTS` lower than the active client fanout | For RTX 4070 + Qwen3-Embedding-0.6B, keep `TEI_MAX_BATCH_TOKENS=163840`, `TEI_MAX_BATCH_REQUESTS=512`, `TEI_MAX_CLIENT_BATCH_SIZE=128`, `AXON_EMBED_POOL_MAX_INPUTS=512`, and `AXON_TEI_MAX_IN_FLIGHT_INPUTS=320`. If TEI OOMs during warmup, reduce `TEI_MAX_BATCH_TOKENS`. TEI client auto-retries on 429/5xx. |
+| `tei` returns `429`/`503` mid-run | Model overload / CUDA pressure, or `TEI_MAX_BATCH_REQUESTS` lower than the active client fanout | For RTX 4070 + Qwen3-Embedding-0.6B, keep `TEI_MAX_BATCH_TOKENS=196608`, `TEI_MAX_BATCH_REQUESTS=512`, `TEI_MAX_CLIENT_BATCH_SIZE=128`, `AXON_EMBED_POOL_MAX_INPUTS=512`, and `AXON_TEI_MAX_IN_FLIGHT_INPUTS=320`. If TEI OOMs during warmup, reduce `TEI_MAX_BATCH_TOKENS`. TEI client auto-retries on 429/5xx. |
 | Qdrant upserts are slow | Oversized requests, too many tiny requests, or active indexing/optimizer work competing with writes | Default to `AXON_QDRANT_UPSERT_BATCH_SIZE=1024` and `AXON_QDRANT_UPSERT_PARALLELISM=1` for local docs workloads. For larger or remote imports, test `AXON_QDRANT_UPSERT_BATCH_SIZE=256` with `AXON_QDRANT_UPSERT_PARALLELISM=2-4`. For fresh large imports, run with `AXON_QDRANT_BULK_LOAD=true` so HNSW indexing is delayed until after upload, then restored automatically. Check `bench-embed` Qdrant request deltas, `optimizer_status`, and `segments_count`. |
 | Fresh docs collection setup is slow | Full payload-index set or high-cost HNSW build settings | For docs-only collections, benchmark `AXON_QDRANT_PAYLOAD_INDEX_PROFILE=core`; for ingest-speed experiments, benchmark lower `AXON_QDRANT_HNSW_M` / `AXON_QDRANT_HNSW_EF_CONSTRUCT`, then validate retrieval quality before keeping them. |
 | `qdrant connection refused` | Qdrant not started on tootie or `QDRANT_URL` wrong | Verify `curl ${QDRANT_URL}/readyz`; use `just qdrant-up` only for an intentional local fallback |
@@ -624,6 +624,6 @@ cp ~/.axon/backups/sqlite/jobs-20260101-0200.db ~/.axon/jobs.db
 | `src/cli/commands/migrate.rs` | `axon migrate` |
 | `src/jobs/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
 | `src/jobs/store.rs` | SQLite schema bootstrap + lifecycle SQL |
-| `src/core/logging.rs` | `init_tracing`, `AXON_LOG_DIR`/`AXON_LOG_FILE`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
+| `crates/axon-core/src/logging.rs` | `init_tracing`, `AXON_LOG_PATH`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
 | `src/core/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
 | `src/core/paths.rs` | `axon_data_dir()`, `axon_data_base_dir()` |

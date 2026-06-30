@@ -43,33 +43,43 @@ src/
 │   └── ...                          # query, ask, summarize, system, crawl, embed, ingest, etc.
 ```
 
-The MCP server calls the services layer, which is the same layer used by CLI handlers and web routes. MCP handlers map typed service results to MCP wire format.
+The MCP server calls the services layer, which is the same layer used by CLI
+handlers and web routes. MCP handlers map typed service results to MCP wire
+format.
+
+> Current pre-#298 development guide. New source acquisition/indexing behavior
+> should be designed in `axon-api` DTOs and `axon-services`/domain crates first,
+> then exposed through CLI/MCP/REST adapters. Do not start source work by adding
+> a bespoke MCP action.
 
 ## Development cycle
 
-1. **Edit source** -- modify handlers in `src/mcp/server.rs` or service functions in `src/services/`
+1. **Edit source** -- modify handlers in `crates/axon-mcp/src/` or service functions in `crates/axon-services/src/`
 2. **Build** -- `cargo check` or `just check` for fast feedback
 3. **Test** -- `cargo test` or `just test`
 4. **Run** -- `just dev` starts the full stack including MCP HTTP
 5. **Verify** -- `just mcp-smoke` runs the MCP smoke test suite
 
-## Adding a new action
+## Adding a new current-runtime action
+
+For source-pipeline work, follow `docs/pipeline-unification/` instead. MCP is a
+transport over shared DTOs/services, not the owner of source routing.
 
 ### Direct action (no subaction)
 
-1. **Add enum variant** in `src/mcp/schema.rs`:
+1. **Add enum/schema variant** in `crates/axon-api/src/mcp_schema.rs`:
    - Add to the action enum
    - Define required and optional parameters
 
-2. **Implement service function** in `src/services/`:
+2. **Implement service function** in `crates/axon-services/src/`:
    - Create a function that returns a typed result struct
-   - Define the result struct in the matching `src/services/types/service/<domain>.rs` module and re-export it from `src/services/types/service.rs`
+   - Define transport-neutral DTOs in `axon-api` when the shape crosses CLI/MCP/REST boundaries
 
-3. **Add CLI handler** in `src/cli/commands/`:
+3. **Add CLI handler** in `crates/axon-cli/src/commands/`:
    - Create a new command file
    - Call the service function, format output for stdout
 
-4. **Wire MCP dispatch** in `src/mcp/server.rs`:
+4. **Wire MCP dispatch** in `crates/axon-mcp/src/`:
    - Add match arm for the new action
    - Call the service function
    - Map the typed result to MCP response format
@@ -88,7 +98,7 @@ The MCP server calls the services layer, which is the same layer used by CLI han
 Lifecycle actions (crawl, extract, embed, ingest) follow a common pattern with
 `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` subactions.
 
-1. Use the existing `src/jobs/` framework
+1. Use the existing `crates/axon-jobs/` framework
 2. Implement a `Processor` trait for the new job type
 3. Wire the in-process worker into `SqliteJobBackend::new_with_workers`
 4. Wire into MCP dispatch with subaction routing

@@ -17,6 +17,10 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 Specialized semantic search over a local Git checkout's docs, source, and config
 files.
 
+> Current runtime only. The #298 target folds local code indexing/watch behavior
+> into the unified source/watch pipeline; `code-search` and
+> `code-search-watch` are removed user-facing commands after cutover.
+
 ## Surfaces
 
 | Surface | Entry point |
@@ -24,7 +28,7 @@ files.
 | CLI | `axon code-search ...`, `axon code-search-watch ...` |
 | MCP | `{ "action": "code_search" }` |
 | REST | Deferred |
-| Service | `services::query::code_search` |
+| Service | `crates/axon-services/src/query.rs::code_search` |
 
 ## CLI
 

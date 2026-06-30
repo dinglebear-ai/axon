@@ -1,4 +1,4 @@
-# src/ingest
+# axon-ingest
 Last Modified: 2026-05-03
 
 Source-specific ingestion pipelines for non-crawl content.
@@ -29,10 +29,17 @@ Source-specific ingestion pipelines for non-crawl content.
 - `sessions.rs` + `sessions/{claude,codex,gemini}.rs`: AI session export parsers.
 
 ## Integration Points
-- Async ingest job orchestration lives in `src/jobs/ingest.rs`.
-- Embedded output ultimately flows into `src/vector/ops` and Qdrant.
-- Unified source ingest CLI entrypoints live in `src/cli/commands/ingest.rs` and shared helpers in `src/cli/commands/ingest_common.rs`.
+- Async ingest job orchestration lives in `crates/axon-jobs/src/ingest.rs` and
+  worker runners under `crates/axon-jobs/src/workers/`.
+- Embedded output ultimately flows into `crates/axon-vector/src/ops` and
+  Qdrant.
+- Current source ingest CLI entrypoints live in
+  `crates/axon-cli/src/commands/ingest.rs` and shared helpers in
+  `crates/axon-cli/src/commands/ingest_common.rs`.
 - AI session export ingestion is exposed through the `sessions` command path, with parsers in this crate and command handling outside the provider-specific GitHub/Reddit/YouTube adapters.
+
+The #298 target splits this crate's responsibilities into `axon-adapters`,
+`axon-route`, `axon-ledger`, `axon-document`, and `axon-jobs`.
 
 ## Notes
 - Keep source adapters isolated by provider to avoid cross-provider coupling.
