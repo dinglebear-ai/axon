@@ -56,6 +56,8 @@ export async function invoke<T = unknown>(
         theme: "dark",
         hideOnBlur: false,
         openResultsInline: true,
+        agentBubbles: false,
+        showFooterHints: false,
         envValues: {},
         configValues: {},
       } as T;

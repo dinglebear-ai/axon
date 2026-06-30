@@ -33,6 +33,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -42,14 +43,17 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.axon.app.ui.ask.AskScreen
 import com.axon.app.ui.ask.AskViewModel
+import com.axon.app.ui.jobs.ActivityHistoryScreen
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
 import com.axon.app.ui.knowledge.KnowledgeTab
 import com.axon.app.ui.sessions.SessionsDrawerContent
 import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.ui.status.StatusDiagnostics
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.theme.AxonTheme
+import com.axon.app.ui.theme.tint
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 sealed interface ShellOverlay {
@@ -64,16 +68,23 @@ sealed interface ShellOverlay {
 private data object ShellHome
 
 @Composable
-fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
+fun RailScaffold(
+    navController: NavController,
+    diagnostics: StatusDiagnostics,
+    modifier: Modifier = Modifier,
+) {
     var activePage by remember { mutableStateOf<DrawerSection?>(null) }
     var activeOverlay by remember { mutableStateOf<ShellOverlay?>(null) }
     var sidebarOpen by remember { mutableStateOf(false) }
+    var childCanHandleBack by remember { mutableStateOf(false) }
+    var askReturnPage by remember { mutableStateOf<DrawerSection?>(null) }
     val colors = AxonTheme.colors
     val askVm: AskViewModel = viewModel()
 
     val sidebarItems = remember {
         listOf(
             SidebarItem("Ask", "ask", Icons.Rounded.Home),
+            SidebarItem("Activity", "activity", Icons.Rounded.History),
             SidebarItem("Sessions", "sessions", Icons.Rounded.History),
             SidebarItem("Jobs", "jobs", Icons.Rounded.TaskAlt),
             SidebarItem("Knowledge", "knowledge", Icons.Rounded.Hub),
@@ -82,6 +93,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
     }
     fun selectedValue(): String = when (activePage) {
         null -> "ask"
+        DrawerSection.Activity -> "activity"
         DrawerSection.Sessions -> "sessions"
         DrawerSection.Jobs -> "jobs"
         DrawerSection.Knowledge -> "knowledge"
@@ -89,8 +101,11 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
     }
     fun selectSidebarValue(value: String) {
         activeOverlay = null
+        childCanHandleBack = false
+        askReturnPage = null
         activePage = when (value) {
             "sessions" -> DrawerSection.Sessions
+            "activity" -> DrawerSection.Activity
             "jobs" -> DrawerSection.Jobs
             "knowledge" -> DrawerSection.Knowledge
             "settings" -> DrawerSection.Settings
@@ -102,14 +117,43 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
         activeOverlay = overlay
         sidebarOpen = false
     }
+    fun showAsk(returnTo: DrawerSection? = null) {
+        activeOverlay = null
+        sidebarOpen = false
+        childCanHandleBack = false
+        askReturnPage = returnTo
+        activePage = null
+    }
 
-    BackHandler(enabled = activeOverlay != null || sidebarOpen || activePage != null) {
-        if (activeOverlay != null) {
-            activeOverlay = null
-        } else if (sidebarOpen) {
-            sidebarOpen = false
-        } else {
-            activePage = null
+    fun showPage(page: DrawerSection) {
+        activeOverlay = null
+        sidebarOpen = false
+        childCanHandleBack = false
+        askReturnPage = null
+        activePage = page
+    }
+
+    val shellBackTarget = resolveShellBackTarget(
+        activeOverlay = activeOverlay != null,
+        sidebarOpen = sidebarOpen,
+        activePage = activePage,
+        childCanHandleBack = childCanHandleBack,
+        askReturnPage = askReturnPage,
+    )
+    BackHandler(enabled = shellBackTarget !is ShellBackTarget.None && shellBackTarget !is ShellBackTarget.Child) {
+        when (val target = shellBackTarget) {
+            ShellBackTarget.Overlay -> activeOverlay = null
+            ShellBackTarget.Sidebar -> sidebarOpen = false
+            is ShellBackTarget.ReturnToPage -> {
+                askReturnPage = null
+                activePage = target.page
+            }
+            ShellBackTarget.Ask -> {
+                askReturnPage = null
+                activePage = null
+            }
+            ShellBackTarget.Child,
+            ShellBackTarget.None -> Unit
         }
     }
 
@@ -130,6 +174,7 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                     activePage = DrawerSection.Settings
                     sidebarOpen = false
                 },
+                diagnostics = diagnostics,
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault.copy(alpha = 0.32f)))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -155,15 +200,21 @@ fun RailScaffold(navController: NavController, modifier: Modifier = Modifier) {
                             page = target,
                             navController = navController,
                             askVm = askVm,
-                            onShowAsk = { activePage = null },
+                            onShowAsk = { showAsk() },
+                            onShowAskFromPage = ::showAsk,
+                            onOpenJobs = { showPage(DrawerSection.Jobs) },
                             onOpenOverlay = ::openOverlay,
+                            onChildBackAvailableChange = { childCanHandleBack = it },
                         )
                         else -> ShellPageContent(
                             page = null,
                             navController = navController,
                             askVm = askVm,
-                            onShowAsk = { activePage = null },
+                            onShowAsk = { showAsk() },
+                            onShowAskFromPage = ::showAsk,
+                            onOpenJobs = { showPage(DrawerSection.Jobs) },
                             onOpenOverlay = ::openOverlay,
+                            onChildBackAvailableChange = { childCanHandleBack = it },
                         )
                     }
                 }
@@ -224,20 +275,35 @@ private fun ShellPageContent(
     navController: NavController,
     askVm: AskViewModel,
     onShowAsk: () -> Unit,
+    onShowAskFromPage: (DrawerSection?) -> Unit,
+    onOpenJobs: () -> Unit,
     onOpenOverlay: (ShellOverlay) -> Unit,
+    onChildBackAvailableChange: (Boolean) -> Unit,
 ) {
+    DisposableEffect(page) {
+        if (page == null) onChildBackAvailableChange(false)
+        onDispose { onChildBackAvailableChange(false) }
+    }
     when (page) {
         null -> AskScreen(
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
+            onOpenJobs = onOpenJobs,
             vm = askVm,
+        )
+        DrawerSection.Activity -> ActivityHistoryScreen(
+            onOpenAsk = { onShowAskFromPage(DrawerSection.Activity) },
+            onNestedBackAvailableChange = onChildBackAvailableChange,
         )
         DrawerSection.Sessions -> SessionsDrawerContent(
             onSelect = { sessionId ->
                 if (sessionId == "new") askVm.startNewSession() else askVm.loadSession(sessionId)
-                onShowAsk()
+                onShowAskFromPage(DrawerSection.Sessions)
             },
         )
-        DrawerSection.Jobs -> JobsScreen()
+        DrawerSection.Jobs -> JobsScreen(
+            onOpenAsk = { onShowAskFromPage(DrawerSection.Jobs) },
+            onNestedBackAvailableChange = onChildBackAvailableChange,
+        )
         DrawerSection.Knowledge -> KnowledgeScreen(
             onOpenTab = { tab -> onOpenOverlay(ShellOverlay.Knowledge(tab)) },
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
@@ -247,6 +313,7 @@ private fun ShellPageContent(
 }
 
 private fun DrawerSection.title(): String = when (this) {
+    DrawerSection.Activity -> "Activity"
     DrawerSection.Sessions -> "Sessions"
     DrawerSection.Jobs -> "Jobs"
     DrawerSection.Knowledge -> "Knowledge"
@@ -287,13 +354,21 @@ private fun AxonTopBar(
     onToggleSidebar: () -> Unit,
     onCloseOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
+    diagnostics: StatusDiagnostics,
 ) {
     val colors = AxonTheme.colors
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
-            .background(colors.navBg)
+            .height(64.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.tint(colors.accentPrimary, 5, colors.navBg),
+                        colors.navBg,
+                    ),
+                ),
+            )
             .padding(horizontal = 12.dp),
     ) {
         // Sidebar toggle + brand — present on every screen, overlays included.
@@ -316,7 +391,7 @@ private fun AxonTopBar(
         Text(
             title,
             color = colors.textPrimary.copy(alpha = 0.95f),
-            fontSize = 17.2.sp,
+            fontSize = 18.2.sp,
             lineHeight = 22.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = AxonTheme.fonts.display,
@@ -325,6 +400,22 @@ private fun AxonTopBar(
             modifier = Modifier
                 .align(Alignment.Center)
                 .widthIn(max = 200.dp),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.78f)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            colors.borderDefault.copy(alpha = 0f),
+                            colors.accentPrimary.copy(alpha = 0.48f),
+                            colors.accentPink.copy(alpha = 0.22f),
+                            colors.borderDefault.copy(alpha = 0f),
+                        ),
+                    ),
+                ),
         )
         Box(modifier = Modifier.align(Alignment.CenterEnd)) {
             if (overlayActive) {
@@ -339,7 +430,7 @@ private fun AxonTopBar(
                         .padding(9.dp),
                 )
             } else {
-                TopChromeStatus(onOfflineClick = onOpenSettings)
+                TopChromeStatus(onOfflineClick = onOpenSettings, diagnostics = diagnostics)
             }
         }
     }

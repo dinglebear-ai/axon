@@ -25,6 +25,8 @@ const config = {
   theme: "dark",
   hideOnBlur: false,
   openResultsInline: true,
+  agentBubbles: false,
+  showFooterHints: false,
   envValues: {},
   configValues: {},
 };
@@ -44,11 +46,14 @@ describe("App local help", () => {
       })),
     });
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       if (command === "resize_palette" || command === "hide_palette") return undefined;
-      if (command === "axon_http_request") throw new Error("REST should not be called for local help");
+      if (command === "axon_http_request")
+        throw new Error("REST should not be called for local help");
       return undefined;
     });
   });
@@ -80,6 +85,14 @@ describe("App local help", () => {
   });
 
   it("opens selected action help from the command bar and replays it from history as local help", async () => {
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return { ...config, showFooterHints: true };
+      if (command === "resize_palette" || command === "hide_palette") return undefined;
+      if (command === "axon_http_request")
+        throw new Error("REST should not be called for local help");
+      return undefined;
+    });
     await renderAndType("scrape");
     fireEvent.click(await screen.findByRole("button", { name: "Menu" }));
     fireEvent.click(await screen.findByText("Help"));
@@ -111,9 +124,11 @@ describe("App command palette accessibility + keyboard nav", () => {
   afterEach(() => cleanup());
 
   beforeEach(() => {
+    window.localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       return undefined;
     });
   });
@@ -176,11 +191,32 @@ describe("App command palette accessibility + keyboard nav", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
+  it("keeps Tab selecting the highlighted action when focus drifts to the footer", async () => {
+    const user = userEvent.setup();
+    const input = await renderApp();
+    fireEvent.change(input, { target: { value: "what is a skill?" } });
+
+    const footerSettings = screen.getByRole("button", { name: "Settings" });
+    footerSettings.focus();
+    await user.keyboard("{Tab}");
+
+    const switcher = await screen.findByRole("button", { name: /Switch from Ask/ });
+    expect(switcher).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveValue("what is a skill?");
+  });
+
   it("auto-runs only safe no-input switcher actions", async () => {
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       if (command === "axon_http_request") {
-        return { ok: true, status: 200, method: "GET", path: "/v1/sources", payload: { sources: [] } };
+        return {
+          ok: true,
+          status: 200,
+          method: "GET",
+          path: "/v1/sources",
+          payload: { sources: [] },
+        };
       }
       return undefined;
     });
@@ -205,13 +241,16 @@ describe("App command palette accessibility + keyboard nav", () => {
     vi.mocked(invoke).mockClear();
     fireEvent.click(await screen.findByRole("button", { name: /Dedupe/ }));
 
-    expect(await screen.findByRole("button", { name: /Switch from Dedupe collection/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /Switch from Dedupe collection/ }),
+    ).toBeInTheDocument();
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
   it("requires a second Enter before running guarded actions", async () => {
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       if (command === "axon_http_request") {
         return {
           ok: true,
@@ -252,8 +291,6 @@ describe("App command palette accessibility + keyboard nav", () => {
     expect(await screen.findByRole("button", { name: /Switch from/ })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /Switch from/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Switch from/ })).toBeNull());
   });
 });

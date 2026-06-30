@@ -114,13 +114,10 @@ class AxonClientErrorPathTest {
         assertTrue(r.isFailure)
     }
 
-    @Test fun `doctor surfaces no-response abort as failure`() = runBlocking {
-        server.enqueue(MockResponse().apply { socketPolicy = SocketPolicy.NO_RESPONSE })
-        // Use a small read timeout via a fresh client so the test exits in seconds, not minutes.
-        // (The default 60s would block CI.)
+    @Test fun `doctor surfaces abrupt disconnect as failure`() = runBlocking {
+        server.enqueue(MockResponse().apply { socketPolicy = SocketPolicy.DISCONNECT_AT_START })
         val shortClient = AxonClient(server.url("/").toString().trimEnd('/'), "t")
         val r = shortClient.doctor()
-        // Either failure-by-timeout or by socket close — both are correct.
         assertTrue(r.isFailure)
     }
 

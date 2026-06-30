@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@/lib/invoke";
 
 interface WindowChromeArgs {
+  actionSwitcherOpen: boolean;
   jobExpanded: boolean;
   jobMinimized: boolean;
   settingsOpen: boolean;
@@ -29,9 +30,10 @@ type BrowseHeight = () => number;
 // every side so its glow renders fully instead of clipping at the window edge.
 // Geometry must match --axon-launcher-inset in styles.css and show_main_window()
 // in src-tauri/src/lib.rs — COMPACT = 680×52 bar + 20px inset all round; TRAY =
-// 680×88 panel (52px command bar + 36px idle tray) + 20px inset all round.
+// 680×100 panel (52px command bar + 48px idle tray) + 20px inset all round.
 const COMPACT = { width: 720, height: 92 }; // launcher input only
-const TRAY = { width: 720, height: 128 }; // minimized crawl-job tray
+const COMPACT_SWITCHER = { width: 720, height: 480 }; // launcher + compact command overlays
+const TRAY = { width: 720, height: 140 }; // minimized crawl-job tray
 const SETTINGS = { width: 800, height: 560 };
 const HISTORY = { width: 760, height: 520 };
 const BROWSE_WIDTH = 760; // action-list browse view
@@ -63,6 +65,7 @@ const LIST_CAP = 338;
 
 export function resolvePaletteWindowSize(
   {
+    actionSwitcherOpen,
     jobExpanded,
     jobMinimized,
     settingsOpen,
@@ -91,7 +94,16 @@ export function resolvePaletteWindowSize(
     };
   }
   if (showContent) {
-    return { width: BROWSE_WIDTH, height: Math.min(browseHeight(), screen.height - BROWSE_SCREEN_MARGIN) };
+    return {
+      width: BROWSE_WIDTH,
+      height: Math.min(browseHeight(), screen.height - BROWSE_SCREEN_MARGIN),
+    };
+  }
+  if (actionSwitcherOpen) {
+    return {
+      width: COMPACT_SWITCHER.width,
+      height: Math.min(COMPACT_SWITCHER.height, screen.height - BROWSE_SCREEN_MARGIN),
+    };
   }
   return COMPACT;
 }
@@ -101,6 +113,7 @@ export function resolvePaletteWindowSize(
 // while a result/settings/history view is open so the window doesn't vanish when
 // the user drags to resize it or clicks another window to review a response.
 export function useWindowChrome({
+  actionSwitcherOpen,
   jobExpanded,
   jobMinimized,
   settingsOpen,
@@ -134,6 +147,7 @@ export function useWindowChrome({
         historyOpen,
         showResultsLayout,
         showContent,
+        actionSwitcherOpen,
         filteredLength,
       },
       { width: window.screen.availWidth, height: window.screen.availHeight },
@@ -162,9 +176,24 @@ export function useWindowChrome({
     // double the halo around the larger transparent window), on for the roomy
     // edge-to-edge views. resolvePaletteWindowSize returns the COMPACT/TRAY
     // singletons by reference for exactly those two views.
-    const floating = size === COMPACT || size === TRAY;
-    void invoke("resize_palette", { ...size, shadow: !floating });
-  }, [jobExpanded, jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filteredLength, shownTick]);
+    const floating =
+      size === COMPACT ||
+      size === TRAY ||
+      (size.width === COMPACT_SWITCHER.width && size.height <= COMPACT_SWITCHER.height);
+    void invoke("resize_palette", { ...size, shadow: !floating }).catch((error) => {
+      console.warn("Failed to resize palette window", error);
+    });
+  }, [
+    actionSwitcherOpen,
+    jobExpanded,
+    jobMinimized,
+    settingsOpen,
+    historyOpen,
+    showResultsLayout,
+    showContent,
+    filteredLength,
+    shownTick,
+  ]);
 
   // Launcher states (compact/browse/mode) keep click-away-to-dismiss; while a
   // result/settings/history view is open we keep the window up so resizing it

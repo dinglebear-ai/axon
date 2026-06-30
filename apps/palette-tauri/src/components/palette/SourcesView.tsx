@@ -5,12 +5,10 @@ import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import type { SourceRow, SourceSortMode, SourcesModel } from "@/lib/sourcesModel";
 
-export interface SourceRowAction {
-  /** Run a palette action against a single source URL — `retrieve` (read the
-   * stored chunks) or `purge` (delete from the index). Purge is guarded by the
-   * destructive-action confirmation, then routes through `POST /v1/purge`. */
-  (subcommand: string, argument: string): void;
-}
+/** Run a palette action against a single source URL — `retrieve` (read the
+ * stored chunks) or `purge` (delete from the index). Purge is guarded by the
+ * destructive-action confirmation, then routes through `POST /v1/purge`. */
+export type SourceRowAction = (subcommand: string, argument: string) => void;
 
 interface SourcesViewProps {
   model: SourcesModel;

@@ -23,10 +23,12 @@ pub mod mcp_schema;
 pub mod purge;
 pub mod result;
 pub mod service_job;
+pub mod source;
 
 pub use explain::*;
 pub use purge::*;
 pub use result::*;
+pub use source::*;
 
 #[cfg(test)]
 mod contract_tests;

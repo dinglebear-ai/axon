@@ -1,17 +1,30 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AskConversation } from "./AskConversation";
 import type { AskTurn } from "@/lib/runState";
 
 const noop = () => {};
 
-function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
-  Object.defineProperty(element, "scrollHeight", { configurable: true, value: metrics.scrollHeight });
-  Object.defineProperty(element, "clientHeight", { configurable: true, value: metrics.clientHeight });
-  Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: metrics.scrollTop });
+function setScrollMetrics(
+  element: HTMLElement,
+  metrics: { scrollHeight: number; clientHeight: number; scrollTop: number },
+) {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: metrics.scrollHeight,
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: metrics.clientHeight,
+  });
+  Object.defineProperty(element, "scrollTop", {
+    configurable: true,
+    writable: true,
+    value: metrics.scrollTop,
+  });
 }
 
 describe("AskConversation", () => {
@@ -57,7 +70,12 @@ describe("AskConversation", () => {
             pending: true,
             activities: [
               { id: "act1", kind: "thinking", label: "Thinking", detail: "Planning retrieval" },
-              { id: "act2", kind: "tool", label: "Retrieving context", detail: "Querying collection axon" },
+              {
+                id: "act2",
+                kind: "tool",
+                label: "Retrieving context",
+                detail: "Querying collection axon",
+              },
             ],
           },
         ]}
@@ -70,5 +88,137 @@ describe("AskConversation", () => {
     expect(screen.getByText("Retrieving context")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send follow-up" })).toHaveClass("command-submit");
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+  });
+
+  it("opens a slash command palette and runs selected no-input actions", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/status" } });
+
+    expect(screen.getByRole("listbox", { name: "Palette commands" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("option", { name: /Status/i })[0]);
+
+    expect(onRunAction).toHaveBeenCalledWith("status", "");
+  });
+
+  it("runs slash commands with arguments from the composer", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scrape https://example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
+  });
+
+  it("selects slash commands into an action chip with Tab", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scr" } });
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(screen.queryByRole("listbox", { name: "Palette commands" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Scrape selection" })).toBeInTheDocument();
+    expect(input).toHaveValue("");
+    expect(onRunAction).not.toHaveBeenCalled();
+  });
+
+  it("renders grouped slash commands and keeps the remaining argument after selection", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scra code.claude.com" } });
+
+    expect(screen.getByText("Fetch & read")).toBeInTheDocument();
+    expect(screen.getByText("Reason")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /\/scrape/i }));
+
+    expect(screen.queryByRole("listbox", { name: "Palette commands" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Scrape selection" })).toBeInTheDocument();
+    expect(input).toHaveValue("code.claude.com");
+    expect(onRunAction).not.toHaveBeenCalled();
+  });
+
+  it("runs the selected slash command chip with the prompt input", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scrape" } });
+    fireEvent.click(screen.getByRole("option", { name: /Scrape/i }));
+    fireEvent.change(input, { target: { value: "https://example.com" } });
+    const form = input.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
+  });
+
+  it("shows chat message suggestions from indexed docs", async () => {
+    const onSuggestMessage = vi.fn().mockResolvedValue([
+      {
+        rank: 1,
+        title: "Claude Code hooks",
+        url: "https://docs.example/hooks",
+        snippet: "Hooks run commands around Claude Code lifecycle events.",
+        score: 0.92,
+      },
+    ]);
+    render(
+      <AskConversation
+        transcript={[
+          { id: "u1", role: "user", content: "how do hooks work?" },
+          { id: "a1", role: "assistant", content: "Hooks run at configured lifecycle points." },
+        ]}
+        onFollowUp={noop}
+        suggestionsEnabled
+        onSuggestMessage={onSuggestMessage}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Suggest docs for user message" }));
+
+    expect(onSuggestMessage).toHaveBeenCalledWith("how do hooks work?");
+    expect(await screen.findByText("Claude Code hooks")).toBeInTheDocument();
+    const sourceLink = screen.getByRole("link", { name: /Claude Code hooks/ });
+    expect(sourceLink).toHaveAttribute("href", "https://docs.example/hooks");
+    expect(screen.getByText("docs.example")).toBeInTheDocument();
+    expect(screen.getByText(/Hooks run commands/)).toBeInTheDocument();
+  });
+
+  it("renders icon-only message reactions and edits a message into the composer", () => {
+    const onFollowUp = vi.fn();
+    render(
+      <AskConversation
+        transcript={[
+          { id: "u1", role: "user", content: "how do hooks work?" },
+          { id: "a1", role: "assistant", content: "Hooks run at configured lifecycle points." },
+        ]}
+        onFollowUp={onFollowUp}
+        suggestionsEnabled
+        onSuggestMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Copy user message" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit user message" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Regenerate from user message" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Suggest docs for user message" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Suggest")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit user message" }));
+    expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toHaveValue(
+      "how do hooks work?",
+    );
   });
 });

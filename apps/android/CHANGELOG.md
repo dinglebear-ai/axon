@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-29
+
+### Changed
+
+- Polish mobile Ask, FAB, Jobs, Sessions, Settings, and status recovery surfaces with clearer hierarchy, actions, and elevation.
+- Share compact Android action button styling across settings and status recovery controls.
+- Make OAuth the recommended Android setup flow so first-run users can enter a server URL, complete browser sign-in, and stay logged in.
+- Add a Recent Activity surface that merges locally submitted jobs with live job status and opens job details.
+
+### Fixed
+
+- Report clipboard copy failures instead of showing false success for status recovery diagnostics.
+- Clarify setup health-check copy so it does not overstate auth or collection validation.
+- Keep accepted async injection jobs pending until they report a final successful status.
+- Surface OAuth launch failures and partial Jobs refresh failures to users.
+
 ## [1.4.4] - 2026-06-28
 
 ## [1.4.3] - 2026-06-26
