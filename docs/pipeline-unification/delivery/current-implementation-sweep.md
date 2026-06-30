@@ -8,6 +8,26 @@ informs the pipeline-unification contracts. It is not a compatibility promise.
 It exists so implementation work starts from the real current surface and
 deletes/replaces old paths deliberately.
 
+## Verification Refresh
+
+Refreshed on 2026-06-30 against the current checkout:
+
+- CLI command inventory was checked against
+  `crates/axon-core/src/config/cli.rs`.
+- REST route inventory was checked against
+  `crates/axon-web/src/server/routing.rs`.
+- Source pipeline current/target split was checked against
+  `docs/pipeline-unification/foundation/source-pipeline.md`.
+- `axon-api::source` now exists as a data-only DTO spike. It is not wired into
+  CLI, MCP, REST, services, jobs, or adapters yet.
+- `crates/axon-jobs/src/migrations/0017_source_ledger.sql` exists as early
+  source-ledger migration scaffolding. It creates generic source, manifest item,
+  and cleanup-debt tables, but there is not yet a `LedgerStore` implementation
+  or public source pipeline using those tables.
+- The current public surfaces are still old-state: `embed`, `ingest`, `scrape`,
+  `crawl`, `code-search`, `code-search-watch`, nested REST job families, and
+  legacy MCP action families remain present until the planned hard cutover.
+
 ## Workspace Members Today
 
 Current Cargo workspace members:
@@ -15,7 +35,7 @@ Current Cargo workspace members:
 | Crate | Current Role |
 |---|---|
 | `axon` | Root binary/bootstrap crate. |
-| `axon-api` | Current shared DTOs, MCP schema pieces, job DTO/status/progress, ingest/diff/purge/explain result types. |
+| `axon-api` | Current shared DTOs, MCP schema pieces, job DTO/status/progress, ingest/diff/purge/explain result types, plus the initial data-only `source` DTO spike. |
 | `axon-authz` | Current OAuth scope constants and HTTP auth helpers. |
 | `axon-core` | Config, HTTP/content helpers, artifacts, redaction, LLM provider implementations, CLI config parsing. |
 | `axon-crawl` | Spider.rs crawl engine, scrape helpers, sitemap/backfill, Chrome bootstrap. |
@@ -35,6 +55,14 @@ generation/checking, OpenAPI drift checks, Android route-contract checks, CLI
 help contract checks, and CLAUDE/AGENTS/GEMINI symlink checks. The target
 `xtask docs ...` and aggregate `xtask schemas ...` command tree does not exist
 yet.
+
+Current source-ledger scaffolding:
+
+- `crates/axon-jobs/src/migrations/0017_source_ledger.sql` creates
+  `axon_source_sources`, `axon_source_manifest_items`, and
+  `axon_source_cleanup_debt`.
+- This is schema scaffolding only. It does not mean source pipeline ownership
+  has moved out of the current per-family paths.
 
 Target crates introduced by this contract do not exist yet:
 
