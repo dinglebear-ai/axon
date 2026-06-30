@@ -3,6 +3,10 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target parsing boundary. The dedicated `axon-parse` crate,
+`ParserRegistry`, `SourceParseFacts`, and generalized `GraphCandidate` pipeline
+do not exist as standalone implementation boundaries today.
+
 `axon-parse` owns deterministic extraction of structured facts from source
 documents and source manifests. Parsing is a first-class pipeline boundary, not
 an incidental helper inside chunking, adapters, or graph storage.
@@ -16,6 +20,20 @@ Parsing turns source content into:
 
 Parsing does not persist graph rows, write vector points, mutate ledger
 generations, or call LLM providers unless routed through `SourceEnrichment`.
+
+## Current Implementation Snapshot
+
+Implemented today:
+
+- Parsing/chunking behavior lives primarily inside `axon-vector`
+  `SourceDocument` preparation and source-specific ingest helpers.
+- Current code preparation emits `PreparedDoc` and per-chunk metadata, including
+  chunk locators, source ranges, language, and code symbol metadata where the
+  current chunker can extract it.
+- Tree-sitter-backed code chunking exists, but the output is structural chunk
+  metadata rather than the target graph-ready parser facts boundary.
+- General `SourceParseFacts` and `GraphCandidate` persistence are target
+  architecture.
 
 ## Ownership
 

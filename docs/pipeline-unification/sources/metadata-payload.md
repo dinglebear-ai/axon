@@ -207,6 +207,13 @@ optionally vector payloads for correlation.
 `SourceDocument` is the normalized item emitted by every adapter. Adapters must
 emit `SourceDocument`; they must not skip directly to `PreparedDocument`.
 
+Current implementation note: local files and web/code paths often build
+`SourceDocument` explicitly. Several prose/social/session paths call
+`prepare_plain_text_source()`, which creates the `SourceDocument` internally and
+returns `PreparedDoc` in one helper call. The clean-break contract keeps the
+`SourceDocument` boundary explicit for adapters even if convenience helpers
+remain underneath it.
+
 | Field | Type | Required | Visibility | Stored In | Description |
 |---|---|---:|---|---|---|
 | `document_id` | string | yes | public | ledger, status, payload | Stable id for this source item and generation. |

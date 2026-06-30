@@ -3,6 +3,11 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target clean-break `config.toml` shape. Current implementation uses
+the existing `config.toml.example` shape and accepts sections such as `build`,
+`services`, `llm`, `search`, `tei`, `workers`, `watch`, `scrape`, and related
+runtime groups with unknown keys denied.
+
 `config.toml` is the stable tuning and behavior contract. It contains sensible
 defaults plus the knobs a real user will actually tune: pipeline concurrency,
 provider limits, retrieval behavior, crawl/fetch behavior, watch cadence,

@@ -42,6 +42,11 @@ Required metadata per setting:
 
 ## Root Artifact Shape
 
+This is the target schema output. Current implementation does not yet expose
+`cargo xtask schemas config`, and current `config.toml` accepts the existing
+runtime sections from `config.toml.example` rather than the clean-break section
+set below.
+
 `docs/reference/config/config.schema.json`:
 
 ```json
@@ -194,7 +199,9 @@ belong in `.env`. Tuning belongs in `config.toml`.
 
 ## Required Env Variables
 
-The target `.env` schema includes these keys at minimum:
+The target `.env` schema includes these keys at minimum. Current implementation
+still accepts transport-specific `AXON_MCP_*` names for MCP HTTP/OAuth auth; the
+unified `AXON_HTTP_*` and `AXON_AUTH_*` names below are target names.
 
 | Name | Required | Secret | Owner | Notes |
 |---|---:|---:|---|---|

@@ -10,6 +10,12 @@ OpenAPI artifact shape and drift checks.
 
 ## Generated Artifacts
 
+This section is the target generated-artifact contract. Current implementation
+drift checks write `apps/web/openapi/axon.json`, regenerate web/Palette client
+types from that spec, and generate Android route-contract artifacts from the
+same source. The `docs/reference/rest/*` artifacts below are desired end-state
+outputs, not files that exist today.
+
 ```text
 docs/reference/rest/openapi.json
 docs/reference/rest/openapi.md

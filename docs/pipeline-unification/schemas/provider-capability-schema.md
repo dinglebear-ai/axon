@@ -59,6 +59,10 @@ The generated artifact records these paths in `x-axon.source_inputs`.
 
 ## Required Fields
 
+This is the target capability document. Current implementation probes and
+dispatches concrete providers directly; it does not yet publish a unified
+reservation/capability registry with all fields below.
+
 Every capability includes:
 
 - `provider_id`

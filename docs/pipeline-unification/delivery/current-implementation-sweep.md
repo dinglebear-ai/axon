@@ -30,6 +30,12 @@ Current Cargo workspace members:
 | `axon-cli` | Command dispatch, command handlers, human/JSON rendering, completions. |
 | `xtask` | Current developer automation crate. |
 
+Current `xtask` automation includes focused checks such as API parity
+generation/checking, OpenAPI drift checks, Android route-contract checks, CLI
+help contract checks, and CLAUDE/AGENTS/GEMINI symlink checks. The target
+`xtask docs ...` and aggregate `xtask schemas ...` command tree does not exist
+yet.
+
 Target crates introduced by this contract do not exist yet:
 
 - `axon-error`
@@ -138,10 +144,13 @@ Clean-break implications:
 ## Current MCP Surface
 
 Current MCP uses one tool named `axon` with `action` and optional `subaction`.
+It also exposes the `axon_status_dashboard` MCP Apps/widget tool as a dashboard
+presentation helper, not as a second operation surface.
 
 Direct actions include:
 
 - `ask`
+- `code_search`
 - `map`
 - `endpoints`
 - `query`
@@ -156,6 +165,9 @@ Direct actions include:
 - `evaluate`
 - `suggest`
 - `elicit_demo`
+- `purge`
+- `memory`
+- `vertical_scrape`
 
 Lifecycle action families:
 
@@ -299,12 +311,19 @@ Important current behavior to preserve:
 
 ## Current App Surfaces
 
+- `apps/web` is a real built and embedded web panel surface served by
+  `axon-web`; it is not just a future target.
 - `apps/palette-tauri` is a real desktop target and must be covered by the
-  palette contract.
-- Current REST includes mobile-session routes; Android/mobile is a real target
-  surface and must stay covered.
-- Chrome extension contract is desired future surface; it must use shared REST
-  and source capture contracts rather than owning ingestion.
+  palette contract. It currently has generated API client plumbing from the
+  OpenAPI output.
+- Current REST includes mobile-session routes; `apps/android` is a real target
+  surface and currently uses generated and hand-written client wrappers around
+  the existing REST surface.
+- `apps/chrome-extension` is an implemented MV3 extension surface today. The
+  clean-break chrome-extension contract must keep it on shared REST/source
+  capture contracts rather than letting it own ingestion.
+- `apps/desktop` exists as an empty/placeholder directory today; the real
+  desktop app surface is currently `apps/palette-tauri`.
 
 ## Sweep Conclusions
 

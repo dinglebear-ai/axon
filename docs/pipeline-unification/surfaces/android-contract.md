@@ -29,6 +29,13 @@ authoritative.
 
 ## Required API Surface
 
+This is the target Android API surface. Current Android still uses generated
+and hand-written wrappers around the current direct REST routes, including
+`/v1/mobile/sessions/{id}` DTOs with fields such as `id`,
+`first_message_preview`, `turn_count`, `injected_op_count`, and `items`. The
+clean-break target below moves Android to the canonical source/job/event DTOs
+and the normalized mobile-session model.
+
 Android depends on these REST routes:
 
 | Feature | Routes |

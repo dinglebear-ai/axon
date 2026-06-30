@@ -3,6 +3,10 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target clean-break job model. The current implementation still has
+per-family job tables, payloads, and routes for crawl, embed, extract, and
+ingest.
+
 Axon has one durable job model. It does not have separate infrastructure models
 for crawl jobs, embed jobs, ingest jobs, extract jobs, watch jobs, prune jobs,
 or research jobs.
@@ -27,6 +31,25 @@ Every async or detached operation returns a `JobDescriptor`. Foreground CLI
 operations still create a job row when they perform source acquisition,
 embedding, graph mutation, pruning, extraction, research, or long-running
 provider work.
+
+## Current Implementation Snapshot
+
+Implemented today:
+
+- `axon-jobs` stores family-specific job payloads and workers for crawl, embed,
+  extract, ingest, and watch scheduling.
+- REST exposes job lifecycle operations through family routes rather than a
+  generic `/v1/jobs` collection.
+- The current transport-neutral job status enum is narrower:
+  `pending`, `running`, `completed`, `failed`, `canceled`, plus an unknown
+  fallback.
+- Heartbeat/recovery behavior is implemented by SQLite lifecycle updates and
+  worker guards, not by a unified durable event model.
+
+Planned by this contract:
+
+- Family-specific queues collapse into one job model with `job_kind`, stage
+  plan, attempts, provider reservations, progress events, and typed results.
 
 ## Design Rules
 

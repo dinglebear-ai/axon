@@ -9,6 +9,12 @@ are retrieval-facing and must never contain secrets or unbounded content.
 
 ## Generated Artifacts
 
+This section is the target generated-artifact contract. Current implementation
+payload docs live at `docs/reference/qdrant-payload-schema.md`, and current
+payload builders live in the singular `axon-vector` crate. The
+`docs/reference/sources/*` artifacts below are desired outputs of the
+clean-break schema generator.
+
 ```text
 docs/reference/sources/vector-payload.schema.json
 docs/reference/sources/vector-payload.md
@@ -26,11 +32,11 @@ cargo xtask schemas vector-payload --check
 The vector payload schema generator reads:
 
 ```text
-crates/axon-vectors/src/payload*.rs
-crates/axon-vectors/src/qdrant*.rs
+crates/axon-vector/src/ops/tei/pipeline/payload.rs
+crates/axon-vector/src/ops/tei/qdrant_store.rs
 crates/axon-api/src/document.rs
 crates/axon-api/src/vector.rs
-crates/axon-parse/src/metadata*.rs
+crates/axon-parse/src/metadata*.rs       # target crate/input
 docs/pipeline-unification/sources/metadata-payload.md
 docs/pipeline-unification/sources/chunking-contract.md
 ```
