@@ -5,6 +5,7 @@ import com.axon.app.data.auth.AuthConfig
 import com.axon.app.data.auth.AuthMode
 import com.axon.app.data.auth.OAuthRepository
 import com.axon.app.data.auth.OAuthStateStore
+import com.axon.app.data.auth.OAuthTokenSource
 import com.axon.app.data.local.AppDatabase
 import com.axon.app.data.remote.AxonClient
 import com.axon.app.data.repository.AxonRepository
@@ -43,6 +44,10 @@ class AppContainer(context: Context) {
     val database = AppDatabase.build(context)
     private val oauthStateStore by lazy { OAuthStateStore(context) }
     val oauthRepository by lazy { OAuthRepository(context, oauthStateStore) }
+    private val oauthTokenSource = object : OAuthTokenSource {
+        override suspend fun freshAccessToken(): Result<String> = oauthRepository.freshAccessToken()
+        override fun isSignedIn(): Boolean = oauthRepository.isSignedIn()
+    }
 
     val axonClient = AxonClient(
         baseUrl = DEFAULT_SERVER_URL,
@@ -66,7 +71,7 @@ class AppContainer(context: Context) {
         val normalizedServerUrl = serverUrl.trimEnd('/')
         val auth = when (authMode) {
             AuthMode.Bearer -> AuthConfig.Bearer(token)
-            AuthMode.OAuth -> AuthConfig.OAuth(oauthRepository, normalizedServerUrl)
+            AuthMode.OAuth -> AuthConfig.OAuth(oauthTokenSource, normalizedServerUrl)
         }
         axonClient.updateConfig(normalizedServerUrl, auth)
         _isReady.value = true

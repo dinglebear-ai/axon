@@ -1,9 +1,16 @@
-import { startTransition, useActionState, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import type { PaletteAction, RemotePaletteAction } from "@/lib/actions";
 import { buildHelpRun, findHelpTarget, helpAction } from "@/lib/actionHelp";
-import { answerParts, appendAskPendingTurn, completeLastAssistantTurn } from "@/lib/askTranscript";
+import { appendAskPendingTurn } from "@/lib/askTranscript";
 import { crawlSeedUrl, newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import {
   buildActionRequest,
@@ -26,10 +33,17 @@ import {
   reduceStreamEvent,
   statusFallbackAction,
 } from "@/lib/useActionRunner/runFactories";
+import { runOneShotAction, type OneShotInput } from "@/lib/useActionRunner/runOneShotAction";
 
 // Re-exported for import compatibility: other modules (and tests) import
 // `reduceStreamEvent` from "@/lib/useActionRunner".
 export { reduceStreamEvent };
+
+export const HISTORY_LIMIT = 18;
+
+export function capHistory(items: HistoryItem[]): HistoryItem[] {
+  return items.slice(0, HISTORY_LIMIT);
+}
 
 interface UseActionRunnerArgs {
   client: Client | null;
@@ -90,114 +104,49 @@ export function useActionRunner({
       text?: string;
       outputKind?: OutputKind;
       result?: PaletteResult;
+      prompt?: string;
+      transcript?: AskTurn[];
     },
   ) {
     setHistory((items) =>
-      [
-        { action, target, ...entry, when: "just now", duration: entry.status === 0 ? "fail" : undefined },
+      capHistory([
+        {
+          action,
+          target,
+          ...entry,
+          when: "just now",
+          duration: entry.status === 0 ? "fail" : undefined,
+        },
         ...items,
-      ].slice(0, 18),
+      ]),
     );
   }
 
-  // ── R-H1: one-shot request/response actions via useActionState ────────────
-  // The non-streaming, non-job branch is a textbook fit for a React 19 Action:
-  // pending state, error capture, and in-flight serialization are owned by the
-  // runtime. `dispatchOneShot` is wrapped by the runtime (no manual running-flag
-  // guard); the action writes its terminal RunState into App-owned `run` and
-  // history. `oneShotPending` replaces `run.kind === "running"` for these.
-  interface OneShotInput {
-    action: RemotePaletteAction;
-    argument: string;
-    config: PaletteConfig;
-    client: Client;
-    transcript?: AskTurn[];
-  }
   const [, dispatchOneShot, oneShotPending] = useActionState<RunState, OneShotInput>(
-    async (_prev, input) => runOneShot(input),
+    async (_prev, input) =>
+      runOneShotAction({
+        input,
+        setRunning: setRun,
+        setTerminal: setRun,
+        pushHistory,
+      }),
     { kind: "idle" },
   );
 
-  async function runOneShot({ action, argument, config: cfg, client: cli, transcript }: OneShotInput): Promise<RunState> {
-    const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
-    const isConversation = action.subcommand === "ask" || action.subcommand === "chat";
-    const pendingTranscript = isConversation ? appendAskPendingTurn(transcript, argument, `oneshot:${Date.now()}`) : undefined;
-    setRun({
-      kind: "running",
-      title: isConversation ? action.label : `Running ${action.label}`,
-      subtitle: isConversation ? `POST ${action.subcommand === "ask" ? "/v1/ask" : "/v1/chat"}` : commandLine,
-      prompt: isConversation ? argument : undefined,
-      transcript: pendingTranscript,
-    });
-    try {
-      const result = await executeAction(cli, action, argument, cfg);
-      const rawText = formatPayload(action.subcommand, result.payload);
-      const parts = isConversation ? answerParts(rawText, result.payload) : { answer: rawText, sources: [] };
-      const text = parts.answer;
-      const title = isConversation ? action.label : `${action.label} ${result.ok ? "completed" : "failed"}`;
-      const subtitle =
-        action.subcommand === "ask"
-          ? `RAG over ${cfg.collection || "axon"} | ${result.path}`
-          : action.subcommand === "chat"
-            ? result.path
-            : `${result.method} ${result.path} | HTTP ${result.status}`;
-      pushHistory(action, argument || action.subcommand, {
-        status: result.status,
-        title,
-        subtitle,
-        text,
-        outputKind: outputKindFor(action.subcommand),
-        result,
-      });
-      const next: RunState = {
-        kind: result.ok ? "success" : "error",
-        title,
-        subtitle,
-        text,
-        outputKind: outputKindFor(action.subcommand),
-        prompt: isConversation ? argument : undefined,
-        transcript: isConversation ? completeLastAssistantTurn(pendingTranscript, text, parts.sources) : undefined,
-        result,
-      };
-      setRun(next);
-      return next;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const title = isConversation ? action.label : `${action.label} failed`;
-      const subtitle =
-        action.subcommand === "ask"
-          ? `RAG over ${cfg.collection || "axon"} | /v1/ask`
-          : action.subcommand === "chat"
-            ? "/v1/chat"
-            : commandLine;
-      const next = makeErrorRun({
-        title,
-        subtitle,
-        message,
-        path: "",
-        outputKind: outputKindFor(action.subcommand),
-        prompt: isConversation ? argument : undefined,
-        transcript: isConversation ? completeLastAssistantTurn(pendingTranscript, message) : undefined,
-      });
-      pushHistory(action, argument || action.subcommand, {
-        status: 0,
-        title,
-        subtitle,
-        text: message,
-        outputKind: outputKindFor(action.subcommand),
-        result: next.result,
-      });
-      setRun(next);
-      return next;
-    }
-  }
-
   // ── Crawl branch: submit the job, then hand the live poll off to useCrawlJob ─
-  async function submitCrawl(action: RemotePaletteAction, argument: string, cli: Client, cfg: PaletteConfig) {
+  async function submitCrawl(
+    action: RemotePaletteAction,
+    argument: string,
+    cli: Client,
+    cfg: PaletteConfig,
+  ) {
     const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
     const seedUrl = crawlSeedUrl(argument);
     const startedAtMs = Date.now();
-    const pendingSnapshot = summarizeCrawl({ job: { status: "pending" } }, { jobId: "", url: seedUrl });
+    const pendingSnapshot = summarizeCrawl(
+      { job: { status: "pending" } },
+      { jobId: "", url: seedUrl },
+    );
     setRun({
       kind: "job",
       family: "crawl",
@@ -232,7 +181,14 @@ export function useActionRunner({
           outputKind: "code",
           result,
         });
-        setRun({ kind: "error", title: "Crawl failed", subtitle, text, outputKind: "code", result });
+        setRun({
+          kind: "error",
+          title: "Crawl failed",
+          subtitle,
+          text,
+          outputKind: "code",
+          result,
+        });
         return;
       }
       pushHistory(action, seedUrl, {
@@ -255,7 +211,9 @@ export function useActionRunner({
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setRun(makeErrorRun({ title: "Crawl failed", subtitle: commandLine, message, path: "/v1/crawl" }));
+      setRun(
+        makeErrorRun({ title: "Crawl failed", subtitle: commandLine, message, path: "/v1/crawl" }),
+      );
     }
   }
 
@@ -303,7 +261,14 @@ export function useActionRunner({
           outputKind: "code",
           result,
         });
-        setRun({ kind: "error", title: `${action.label} failed`, subtitle, text, outputKind: "code", result });
+        setRun({
+          kind: "error",
+          title: `${action.label} failed`,
+          subtitle,
+          text,
+          outputKind: "code",
+          result,
+        });
         return;
       }
       pushHistory(action, argument || action.subcommand, {
@@ -326,7 +291,14 @@ export function useActionRunner({
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setRun(makeErrorRun({ title: `${action.label} failed`, subtitle: commandLine, message, path: `/v1/${family}` }));
+      setRun(
+        makeErrorRun({
+          title: `${action.label} failed`,
+          subtitle: commandLine,
+          message,
+          path: `/v1/${family}`,
+        }),
+      );
     }
   }
 
@@ -443,7 +415,8 @@ export function useActionRunner({
     const executableAction = statusFallbackAction(action, normalizedArgument);
     const argument = executableAction === action ? normalizedArgument : "";
     const previousTranscript =
-      (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") && "transcript" in current
+      (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") &&
+      "transcript" in current
         ? current.transcript
         : undefined;
     // A-M5: failed validation surfaces inline instead of returning silently.
@@ -476,12 +449,24 @@ export function useActionRunner({
       return;
     }
     if (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") {
-      const streamed = await submitStream(executableAction, argument, client, config, previousTranscript);
+      const streamed = await submitStream(
+        executableAction,
+        argument,
+        client,
+        config,
+        previousTranscript,
+      );
       if (streamed) return;
       // Non-Tauri runtime: fall through to the one-shot dispatcher below.
     }
     startTransition(() => {
-      dispatchOneShot({ action: executableAction, argument, config, client, transcript: previousTranscript });
+      dispatchOneShot({
+        action: executableAction,
+        argument,
+        config,
+        client,
+        transcript: previousTranscript,
+      });
     });
   }
 

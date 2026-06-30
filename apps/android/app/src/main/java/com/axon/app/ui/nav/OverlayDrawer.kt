@@ -70,6 +70,7 @@ fun OverlayDrawer(
 private fun DrawerHeader(section: DrawerSection, onDismiss: () -> Unit) {
     val colors = AxonTheme.colors
     val (title, icon) = when (section) {
+        DrawerSection.Activity -> "Activity" to Icons.Rounded.History
         DrawerSection.Sessions -> "Sessions" to Icons.Rounded.History
         DrawerSection.Jobs -> "Jobs" to Icons.Rounded.TaskAlt
         DrawerSection.Knowledge -> "Knowledge" to Icons.Rounded.Hub

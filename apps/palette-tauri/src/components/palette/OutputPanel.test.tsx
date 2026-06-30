@@ -93,6 +93,8 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
     }
     // Streaming ask renders through the conversation thread.
     expect(screen.getByText(/abc see/)).toBeInTheDocument();
+    expect(document.querySelector(".output-panel-conversation")).not.toBeNull();
+    expect(document.querySelector(".output-conversation")).not.toBeNull();
   });
 
   it("keeps completed ask output in the conversation layout", () => {
@@ -108,12 +110,12 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
 
     renderPanel(success);
 
-    expect(screen.getByText("You")).toBeInTheDocument();
-    expect(screen.getByText("Axon")).toBeInTheDocument();
-    expect(screen.getByText("what is a skill?")).toBeInTheDocument();
+    expect(screen.getByLabelText("Axon")).toBeInTheDocument();
+    expect(screen.queryByText("Axon")).not.toBeInTheDocument();
+    expect(screen.getAllByText("what is a skill?")).toHaveLength(2);
     expect(screen.getByText(/A skill is a reusable instruction pack/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toBeEnabled();
-    expect(document.querySelector(".ask-answer-prose")).not.toBeNull();
+    expect(document.querySelector(".aurora-response")).not.toBeNull();
     expect(document.querySelector(".ask-answer pre.output-body.output-code")).toBeNull();
     expect(screen.queryByText("Question")).not.toBeInTheDocument();
   });
@@ -144,7 +146,7 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
 
     expect(screen.getByText("first question")).toBeInTheDocument();
     expect(screen.getByText("First answer.")).toBeInTheDocument();
-    expect(screen.getByText("second question")).toBeInTheDocument();
+    expect(screen.getAllByText("second question")).toHaveLength(2);
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Ask conversation" })).toBeInTheDocument();
     expect(screen.getByText("Sources")).toBeInTheDocument();

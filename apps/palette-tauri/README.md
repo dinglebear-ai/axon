@@ -57,6 +57,18 @@ The app reads Axon connection settings from the environment first, then `~/.axon
 
 Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is on by default so clicking outside the palette dismisses it.
 
+When using the browser dev entry against a public reverse-proxied Axon endpoint
+for live QA, set `AXON_DEV_SERVER` to the live server and `AXON_DEV_TOKEN` to a
+token the dev proxy can inject as `authorization` and `x-api-key` headers.
+Set `AXON_DEV_STRIP_ORIGIN=true` explicitly only if browser-origin POSTs are
+rejected before Axon handles auth; this mode is not sufficient on its own
+without `AXON_DEV_TOKEN`. This is a privileged server-side proxy mode: Vite
+strips the browser `Origin` header, forwards to `AXON_DEV_SERVER`, injects the
+dev token when configured, and marks origin-stripped requests with
+`x-axon-dev-proxy: origin-stripped`. See `vite.config.ts` for the dev proxy
+setup. Keep the normal `pnpm vite:dev` default for everyday local development
+so public-origin/CORS drift remains visible.
+
 ## Authentication
 
 The palette authenticates to Axon two ways, and both can be configured at once:
@@ -68,7 +80,7 @@ Issued credentials are stored beside `settings.json` as `<app config dir>/oauth.
 
 OAuth requires the network calls and browser-open URL to be `https` (or loopback `http`), and the target server must run with `AXON_MCP_AUTH_MODE=oauth` and dynamic client registration enabled — otherwise sign-in reports that the server does not support OAuth login and you should use a static bearer token.
 
-**Known tradeoff:** each sign-in dynamically registers a fresh client on the server. Loopback redirects use an ephemeral port, so the registered `redirect_uri` (and therefore the client ID) cannot be reused across logins. Server-side this is rate-limited and bounded by operator policy; the palette does not garbage-collect prior registrations.
+**Known tradeoff:** each sign-in dynamically registers a fresh client on the server for the fixed native callback endpoint advertised by discovery. Registrations are still not reused because the palette keeps the login flow stateless across launches; server-side registration is rate-limited and bounded by operator policy, and the palette does not garbage-collect prior registrations.
 
 ## Notes
 

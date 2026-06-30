@@ -36,7 +36,7 @@ pub(crate) struct CallbackParams {
 /// fixed here and must be reused verbatim for `/register`, `/authorize`, and
 /// `/token`.
 pub(crate) async fn bind() -> Result<CallbackListener, String> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))
+    let listener = TcpListener::bind(("localhost", 0))
         .await
         .map_err(|err| format!("failed to bind loopback callback listener: {err}"))?;
     let port = listener.local_addr().map_err(|err| err.to_string())?.port();

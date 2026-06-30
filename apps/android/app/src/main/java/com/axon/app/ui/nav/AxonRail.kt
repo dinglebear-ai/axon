@@ -24,6 +24,7 @@ private enum class RailGlyph { History, Jobs, Hub, Sliders }
 private data class SectionDef(val section: DrawerSection, val icon: RailGlyph, val label: String)
 
 private val TopSections = listOf(
+    SectionDef(DrawerSection.Activity,   RailGlyph.History, "Act"),
     SectionDef(DrawerSection.Sessions,   RailGlyph.History, "Sess"),
     SectionDef(DrawerSection.Jobs,       RailGlyph.Jobs,    "Jobs"),
     SectionDef(DrawerSection.Knowledge,  RailGlyph.Hub,     "Know"),
