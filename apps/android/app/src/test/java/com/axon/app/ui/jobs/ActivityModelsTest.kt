@@ -31,7 +31,7 @@ class ActivityModelsTest {
         assertEquals("https://example.test/live", rows.single().job.url)
     }
 
-    @Test fun `recent activity rows keep submitted fallback when server job is unavailable`() {
+    @Test fun `recent activity rows mark local fallback when server job is unavailable`() {
         val recent = listOf(RecentJob(jobId = "job-2", kind = "ingest", target = "github.com/o/r", submittedAt = 200L))
 
         val rows = recentActivityRows(recent, emptyMap())
@@ -39,7 +39,8 @@ class ActivityModelsTest {
         assertEquals(1, rows.size)
         assertFalse(rows.single().live)
         assertEquals(JobFamily.Ingest, rows.single().kind)
-        assertEquals("submitted", rows.single().job.status)
+        assertEquals("local-only", rows.single().job.status)
+        assertEquals("Latest server status unavailable", rows.single().job.errorText)
         assertEquals("github.com/o/r", rows.single().job.target)
     }
 

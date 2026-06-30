@@ -33,10 +33,10 @@ private fun RecentJob.toSubmittedFallbackJob(kind: JobFamily): JobUi =
     JobUi(
         kind = kind,
         id = jobId,
-        status = "submitted",
+        status = "local-only",
         url = target,
         sourceType = null,
         target = target,
-        errorText = null,
+        errorText = "Latest server status unavailable",
         resultJson = null,
     )

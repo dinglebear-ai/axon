@@ -148,16 +148,16 @@ private fun ConnectionSetupSummary(
         !serverReady -> "Add server URL"
         !authReady && authMode == AuthMode.Bearer -> "Add token below"
         !authReady && authMode == AuthMode.OAuth -> "Sign in with OAuth"
-        else -> "Test connection"
+        else -> "Test reachability"
     }
     val summary = when {
-        connected -> "Server health endpoint is reachable. Auth and collection are set locally."
+        connected -> "Server health endpoint is reachable. Sign-in and collection are saved locally but are not validated by this check."
         connection is TestConnectionState.Failed -> "Connection test failed. Check the details below and retry."
         !serverReady -> "Enter your Axon server URL, then sign in with OAuth."
         !authReady && authMode == AuthMode.Bearer -> "Bearer mode needs a token before testing most Axon servers."
         !authReady && authMode == AuthMode.OAuth -> "OAuth is the recommended sign-in flow. No bearer token is needed."
         !collectionReady -> "Pick the Qdrant collection used for requests."
-        else -> "Test the saved endpoint before leaving setup."
+        else -> "Test server reachability before leaving setup."
     }
     Column(
         modifier = Modifier
@@ -216,8 +216,8 @@ private fun ConnectionRecoveryChecklist(
     }
     RecoveryActionCard(
         title = "Connection recovery",
-        message = "Check server reachability, auth, and collection spelling. $authHint",
-        primaryLabel = "Retry test",
+        message = "Check server reachability first, then confirm auth and collection spelling if requests still fail. $authHint",
+        primaryLabel = "Retry reachability",
         onPrimary = onRetry,
         icon = Icons.Rounded.Route,
     )

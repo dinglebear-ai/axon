@@ -214,19 +214,6 @@ internal fun MetricPill(
 }
 
 @Composable
-internal fun MetricFlow(
-    modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit,
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
-}
-
-@Composable
 private fun SignalGlyph(tone: Color) {
     val colors = AxonTheme.colors
     Canvas(modifier = Modifier.size(18.dp)) {

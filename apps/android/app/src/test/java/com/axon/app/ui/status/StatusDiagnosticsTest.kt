@@ -27,4 +27,12 @@ class StatusDiagnosticsTest {
             redactUrlUserInfo("https://axon.example.test"),
         )
     }
+
+    @Test
+    fun `healthCheckOriginUrl strips path query fragment and userinfo`() {
+        assertEquals(
+            "https://axon.example.test:8443",
+            healthCheckOriginUrl("https://user:secret@axon.example.test:8443/$(touch pwn)?token=secret#top"),
+        )
+    }
 }

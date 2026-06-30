@@ -173,6 +173,7 @@
       "platform": "android",
       "file_paths": [
         "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellSidebar.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellBackBehavior.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/nav/AxonRail.kt"
       ],
@@ -275,7 +276,8 @@
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobDetailScreen.kt", "pattern": "ProgressBar" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/ChatBubble.kt", "pattern": "AuroraStatusDot" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/InjectionCard.kt", "pattern": "AuroraProgressBar" },
-    { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt", "pattern": "Sidebar" }
+    { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt", "pattern": "Sidebar" },
+    { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellBackBehavior.kt", "pattern": "Sidebar" }
   ],
   "stale_bead_recommendations": [
     {
