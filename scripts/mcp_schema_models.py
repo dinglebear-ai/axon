@@ -106,7 +106,9 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Extract": "extract",
     "Embed": "embed",
     "Ingest": "ingest",
+    "Memory": "memory",
     "Query": "query",
+    "CodeSearch": "code_search",
     "Retrieve": "retrieve",
     "Search": "search",
     "Map": "map",
@@ -127,6 +129,7 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Brand": "brand",
     "Purge": "purge",
     "ElicitDemo": "elicit_demo",
+    "VerticalScrape": "vertical_scrape",
 }
 
 STRUCT_TO_ACTION: dict[str, str] = {
