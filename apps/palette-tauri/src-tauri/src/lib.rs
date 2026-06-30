@@ -38,6 +38,7 @@ struct PaletteSettings {
     hide_on_blur: bool,
     open_results_inline: bool,
     agent_bubbles: bool,
+    show_footer_hints: bool,
     env_values: HashMap<String, serde_json::Value>,
     config_values: HashMap<String, serde_json::Value>,
 }
@@ -195,6 +196,7 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
         hide_on_blur: persisted.hide_on_blur.unwrap_or(true),
         open_results_inline: persisted.open_results_inline.unwrap_or(true),
         agent_bubbles: persisted.agent_bubbles.unwrap_or(false),
+        show_footer_hints: persisted.show_footer_hints.unwrap_or(false),
         env_values: defaults.env_values,
         config_values: defaults.config_values,
     })
@@ -223,6 +225,7 @@ fn default_settings(env_entries: &[(String, String)]) -> PaletteSettings {
         hide_on_blur: true,
         open_results_inline: true,
         agent_bubbles: false,
+        show_footer_hints: false,
         env_values: env_entries
             .iter()
             .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
@@ -243,6 +246,7 @@ struct PartialPaletteSettings {
     hide_on_blur: Option<bool>,
     open_results_inline: Option<bool>,
     agent_bubbles: Option<bool>,
+    show_footer_hints: Option<bool>,
 }
 
 fn normalize_settings(mut settings: PaletteSettings) -> PaletteSettings {

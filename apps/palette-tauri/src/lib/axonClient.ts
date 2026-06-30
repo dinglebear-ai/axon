@@ -21,6 +21,7 @@ export interface PaletteConfig {
   hideOnBlur: boolean;
   openResultsInline?: boolean;
   agentBubbles?: boolean;
+  showFooterHints?: boolean;
   envValues?: Record<string, string | number | boolean | string[]>;
   configValues?: Record<string, string | number | boolean | string[]>;
 }
