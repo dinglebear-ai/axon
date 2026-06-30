@@ -1,6 +1,7 @@
 package com.axon.app.ui.nav
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -121,8 +122,10 @@ fun AxonNavGraph() {
                 val route: ModeOptionsRoute = entry.toRoute()
                 val mode = runCatching { OperationMode.valueOf(route.modeName) }.getOrNull()
                 if (mode == null) {
-                    // Unknown mode name — bounce back. Cheaper than a crash dialog.
-                    LaunchedPopBack(navController)
+                    LaunchedPopBack(
+                        navController = navController,
+                        message = "That tool is no longer available",
+                    )
                 } else {
                     BackShell(
                         title = "${mode.label} options",
@@ -141,8 +144,14 @@ fun AxonNavGraph() {
 }
 
 @Composable
-private fun LaunchedPopBack(navController: NavController) {
-    androidx.compose.runtime.LaunchedEffect(Unit) { navController.popBackStack() }
+private fun LaunchedPopBack(navController: NavController, message: String? = null) {
+    val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(message) {
+        if (message != null) {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+        navController.popBackStack()
+    }
 }
 
 @Composable

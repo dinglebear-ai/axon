@@ -2,6 +2,7 @@ package com.axon.app.ui.fab
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -209,11 +210,19 @@ fun FabOpInputCard(
                                 role = Role.Button
                             }
                             .pressScale {
-                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
-                                if (text != null) {
+                                val cm = context.getSystemService(ClipboardManager::class.java)
+                                if (cm == null) {
+                                    Toast.makeText(context, "Clipboard is unavailable", Toast.LENGTH_LONG).show()
+                                    return@pressScale
+                                }
+                                val text = runCatching {
+                                    cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                                }.getOrNull()
+                                if (!text.isNullOrBlank()) {
                                     input = text
                                     broadActionConfirmed = false
+                                } else {
+                                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
                                 }
                             }
                             .background(Color.Transparent, RoundedCornerShape(8.dp)),

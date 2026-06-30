@@ -1,6 +1,8 @@
 package com.axon.app.ui.ask
 
 import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -134,8 +136,12 @@ fun AskScreen(
         vm.ask(prompt)
     }
     fun copyMessage(value: String) {
-        context.getSystemService(android.content.ClipboardManager::class.java)
-            ?.setPrimaryClip(android.content.ClipData.newPlainText("Axon message", value))
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        if (clipboard == null) {
+            Toast.makeText(context, "Clipboard is unavailable", Toast.LENGTH_LONG).show()
+            return
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Axon message", value))
         Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
     }
     val historyPreview = remember(chatItems, history) {

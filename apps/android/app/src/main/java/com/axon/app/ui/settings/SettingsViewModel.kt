@@ -435,15 +435,33 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun latestRawEnvForSave(fallbackRawEnv: String): String =
         container.axonClient.panelEnv()
-            .getOrNull()
-            ?.rawEnv
-            ?: serverRawEnv.ifBlank { fallbackRawEnv }
+            .fold(
+                onSuccess = { it.rawEnv },
+                onFailure = { cause ->
+                    if (serverRawEnv.isBlank() && fallbackRawEnv.isBlank()) {
+                        throw cause
+                    }
+                    throw IllegalStateException(
+                        "Could not refresh the latest .env before saving. Reload settings and try again.",
+                        cause,
+                    )
+                },
+            )
 
     private suspend fun latestRawConfigForSave(fallbackRawConfig: String): String =
         container.axonClient.panelConfig()
-            .getOrNull()
-            ?.rawToml
-            ?: serverRawConfig.ifBlank { fallbackRawConfig }
+            .fold(
+                onSuccess = { it.rawToml },
+                onFailure = { cause ->
+                    if (serverRawConfig.isBlank() && fallbackRawConfig.isBlank()) {
+                        throw cause
+                    }
+                    throw IllegalStateException(
+                        "Could not refresh the latest config.toml before saving. Reload settings and try again.",
+                        cause,
+                    )
+                },
+            )
 
     fun testConnection(serverUrl: String, token: String) {
         viewModelScope.launch {
