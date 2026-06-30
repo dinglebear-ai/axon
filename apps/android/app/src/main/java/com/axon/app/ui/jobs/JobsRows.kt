@@ -397,10 +397,12 @@ internal fun EmptyJobsCard(title: String, subtitle: String) {
 }
 
 @Composable
-internal fun JobsErrorCard(message: String) {
-    AppNoticeBanner(
+internal fun JobsErrorCard(message: String, onRetry: () -> Unit) {
+    com.axon.app.ui.common.RecoveryActionCard(
+        title = "Jobs are unavailable",
         message = humanizeJsonFragmentText(message),
-        tone = NoticeTone.Error,
+        primaryLabel = "Retry",
+        onPrimary = onRetry,
         modifier = Modifier.fillMaxWidth(),
     )
 }

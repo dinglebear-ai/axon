@@ -26,12 +26,16 @@ import java.util.Locale
 
 internal val ACTIVE_JOB_STATUSES = setOf("pending", "queued", "running", "processing", "in_progress")
 internal val COMPLETED_JOB_STATUSES = setOf("done", "completed", "success", "succeeded")
+internal val FAILED_JOB_STATUSES = setOf("failed", "error", "cancelled", "canceled")
 
 internal fun isActiveJobStatus(status: String): Boolean =
     status.lowercase() in ACTIVE_JOB_STATUSES
 
 internal fun isCompletedJobStatus(status: String): Boolean =
     status.lowercase() in COMPLETED_JOB_STATUSES
+
+internal fun isFailedJobStatus(status: String): Boolean =
+    status.lowercase() in FAILED_JOB_STATUSES
 
 internal fun shouldShowJobDetailProgress(status: String): Boolean =
     isActiveJobStatus(status) || isCompletedJobStatus(status)
