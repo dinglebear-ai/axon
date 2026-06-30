@@ -39,8 +39,15 @@ pub trait SourceAdapter: Send + Sync {
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest>;
     async fn acquire(&self, plan: &SourcePlan, diff: &SourceManifestDiff)
         -> Result<SourceAcquisition>;
+    async fn normalize(&self, plan: &SourcePlan, acquisition: SourceAcquisition)
+        -> Result<StageExecutionResult<Vec<SourceDocument>>>;
 }
 ```
+
+Adapters do not resolve raw source strings and do not choose execution plans.
+`SourceResolver` resolves identity, `SourceRouter` selects adapter/scope/provider
+requirements, and `SourceAdapter` discovers, acquires, and normalizes items for
+the selected `SourcePlan`.
 
 ## Document and Parse Traits
 

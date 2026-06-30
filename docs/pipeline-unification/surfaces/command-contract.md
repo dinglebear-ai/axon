@@ -26,8 +26,8 @@ terminal affordances. It is not allowed to bypass `axon-api`, `axon-services`,
 ## Design Rules
 
 - `axon <source>` is the source acquisition/indexing happy path.
-- `axon embed`, `axon ingest`, `axon scrape`, `axon crawl`, and
-  `axon code-search-watch` are removed user-facing commands.
+- `axon embed`, `axon ingest`, `axon scrape`, `axon crawl`, `axon code-search`,
+  and `axon code-search-watch` are removed user-facing commands.
 - `axon map <source>` remains a top-level discovery command.
 - `axon watch <source>` remains the explicit watch-management entrypoint.
 - `axon extract` remains top-level for structured LLM extraction.
@@ -58,8 +58,9 @@ Implemented today:
 Planned by this contract:
 
 - `axon <source>` becomes the acquisition/indexing happy path.
-- `embed`, `ingest`, `scrape`, `crawl`, and `code-search-watch` are removed
-  user-facing commands rather than compatibility aliases.
+- `embed`, `ingest`, `scrape`, `crawl`, `code-search`, and
+  `code-search-watch` are removed user-facing commands rather than
+  compatibility aliases.
 - CLI JSON output is rendered from the same `axon-api` envelopes as MCP/REST.
 - Job, watch, artifact, prune, graph, provider, and collection operations move
   under canonical grouped commands.
@@ -93,6 +94,12 @@ axon [global-options] prune <subcommand> [prune-options]
 axon [global-options] collections <subcommand> [collection-options]
 axon [global-options] graph <subcommand> [graph-options]
 axon [global-options] providers <subcommand> [provider-options]
+axon [global-options] config <subcommand> [config-options]
+axon [global-options] setup <subcommand> [setup-options]
+axon [global-options] reset [reset-options]
+axon [global-options] serve [serve-options]
+axon [global-options] mcp [mcp-options]
+axon [global-options] palette <subcommand> [palette-options]
 axon [global-options] capabilities [options]
 axon [global-options] status [options]
 axon [global-options] doctor [options]
@@ -134,6 +141,12 @@ command, or global flag, treat it as `<source>` and route to `SourceRequest`.
 | `axon collections <sub>` | `Collection*Request` | `Collection*Result` | maybe | no | Collection listing/detail. |
 | `axon graph <sub>` | `Graph*Request` | `Graph*Result` | no | no | SourceGraph query/resolve/detail. |
 | `axon providers <sub>` | `Provider*Request` | `Provider*Result` | no | no | Provider capabilities/health. |
+| `axon config <sub>` | `Config*Request` | `Config*Result` | maybe | no | Inspect, validate, and rewrite `.env`/`config.toml`. |
+| `axon setup <sub>` | `Setup*Request` | `Setup*Result` | maybe | maybe | Bootstrap, compose helpers, update/sync, smoke/preflight helpers. |
+| `axon reset` | `Reset*Request` | `Reset*Result` | yes | yes | Explicit destructive clean-slate reset of local stores. |
+| `axon serve` | `ServeRequest` | `ServeResult` | process | no | Start REST/MCP/web/workers. |
+| `axon mcp` | `McpServerRequest` | `McpServerResult` | process | no | Start stdio/HTTP MCP server mode. |
+| `axon palette <sub>` | `Palette*Request` | `Palette*Result` | maybe | maybe | Desktop Palette app launch/status/export helper. |
 | `axon capabilities` | `CapabilityRequest` | `CapabilityDocument` | no | no | Machine-readable server capability contract. |
 | `axon status` | `StatusRequest` | `StatusReport` | no | no | Runtime status. |
 | `axon doctor` | `DoctorRequest` | `DoctorReport` | no | maybe | Diagnostic checks. |
@@ -321,6 +334,11 @@ DTO:
 
 ```bash
 axon query "source ledger generation cleanup" --content-kind code --limit 10
+axon query "where is provider cooling implemented" \
+  --source /home/jmagar/workspace/axon \
+  --content-kind code \
+  --path-prefix crates/ \
+  --freshness committed
 ```
 
 DTO:
@@ -329,13 +347,30 @@ DTO:
 {
   "query": "source ledger generation cleanup",
   "filters": {
-    "content_kind": "code"
+    "content_kind": "code",
+    "source": "/home/jmagar/workspace/axon",
+    "path_prefix": "crates/"
   },
   "generation": "committed",
+  "freshness": "committed",
   "limit": 10,
   "include_graph": false
 }
 ```
+
+Local code query rules:
+
+- `axon query` is the canonical replacement for the old code-search command
+- `--content-kind code` enables code-aware filters and result rendering
+- `--source <path|source_id|canonical_uri>` restricts results to a repo,
+  checkout, package, or other indexed source
+- `--path-prefix`, `--language`, `--symbol`, and `--repo` are filters over
+  canonical vector payload fields, not ad hoc path scans
+- default freshness for code is `committed`; foreground query may trigger or
+  report a refresh job, but it must not search an uncommitted generation
+- if a refresh is running, output includes the current `job_id`, phase, and
+  stale/committed generation warning
+- no command named `code-search` or `code-search-watch` may dispatch
 
 ### retrieve
 
@@ -475,6 +510,36 @@ Memory is not a source adapter.
 | `axon graph edge <edge_id>` | edge id | `--include-evidence` | edge detail |
 | `axon providers list` | none | `--kind`, `--status` | provider summaries |
 | `axon providers get <provider>` | provider id | `--include-health`, `--include-limits` | provider detail |
+
+### config, setup, reset, serve, mcp, palette
+
+| Command | Required | Optional | Result |
+|---|---|---|---|
+| `axon config list` | none | `--source`, `--reveal` | effective config summary |
+| `axon config get <key>` | key | `--source`, `--reveal` | config value |
+| `axon config set <key> <value>` | key/value | `--env`, `--toml`, `--dry-run` | config edit plan/result |
+| `axon config unset <key>` | key | `--env`, `--toml`, `--dry-run` | config edit plan/result |
+| `axon config validate` | none | `--strict`, `--json` | config validation report |
+| `axon setup doctor` | none | `--config`, `--providers` | setup diagnostic report |
+| `axon setup config rewrite` | none | `--dry-run`, `--yes` | desired `.env`/`config.toml` rewrite plan/result |
+| `axon setup compose` | none | `--profile`, `--dry-run` | compose command/plan |
+| `axon setup sync` | none | `--dry-run` | local setup sync result |
+| `axon setup update` | none | `--dry-run` | local setup update result |
+| `axon doctor preflight` | none | `--json` | preflight report |
+| `axon doctor smoke` | none | `--live`, `--json` | smoke report |
+| `axon reset` | none | `--stores`, `--dry-run`, `--yes`, `--receipt` | destructive reset plan/result |
+| `axon serve` | none | `--bind`, `--port`, `--workers` | long-running server |
+| `axon mcp` | none | `--transport`, `--bind`, `--port` | long-running MCP server |
+| `axon palette status` | none | `--json` | desktop app status |
+| `axon palette open` | none | `--target` | app launch result |
+
+Rules:
+
+- `migrate` is not part of the clean-slate target surface.
+- setup/config commands may edit local files only after explicit command input.
+- reset is required clean-slate tooling, not old-data migration.
+- `serve` and `mcp` are process entrypoints; their startup health is reported
+  through status/doctor/provider/job contracts.
 
 ## Global Output Modes
 
@@ -717,7 +782,7 @@ CLI auth uses the same policy as REST/MCP.
 | status/help/capabilities | read |
 | query/retrieve/ask/search/research/summarize | read |
 | source/watch/upload/prune/memory mutation | write |
-| destructive prune/purge/forget/hard delete | write plus confirmation |
+| destructive prune/purge/forget/hard delete/reset | write plus admin policy and confirmation |
 | diagnostics revealing local config | local/admin policy |
 
 Visibility rules:
@@ -756,6 +821,7 @@ Visibility rules:
 | `axon collections <sub>` | `action=collections` | `/v1/collections/*` | `Collection*` |
 | `axon graph <sub>` | `action=graph` | `/v1/graph/*` | `Graph*` |
 | `axon providers <sub>` | `action=providers` | `/v1/providers/*` | `Provider*` |
+| `axon reset` | `action=reset` | `/v1/reset/*` | `Reset*` |
 | `axon capabilities` | `action=capabilities` | `GET /v1/capabilities` | `CapabilityDocument` |
 | `axon status` | `action=status` | `GET /v1/status` | `StatusReport` |
 | `axon doctor` | `action=doctor` | `GET /v1/doctor` | `DoctorReport` |

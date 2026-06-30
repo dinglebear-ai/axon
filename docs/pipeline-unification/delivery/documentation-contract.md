@@ -25,7 +25,7 @@ the implemented behavior after cutover.
 | Error codes | `axon-error` | error code registry |
 | Observability/events | `axon-observe` | event/phase registry |
 | DB schema | owning store crates | migrations/schema metadata |
-| Crate docs | each crate | `src/CLAUDE.md` + rustdoc |
+| Crate docs | each crate | `src/CLAUDE.md` + rustdoc; README generated from or checked against both |
 
 ## Final Docs Tree
 
@@ -253,8 +253,10 @@ Every non-trivial crate has `crates/<crate>/src/CLAUDE.md` containing:
 - test commands
 - common gotchas
 
-`CLAUDE.md` is the source of truth. Sibling `AGENTS.md` and `GEMINI.md` are
-symlinks when present.
+`CLAUDE.md` is the agent/source-of-truth maintenance contract. Wherever a
+`CLAUDE.md` exists, sibling `AGENTS.md` and `GEMINI.md` must exist as symlinks
+to it. Human-facing `README.md` files must be generated from or checked against
+`CLAUDE.md` plus rustdoc.
 
 ## Testing Requirements
 
@@ -264,5 +266,6 @@ symlinks when present.
 - schema check mode fails on drift
 - link checker covers all markdown docs
 - crate docs exist for every non-trivial crate
+- every `CLAUDE.md` has sibling `AGENTS.md` and `GEMINI.md` symlinks
 - docs inventory matches repo structure contract
 - examples in docs are smoke-tested where practical

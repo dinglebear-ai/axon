@@ -175,9 +175,18 @@ Operations:
   axon graph edge <edge_id>       Show a graph edge
   axon providers list             List provider capabilities/health
   axon providers get <provider>   Show provider capability/health
+  axon config list                Show effective config
+  axon config validate            Validate .env/config.toml placement and values
+  axon setup config rewrite       Rewrite desired config shape after confirmation
+  axon setup compose              Print/run compose helper plan
+  axon setup sync                 Sync local setup-owned files
+  axon setup update               Update local setup-owned runtime helpers
+  axon reset                      Destructively reset selected local stores
+  axon serve                      Start REST/MCP/web/workers
+  axon mcp                        Start MCP server mode
+  axon palette status             Show Palette desktop app status
+  axon palette open               Open Palette desktop app
   axon capabilities               Show complete capability document
-  axon collections list           List vector collections
-  axon collections get <name>     Show collection detail
 
 Extraction:
   axon extract <source> --schema <schema>

@@ -11,7 +11,8 @@ progress streams can render the same error shape.
 
 - `ApiError`, `ErrorCode`, `ErrorStage`, `ErrorSeverity`, and stable JSON names
 - retry, cooling, degradation, and fail-fast classifications
-- structured error context attachments with redaction-aware display
+- structured error context attachments with redaction hints and secret
+  classifications
 - provider/store/parser/vector/job/source conversion helpers
 - fake constructors for tests and schema snapshots
 
@@ -20,7 +21,7 @@ progress streams can render the same error shape.
 - CLI, MCP, or REST response rendering
 - tracing/log emission
 - provider clients, store clients, source adapters, or job scheduling
-- secret detection logic beyond redaction hooks from `axon-core`
+- secret detection or redaction implementation
 
 ## Public Modules
 
@@ -53,11 +54,11 @@ testing.rs
 ## Dependencies Allowed
 
 - `serde`, `thiserror`, `uuid`, `time` or `chrono`, and small utility crates
-- `axon-core` only for redaction primitives if the cycle remains clean
 
 ## Dependencies Forbidden
 
-- `axon-api`, `axon-services`, `axon-jobs`, `axon-cli`, `axon-mcp`, `axon-web`
+- any Axon crate, including `axon-api`, `axon-core`, `axon-services`,
+  `axon-jobs`, `axon-cli`, `axon-mcp`, and `axon-web`
 - concrete providers such as Qdrant, TEI, Gemini, Codex, OpenAI, Spider
 - SQLite clients or transport frameworks
 
@@ -88,6 +89,8 @@ testing.rs
 - no transport-specific rendering lives in this crate
 - every emitted error can be converted into the shared envelope in `axon-api`
 - every retry/degrade/cool decision is machine-readable
+- `axon-error` carries redaction hints only; redaction implementation lives in
+  `axon-core` or the renderer boundary
 
 See [../README.md](../README.md) and
 [../../foundation/crate-structure.md](../../foundation/crate-structure.md).

@@ -26,10 +26,10 @@ axon/
   docker-compose.yaml
   docker-compose.prod.yaml
   Dockerfile
+  build.rs
   src/
     lib.rs
     main.rs
-    build.rs
   crates/
     axon-error/
     axon-api/
@@ -79,8 +79,12 @@ axon/
     parsers/
     sessions/
     providers/
-  web/
-    panel/
+  apps/
+    web/
+    android/
+    chrome-extension/
+    palette-tauri/
+    desktop/
   examples/
     config/
     sources/
@@ -93,13 +97,14 @@ axon/
 src/
   lib.rs
   main.rs
-  build.rs
 ```
 
 Root crate rules:
 
 - `main.rs` loads bootstrap env and calls `axon_cli::run`
 - `lib.rs` re-exports only the binary entrypoint required by integration tests
+- root `build.rs`, when present, only embeds static assets or generated version
+  metadata for the thin binary
 - no domain logic lives under root `src/`
 - no transport handlers live under root `src/`
 

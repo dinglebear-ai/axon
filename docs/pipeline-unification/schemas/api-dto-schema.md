@@ -33,6 +33,7 @@ cargo xtask schemas api --check
 - job/watch DTOs
 - artifact/upload DTOs
 - prune/reset DTOs
+- config/setup/serve/MCP server/palette operational DTOs
 - provider capability DTOs
 - config projection DTOs
 - success/error envelopes

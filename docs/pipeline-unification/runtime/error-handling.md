@@ -30,7 +30,9 @@ severity, visibility, and redacted details.
 - Never write public/vector output after redaction failure.
 - Store item-level failures without failing the whole source when policy allows.
 - Record cleanup failures as cleanup debt.
-- Removed commands/actions/routes return explicit removed errors, not aliases.
+- Removed commands/actions/routes are absent from public schemas and never
+  dispatch. If a stale removed spelling reaches a parser/router, it is treated
+  as an unknown command/action/route and performs no side effects.
 - Provider failures enter cooling/backoff before hot loops.
 
 ## Crate Ownership
@@ -60,7 +62,8 @@ Planned by this contract:
   `code`, `stage`, `retryable`, `severity`, `visibility`, redacted `details`,
   and correlation ids.
 - Removed commands/actions/routes are absent from public schemas and cannot
-  dispatch.
+  dispatch; stale callers receive unknown-command/action/route errors, not
+  compatibility aliases.
 - Provider cooling/backoff is standardized and visible in progress/status.
 
 ## Error Shape

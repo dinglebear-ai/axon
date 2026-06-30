@@ -74,9 +74,32 @@ Reservation fields:
 | `deadline` | Optional latest start/finish. |
 | `granted_at` | Grant time. |
 | `expires_at` | Lease expiry. |
+| `state` | `requested`, `queued`, `granted`, `active`, `released`, `expired`, `canceled`, or `failed`. |
 
 Providers reject calls without reservations except for health checks and tiny
 local fake tests.
+
+Reservation lifecycle:
+
+```text
+requested -> queued -> granted -> active -> released
+requested -> queued -> canceled
+granted -> expired
+active -> failed
+active -> expired
+```
+
+Recovery rules:
+
+- queued reservations are released when the owning job is canceled or expires
+- granted reservations expire if a stage never starts before `expires_at`
+- active reservations heartbeat through the owning job heartbeat
+- stale active reservations are reclaimed only after heartbeat grace and lease
+  expiry
+- provider cooldown cancels queued background reservations but preserves
+  already-active requests until their request timeout or cancellation fires
+- scheduler metrics expose queue depth and wait time by provider kind, priority,
+  and job kind
 
 ## EmbeddingProvider Contract
 
@@ -169,6 +192,18 @@ Cooling rules:
 - existing safe cleanup/finalization may continue
 - health probe can end cooldown early
 - cooldown status is visible in jobs/status/doctor/capabilities
+
+Cooling state fields:
+
+| Field | Meaning |
+|---|---|
+| `failure_count` | Consecutive failures counted toward cooling. |
+| `cooldown_reason` | `rate_limit`, `timeout`, `unavailable`, `resource_exhausted`, etc. |
+| `cooldown_started_at` | First time provider entered current cooldown. |
+| `cooldown_until` | Earliest time background reservations may resume. |
+| `probe_after` | Earliest health probe time. |
+| `last_success_at` | Last successful provider call. |
+| `last_error` | Redacted structured provider error. |
 
 ## Configuration Surface
 

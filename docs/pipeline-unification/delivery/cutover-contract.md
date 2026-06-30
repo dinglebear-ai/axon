@@ -20,7 +20,9 @@ Existing local Axon data may be wiped before or during the cutover.
 - Do not write migration jobs for current local data.
 - Do not write vector-payload backfill code for the old payload shape.
 - Do not keep legacy crate/module names solely to read old state.
-- `axon doctor` may detect stale old data and recommend wiping/reinitializing.
+- `axon doctor` must detect incompatible non-empty stores and recommend
+  wiping/reinitializing before unified workers start.
+- `axon reset` is required local/admin tooling for the clean-slate cutover.
 
 ## Empty-Store Assumption
 
@@ -105,6 +107,16 @@ Do not build:
 
 Before declaring the refactor complete:
 
+- `axon doctor --config` reports config placement/staleness accurately
+- preflight inventories SQLite, Qdrant, artifacts, config, and generated schemas
+- incompatible non-empty stores block unified workers until reset or explicit
+  developer override
+- `axon reset --dry-run` prints exact stores, paths, collections, row counts,
+  artifact counts, and generated reset receipt path
+- `axon reset --yes` deletes selected local stores, recreates fresh schema, and
+  writes a reset receipt artifact
+- SQLite integrity checks pass after reset
+- Qdrant collection shape matches the target vector payload schema after reset
 - fresh SQLite schema initializes
 - fresh Qdrant collection initializes
 - `axon doctor` reports empty/fresh stores clearly
@@ -116,9 +128,9 @@ Before declaring the refactor complete:
 - canonical ask/query can retrieve from the new payload shape
 - provider backpressure works during fresh reindex
 
-## Optional Reset Tooling
+## Required Reset Tooling
 
-It is acceptable to add an explicit reset command for local development:
+Add an explicit reset command for local development and cutover:
 
 ```text
 axon reset --stores jobs,ledger,graph,memory,vectors,artifacts
@@ -127,3 +139,25 @@ axon reset --stores jobs,ledger,graph,memory,vectors,artifacts
 Reset must be admin/destructive, require confirmation unless `--yes`, and print
 exactly what it will delete. This is not migration; it is intentional local
 state destruction.
+
+Reset result shape:
+
+```json
+{
+  "job_id": "job_...",
+  "reset_id": "reset_...",
+  "stores": ["jobs", "ledger", "graph", "memory", "vectors", "artifacts"],
+  "dry_run": false,
+  "deleted": {
+    "sqlite_tables": 42,
+    "qdrant_collections": ["axon"],
+    "artifact_files": 120
+  },
+  "created": {
+    "sqlite_schema_version": 1,
+    "qdrant_collections": ["axon"]
+  },
+  "receipt_artifact_id": "art_...",
+  "warnings": []
+}
+```

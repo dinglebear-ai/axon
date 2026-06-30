@@ -44,6 +44,8 @@ xtask/
         memory.rs
         providers.rs
         presentation.rs
+        schemas.rs
+        new_source.rs
     util/
       diff.rs
       fs.rs
@@ -86,6 +88,8 @@ cargo xtask docs schema
 cargo xtask docs memory
 cargo xtask docs providers
 cargo xtask docs presentation
+cargo xtask docs schemas
+cargo xtask docs new-source
 ```
 
 Required flags:
@@ -156,6 +160,8 @@ pub struct GeneratedDocArtifact {
 | `memory` | `families/memory.rs` | memory DTO/store/lifecycle registry | `docs/reference/runtime/memory.md` |
 | `providers` | `families/providers.rs` | provider capability registry | `docs/reference/runtime/providers.md` |
 | `presentation` | `families/presentation.rs` | presentation token registry | `docs/reference/surfaces/presentation/tokens.md` |
+| `schemas` | `families/schemas.rs` | schema generator manifest and schema registry | `docs/reference/schemas/index.md` |
+| `new-source` | `families/new_source.rs` | adapter checklist and source registry | `docs/reference/sources/new-source.md` |
 
 ## Generated Header
 
@@ -226,6 +232,8 @@ Required rendering rules:
 | Memory | types, statuses, scoring, decay, review, graph/vector integration |
 | Providers | provider ids, capabilities, limits, health, scheduler fields |
 | Presentation | token registry, platform projections, status mappings |
+| Schemas | schema family inventory, artifact paths, owner crates, check commands |
+| New source | adapter onboarding checklist, required fixtures, metadata, graph facts |
 
 ## Example Validation
 

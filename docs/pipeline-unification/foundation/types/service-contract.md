@@ -135,8 +135,8 @@ pub trait CollectionService: Send + Sync {
 
 #[async_trait]
 pub trait ResetService: Send + Sync {
-    async fn plan(&self, request: ResetRequest) -> Result<ResetPlan>;
-    async fn execute(&self, request: ResetExecuteRequest) -> Result<ResetResult>;
+    async fn plan(&self, request: ResetPlanRequest) -> Result<ResetPlan>;
+    async fn execute(&self, request: ResetExecRequest) -> Result<ResetResult>;
 }
 ```
 

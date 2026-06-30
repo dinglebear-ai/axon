@@ -199,10 +199,20 @@ pub struct RedactedHeader {
 }
 
 pub struct SourceRange {
-    pub start_line: Option<u32>,
-    pub end_line: Option<u32>,
-    pub start_byte: Option<u64>,
-    pub end_byte: Option<u64>,
+    pub line_start: Option<u32>,
+    pub line_end: Option<u32>,
+    pub byte_start: Option<u64>,
+    pub byte_end: Option<u64>,
+    pub dom_selector: Option<String>,
+    pub json_pointer: Option<String>,
+    pub yaml_path: Option<String>,
+    pub xml_path: Option<String>,
+    pub csv_row_start: Option<u32>,
+    pub csv_row_end: Option<u32>,
+    pub time_start_ms: Option<u64>,
+    pub time_end_ms: Option<u64>,
+    pub session_turn_start: Option<u32>,
+    pub session_turn_end: Option<u32>,
 }
 
 pub struct ChunkLocator {
@@ -267,6 +277,7 @@ pub struct CapabilityBase {
 pub type SourceResolverCapability = CapabilityBase;
 pub type SourceRouterCapability = CapabilityBase;
 pub type SourceAdapterCapability = CapabilityBase;
+pub type SourceScopeCapability = CapabilityBase;
 pub type SourceEnricherCapability = CapabilityBase;
 pub type DocumentPreparerCapability = CapabilityBase;
 pub type ChunkProfileCapability = CapabilityBase;
@@ -471,12 +482,23 @@ pub struct SourceParseFacts {
 
 pub struct GraphCandidate {
     pub candidate_id: String,
+    pub job_id: JobId,
     pub source_id: SourceId,
     pub source_item_key: SourceItemKey,
-    pub node: Option<GraphNodeCandidate>,
-    pub edge: Option<GraphEdgeCandidate>,
+    pub item_canonical_uri: String,
+    pub document_id: Option<DocumentId>,
+    pub producer: GraphCandidateProducer,
+    pub nodes: Vec<GraphNodeCandidate>,
+    pub edges: Vec<GraphEdgeCandidate>,
     pub evidence: Vec<GraphEvidence>,
     pub confidence: f32,
+    pub metadata: MetadataMap,
+}
+
+pub struct GraphCandidateProducer {
+    pub adapter: String,
+    pub parser: Option<String>,
+    pub version: String,
 }
 
 pub struct GraphNodeCandidate {
@@ -493,6 +515,11 @@ pub struct GraphEdgeCandidate {
     pub properties: MetadataMap,
 }
 ```
+
+`sources/source-graph.md` is the canonical graph kind registry. Generated graph
+schemas must use its node and edge kind names exactly. `GraphCandidate` is the
+only parser/adapter candidate DTO; alternate single-node/single-edge or
+`kind`-only shorthand shapes are invalid.
 
 ## Document DTOs
 

@@ -49,6 +49,20 @@ Planned by this contract:
 - Do not keep obsolete names solely for compatibility; this project is allowed
   a clean break.
 
+## Current-to-Target Responsibility Map
+
+Removed or renamed current crates are split by responsibility, not kept as
+facades.
+
+| Current Crate | Target Owner(s) | Notes |
+|---|---|---|
+| `axon-vector` | `axon-document`, `axon-embedding`, `axon-vectors`, `axon-retrieval` | Separate chunk preparation, embedding provider, vector store, and retrieval/RAG. |
+| `axon-code-index` | `axon-ledger`, `axon-parse`, `axon-document`, `axon-jobs`, `axon-vectors` | Local code freshness becomes normal source ledger/generation/watch/query behavior. |
+| `axon-crawl` | `axon-adapters`, `axon-route`, `axon-ledger`, `axon-document`, `axon-jobs` | Web crawl becomes a web adapter/source job, not a separate job family. |
+| `axon-ingest` | `axon-adapters`, `axon-route`, `axon-ledger`, `axon-document`, `axon-jobs` | GitHub, feeds, Reddit, YouTube, registries, sessions, CLI/MCP tools become adapters. |
+| `axon-extract` | `axon-llm`, `axon-parse`, `axon-adapters`, `axon-services` | Structured LLM extraction remains a top-level action, but vertical scraping/adapters move under source routing. |
+| root `src/*` domain modules | target domain crates | Root crate keeps only binary/bootstrap glue. |
+
 ## Target Workspace
 
 | Crate | Owns | Must Not Own |
@@ -179,8 +193,7 @@ No removed current crate remains in `members` after cutover:
 - `crates/axon-code-index`
 - `crates/axon-crawl`
 - `crates/axon-ingest`
-- `crates/axon-extract` unless intentionally retained as a tiny facade or
-  renamed/split per this contract
+- `crates/axon-extract`
 
 ## Crate Public API Contracts
 

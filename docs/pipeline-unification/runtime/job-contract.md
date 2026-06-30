@@ -181,6 +181,22 @@ Recovery uses heartbeat age plus provider reservation state plus stage
 checkpointability. A slow embedding batch is not stale if the provider
 reservation is still active and the worker heartbeat is fresh.
 
+Heartbeat and watchdog rules:
+
+- active attempts heartbeat at least every `jobs.heartbeat_interval_secs`
+- long provider calls emit heartbeat updates before and after each reservation
+  state transition
+- every worker lane has a bounded input channel; overflow blocks admission or
+  returns a structured backpressure error
+- panics are caught at the worker boundary, recorded as failed attempts, and
+  never leave leases permanently owned
+- starvation watchdogs emit warning events when interactive lanes wait longer
+  than their configured SLO
+- recovery checks job heartbeat, stage checkpoint, provider reservation state,
+  and lease expiry before creating a new attempt
+- recovery never republishes an already committed generation; it creates a new
+  generation or records cleanup debt
+
 ## Provider Capacity and Backpressure
 
 The job scheduler owns pipeline backpressure. Stage code asks for capacity; it

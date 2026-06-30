@@ -7,6 +7,10 @@ Stores own durable state. They provide transaction, lease, reset, capability,
 and fake implementations. Stores are not provider clients unless explicitly
 noted, and stores do not parse transport input.
 
+`LedgerStore` is the only store boundary for source, item, generation, and
+document/chunk status. There is no separate `DocumentStatusStore` trait in the
+target model; document status methods live on `LedgerStore`.
+
 ## Rules
 
 - Every store has SQLite or filesystem production implementation unless stated

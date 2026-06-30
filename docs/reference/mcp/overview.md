@@ -12,8 +12,12 @@ Last Modified: 2026-06-04
 - Resources: `axon://schema/mcp-tool`, `ui://axon/status-dashboard`
 - MCP Apps capability is enabled so compatible hosts can render the status dashboard widget
 
-Canonical schema and action contract:
+Current generated schema snapshot:
 - `docs/reference/mcp/tool-schema.md`
+
+Pipeline-unification target contract:
+- `docs/pipeline-unification/surfaces/tool-contract.md`
+- `docs/pipeline-unification/schemas/mcp-tool-schema.md`
 
 Implementation:
 - `src/mcp/schema.rs`

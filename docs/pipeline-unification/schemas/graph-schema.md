@@ -134,63 +134,20 @@ Kind rules:
 - graph store rejects unknown kinds before write
 - parser-emitted candidates validate before merge
 
-## Required Kind Families
+## Required Kind Registry
 
-- source/repository/package/docs/site
-- file/module/symbol/function/class/trait
-- dependency/package/version
-- API endpoint/schema/operation
-- Docker service/image/network/volume
-- session/turn/tool_call/skill/agent/decision
-- issue/pull_request/artifact
+[../sources/source-graph.md](../sources/source-graph.md) is the canonical node
+kind, edge kind, authority, and evidence registry. This schema contract must be
+generated from that registry and must not maintain a second hand-written list.
 
-## Required Node Kinds
+Schema generation must fail when:
 
-| Kind | Stable Key |
-|---|---|
-| `source` | `source:{source_id}` |
-| `site` | `site:{normalized_host}` |
-| `docs_site` | `docs:{canonical_uri}` |
-| `repository` | `repo:{provider}:{owner}/{repo}` |
-| `local_checkout` | `local:{source_id}` |
-| `package` | `pkg:{ecosystem}:{name}` |
-| `package_version` | `pkg:{ecosystem}:{name}@{version}` |
-| `file` | `file:{source_id}:{source_item_key}` |
-| `module` | `module:{language}:{path_or_name}` |
-| `symbol` | `symbol:{source_id}:{path}:{symbol_kind}:{name}` |
-| `api_endpoint` | `api:{method}:{canonical_uri}` |
-| `api_schema` | `schema:{name}:{hash}` |
-| `docker_service` | `compose:{source_id}:{service}` |
-| `session` | `session:{session_id}` |
-| `session_turn` | `turn:{session_id}:{turn_index}` |
-| `tool_call` | `tool:{session_id}:{call_id}` |
-| `skill` | `skill:{name}:{version_or_path}` |
-| `agent` | `agent:{name_or_id}` |
-| `decision` | `decision:{session_id}:{hash}` |
-| `issue` | `issue:{provider}:{owner}/{repo}#{number}` |
-| `pull_request` | `pr:{provider}:{owner}/{repo}#{number}` |
-| `artifact` | `artifact:{artifact_id}` |
-
-## Required Edge Kinds
-
-| Kind | From | To |
-|---|---|---|
-| `documents` | `source` | `docs_site`/`site` |
-| `repository_for` | `repository` | `package`/`docs_site` |
-| `depends_on` | `repository`/`package_version` | `package` |
-| `contains` | `repository`/`file`/`module` | `file`/`module`/`symbol` |
-| `defines` | `file` | `symbol` |
-| `imports` | `file`/`module` | `package`/`module` |
-| `exposes_endpoint` | `source`/`repository` | `api_endpoint` |
-| `uses_schema` | `api_endpoint` | `api_schema` |
-| `compose_service_uses_image` | `docker_service` | `package` |
-| `session_contains_turn` | `session` | `session_turn` |
-| `turn_invoked_tool` | `session_turn` | `tool_call` |
-| `tool_invoked_skill` | `tool_call` | `skill` |
-| `agent_participated` | `session` | `agent` |
-| `decision_touched_file` | `decision` | `file` |
-| `issue_references_pr` | `issue` | `pull_request` |
-| `artifact_from_tool` | `tool_call` | `artifact` |
+- `source-graph.md` contains a node or edge kind absent from the generated graph
+  schema
+- the generated schema contains a node or edge kind absent from
+  `source-graph.md`
+- a parser fixture emits a node or edge kind absent from `source-graph.md`
+- a stable key template in `source-graph.md` references an undefined property
 
 ## Evidence Shape
 

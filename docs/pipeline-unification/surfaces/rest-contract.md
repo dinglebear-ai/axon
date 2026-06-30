@@ -61,6 +61,60 @@ Planned by this contract:
   and prune routes use the end-state route inventory below.
 - OpenAPI generation reflects only the clean-break route surface.
 
+## Shared Response Envelope
+
+Every non-stream, non-byte REST response uses the same envelope as CLI JSON and
+MCP responses. Route examples may focus on `data`, but generated OpenAPI and
+fixtures must include the complete envelope shape.
+
+Success:
+
+```json
+{
+  "ok": true,
+  "request_id": "req_...",
+  "contract_version": "2026-06-30",
+  "data": {},
+  "job": null,
+  "watch": null,
+  "artifacts": [],
+  "warnings": [],
+  "pagination": null,
+  "trace": {
+    "job_id": null,
+    "trace_id": "trace_..."
+  }
+}
+```
+
+Failure:
+
+```json
+{
+  "ok": false,
+  "request_id": "req_...",
+  "contract_version": "2026-06-30",
+  "error": {
+    "code": "route.validation.invalid_field",
+    "message": "Invalid request.",
+    "stage": "validation",
+    "retryable": false,
+    "severity": "failed",
+    "visibility": "public",
+    "details": {}
+  },
+  "warnings": [],
+  "trace": {
+    "job_id": null,
+    "trace_id": "trace_..."
+  }
+}
+```
+
+Streaming routes use `StreamEvent`/`SourceProgressEvent` envelopes from the
+event schema. Artifact-content routes may return bytes after the metadata route
+authorizes the read.
+
 ## End-State Route Inventory
 
 | Method | Route | Auth | Purpose |
@@ -170,6 +224,8 @@ Planned by this contract:
 | `POST` | `/v1/prune/dedupe` | write/admin | Deduplicate near-identical vector chunks. |
 | `POST` | `/v1/prune/purge` | write/admin | Purge indexed content by source/url/filter. |
 | `GET` | `/v1/prune/jobs/{job_id}` | read | Prune job status projection. |
+| `POST` | `/v1/reset/plan` | write/admin | Plan destructive clean-slate reset. |
+| `POST` | `/v1/reset/exec` | write/admin | Execute confirmed clean-slate reset. |
 | `GET` | `/v1/mobile/sessions` | read | List mobile chat/session state. |
 | `GET` | `/v1/mobile/sessions/{session_id}` | read | Mobile session detail. |
 | `PUT` | `/v1/mobile/sessions/{session_id}` | write | Upsert mobile session state. |
@@ -247,7 +303,7 @@ Any response that starts or references background work includes this shape:
   "source_id": "src_...",
   "canonical_uri": "https://github.com/jmagar/axon",
   "display_name": "jmagar/axon",
-  "source_kind": "github",
+  "source_kind": "git",
   "adapter": "github",
   "default_scope": "repo",
   "authority": "official",
@@ -428,7 +484,7 @@ Detail response:
       "source_id": "src_...",
       "canonical_uri": "https://github.com/jmagar/axon",
       "display_name": "jmagar/axon",
-      "source_kind": "github",
+      "source_kind": "git",
       "adapter": "github",
       "authority": "official",
       "current_generation": 42,
@@ -545,7 +601,7 @@ config snapshot unless overrides are provided.
   "sequence": 123,
   "job_id": "job_...",
   "source_id": "src_...",
-  "source_kind": "github",
+  "source_kind": "git",
   "canonical_uri": "https://github.com/jmagar/axon",
   "adapter": "github",
   "scope": "repo",
@@ -715,7 +771,7 @@ Common retrieval filters:
   "query": "what packages does this repo use?",
   "source_id": "src_...",
   "graph_node_id": "node_...",
-  "source_kind": "github",
+  "source_kind": "git",
   "generation": "committed",
   "limit": 20,
   "include_graph": true
@@ -1418,6 +1474,8 @@ access logs/metrics.
 | `POST /v1/prune/dedupe` | body `{ "collection"?, "threshold"?, "source_id"?, "dry_run": bool }` | dedupe summary or `JobDescriptor` | scans VectorStore and deletes/marks duplicates only when not dry-run |
 | `POST /v1/prune/purge` | body `{ "source_id"?, "url"?, "prefix"?, "filters"?, "dry_run": bool, "confirm"?: bool }` | purge summary, prune plan, or `JobDescriptor` | creates prune debt/job and deletes only through prune execution |
 | `GET /v1/prune/jobs/{job_id}` | path `job_id` | prune job status, delete counts, verification state | none |
+| `POST /v1/reset/plan` | body `{ "stores", "dry_run": true, "collection"?, "include_artifacts"?, "include_config"?, "reason"? }` | `ResetPlan` with counts, risk flags, confirmation requirements | computes destructive reset plan only |
+| `POST /v1/reset/exec` | body `{ "reset_plan_id", "confirm": true, "reason"? }` | `JobDescriptor` or `ResetResult` when waited | executes selected destructive reset and writes receipt artifact |
 | `GET /v1/collections` | query `include_stats=true` | collection summaries with vector modes, payload indexes, counts | may probe VectorStore |
 | `GET /v1/collections/{collection}` | path `collection`; query `include=payload_indexes,segments` | collection detail, health, schema/index state, source counts | may probe VectorStore |
 
@@ -1538,3 +1596,17 @@ codes, and canonical schemas.
 
 Client generation should target the canonical source-pipeline routes. Removed
 routes must be excluded from generated clients.
+
+Generated artifacts:
+
+```text
+docs/reference/rest/openapi.json
+docs/reference/rest/openapi.md
+apps/web/openapi/axon.json
+apps/android/app/src/main/assets/openapi/axon.json
+```
+
+The `apps/web` and Android artifacts are generated copies of the canonical
+OpenAPI output, not separate hand-maintained route contracts. Drift checks fail
+when any generated artifact includes a removed route or omits an end-state route
+from this contract.

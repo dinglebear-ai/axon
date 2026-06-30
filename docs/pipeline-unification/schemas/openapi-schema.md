@@ -184,12 +184,17 @@ Canonical route registry examples:
 | `POST` | `/v1/extract` | `extract` | `ExtractRequest` | `ExtractResult` | `axon:write` |
 | `POST` | `/v1/prune/plan` | `plan_prune` | `PruneRequest` | `PrunePlan` | `axon:admin` |
 | `POST` | `/v1/prune/exec` | `execute_prune` | `PruneExecuteRequest` | `PruneResult` | `axon:admin` |
+| `POST` | `/v1/reset/plan` | `plan_reset` | `ResetPlanRequest` | `ResetPlan` | `axon:admin` |
+| `POST` | `/v1/reset/exec` | `execute_reset` | `ResetExecRequest` | `ResetResult` | `axon:admin` |
 
 This table is illustrative, not a separate source of truth. The generated
 OpenAPI check must compare the `axon-web` route registry against
 `rest-contract.md` and fail unless every end-state route is present with matching
-method, path, auth scope, request DTO, result DTO, mutability, and streaming
-metadata.
+method, path, auth, request DTO, result DTO, operation id, response envelope,
+and removed-route absence. Generated copies under `apps/web/openapi/axon.json`
+and `apps/android/app/src/main/assets/openapi/axon.json` must match the
+canonical OpenAPI artifact byte-for-byte except for an allowed generated header
+field.
 
 ## Parameter Rules
 

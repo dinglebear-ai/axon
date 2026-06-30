@@ -143,7 +143,7 @@ The resolver canonicalizes identity and chooses an adapter.
 | Field | Type | Required | Visibility | Description |
 |---|---|---:|---|---|
 | `source_id` | string | yes | public | Stable ledger id for the canonical source identity. |
-| `source_kind` | string | yes | public | Canonical kind: `web`, `github`, `local_path`, `registry_package`, `session`, etc. |
+| `source_kind` | string | yes | public | Broad canonical `SourceKind` enum value such as `web`, `git`, `local`, `registry`, `feed`, `reddit`, `youtube`, `session`, `cli_tool`, `mcp_tool`, `memory`, or `upload`. |
 | `source_adapter` | string | yes | public | Adapter name that will acquire source items. |
 | `source_adapter_version` | string | yes | public | Adapter contract/schema version. |
 | `source_canonical_uri` | string | yes | public | Canonical URI selected by resolver for the source identity. |
@@ -154,6 +154,10 @@ The resolver canonicalizes identity and chooses an adapter.
 | `source_owner` | string | no | public | Org/user/project owner when applicable. |
 | `source_slug` | string | no | public | Stable short slug for display and filtering. |
 | `source_fingerprint` | string | yes | internal | Hash of canonical identity fields. |
+
+Provider-specific names are not `source_kind` values. A GitHub repo uses
+`source_kind="git"`, `source_adapter="github"`, and `git_provider="github"`.
+A local checkout uses `source_kind="local"` and `source_adapter="local"`.
 
 ### Ledger Metadata
 
@@ -341,7 +345,7 @@ generation, graph, and embedding metadata.
   "payload_contract_version": "2026-06-30",
   "vector_namespace": "documents",
   "source_id": "src_01J...",
-  "source_kind": "github",
+  "source_kind": "git",
   "source_adapter": "github",
   "source_scope": "repo",
   "source_generation": 12,
@@ -450,7 +454,14 @@ status, and public responses.
 | `web_content_type` | string | no | Response content type. |
 | `web_robots_allowed` | bool | no | Robots decision if checked. |
 | `web_sitemap_url` | string | no | Sitemap source. |
+| `web_sitemap_lastmod` | string | no | Sitemap `<lastmod>` when available. |
 | `web_thin_content` | bool | no | Whether page was considered thin. |
+| `web_cache_status` | string | no | `hit`, `miss`, `not_modified`, `bypass`, or `disabled`. |
+| `web_warc_artifact_id` | string | no | WARC artifact containing the captured response. |
+| `web_automation_artifact_id` | string | no | Automation script/result artifact used for capture. |
+| `web_vertical_extractor` | string | no | Vertical extractor name when a page used one. |
+| `web_vertical_extractor_version` | string | no | Vertical extractor version. |
+| `web_chrome_fallback_reason` | string | no | Why HTTP switched to Chrome in auto-switch mode. |
 | `web_redirect_chain` | string[] | no | Redacted redirect chain. |
 
 ### Local File and Workspace Fields

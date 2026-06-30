@@ -13,7 +13,7 @@ coordination.
 - one job model for source, map, extract, ask/research when async, memory,
   prune, and maintenance work
 - attempts, reservations, heartbeats, events, leases, cancellation, and recovery
-- scheduled watch triggers and run-now execution
+- scheduled watch triggers and explicit watch exec execution
 - worker lane configuration and backpressure coordination
 
 ## Must Not Own
