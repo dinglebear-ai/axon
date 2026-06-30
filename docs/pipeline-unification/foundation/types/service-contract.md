@@ -140,6 +140,63 @@ pub trait ResetService: Send + Sync {
 }
 ```
 
+## Reset DTOs
+
+`ResetService` is the destructive clean-slate boundary. It never performs
+implicit migration.
+
+```rust
+pub struct ResetPlanRequest {
+    pub stores: Vec<ResetStore>,
+    pub include_vectors: bool,
+    pub include_artifacts: bool,
+    pub dry_run: bool,
+    pub reason: String,
+}
+
+pub enum ResetStore {
+    Jobs,
+    Ledger,
+    Graph,
+    Memory,
+    Vectors,
+    Artifacts,
+    Cache,
+    All,
+}
+
+pub struct ResetPlan {
+    pub reset_id: ResetId,
+    pub destructive: bool,
+    pub requires_confirmation: bool,
+    pub stores: Vec<ResetStorePlan>,
+    pub warnings: Vec<SourceWarning>,
+}
+
+pub struct ResetExecRequest {
+    pub reset_id: ResetId,
+    pub confirmation: ResetConfirmation,
+    pub receipt: bool,
+}
+
+pub struct ResetResult {
+    pub job_id: JobId,
+    pub reset_id: ResetId,
+    pub deleted: ResetDeletedCounts,
+    pub created: ResetCreatedCounts,
+    pub receipt_artifact_id: Option<ArtifactId>,
+    pub warnings: Vec<SourceWarning>,
+}
+```
+
+Rules:
+
+- `plan` is safe and may run without side effects.
+- `execute` requires explicit confirmation unless running in a trusted
+  non-interactive test harness.
+- reset writes a receipt artifact before returning success.
+- reset never preserves old job rows, old ledger rows, or old vector payloads.
+
 ## Completion Checklist
 
 - every service has CLI/MCP/REST parity tests where exposed

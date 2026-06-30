@@ -115,6 +115,11 @@ Minimum tool input schema:
       "type": "boolean",
       "default": false
     },
+    "stream": {
+      "type": "boolean",
+      "default": false,
+      "description": "Request a streaming response for stream-capable synthesis actions."
+    },
     "response_mode": {
       "type": "string",
       "enum": ["auto", "summary", "full", "inline", "artifact", "path", "job_only"],
@@ -147,6 +152,7 @@ These fields may appear on many actions.
 | `refresh` | string\|bool | source/watch | `if_stale`, `force`, `never`, or boolean shortcut. |
 | `watch` | string\|bool | source/watch | `disabled`, `ensure`, `enabled`, or boolean shortcut. |
 | `wait` | bool | async-capable actions | Block until terminal state when supported. |
+| `stream` | bool | ask/research/summarize/chat | Emit `StreamEvent` sequence when supported instead of one final payload. |
 | `limit` | integer | list/search/query/map | Max returned items. |
 | `cursor` | string | paged actions | Pagination cursor. |
 | `filters` | object | query/ask/retrieve/jobs/graph | Typed filter object. |
@@ -155,6 +161,28 @@ These fields may appear on many actions.
 | `collection` | string | vector actions | Vector collection override. |
 | `response_mode` | string | all | `auto`, `summary`, `full`, `inline`, `artifact`, `path`, or `job_only`. |
 | `idempotency_key` | string | mutating actions | Caller-provided dedupe key. |
+
+## Streaming Contract
+
+MCP does not use separate `ask_stream`, `research_stream`, `summarize_stream`,
+or `chat_stream` actions. The canonical actions are `ask`, `research`,
+`summarize`, and `chat` with `stream=true`.
+
+When `stream=true` and the host supports streaming/tool progress, responses are
+emitted as `StreamEvent` frames from `schemas/event-schema.md`:
+
+```text
+progress -> token -> citation/artifact/warning* -> final
+```
+
+Rules:
+
+- `final` contains the same result DTO as the non-streaming action.
+- `error` contains the shared `ApiError` projection.
+- stream-capable actions still create a `job_id` when durable work is needed.
+- hosts without streaming support receive a normal response envelope containing
+  either the completed result or a job descriptor plus artifact pointer.
+- REST SSE routes and MCP stream frames use the same `StreamEvent` schema.
 
 ## Canonical Actions
 
@@ -190,6 +218,8 @@ providers
 reset
 status
 doctor
+preflight
+smoke
 capabilities
 help
 ```
@@ -243,6 +273,8 @@ compatibility aliases.
 | `reset` | none | `Reset*Request` | `Reset*Result` | yes | yes | Explicit destructive clean-slate reset. |
 | `status` | none | `StatusRequest` | `StatusReport` | no | no | Runtime status. |
 | `doctor` | none | `DoctorRequest` | `DoctorReport` | no | maybe | Diagnostic checks. |
+| `preflight` | none | `PreflightRequest` | `PreflightReport` | no | maybe | Readiness checks before starting work. |
+| `smoke` | none | `SmokeRequest` | `SmokeReport` | maybe | yes | Explicit live smoke checks against configured providers. |
 | `capabilities` | none | `CapabilityRequest` | `CapabilityDocument` | no | no | Machine-readable server capability contract. |
 | `help` | none | `HelpRequest` | `HelpDocument` | no | no | Agent-facing help/action schema. |
 

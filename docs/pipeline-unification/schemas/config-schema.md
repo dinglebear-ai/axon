@@ -61,7 +61,23 @@ set below.
     "source_inputs": ["crates/axon-core/src/config"]
   },
   "type": "object",
-  "required": ["server", "sources", "pipeline", "jobs", "providers"],
+  "required": [
+    "server",
+    "sources",
+    "pipeline",
+    "watch",
+    "jobs",
+    "providers",
+    "retrieval",
+    "ask",
+    "crawl",
+    "memory",
+    "graph",
+    "artifacts",
+    "prune",
+    "observability",
+    "security"
+  ],
   "properties": {},
   "additionalProperties": false
 }
@@ -250,7 +266,7 @@ by the active schema:
 Rules:
 
 - removed keys are absent from valid schemas
-- `axon doctor --config` reports removed keys with replacements
+- `axon preflight --config` reports removed keys with replacements
 - normal startup fails on removed keys that could change auth/provider behavior
 - setup rewrite may transform removed keys only with explicit user confirmation
 

@@ -315,6 +315,10 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `HealthReport` | `status`, `checks`, `generated_at` | `warnings`, `remediation` |
 | `StatusReport` | `status`, `jobs`, `watches`, `providers`, `cleanup`, `degraded`, `warnings` | `current_activity` |
 | `DoctorReport` | `status`, `checks`, `remediation`, `warnings` | `deep_checks` |
+| `PreflightRequest` | none | `config`, `providers`, `sources`, `strict` |
+| `PreflightReport` | `status`, `checks`, `generated_at` | `warnings`, `remediation`, `blocking_failures` |
+| `SmokeRequest` | `live` | `providers`, `include_write_checks`, `source`, `wait` |
+| `SmokeReport` | `status`, `checks`, `generated_at` | `job`, `artifacts`, `warnings`, `cleanup` |
 | `StatsRequest` | none | `collection`, `source_id`, `include_graph`, `include_memory` |
 | `StatsReport` | `sources`, `documents`, `chunks`, `vectors`, `graph`, `memory`, `jobs`, `storage` | `collections` |
 | `SourceAdapterCapability` | `name`, `version`, `source_kinds`, `default_scope`, `scopes` | `option_schema`, `credential_requirements`, `limits`, `watch_supported` |

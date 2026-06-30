@@ -115,6 +115,29 @@ Public document/chunk payloads must not contain:
 - raw LLM prompts that include secrets
 - private file contents when the caller lacks the matching auth scope
 
+## Hashing Contract
+
+All hashes in source, ledger, artifact, and vector payload contracts use
+SHA-256 over UTF-8 bytes unless the field explicitly says otherwise.
+
+Required spellings:
+
+| Field | Input Bytes | Encoding |
+|---|---|---|
+| `raw_content_hash` | exact fetched/raw bytes before normalization | `sha256:<lowercase hex>` |
+| `content_hash` | normalized full document content after `normalization_version` rules | `sha256:<lowercase hex>` |
+| `chunk_hash` | normalized chunk text plus chunk locator metadata | `sha256:<lowercase hex>` |
+| `artifact.content_hash` | exact artifact bytes | `sha256:<lowercase hex>` |
+
+Hash rules:
+
+- hashes are deterministic across transports and stores
+- newline normalization is part of document normalization before
+  `content_hash`, not part of the hash algorithm
+- `chunk_hash` changes when either text or source range/locator changes
+- if a provider needs a non-SHA hash internally, it must use a provider-private
+  field and never replace these contract fields
+
 ## Lifecycle Shapes
 
 ### SourceRequest Metadata
@@ -350,22 +373,30 @@ generation, graph, and embedding metadata.
 ```json
 {
   "payload_contract_version": "2026-06-30",
+  "collection": "axon",
+  "vector_point_id": "vpt_01J...",
   "vector_namespace": "documents",
   "source_id": "src_01J...",
   "source_kind": "git",
   "source_adapter": "github",
   "source_scope": "repo",
+  "source_canonical_uri": "github://jmagar/axon",
   "source_generation": 12,
   "committed_generation": 12,
   "source_item_key": "crates/axon-cli/src/main.rs",
   "item_canonical_uri": "github://jmagar/axon?rev=abc123#crates/axon-cli/src/main.rs",
   "document_id": "doc_01J...",
   "chunk_id": "chk_01J...",
+  "chunk_index": 4,
   "content_kind": "code",
   "content_path": "crates/axon-cli/src/main.rs",
   "content_language": "rust",
+  "content_hash": "sha256:...",
+  "chunk_hash": "sha256:...",
   "chunk_locator": "crates/axon-cli/src/main.rs:42-96",
   "source_range": { "line_start": 42, "line_end": 96, "byte_start": 1204, "byte_end": 3390 },
+  "redaction_status": "clean",
+  "visibility": "public",
   "job_id": "job_01J...",
   "document_status": "published",
   "embedding_provider": "tei",
@@ -692,7 +723,8 @@ graph, status, and payload rules.
 | `memory_scope_value` | string | yes | Scope-specific id or canonical value. |
 | `memory_confidence` | number | yes | Truth/confidence score. |
 | `memory_salience` | number | yes | Importance/usefulness score. |
-| `memory_decay_mode` | string | yes | `none`, `time`, `access`, `confidence`, `supersession`, `custom`. |
+| `memory_decay_profile` | string | yes | `very_fast`, `fast`, `normal`, `slow`, `very_slow`, or `none`. |
+| `memory_half_life_days` | integer | when decaying | Effective half-life from the memory contract. |
 | `memory_decay_score` | number | yes | Current decay-adjusted score. |
 | `memory_recency_score` | number | no | Recency component used during recall. |
 | `memory_pinned` | bool | yes | Whether decay/ranking is pinned above a floor. |

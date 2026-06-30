@@ -76,15 +76,16 @@ Planned by this contract:
 | Kind | Purpose | Typical Stages |
 |---|---|---|
 | `source` | Acquire, normalize, embed, publish one source. | resolve, discover, diff, fetch, prepare, embed, upsert, publish, clean |
-| `watch_run` | Execute one watch tick/run. | lease, resolve, diff, source/create-child-jobs, complete |
+| `watch` | Execute or manage one watch tick/run. | lease, resolve, diff, source/create-child-jobs, complete |
 | `map` | Discover items without embedding. | resolve, discover, artifact, complete |
 | `extract` | Structured LLM extraction. | fetch, normalize, llm_extract, validate, artifact |
 | `research` | Search/fetch/synthesize. | search, fetch, prepare_context, synthesize, optional_source_jobs |
 | `ask` | Retrieval + synthesis. | retrieve, prepare_context, synthesize |
 | `query` | Retrieval-only async query when needed. | embed_query, retrieve, rank |
-| `prune` | Delete vectors/artifacts/ledger rows by selector. | plan, approve, delete, verify |
-| `graph` | Graph extraction, merge, repair, or rebuild. | parse, candidate, merge, verify |
+| `retrieve` | Stored content lookup when async or artifact-backed. | locate, fetch_document, artifact |
 | `memory` | Memory lifecycle work. | validate, embed, store, link, decay |
+| `graph` | Graph extraction, merge, repair, or rebuild. | parse, candidate, merge, verify |
+| `prune` | Delete vectors/artifacts/ledger rows by selector. | plan, approve, delete, verify |
 | `provider_probe` | Health/capability check. | probe, classify, publish_status |
 | `reset` | Explicit destructive local store reset. | plan, approve, delete, verify |
 
@@ -93,22 +94,52 @@ scrape, embed, ingest, sessions, GitHub, crates, YouTube, RSS, Reddit, local
 files, CLI tool, and MCP tool ingestion paths become source jobs with different
 adapters and scopes.
 
+`watch_run` is not a serialized `JobKind`; watch executions use
+`job_kind=watch` and `job_intent=exec`.
+
 ## Status Model
 
 | Status | Terminal | Meaning |
 |---|---:|---|
 | `queued` | no | Accepted but not eligible to run yet. |
-| `blocked` | no | Waiting on dependency, capacity, cooldown, or explicit approval. |
+| `pending` | no | Legacy/import projection accepted but not yet queued. New jobs should prefer `queued`. |
 | `running` | no | Attempt is active and heartbeating. |
+| `waiting` | no | Waiting on provider rate limit, retry backoff, or cooldown. |
+| `blocked` | no | Waiting on dependency, capacity, cooldown, or explicit approval. |
 | `canceling` | no | Cancellation requested; stages are unwinding. |
 | `completed` | yes | Required stages succeeded. |
 | `completed_degraded` | yes | Required contract succeeded with declared degradation. |
 | `failed` | yes | Required stage failed. |
 | `canceled` | yes | User/system cancellation completed. |
 | `expired` | yes | Job passed retention/deadline without safe recovery. |
+| `skipped` | yes | Skipped by policy, unchanged input, or disabled optional stage. |
 
 `completed_degraded` is success with warnings. It must include explicit
 degradation codes, affected stages, and missing optional capabilities.
+
+## Job State Machine
+
+The job store enforces these transitions. Any transition not listed here is
+invalid and must fail without mutating job state.
+
+| From | Allowed To | Notes |
+|---|---|---|
+| `queued` | `blocked`, `running`, `canceling`, `expired` | scheduler, dependency, cancellation, or deadline |
+| `pending` | `queued`, `running`, `canceling`, `expired` | current/import projection only; new jobs should prefer `queued` |
+| `blocked` | `queued`, `running`, `canceling`, `failed`, `expired` | dependency/capacity resolved, canceled, failed, or expired |
+| `running` | `waiting`, `canceling`, `completed`, `completed_degraded`, `failed` | active attempt outcome |
+| `waiting` | `running`, `canceling`, `failed`, `expired` | provider cooldown/rate-limit wait resolved or failed |
+| `canceling` | `canceled`, `failed` | cooperative cancellation completed or failed during unwind |
+| `completed` | none | terminal |
+| `completed_degraded` | none | terminal success with explicit degradation |
+| `failed` | none | terminal; retry creates a new attempt under the same `job_id` |
+| `canceled` | none | terminal |
+| `expired` | none | terminal |
+| `skipped` | none | terminal unchanged/policy skip |
+
+Retry is not a status transition out of a terminal row. It appends a new
+`JobAttempt`, resets active stage state, and moves the job back to `queued` or
+`blocked` according to scheduler eligibility while preserving `job_id`.
 
 ## Required Job Fields
 
@@ -318,7 +349,7 @@ Job fan-out is explicit.
 Examples:
 
 - `research` may create child `source` jobs for result URLs.
-- `watch_run` may create child `source` refresh jobs.
+- `watch` jobs with `job_intent=exec` may create child `source` refresh jobs.
 - `source` for an org may create child source jobs for repos/packages.
 - `reset` may create child prune or cleanup jobs.
 

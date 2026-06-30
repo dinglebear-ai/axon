@@ -42,6 +42,28 @@ Config is the only durable local state that needs careful handling. `.env` and
 `config.toml` should be validated and rewritten by explicit user action or clear
 setup tooling, not silently discarded.
 
+## Fate of Existing State
+
+| State | Cutover Fate |
+|---|---|
+| OAuth/JWT tokens | Invalidated by auth config version/audience/signing-key change; users re-auth. |
+| Static bearer token | Preserved only if it is rewritten to the target key name; otherwise startup reports the stale key. |
+| Memory records | Dropped with old stores; recreate through `axon memory remember` or session/source reindex. |
+| Running jobs | Not resumed; reset/preflight marks old job DB incompatible and requires reset before unified workers start. |
+| Pending jobs | Dropped with old job tables; caller resubmits canonical source jobs. |
+| Partial source generations | Dropped; only new `SourceLedger` generations created after cutover are searchable. |
+| Old watches | Dropped unless recreated through `axon watch <source>`. |
+| Old artifacts | Deleted by reset unless user explicitly moves them outside Axon's artifact root before reset. |
+| Qdrant vectors | Deleted/recreated; all content is reindexed into the target payload shape. |
+
+Re-auth guidance:
+
+- HTTP clients must fetch new OAuth/bearer credentials after cutover.
+- MCP clients must refresh saved server config if endpoint/auth env names
+  changed.
+- Android/web/Palette clients must discard cached session tokens when the server
+  reports a new auth config version.
+
 ## Config Cutover
 
 Existing `.env` and `config.toml` files are user-authored input, not indexed
@@ -53,7 +75,7 @@ Required behavior:
 - normal startup validates config before starting workers
 - unknown removed keys fail startup with file path, key path, and target
   replacement when known
-- `axon doctor --config` reports stale/removed keys, missing required runtime
+- `axon preflight --config` reports stale/removed keys, missing required runtime
   URLs/secrets, and config-vs-env placement mistakes
 - `axon setup config rewrite --dry-run` prints the desired end-state `.env` and
   `config.toml` edits without writing
@@ -61,6 +83,11 @@ Required behavior:
   preserves unknown comments where practical
 - config rewrite never migrates indexed data, Qdrant payloads, job rows, or
   ledger rows
+
+Known config replacements live in
+[surface-removal-contract.md](surface-removal-contract.md#removed-config-keys).
+`axon preflight --config`, setup rewrite, and schema validation must use that same
+registry.
 
 ## Removed Surfaces
 
@@ -107,7 +134,7 @@ Do not build:
 
 Before declaring the refactor complete:
 
-- `axon doctor --config` reports config placement/staleness accurately
+- `axon preflight --config` reports config placement/staleness accurately
 - preflight inventories SQLite, Qdrant, artifacts, config, and generated schemas
 - incompatible non-empty stores block unified workers until reset or explicit
   developer override
