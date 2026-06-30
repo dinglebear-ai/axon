@@ -28,7 +28,7 @@ export function focusInput(select = false) {
 }
 
 export function parseCommand(raw: string): ParsedCommand {
-  const trimmed = raw.trimStart();
+  const trimmed = raw.trimStart().replace(/^\//, "");
   const [token = ""] = trimmed.split(/\s+/);
   const rest = trimmed.slice(token.length).trimStart();
   const localHelpAction = helpAction();

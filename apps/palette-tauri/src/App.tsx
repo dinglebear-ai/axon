@@ -189,13 +189,14 @@ export default function App() {
   }
   selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
   const suggestedAction = filtered[selectedIndex];
-  const active = modeAction ?? suggestedAction;
+  const slashInvokedAction = query.trimStart().startsWith("/") ? parsed.invoked : undefined;
+  const active = slashInvokedAction ?? modeAction ?? suggestedAction;
   const askSessions = useMemo(
     () => history.filter((item) => item.action.subcommand === "ask" && item.text && (item.prompt || item.target)),
     [history],
   );
   const askFallback = active?.subcommand === "ask" && !modeAction && !parsed.invoked && parsed.search.trim().length > 0 && !actionMatches(active, parsed.search);
-  const activeArgument = active ? (askFallback ? parsed.search : argumentFor(active, modeAction, parsed, query)) : "";
+  const activeArgument = active ? (askFallback ? parsed.search : argumentFor(active, slashInvokedAction ? null : modeAction, parsed, query)) : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
   const confirmationArmed =
     active && !validation ? actionConfirmationArmed(pendingConfirmation, active, activeArgument) : false;
