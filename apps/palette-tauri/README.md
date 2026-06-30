@@ -80,7 +80,7 @@ Issued credentials are stored beside `settings.json` as `<app config dir>/oauth.
 
 OAuth requires the network calls and browser-open URL to be `https` (or loopback `http`), and the target server must run with `AXON_MCP_AUTH_MODE=oauth` and dynamic client registration enabled — otherwise sign-in reports that the server does not support OAuth login and you should use a static bearer token.
 
-**Known tradeoff:** each sign-in dynamically registers a fresh client on the server. Loopback redirects use an ephemeral port, so the registered `redirect_uri` (and therefore the client ID) cannot be reused across logins. Server-side this is rate-limited and bounded by operator policy; the palette does not garbage-collect prior registrations.
+**Known tradeoff:** each sign-in dynamically registers a fresh client on the server for the fixed native callback endpoint advertised by discovery. Registrations are still not reused because the palette keeps the login flow stateless across launches; server-side registration is rate-limited and bounded by operator policy, and the palette does not garbage-collect prior registrations.
 
 ## Notes
 

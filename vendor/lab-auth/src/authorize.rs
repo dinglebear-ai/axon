@@ -20,6 +20,7 @@ use crate::types::{
 use crate::util::{expires_at, fingerprint, now_unix, random_token};
 
 const AUTH_REQUEST_TTL_SECS: i64 = 300;
+const NATIVE_SUCCESS_PAGE: &str = r#"<!doctype html><html><body style="font-family:sans-serif;background:#07131c;color:#e6f4fb;text-align:center;padding-top:4rem"><h2>Signed in to Axon</h2><p>You can close this tab and return to the palette.</p></body></html>"#;
 
 /// Enforces the configured email allowlist.
 ///
@@ -388,6 +389,28 @@ pub async fn callback(
         "oauth callback issued local authorization code"
     );
 
+    let native_callback_endpoint = crate::metadata::native_callback_endpoint(&state);
+    if request.redirect_uri == native_callback_endpoint {
+        let now = now_unix();
+        state
+            .store
+            .insert_native_authorization_result(NativeAuthorizationResultRow {
+                state: request.client_state,
+                code: auth_code,
+                created_at: now,
+                expires_at: expires_at(now, state.config.auth_code_ttl, "LAB_AUTH_CODE_TTL_SECS")?,
+            })
+            .await?;
+        let mut response = axum::response::Html(NATIVE_SUCCESS_PAGE).into_response();
+        no_store(&mut response);
+        debug!(
+            auth_code_id = %auth_code_id,
+            native_callback_endpoint = %native_callback_endpoint,
+            "oauth callback stored native authorization code for polling"
+        );
+        return Ok(response);
+    }
+
     let redirect_uri = reqwest::Url::parse(&request.redirect_uri).map_err(|error| {
         AuthError::Storage(format!(
             "registered redirect_uri is not a valid URL: {error}"
@@ -411,30 +434,22 @@ pub async fn native_callback(
     State(state): State<AuthState>,
     Query(query): Query<NativePollQuery>,
 ) -> Result<Response, AuthError> {
-    let code = query
-        .code
-        .ok_or_else(|| AuthError::Validation("missing `code` parameter".to_string()))?;
     let state_param = query.state.trim();
     if state_param.is_empty() {
         return Err(AuthError::Validation(
             "missing `state` parameter".to_string(),
         ));
     }
-    let now = now_unix();
-    state
-        .store
-        .insert_native_authorization_result(NativeAuthorizationResultRow {
-            state: state_param.to_string(),
-            code,
-            created_at: now,
-            expires_at: expires_at(now, state.config.auth_code_ttl, "LAB_AUTH_CODE_TTL_SECS")?,
-        })
-        .await?;
+    let _ = state;
+    let _ = query.code;
 
-    let mut response = axum::response::Html(
-        r#"<!doctype html><html><body style="font-family:sans-serif;background:#07131c;color:#e6f4fb;text-align:center;padding-top:4rem"><h2>Signed in to Axon</h2><p>You can close this tab and return to the palette.</p></body></html>"#,
+    let mut response = (
+        StatusCode::GONE,
+        axum::response::Html(
+            r#"<!doctype html><html><body style="font-family:sans-serif;background:#07131c;color:#e6f4fb;text-align:center;padding-top:4rem"><h2>Sign-in link expired</h2><p>Return to the palette and start sign-in again.</p></body></html>"#,
+        ),
     )
-    .into_response();
+        .into_response();
     no_store(&mut response);
     Ok(response)
 }
@@ -846,13 +861,57 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn native_callback_stashes_code_for_one_poll() {
+    async fn native_callback_does_not_accept_public_code_writes() {
         let app = router(test_auth_state().await);
         let callback = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/native/callback?code=code-123&state=state-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), StatusCode::GONE);
+
+        let poll = app
+            .oneshot(
+                Request::builder()
+                    .uri("/native/poll?state=state-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(poll.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn oauth_callback_stashes_native_code_for_one_poll() {
+        let state = test_auth_state_with_mock_google().await;
+        state
+            .store
+            .insert_authorization_request(AuthorizationRequestRow {
+                state: "native-good-state".to_string(),
+                client_id: "client".to_string(),
+                redirect_uri: "https://lab.example.com/native/callback".to_string(),
+                client_state: "state-123".to_string(),
+                scope: "lab".to_string(),
+                provider_code_verifier: "provider-verifier".to_string(),
+                code_challenge: "challenge".to_string(),
+                code_challenge_method: "S256".to_string(),
+                created_at: now_unix(),
+                expires_at: now_unix() + 300,
+            })
+            .await
+            .unwrap();
+        let app = router(state);
+        let callback = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/google/callback?state=native-good-state&code=upstream-code")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -875,7 +934,7 @@ pub mod tests {
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["code"], "code-123");
+        assert!(json["code"].as_str().is_some_and(|code| !code.is_empty()));
 
         let second = app
             .oneshot(

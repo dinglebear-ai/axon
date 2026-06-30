@@ -7,8 +7,9 @@ export function runStateFromHistory(item: HistoryItem): RunState | null {
   const result = item.result ?? {
     ok: item.status >= 200 && item.status < 300,
     status: item.status,
-    path: item.action.kind === "local" ? `palette://${item.action.subcommand}` : item.action.subcommand,
-    method: item.action.kind === "local" ? "GET" as const : "POST" as const,
+    path:
+      item.action.kind === "local" ? `palette://${item.action.subcommand}` : item.action.subcommand,
+    method: item.action.kind === "local" ? ("GET" as const) : ("POST" as const),
     payload: null,
   };
   return {

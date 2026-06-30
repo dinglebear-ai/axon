@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS axon_source_manifest_items (
   indexed_generation INTEGER NOT NULL,
   pending INTEGER NOT NULL DEFAULT 0,
   updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (source_id, item_key)
+  PRIMARY KEY (source_id, item_key),
+  FOREIGN KEY (source_id) REFERENCES axon_source_sources(source_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS axon_source_cleanup_debt (
@@ -34,7 +35,8 @@ CREATE TABLE IF NOT EXISTS axon_source_cleanup_debt (
   retry_count INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
   updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (source_id, generation, item_key)
+  PRIMARY KEY (source_id, generation, item_key),
+  FOREIGN KEY (source_id) REFERENCES axon_source_sources(source_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_axon_source_sources_kind ON axon_source_sources(source_kind);

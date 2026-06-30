@@ -30,7 +30,7 @@ fn parse_callback_params_reads_code_state_and_error() {
 }
 
 async fn send_request(port: u16, line: &str) {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let mut stream = TcpStream::connect(("localhost", port)).await.unwrap();
     stream
         .write_all(format!("{line}\r\nHost: localhost\r\n\r\n").as_bytes())
         .await

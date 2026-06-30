@@ -162,3 +162,35 @@ fn grant_rejection_only_for_definitive_codes_not_transient_4xx() {
     assert!(!is_grant_rejection(StatusCode::INTERNAL_SERVER_ERROR)); // 500
     assert!(!is_grant_rejection(StatusCode::SERVICE_UNAVAILABLE)); // 503
 }
+
+#[tokio::test]
+async fn poll_native_code_times_out_stalled_response_within_budget() {
+    let listener = tokio::net::TcpListener::bind(("localhost", 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let _server = tokio::spawn(async move {
+        let Ok((socket, _)) = listener.accept().await else {
+            return;
+        };
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        drop(socket);
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    let start = tokio::time::Instant::now();
+    let err = poll_native_code(
+        &client,
+        &format!("http://localhost:{port}/native/poll"),
+        "state",
+        Duration::from_millis(100),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(err.contains("timed out"), "unexpected error: {err}");
+    assert!(start.elapsed() < Duration::from_secs(2));
+}

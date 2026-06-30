@@ -1619,6 +1619,11 @@ textarea {
   border-color: color-mix(in srgb, var(--aurora-accent-primary) 26%, var(--aurora-border-default));
 }
 
+.command-action-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--aurora-focus-ring-strong);
+}
+
 .command-action-option-selected {
   background: color-mix(in srgb, var(--aurora-accent-primary) 8%, var(--aurora-panel-strong));
   border-color: color-mix(in srgb, var(--aurora-accent-primary) 34%, var(--aurora-border-default));
@@ -1816,13 +1821,13 @@ textarea {
 .command-submit-armed:hover:not(:disabled),
 .palette-shell-compact .command-submit-armed,
 .palette-shell-compact .command-submit-armed:hover:not(:disabled) {
-  color: #2a0f18;
+  color: var(--aurora-accent-foreground);
   background: var(--aurora-accent-pink);
   border-color: var(--aurora-accent-pink-deep);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--aurora-accent-pink-deep) 48%, transparent),
     0 0 18px color-mix(in srgb, var(--aurora-accent-pink) 34%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-accent-foreground) 22%, transparent);
 }
 
 .command-submit-armed:focus-visible {
@@ -2494,7 +2499,7 @@ textarea {
   background: linear-gradient(180deg, var(--aurora-panel-strong), var(--aurora-panel-medium));
   border-color: color-mix(in srgb, var(--aurora-border-default) 88%, var(--aurora-accent-primary));
   border-radius: 16px 16px 16px 6px;
-  box-shadow: 0 18px 52px color-mix(in srgb, #02080d 24%, transparent);
+  box-shadow: 0 18px 52px color-mix(in srgb, var(--aurora-page-bg) 24%, transparent);
 }
 
 .aurora-message-content-plain {
@@ -2608,7 +2613,7 @@ textarea {
   padding: 2px;
   color: var(--aurora-accent-pink-strong);
   background: color-mix(in srgb, var(--aurora-panel-medium) 88%, transparent);
-  border: 1px solid color-mix(in srgb, currentColor 22%, var(--aurora-border-default));
+  border: 1px solid color-mix(in srgb, currentcolor 22%, var(--aurora-border-default));
   border-radius: 999px;
 }
 
@@ -2755,7 +2760,7 @@ textarea {
 }
 
 .chat-suggestion-error {
-  color: var(--aurora-danger);
+  color: var(--aurora-error-foreground);
 }
 
 .chat-suggestion-row {
@@ -2932,8 +2937,8 @@ textarea {
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 60%, transparent);
   border-radius: 14px;
   box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    0 20px 46px color-mix(in srgb, var(--aurora-page-bg) 40%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--aurora-accent-foreground) 5.5%, transparent);
 }
 
 .ask-slash-heading {
@@ -2966,6 +2971,11 @@ textarea {
   color: var(--aurora-accent-strong);
   background: color-mix(in srgb, var(--aurora-accent-primary) 7%, var(--aurora-panel-strong));
   border-color: color-mix(in srgb, var(--aurora-accent-primary) 26%, var(--aurora-border-default));
+}
+
+.ask-slash-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--aurora-focus-ring-strong);
 }
 
 .ask-slash-option span {
@@ -3064,11 +3074,16 @@ textarea {
   border-color: color-mix(in srgb, var(--aurora-accent-pink) 32%, var(--aurora-border-default));
 }
 
-.ask-action-chip-warn,
+.ask-action-chip-warn {
+  color: var(--aurora-warn-foreground);
+  background: var(--aurora-warn-surface);
+  border-color: var(--aurora-warn-border);
+}
+
 .ask-action-chip-orange {
-  color: var(--aurora-accent-orange);
-  background: color-mix(in srgb, var(--aurora-accent-orange) 12%, var(--aurora-panel-strong));
-  border-color: color-mix(in srgb, var(--aurora-accent-orange) 30%, var(--aurora-border-default));
+  color: var(--axon-orange-strong);
+  background: color-mix(in srgb, var(--axon-orange) 12%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--axon-orange) 30%, var(--aurora-border-default));
 }
 
 .ask-compose input {

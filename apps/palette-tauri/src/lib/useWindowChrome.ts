@@ -94,7 +94,10 @@ export function resolvePaletteWindowSize(
     };
   }
   if (showContent) {
-    return { width: BROWSE_WIDTH, height: Math.min(browseHeight(), screen.height - BROWSE_SCREEN_MARGIN) };
+    return {
+      width: BROWSE_WIDTH,
+      height: Math.min(browseHeight(), screen.height - BROWSE_SCREEN_MARGIN),
+    };
   }
   if (actionSwitcherOpen) {
     return {
@@ -177,8 +180,20 @@ export function useWindowChrome({
       size === COMPACT ||
       size === TRAY ||
       (size.width === COMPACT_SWITCHER.width && size.height <= COMPACT_SWITCHER.height);
-    void invoke("resize_palette", { ...size, shadow: !floating });
-  }, [actionSwitcherOpen, jobExpanded, jobMinimized, settingsOpen, historyOpen, showResultsLayout, showContent, filteredLength, shownTick]);
+    void invoke("resize_palette", { ...size, shadow: !floating }).catch((error) => {
+      console.warn("Failed to resize palette window", error);
+    });
+  }, [
+    actionSwitcherOpen,
+    jobExpanded,
+    jobMinimized,
+    settingsOpen,
+    historyOpen,
+    showResultsLayout,
+    showContent,
+    filteredLength,
+    shownTick,
+  ]);
 
   // Launcher states (compact/browse/mode) keep click-away-to-dismiss; while a
   // result/settings/history view is open we keep the window up so resizing it

@@ -26,22 +26,34 @@ export function ChatMessageActions({
 }) {
   if (turn.pending || !turn.content.trim()) return null;
   const loading = suggestion?.status === "loading";
+  function copyMessage() {
+    if (!navigator.clipboard) return;
+    void navigator.clipboard.writeText(turn.content).catch(() => {});
+  }
   return (
     <div className="chat-message-tools">
       <MessageActionButton
-        onClick={() => void navigator.clipboard?.writeText(turn.content).catch(() => {})}
+        onClick={copyMessage}
         aria-label={`Copy ${turn.role} message`}
         title="Copy"
       >
         <Copy size={13} strokeWidth={1.8} aria-hidden="true" />
       </MessageActionButton>
       {onEdit ? (
-        <MessageActionButton onClick={() => onEdit(turn)} aria-label={`Edit ${turn.role} message`} title="Edit">
+        <MessageActionButton
+          onClick={() => onEdit(turn)}
+          aria-label={`Edit ${turn.role} message`}
+          title="Edit"
+        >
           <Pencil size={13} strokeWidth={1.8} aria-hidden="true" />
         </MessageActionButton>
       ) : null}
       {onRegenerate ? (
-        <MessageActionButton onClick={() => onRegenerate(turn)} aria-label={`Regenerate from ${turn.role} message`} title="Regenerate">
+        <MessageActionButton
+          onClick={() => onRegenerate(turn)}
+          aria-label={`Regenerate from ${turn.role} message`}
+          title="Regenerate"
+        >
           <RotateCcw size={13} strokeWidth={1.8} aria-hidden="true" />
         </MessageActionButton>
       ) : null}
@@ -60,7 +72,13 @@ export function ChatMessageActions({
   );
 }
 
-export function ChatSuggestionPanel({ align = "start", suggestion }: { align?: "start" | "end"; suggestion?: SuggestionState }) {
+export function ChatSuggestionPanel({
+  align = "start",
+  suggestion,
+}: {
+  align?: "start" | "end";
+  suggestion?: SuggestionState;
+}) {
   if (!suggestion) return null;
   if (suggestion.status === "loading") {
     return (
@@ -71,24 +89,36 @@ export function ChatSuggestionPanel({ align = "start", suggestion }: { align?: "
   }
   if (suggestion.status === "error") {
     return (
-      <div className={`chat-suggestion-panel chat-suggestion-panel-${align} chat-suggestion-error`} role="alert">
+      <div
+        className={`chat-suggestion-panel chat-suggestion-panel-${align} chat-suggestion-error`}
+        role="alert"
+      >
         {suggestion.message}
       </div>
     );
   }
   if (suggestion.rows.length === 0) {
-    return <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`}>No indexed docs matched this message.</div>;
+    return (
+      <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`}>
+        No indexed docs matched this message.
+      </div>
+    );
   }
   return (
-    <section className={`chat-suggestion-panel chat-suggestion-panel-${align}`} aria-label="Suggested docs">
+    <div className={`chat-suggestion-panel chat-suggestion-panel-${align}`}>
       {suggestion.rows.map((row) => (
         <Source
           key={`${row.url ?? row.title}-${row.rank}`}
           className="chat-suggestion-row"
-          source={{ title: row.title, href: row.url, description: row.snippet, badge: row.score !== undefined ? row.score.toFixed(3) : undefined }}
+          source={{
+            title: row.title,
+            href: row.url,
+            description: row.snippet,
+            badge: row.score !== undefined ? row.score.toFixed(3) : undefined,
+          }}
           index={row.rank}
         />
       ))}
-    </section>
+    </div>
   );
 }

@@ -19,7 +19,10 @@ if (fixture) {
   document.body.dataset.fixture = fixture;
 }
 
-createRoot(document.getElementById("app")!).render(
+const rootElement = document.getElementById("app");
+if (!rootElement) throw new Error("Missing #app root element");
+
+createRoot(rootElement).render(
   <React.StrictMode>
     <Root />
   </React.StrictMode>,

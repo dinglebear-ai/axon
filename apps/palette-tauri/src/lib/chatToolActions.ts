@@ -12,7 +12,11 @@ function headingFor(action: PaletteAction, result: PaletteResult): string {
   return `${label} completed`;
 }
 
-export function chatToolMessage(action: PaletteAction, argument: string, result: PaletteResult): string {
+export function chatToolMessage(
+  action: PaletteAction,
+  argument: string,
+  result: PaletteResult,
+): string {
   const lines = [
     `### ${headingFor(action, result)}`,
     "",

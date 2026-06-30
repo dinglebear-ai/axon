@@ -1,65 +1,23 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CheckCircle2, Paperclip, Send, Wrench, X } from "lucide-react";
+import { Paperclip, Send, X } from "lucide-react";
 
 import { Message, MessageContent } from "@/components/aurora/ai/message";
 import { Response } from "@/components/aurora/ai/response";
 import { actionIcon } from "@/components/palette/ActionIcon";
+import { ActivityTrail, SourceStrip } from "@/components/palette/AskConversationBits";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { AxonMark } from "@/components/palette/AxonMark";
-import { ChatMessageActions, ChatSuggestionPanel, type SuggestionState } from "@/components/palette/ChatMessageAffordances";
+import {
+  ChatMessageActions,
+  ChatSuggestionPanel,
+  type SuggestionState,
+} from "@/components/palette/ChatMessageAffordances";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
 import { sortActionsByRelevance } from "@/lib/paletteView";
-import type { AskActivity, AskSource, AskTurn, ChatSuggestion } from "@/lib/runState";
-
-function SourceStrip({ sources }: { sources?: AskSource[] }) {
-  if (!sources?.length) return null;
-  return (
-    <details className="ask-sources">
-      <summary>Sources</summary>
-      <div>
-        {sources.map((source, index) => (
-          source.url ? (
-            <a key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noreferrer">
-              <span>{index + 1}</span>
-              {source.label}
-            </a>
-          ) : (
-            <span key={`${source.label}-${index}`}>
-              <span>{index + 1}</span>
-              {source.label}
-            </span>
-          )
-        ))}
-      </div>
-    </details>
-  );
-}
-
-function ActivityIcon({ activity }: { activity: AskActivity }) {
-  if (activity.kind === "tool") return <Wrench size={12} strokeWidth={1.8} aria-hidden="true" />;
-  if (activity.kind === "done") return <CheckCircle2 size={12} strokeWidth={1.8} aria-hidden="true" />;
-  return <Brain size={12} strokeWidth={1.8} aria-hidden="true" />;
-}
-
-function ActivityTrail({ activities, pending }: { activities?: AskActivity[]; pending?: boolean }) {
-  if (!activities?.length) return null;
-  return (
-    <section className="ask-activity" aria-label={pending ? "Agent activity" : "Agent activity summary"}>
-      {activities.map((activity) => (
-        <div key={activity.id} className={`ask-activity-row ask-activity-${activity.kind ?? "thinking"}`}>
-          <ActivityIcon activity={activity} />
-          <span>
-            <strong>{activity.label}</strong>
-            {activity.detail ? <small>{activity.detail}</small> : null}
-          </span>
-        </div>
-      ))}
-    </section>
-  );
-}
+import type { AskTurn, ChatSuggestion } from "@/lib/runState";
 
 // A read-only question→answer pair rendered with the ask bubble styling. Reused
 // by the live ask view and the side-by-side evaluate view. Memoized so unrelated
@@ -101,8 +59,11 @@ export const ConversationThread = memo(function ConversationThread({
   );
   const threadRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
-  const signature = threadTurns.map((turn) => `${turn.id}:${turn.content.length}:${turn.pending ? "pending" : "done"}`).join("|");
+  const signature = threadTurns
+    .map((turn) => `${turn.id}:${turn.content.length}:${turn.pending ? "pending" : "done"}`)
+    .join("|");
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the derived turn signature is the scroll trigger.
   useEffect(() => {
     const element = threadRef.current;
     if (!element || !stickToBottom.current) return;
@@ -133,14 +94,25 @@ export const ConversationThread = memo(function ConversationThread({
           </div>
         ) : null}
         <div className="ask-answer ask-answer-reader">
-          {answer ? <MarkdownBody>{answer}</MarkdownBody> : <span className="ask-waiting">{waiting}</span>}
+          {answer ? (
+            <MarkdownBody>{answer}</MarkdownBody>
+          ) : (
+            <span className="ask-waiting">{waiting}</span>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div ref={threadRef} className="ask-thread aurora-scrollbar" role="group" aria-label="Ask conversation" onScroll={onThreadScroll}>
+    // biome-ignore lint/a11y/useSemanticElements: named scroll region used by tests and assistive tech to identify the conversation transcript.
+    <div
+      ref={threadRef}
+      className="ask-thread aurora-scrollbar"
+      role="group"
+      aria-label="Ask conversation"
+      onScroll={onThreadScroll}
+    >
       {threadTurns.map((turn, turnIndex) =>
         turn.role === "user" ? (
           <Fragment key={turn.id}>
@@ -148,7 +120,7 @@ export const ConversationThread = memo(function ConversationThread({
               className="ask-message ask-message-user"
               data-role="user"
               time="now"
-              actions={(
+              actions={
                 <ChatMessageActions
                   enabled={suggestionsEnabled}
                   turn={turn}
@@ -157,7 +129,7 @@ export const ConversationThread = memo(function ConversationThread({
                   onEdit={onEditTurn}
                   onRegenerate={onRegenerateTurn}
                 />
-              )}
+              }
             >
               <MessageContent tone="user">
                 <p>{turn.content}</p>
@@ -167,39 +139,47 @@ export const ConversationThread = memo(function ConversationThread({
           </Fragment>
         ) : (
           <Fragment key={turn.id}>
-            <Message
-              className="ask-message ask-message-assistant"
-              data-role="assistant"
-              time="now"
-              actions={(
-                <ChatMessageActions
-                  enabled={suggestionsEnabled}
-                  turn={turn}
-                  suggestion={suggestionsByTurn[turn.id]}
-                  onSuggest={onSuggestTurn}
-                  onEdit={onEditTurn}
-                  onRegenerate={() => {
-                    const userTurn = previousUserTurn(turnIndex);
-                    onRegenerateTurn?.(userTurn ?? turn);
-                  }}
-                />
-              )}
-            >
-              <span className="ask-assistant-avatar" role="img" aria-label="Axon" title="Axon">
-                <AxonMark size={18} />
-              </span>
-              <div className="ask-assistant-stack">
-                <ActivityTrail activities={turn.activities} pending={turn.pending} />
-                <MessageContent
-                  tone="assistant"
-                  streaming={Boolean(turn.pending)}
-                  className={agentBubbles ? undefined : "aurora-message-content-plain"}
+            {(() => {
+              const regenerateSource = previousUserTurn(turnIndex);
+              return (
+                <Message
+                  className="ask-message ask-message-assistant"
+                  data-role="assistant"
+                  time="now"
+                  actions={
+                    <ChatMessageActions
+                      enabled={suggestionsEnabled}
+                      turn={turn}
+                      suggestion={suggestionsByTurn[turn.id]}
+                      onSuggest={onSuggestTurn}
+                      onEdit={onEditTurn}
+                      onRegenerate={
+                        regenerateSource ? () => onRegenerateTurn?.(regenerateSource) : undefined
+                      }
+                    />
+                  }
                 >
-                  {turn.content ? <Response markdown={turn.content} streaming={Boolean(turn.pending)} /> : <span className="ask-waiting">{waiting}</span>}
-                </MessageContent>
-                <SourceStrip sources={turn.sources} />
-              </div>
-            </Message>
+                  <span className="ask-assistant-avatar" role="img" aria-label="Axon" title="Axon">
+                    <AxonMark size={18} />
+                  </span>
+                  <div className="ask-assistant-stack">
+                    <ActivityTrail activities={turn.activities} pending={turn.pending} />
+                    <MessageContent
+                      tone="assistant"
+                      streaming={Boolean(turn.pending)}
+                      className={agentBubbles ? undefined : "aurora-message-content-plain"}
+                    >
+                      {turn.content ? (
+                        <Response markdown={turn.content} streaming={Boolean(turn.pending)} />
+                      ) : (
+                        <span className="ask-waiting">{waiting}</span>
+                      )}
+                    </MessageContent>
+                    <SourceStrip sources={turn.sources} />
+                  </div>
+                </Message>
+              );
+            })()}
             <ChatSuggestionPanel align="start" suggestion={suggestionsByTurn[turn.id]} />
           </Fragment>
         ),
@@ -235,23 +215,27 @@ export const AskConversation = memo(function AskConversation({
   const [selectedSlashAction, setSelectedSlashAction] = useState<PaletteAction | null>(null);
   const [suggestionsByTurn, setSuggestionsByTurn] = useState<Record<string, SuggestionState>>({});
   const canSend = draft.trim().length > 0 && !pending;
-  const slashQuery = !selectedSlashAction && draft.startsWith("/") ? draft.slice(1).trimStart() : null;
+  const slashQuery =
+    !selectedSlashAction && draft.startsWith("/") ? draft.slice(1).trimStart() : null;
   const slashMenuOpen = slashQuery !== null && !pending && Boolean(onRunAction);
   const slashCommands = useMemo(() => {
     if (slashQuery === null) return [];
     const needle = slashQuery.split(/\s+/, 1)[0]?.toLowerCase() ?? "";
-    return sortActionsByRelevance(ACTIONS.filter((action) => {
-      if (action.subcommand === "chat" || action.subcommand === "ask") return false;
-      if (!needle) return true;
-      const meta = actionDisplayMeta(action);
-      return (
-        action.subcommand.toLowerCase().includes(needle) ||
-        action.label.toLowerCase().includes(needle) ||
-        meta.label.toLowerCase().includes(needle) ||
-        action.description.toLowerCase().includes(needle) ||
-        action.aliases.some((alias) => alias.toLowerCase().includes(needle))
-      );
-    }), needle).slice(0, 10);
+    return sortActionsByRelevance(
+      ACTIONS.filter((action) => {
+        if (action.subcommand === "chat" || action.subcommand === "ask") return false;
+        if (!needle) return true;
+        const meta = actionDisplayMeta(action);
+        return (
+          action.subcommand.toLowerCase().includes(needle) ||
+          action.label.toLowerCase().includes(needle) ||
+          meta.label.toLowerCase().includes(needle) ||
+          action.description.toLowerCase().includes(needle) ||
+          action.aliases.some((alias) => alias.toLowerCase().includes(needle))
+        );
+      }),
+      needle,
+    ).slice(0, 10);
   }, [slashQuery]);
   const clampedSelectedCommand = Math.min(selectedCommand, Math.max(slashCommands.length - 1, 0));
   const slashCommandGroups = useMemo(() => {
@@ -265,6 +249,7 @@ export const AskConversation = memo(function AskConversation({
     return groups;
   }, [slashCommands]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset the highlighted slash command whenever the typed query changes.
   useEffect(() => {
     setSelectedCommand(0);
   }, [slashQuery]);
@@ -305,7 +290,9 @@ export const AskConversation = memo(function AskConversation({
       const [token = "", ...rest] = value.slice(1).trim().split(/\s+/);
       const normalizedToken = token.toLowerCase();
       const action = ACTIONS.find(
-        (candidate) => candidate.subcommand === normalizedToken || candidate.aliases.some((alias) => alias.toLowerCase() === normalizedToken),
+        (candidate) =>
+          candidate.subcommand === normalizedToken ||
+          candidate.aliases.some((alias) => alias.toLowerCase() === normalizedToken),
       );
       if (action && action.subcommand !== "ask" && action.subcommand !== "chat") {
         if (rest.length === 0 && action.argMode !== "none") {
@@ -372,7 +359,9 @@ export const AskConversation = memo(function AskConversation({
                 {group.actions.map((action) => {
                   const Icon = actionIcon(action.subcommand);
                   const meta = actionDisplayMeta(action);
-                  const index = slashCommands.findIndex((candidate) => candidate.subcommand === action.subcommand);
+                  const index = slashCommands.findIndex(
+                    (candidate) => candidate.subcommand === action.subcommand,
+                  );
                   const selected = index === clampedSelectedCommand;
                   return (
                     <Button
@@ -392,7 +381,9 @@ export const AskConversation = memo(function AskConversation({
                       <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
                       <span>
                         <strong>/{action.subcommand}</strong>
-                        <small>{meta.input === "none" ? meta.output : `${meta.input} -> ${meta.output}`}</small>
+                        <small>
+                          {meta.input === "none" ? meta.output : `${meta.input} -> ${meta.output}`}
+                        </small>
                       </span>
                       <em>{meta.method}</em>
                     </Button>
@@ -407,9 +398,10 @@ export const AskConversation = memo(function AskConversation({
           size="unstyled"
           className="ask-attach"
           type="button"
-          disabled={pending}
+          disabled
           aria-label="Attach context"
           title="Attach context"
+          aria-disabled="true"
         >
           <Paperclip size={18} strokeWidth={1.75} />
         </Button>
@@ -438,7 +430,8 @@ export const AskConversation = memo(function AskConversation({
             disabled={pending}
             onChange={(event) => {
               setDraft(event.target.value);
-              if (selectedSlashAction && event.target.value.startsWith("/")) setSelectedSlashAction(null);
+              if (selectedSlashAction && event.target.value.startsWith("/"))
+                setSelectedSlashAction(null);
             }}
             onKeyDown={(event) => {
               if (selectedSlashAction && event.key === "Escape") {
@@ -460,14 +453,24 @@ export const AskConversation = memo(function AskConversation({
               } else if (event.key === "Enter") {
                 event.preventDefault();
                 const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
-                if (argument.trim()) runSlashCommand(slashCommands[clampedSelectedCommand], argument);
+                if (argument.trim())
+                  runSlashCommand(slashCommands[clampedSelectedCommand], argument);
                 else selectSlashCommand(slashCommands[clampedSelectedCommand], argument);
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 setDraft("");
               }
             }}
-            placeholder={pending ? "Waiting for response..." : selectedSlashAction ? selectedSlashAction.example.replace(new RegExp(`^${selectedSlashAction.subcommand}\\s*`, "i"), "") : "Ask a follow-up..."}
+            placeholder={
+              pending
+                ? "Waiting for response..."
+                : selectedSlashAction
+                  ? selectedSlashAction.example.replace(
+                      new RegExp(`^${selectedSlashAction.subcommand}\\s*`, "i"),
+                      "",
+                    )
+                  : "Ask a follow-up..."
+            }
             aria-label="Ask a follow-up"
           />
         </div>
