@@ -75,17 +75,22 @@ def _emit_header(emit, today: str) -> None:
 def _emit_contract(emit) -> None:
     emit("## Contract")
     emit("- MCP server command: `axon mcp`")
-    emit("- Tool count: `1`")
-    emit("- Tool name: `axon`")
+    emit("- Operation tool count: `1`")
+    emit("- Operation tool name: `axon`")
+    emit(
+        "- Widget tool: `axon_status_dashboard` (MCP Apps presentation helper, not an operation surface)"
+    )
     emit("- Primary route field: `action`")
     emit("- Canonical route form: `action` + optional `subaction`")
     emit(
-        "- Response control field: `response_mode` (`path|inline|both|auto_inline`; most actions default `path`, while `scrape`/`retrieve` default to inline paged reads)"
+        "- Response control field: `response_mode` (`path|inline|both|auto_inline`; omitted mode auto-inlines small non-document payloads and otherwise falls back to path metadata, while `scrape`/`retrieve` default to inline paged reads)"
     )
     emit()
     emit("Code references:")
-    emit("- `src/mcp/schema.rs`")
-    emit("- `src/mcp/server.rs`")
+    emit("- `crates/axon-api/src/mcp_schema.rs`")
+    emit("- `crates/axon-api/src/mcp_schema/*.rs`")
+    emit("- `crates/axon-mcp/src/server.rs`")
+    emit("- `crates/axon-mcp/src/server/handlers_*.rs`")
     emit()
 
 
@@ -204,8 +209,13 @@ def _emit_preferred_client_actions(
 
 def _emit_response_policy(emit) -> None:
     emit("## Response Policy (Context-Safe Defaults)")
-    emit("- Most actions default to artifact-first (`response_mode=path`).")
+    emit(
+        "- When `response_mode` is omitted, non-document actions auto-inline small payloads and fall back to artifact path metadata for larger payloads."
+    )
     emit("- `scrape` and `retrieve` are document-reading actions and default to inline-first paged responses.")
+    emit(
+        "- `ask`, `research`, and `summarize` always write the full payload to an artifact and include the key answer/summary fields inline in the path-mode response."
+    )
     emit(
         "- Heavy operations write result artifacts to `~/.axon/artifacts/<context>/` "
         "(override root with `AXON_MCP_ARTIFACT_DIR`)."
@@ -233,6 +243,7 @@ def _emit_direct_actions(
         sdef = structs.get(struct_name)
         if not sdef:
             continue
+        special_required = SPECIAL_REQUIRED_TEXT.get(action)
         handler_required = HANDLER_REQUIRED_FIELDS.get(action, set())
         optional_override = OPTIONAL_FIELD_OVERRIDES.get(action, set())
         def wire_required(field: FieldDef) -> bool:
@@ -246,9 +257,11 @@ def _emit_direct_actions(
         optional = [
             f
             for f in [*sdef.required_fields(), *sdef.optional_fields()]
-            if f.name != "subaction" and not wire_required(f)
+            if f.name != "subaction"
+            and f.name not in SPECIAL_REQUIRED_FIELDS.get(action, set())
+            and not wire_required(f)
         ]
-        req_str = ", ".join(
+        req_str = special_required or ", ".join(
             f"{_field_name_with_aliases(f)} ({f.display_type})" for f in required
         ) or "--"
         opt_str = ", ".join(_field_name_with_aliases(f) for f in optional) or "--"
@@ -415,6 +428,7 @@ def _emit_error_semantics(emit) -> None:
 
 HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
     "ask": {"query"},
+    "code_search": {"query", "cwd"},
     "endpoints": {"url"},
     "evaluate": {"query"},
     "map": {"url"},
@@ -425,6 +439,14 @@ HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
     "scrape": {"url"},
     "screenshot": {"url"},
     "search": {"query"},
+}
+
+SPECIAL_REQUIRED_TEXT: dict[str, str] = {
+    "summarize": "`url` or `urls`",
+}
+
+SPECIAL_REQUIRED_FIELDS: dict[str, set[str]] = {
+    "summarize": {"url", "urls"},
 }
 
 OPTIONAL_FIELD_OVERRIDES: dict[str, set[str]] = {
