@@ -36,6 +36,32 @@ Testing is not only unit coverage. It is contract coverage.
 
 Default CI runs tiers 0-3. Live smoke runs behind explicit environment gates.
 
+## Tier 5 Cutover Tests
+
+Tier 5 is required before declaring the clean break complete.
+
+Required cases:
+
+- incompatible current SQLite schema blocks unified worker startup before side
+  effects
+- `axon reset --dry-run` reports exact SQLite tables, Qdrant collections,
+  artifact roots, config files, and row/file counts
+- `axon reset --yes` deletes selected stores, recreates fresh schema, and writes
+  a reset receipt artifact
+- OAuth/static-auth token cache is invalidated or re-auth guidance is surfaced
+- removed config keys fail validation with the known replacement registry
+- removed CLI commands are absent from help and parser
+- removed MCP actions are absent from schema and cannot dispatch
+- removed REST routes are absent from router/OpenAPI/generated clients
+- old job-family tables are absent after reset
+- old code-index generations are absent after reset
+- old Qdrant payload shape is absent after reset/reindex
+- canonical local repo source job indexes from an empty store
+- canonical web/docs source job indexes from an empty store
+- canonical ask/query retrieves from the new payload shape
+- provider backpressure prevents bulk reindex from starving interactive query
+- partial generation interrupted before publish is not searchable after restart
+
 ## Boundary Fake Requirements
 
 | Boundary | Fake Required | Must Simulate |

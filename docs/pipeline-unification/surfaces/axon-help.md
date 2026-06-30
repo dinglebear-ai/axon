@@ -52,6 +52,8 @@ Usage:
   axon collections <command> [options]
   axon graph <command> [options]
   axon providers <command> [options]
+  axon preflight [options]
+  axon smoke [options]
   axon capabilities [options]
   axon status [options]
   axon doctor [options]
@@ -159,6 +161,7 @@ Operations:
   axon jobs retry <job_id>        Retry from submitted config snapshot
   axon jobs recover               Recover stale jobs
   axon jobs cleanup               Cleanup old terminal jobs/events
+  axon jobs clear                 Clear terminal jobs after confirmation
   axon artifacts list             List artifacts
   axon artifacts get <artifact_id> Show artifact metadata/content pointer
   axon uploads create <path>      Stage a file/session/source upload
@@ -176,11 +179,16 @@ Operations:
   axon providers list             List provider capabilities/health
   axon providers get <provider>   Show provider capability/health
   axon config list                Show effective config
+  axon config get <key>           Show one config/env value
+  axon config set <key> <value>   Write a config/env value after validation
+  axon config unset <key>         Remove a config/env value after validation
   axon config validate            Validate .env/config.toml placement and values
   axon setup config rewrite       Rewrite desired config shape after confirmation
   axon setup compose              Print/run compose helper plan
   axon setup sync                 Sync local setup-owned files
   axon setup update               Update local setup-owned runtime helpers
+  axon preflight                  Check host/config/provider readiness
+  axon smoke                      Run explicit provider/source smoke checks
   axon reset                      Destructively reset selected local stores
   axon serve                      Start REST/MCP/web/workers
   axon mcp                        Start MCP server mode
@@ -195,6 +203,9 @@ Extraction:
 Status:
   axon status                     Show source jobs, watches, and services
   axon doctor                     Check local services and configuration
+
+`axon doctor` is diagnostics only. `axon preflight` and `axon smoke` are
+separate top-level operational checks, not doctor subcommands.
 
 Run `axon help sources` for adapter scopes and source forms.
 Run `axon help mcp` for the MCP tool contract.

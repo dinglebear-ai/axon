@@ -134,6 +134,8 @@ authorizes the read.
 | `GET` | `/v1/adapters/{adapter}` | read | Adapter option schema, scopes, credentials, limits. |
 | `GET` | `/v1/providers` | read | LLM/embedding/vector/ledger/graph/memory/artifact provider status and capabilities. |
 | `GET` | `/v1/providers/{provider}` | read | One provider capability/health report. |
+| `POST` | `/v1/preflight` | read | Validate config, providers, credentials, paths, and limits before starting work. |
+| `POST` | `/v1/smoke` | write/admin | Run explicit live smoke checks against configured providers. |
 | `POST` | `/v1/resolve` | read | Resolve a source without mutation. |
 | `POST` | `/v1/sources` | write | Create/acquire/refresh a source lifecycle. |
 | `GET` | `/v1/sources` | read | List ledger-known sources. |
@@ -1341,6 +1343,8 @@ access logs/metrics.
 | `GET /v1/adapters/{adapter}` | path `adapter` | `SourceAdapterCapability` plus option schema and scope schema | none |
 | `GET /v1/providers` | optional query `kind`, `status` | `{ "items": [ProviderCapability], "summary": ProviderSummary }` | provider health/capability probes only |
 | `GET /v1/providers/{provider}` | path `provider` | `ProviderCapability` plus latest health report, limits, cooling state | provider health/capability probe only |
+| `POST /v1/preflight` | body `{ "config?", "providers?", "sources?", "strict?": bool }` | `PreflightReport` | validates config, provider reachability, credentials, paths, quotas, and safety gates without indexing |
+| `POST /v1/smoke` | body `{ "live": bool, "providers"?, "include_write_checks?": bool, "source?" }` | `SmokeReport` or `JobDescriptor` | may create test provider calls, test artifacts, or a smoke job; no source is published unless explicitly requested |
 | `GET /v1/status` | optional query `include=jobs,watches,providers,cleanup` | `{ "jobs", "watches", "providers", "cleanup", "degraded", "warnings" }` | none |
 | `GET /v1/doctor` | optional query `deep=true` | `{ "status", "checks", "remediation", "warnings" }` | dependency probes only |
 | `GET /v1/stats` | optional query `collection`, `source_id` | `{ "sources", "documents", "chunks", "vectors", "graph", "memory", "jobs", "storage" }` | none |

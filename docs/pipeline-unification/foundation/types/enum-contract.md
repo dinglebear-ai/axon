@@ -101,6 +101,7 @@ pub enum PipelinePhase {
     Upserting,
     Retrieving,
     Synthesizing,
+    Evaluating,
     Publishing,
     Cleaning,
     Complete,

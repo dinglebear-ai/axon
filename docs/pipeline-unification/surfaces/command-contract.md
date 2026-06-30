@@ -100,6 +100,8 @@ axon [global-options] providers <subcommand> [provider-options]
 axon [global-options] config <subcommand> [config-options]
 axon [global-options] setup <subcommand> [setup-options]
 axon [global-options] reset [reset-options]
+axon [global-options] preflight [preflight-options]
+axon [global-options] smoke [smoke-options]
 axon [global-options] serve [serve-options]
 axon [global-options] mcp [mcp-options]
 axon [global-options] palette <subcommand> [palette-options]
@@ -147,6 +149,8 @@ command, or global flag, treat it as `<source>` and route to `SourceRequest`.
 | `axon config <sub>` | `Config*Request` | `Config*Result` | maybe | no | Inspect, validate, and rewrite `.env`/`config.toml`. |
 | `axon setup <sub>` | `Setup*Request` | `Setup*Result` | maybe | maybe | Bootstrap, compose helpers, update/sync, smoke/preflight helpers. |
 | `axon reset` | `Reset*Request` | `Reset*Result` | yes | yes | Explicit destructive clean-slate reset of local stores. |
+| `axon preflight` | `PreflightRequest` | `PreflightReport` | no | no | Check host/config/provider readiness before starting work. |
+| `axon smoke` | `SmokeRequest` | `SmokeReport` | optional test data | yes | Run explicit smoke checks against configured providers. |
 | `axon serve` | `ServeRequest` | `ServeResult` | process | no | Start REST/MCP/web/workers. |
 | `axon mcp` | `McpServerRequest` | `McpServerResult` | process | no | Start stdio/HTTP MCP server mode. |
 | `axon palette <sub>` | `Palette*Request` | `Palette*Result` | maybe | maybe | Desktop Palette app launch/status/export helper. |
@@ -523,13 +527,12 @@ Memory is not a source adapter.
 | `axon config set <key> <value>` | key/value | `--env`, `--toml`, `--dry-run` | config edit plan/result |
 | `axon config unset <key>` | key | `--env`, `--toml`, `--dry-run` | config edit plan/result |
 | `axon config validate` | none | `--strict`, `--json` | config validation report |
-| `axon setup doctor` | none | `--config`, `--providers` | setup diagnostic report |
 | `axon setup config rewrite` | none | `--dry-run`, `--yes` | desired `.env`/`config.toml` rewrite plan/result |
 | `axon setup compose` | none | `--profile`, `--dry-run` | compose command/plan |
 | `axon setup sync` | none | `--dry-run` | local setup sync result |
 | `axon setup update` | none | `--dry-run` | local setup update result |
-| `axon doctor preflight` | none | `--json` | preflight report |
-| `axon doctor smoke` | none | `--live`, `--json` | smoke report |
+| `axon preflight` | none | `--config`, `--providers`, `--json` | preflight report |
+| `axon smoke` | none | `--live`, `--json` | smoke report |
 | `axon reset` | none | `--stores`, `--dry-run`, `--yes`, `--receipt` | destructive reset plan/result |
 | `axon serve` | none | `--bind`, `--port`, `--workers` | long-running server |
 | `axon mcp` | none | `--transport`, `--bind`, `--port` | long-running MCP server |
@@ -541,6 +544,8 @@ Rules:
 - `migrate` is not part of the clean-slate target surface.
 - setup/config commands may edit local files only after explicit command input.
 - reset is required clean-slate tooling, not old-data migration.
+- `axon doctor` remains the diagnostic command. `preflight` and `smoke` are
+  explicit top-level operational checks, not `doctor` subcommands.
 - `serve` and `mcp` are process entrypoints; their startup health is reported
   through status/doctor/provider/job contracts.
 

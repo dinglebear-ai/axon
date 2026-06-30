@@ -57,6 +57,31 @@ One `job_id` ties together:
 | `axon-web` | REST/SSE exposure of events |
 | `axon-mcp` | MCP status/event response conversion |
 
+## Event Sink Trait
+
+`axon-observe` exposes the event sink boundary used by jobs, domain crates, and
+transports. This is the required trait shape; implementations may add batching
+internals but must preserve these semantics.
+
+```rust
+#[async_trait]
+pub trait ObservabilitySink: Send + Sync {
+    async fn emit(&self, event: SourceProgressEvent) -> Result<()>;
+    async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()>;
+    async fn metric(&self, metric: MetricSample) -> Result<()>;
+    async fn flush(&self) -> Result<()>;
+}
+```
+
+Rules:
+
+- `emit` persists durable job events when a `job_id` is present.
+- `heartbeat` updates the active heartbeat row and may also emit an internal
+  heartbeat event when configured.
+- `metric` never stores unbounded labels.
+- `flush` is required before process shutdown and after terminal job events.
+- test fakes must record every call for ordering assertions.
+
 ## Current Implementation Snapshot
 
 Implemented today:
@@ -102,6 +127,7 @@ Planned by this contract:
 | Phase | Applies To | Meaning |
 |---|---|---|
 | `queued` | all async jobs | job accepted, not running |
+| `requested` | transport boundaries | caller request accepted before planning |
 | `resolving` | source/watch/map | source identity and adapter resolution |
 | `routing` | source/watch/map | adapter/scope/provider selection |
 | `authorizing` | all protected ops | auth, credentials, execution policy |
@@ -111,33 +137,43 @@ Planned by this contract:
 | `diffing` | mutable sources | manifest diff |
 | `fetching` | source/research/summarize | network/local/package fetch |
 | `rendering` | web/screenshot/brand/endpoints | browser/render path |
+| `enriching` | source/research/memory | optional LLM/metadata/source enrichment |
 | `normalizing` | source | SourceDocument construction |
 | `parsing` | source/extract | parser facts and graph candidates |
 | `graphing` | source/memory/sessions | graph writes |
 | `preparing` | source | chunking/preparation |
+| `batching` | source/memory/query | batching provider inputs |
 | `embedding` | source/memory | embedding batches |
+| `vectorizing` | source/memory | vector point construction before write |
 | `upserting` | source/memory | vector writes |
-| `publishing` | source | generation publish |
-| `cleaning` | source/prune | cleanup debt execution |
 | `retrieving` | query/retrieve/ask | vector/document retrieval |
 | `synthesizing` | ask/research/summarize/chat | LLM generation |
 | `evaluating` | evaluate | judge/baseline evaluation |
+| `publishing` | source | generation publish |
+| `cleaning` | source/prune | cleanup debt execution |
 | `complete` | all | terminal success |
-| `degraded` | all | terminal or in-flight degraded state |
-| `failed` | all | terminal failure |
 | `canceled` | all | terminal cancellation |
+
+This table is a projection of `PipelinePhase` in
+`foundation/types/enum-contract.md`. `degraded` and `failed` are lifecycle
+statuses/severities, not phases.
 
 ## Status Values
 
 | Status | Terminal | Meaning |
 |---|---:|---|
 | `queued` | no | waiting to start |
+| `pending` | no | accepted by a current/legacy projection but not yet queued |
 | `running` | no | active work |
 | `waiting` | no | waiting on provider/rate limit/cooldown |
+| `blocked` | no | waiting on dependency, capacity, approval, or policy |
+| `canceling` | no | cancellation requested and stages unwinding |
+| `completed` | yes | completed required work |
 | `completed_degraded` | yes | completed with missing optional capability |
 | `failed` | yes | did not complete required work |
 | `canceled` | yes | canceled by caller/system |
-| `completed` | yes | completed required work |
+| `expired` | yes | exceeded retention/deadline without safe recovery |
+| `skipped` | yes | skipped by policy or unchanged input |
 
 Status values are projections of the canonical `LifecycleStatus` enum. Event
 `phase` values are projections of the canonical `PipelinePhase` enum. Do not

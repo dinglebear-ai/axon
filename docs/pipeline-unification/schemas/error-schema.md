@@ -109,22 +109,78 @@ discovering
 diffing
 fetching
 rendering
+enriching
 normalizing
 parsing_content
 graphing
 preparing
+batching
 embedding
+vectorizing
 upserting
 publishing
 cleaning
 retrieving
 synthesizing
+evaluating
 observing
 storage
 provider
 transport
 internal
 ```
+
+## Error Stage to Event Phase Projection
+
+`ErrorStage` is more specific than `PipelinePhase`. Progress, streaming, logs,
+and traces must emit both values when an error is attached:
+
+- `event.phase` is always a canonical `PipelinePhase`
+- `error.stage` is always a canonical `ErrorStage`
+- boundary-only stages must not be added to `PipelinePhase`
+
+Default direct projections:
+
+| ErrorStage | Default PipelinePhase |
+|---|---|
+| `parsing` | `requested` |
+| `validation` | `requested` |
+| `resolving` | `resolving` |
+| `routing` | `routing` |
+| `authorizing` | `authorizing` |
+| `planning` | `planning` |
+| `leasing` | `leasing` |
+| `discovering` | `discovering` |
+| `diffing` | `diffing` |
+| `fetching` | `fetching` |
+| `rendering` | `rendering` |
+| `enriching` | `enriching` |
+| `normalizing` | `normalizing` |
+| `parsing_content` | `parsing` |
+| `graphing` | `graphing` |
+| `preparing` | `preparing` |
+| `batching` | `batching` |
+| `embedding` | `embedding` |
+| `vectorizing` | `vectorizing` |
+| `upserting` | `upserting` |
+| `publishing` | `publishing` |
+| `cleaning` | `cleaning` |
+| `retrieving` | `retrieving` |
+| `synthesizing` | `synthesizing` |
+| `evaluating` | `evaluating` |
+
+Contextual boundary stages:
+
+| ErrorStage | Projection Rule |
+|---|---|
+| `observing` | Use the active operation phase; if the sink fails after terminal emission, use `complete` or `canceled` to match the terminal event. |
+| `storage` | Use the phase performing the store operation, for example `publishing`, `cleaning`, `retrieving`, or `planning`. |
+| `provider` | Use the phase waiting on the provider, for example `embedding`, `synthesizing`, `rendering`, or `retrieving`. |
+| `transport` | Use `requested` before dispatch; use the active operation phase after dispatch. |
+| `internal` | Use the active operation phase and include `details.boundary="internal"`. |
+
+Schema checks fail if an `ErrorStage` lacks either a direct default projection
+or a contextual projection rule.
 
 ## Required Error Code Families
 
@@ -181,6 +237,8 @@ Fail when:
 - transport invents private error shape
 - removed action/route/command has special compatibility error
 - examples in error-handling docs fail validation
+- `ApiError.stage` cannot be projected into an event `phase`
+- event schemas add error-only stages as `PipelinePhase` values
 
 ## Validation Fixtures
 

@@ -32,6 +32,7 @@ cargo xtask schemas events --check
 - `RetrySnapshot`
 - `ProviderWaitSnapshot`
 - `MetricDescriptor`
+- `MetricSample`
 - `TraceFieldSet`
 - `CurrentItem`
 - `LogFieldSet`
@@ -83,6 +84,7 @@ cargo xtask schemas events --check
     "severity": { "$ref": "#/$defs/Severity" },
     "visibility": { "$ref": "#/$defs/Visibility" },
     "message": { "type": "string" },
+    "timestamp": { "$ref": "#/$defs/Timestamp" },
     "counts": { "$ref": "#/$defs/StageCounts" },
     "timing": { "$ref": "#/$defs/EventTiming" },
     "throughput": { "$ref": "#/$defs/ThroughputSnapshot" },
@@ -103,10 +105,10 @@ cargo xtask schemas events --check
 - `MetricKind`
 - `HeartbeatState`
 
-Enum values must match `runtime/observability-contract.md`.
-The canonical enum registry is `foundation/types/enum-contract.md`; generated
-event schemas, job schemas, OpenAPI, MCP schema, and CLI JSON must all consume
-that registry rather than defining local string lists.
+Enum values are generated from the canonical registry in
+`foundation/types/enum-contract.md`. `runtime/observability-contract.md`, job
+schemas, OpenAPI, MCP schema, and CLI JSON are projections of that registry; no
+file may define a local phase/status string list.
 
 ## Required Phase Enum Values
 
@@ -133,20 +135,20 @@ batching
 embedding
 vectorizing
 upserting
-publishing
-cleaning
 retrieving
 synthesizing
 evaluating
+publishing
+cleaning
 complete
-degraded
-failed
 canceled
 ```
 
 If a family needs a narrower projection, the generated schema records a mapping
 from the canonical enum to the projection and fails drift checks when a new
 canonical phase has no explicit mapping.
+
+`degraded` and `failed` are statuses/severities, not phases.
 
 ## StageCounts Shape
 
@@ -220,16 +222,20 @@ SSE and MCP streaming use the same logical event envelope.
 ```json
 {
   "type": "object",
-  "required": ["event_id", "event_type", "timestamp"],
+  "required": ["event_id", "kind", "sequence", "timestamp", "data"],
   "properties": {
     "event_id": { "type": "string", "pattern": "^evt_" },
-    "event_type": {
+    "kind": {
       "type": "string",
       "enum": ["progress", "token", "citation", "artifact", "warning", "error", "final"]
     },
+    "sequence": { "type": "integer", "minimum": 0 },
     "timestamp": { "$ref": "#/$defs/Timestamp" },
     "job_id": { "$ref": "#/$defs/JobId" },
-    "data": { "type": "object", "additionalProperties": true }
+    "request_id": { "type": "string" },
+    "data": { "type": "object", "additionalProperties": true },
+    "warning": { "$ref": "#/$defs/Warning" },
+    "error": { "$ref": "#/$defs/ApiError" }
   },
   "additionalProperties": false
 }
@@ -238,7 +244,9 @@ SSE and MCP streaming use the same logical event envelope.
 Stream rules:
 
 - `progress` data validates as `SourceProgressEvent`
-- `error` data validates as `ApiError`
+- `error` frames set `error` to `ApiError`; `data` may contain only
+  transport-safe diagnostic metadata
+- `warning` frames set `warning` to the shared warning shape
 - `final` data validates as the route-specific result DTO
 - stream-only fields must be absent from durable job event rows unless they are
   valid `SourceProgressEvent` fields
@@ -252,11 +260,28 @@ Stream rules:
 pub trait ObservabilitySink: Send + Sync {
     async fn emit(&self, event: SourceProgressEvent) -> Result<()>;
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()>;
+    async fn metric(&self, metric: MetricSample) -> Result<()>;
+    async fn flush(&self) -> Result<()>;
 }
 ```
 
 Schemas must validate both durable job-store event rows and public REST/MCP/CLI
 event projections.
+
+## Cross-Contract Drift Checks
+
+The event schema generator must fail when:
+
+- `PipelinePhase` in this file differs from
+  `foundation/types/enum-contract.md`
+- `runtime/observability-contract.md` omits a canonical phase or introduces a
+  non-canonical phase
+- an `ApiError.stage` value from `schemas/error-schema.md` has no explicit
+  mapping to either a canonical `PipelinePhase` or a transport-only stage
+- an event with `status=failed` or `status=completed_degraded` lacks either an
+  `error` object or a degradation/warning payload
+- `StreamEvent.error` does not validate as the shared `ApiError` projection
+- `StreamEvent.kind`, `sequence`, or `data` drift from `api-contract.md`
 
 ## Rules
 

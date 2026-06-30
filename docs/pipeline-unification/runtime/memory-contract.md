@@ -231,6 +231,46 @@ Decay rules:
 - review can reset decay, change type, archive, supersede, or forget
 - decay never silently deletes memory; deletion uses forget/prune policy
 
+Decay profiles:
+
+| Profile | Half-Life Days | Typical Use |
+|---|---:|---|
+| `very_fast` | 1 | working/session scratch context |
+| `fast` | 7 | episode summaries and short-lived observations |
+| `normal` | 30 | facts, bugs, tasks, incidents |
+| `slow` | 180 | decisions, procedures, entity profiles |
+| `very_slow` | 730 | durable user preferences and standing instructions |
+| `none` | infinite | pinned/manual-retention memories |
+
+Score formula:
+
+```text
+base_score =
+  0.45 * semantic_score +
+  0.20 * confidence +
+  0.15 * salience +
+  0.10 * scope_match +
+  0.10 * reinforcement_score
+
+decay_multiplier =
+  1.0                                  when profile = none or pinned
+  0.5 ^ (age_days / half_life_days)    otherwise
+
+memory_score =
+  clamp01(base_score * decay_multiplier - contradiction_penalty - status_penalty)
+```
+
+Definitions:
+
+- `age_days` is measured from `last_reinforced_at` when present, otherwise
+  `updated_at`, otherwise `created_at`.
+- `reinforcement_score = min(1.0, ln(1 + reinforcement_count) / 5.0)`.
+- `contradiction_penalty` defaults to `0.25` for unresolved contradictions.
+- `status_penalty` is `1.0` for forgotten memories, `0.5` for superseded
+  memories, `0.25` for archived memories unless explicitly included, and `0`
+  for active memories.
+- all inputs are normalized to `0.0..=1.0`.
+
 ## Graph Integration
 
 Every memory may mirror into SourceGraph.

@@ -12,15 +12,27 @@ migrate old Axon data into the new model.
 
 ## Schema Ownership
 
+The canonical target table list is the `Required Tables` registry in
+[../schemas/database-schema.md](../schemas/database-schema.md). This ownership
+table is a projection of that registry; drift checks must compare them exactly.
+
 | Owner | Tables |
 |---|---|
-| `axon-jobs` | `jobs`, `job_attempts`, `job_events`, `job_heartbeats`, `job_config_snapshots`, `provider_reservations` |
+| `axon-jobs` | `jobs`, `job_attempts`, `job_events`, `job_heartbeats`, `provider_reservations`, `watches`, `watch_runs`, `config_snapshots` |
 | `axon-ledger` | `sources`, `source_generations`, `source_items`, `source_manifests`, `document_status`, `cleanup_debt`, `leases` |
 | `axon-graph` | `graph_nodes`, `graph_edges`, `graph_evidence`, `graph_aliases`, `graph_conflicts` |
-| `axon-memory` | `memory_records`, `memory_links`, `memory_reinforcement`, `memory_reviews`, `memory_decay` |
-| `axon-jobs` / `axon-services` | `watches`, `watch_runs`, `watch_events` |
+| `axon-memory` | `memory_records`, `memory_links`, `memory_reinforcement`, `memory_reviews` |
 | `axon-core` / artifact store | `artifacts` when filesystem metadata index is SQLite-backed |
-| `axon-core` | `provider_health`, `config_snapshots` if not owned by jobs |
+| `axon-observe` | `provider_health` |
+
+Schema rules:
+
+- Memory decay state is stored in `memory_records.decay_json`; there is no
+  separate `memory_decay` table in the target schema.
+- Watch progress is represented by `job_events` for `job_kind=watch`; there is
+  no separate `watch_events` table.
+- Config snapshots are owned by `axon-jobs` as `config_snapshots`; there is no
+  `job_config_snapshots` table.
 
 ## Migration Rules
 

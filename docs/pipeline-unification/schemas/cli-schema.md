@@ -132,6 +132,7 @@ Every flag record includes:
 - graph
 - jobs
 - providers/status/doctor/capabilities
+- preflight/smoke
 - prune/collections/artifacts/uploads
 - config
 
@@ -216,6 +217,8 @@ output.
 | `axon collections <sub>` | `Collection*Request` | `CollectionService` | vector collection inspection |
 | `axon config <sub>` | `Config*Request` | `ConfigService` | config inspection/edit |
 | `axon doctor` | `DoctorRequest` | `ProviderService.doctor` | diagnostics |
+| `axon preflight` | `PreflightRequest` | `ProviderService.preflight` | config/provider readiness before work |
+| `axon smoke` | `SmokeRequest` | `ProviderService.smoke` | explicit live smoke checks |
 | `axon status` | `StatusRequest` | `ProviderService.status` | runtime status |
 | `axon capabilities` | `CapabilityRequest` | `ProviderService.capabilities` | machine contract |
 

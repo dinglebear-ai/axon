@@ -52,19 +52,28 @@ pub struct RedactionReport {
 
 Minimum detectors:
 
-- bearer tokens
-- API keys
-- OAuth client secrets
-- cookies
-- authorization headers
-- private keys
-- password-bearing URLs
-- `.env` key/value secrets
-- GitHub/GitLab/Gitea tokens
-- Reddit credentials
-- OpenAI-compatible API keys
-- local credential-store paths, including Codex, Gemini, browser, SSH, cloud,
-  and provider SDK homes
+| Detector | Required Pattern/Library Behavior |
+|---|---|
+| bearer tokens | case-insensitive `authorization: bearer <token>` header/value detection |
+| API keys | key-name detector for `api_key`, `apikey`, `token`, `secret`, `password`, `client_secret`, `private_key` in JSON/TOML/YAML/env |
+| OAuth client secrets | key-name detector plus high-entropy value classification |
+| cookies | `cookie`/`set-cookie` header and semicolon-delimited cookie value detection |
+| private keys | PEM blocks beginning `-----BEGIN ... PRIVATE KEY-----` |
+| password URLs | URL parser detection of non-empty username/password authority parts |
+| `.env` secrets | dotenv-style `KEY=value` parsing with secret-key classification |
+| GitHub tokens | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and fine-grained `github_pat_` prefixes |
+| GitLab tokens | `glpat-` and deploy-token style high-entropy values when key context matches GitLab |
+| Gitea tokens | token key context plus high-entropy value classification |
+| Reddit credentials | `REDDIT_CLIENT_SECRET`, refresh/access token fields, and OAuth bearer fields |
+| OpenAI-compatible keys | `sk-`, `sk-proj-`, and configured OpenAI-compatible key names |
+| local credential paths | path detector for Codex, Gemini, browser profiles, SSH, cloud config, provider SDK homes, and token stores under a home directory |
+
+Implementation libraries:
+
+- use structured parsers for JSON/TOML/YAML/env/url inputs before regex fallback
+- use compiled `regex`/`regex-set` style detectors for token patterns
+- use entropy checks only as a secondary signal with key/path context
+- never classify a field as public solely because no detector matched it
 
 Credential identifiers such as OAuth client ids are not cryptographic secrets,
 but they are still credential metadata. Public surfaces redact them unless a

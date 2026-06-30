@@ -59,6 +59,7 @@ Canonical required fields:
 - `source_kind`
 - `source_adapter`
 - `source_scope`
+- `source_canonical_uri`
 - `source_generation`
 - `committed_generation`
 - `source_item_key`
@@ -71,6 +72,8 @@ Canonical required fields:
 - `chunk_hash`
 - `chunk_locator`
 - `source_range`
+- `redaction_status`
+- `visibility`
 - `job_id`
 - `document_status`
 - `embedding_model`
@@ -90,45 +93,67 @@ canonical URI fields.
 {
   "type": "object",
   "required": [
+    "payload_contract_version",
+    "collection",
     "source_id",
     "vector_point_id",
     "vector_namespace",
     "source_kind",
+    "source_adapter",
+    "source_scope",
     "source_canonical_uri",
     "item_canonical_uri",
     "source_item_key",
     "document_id",
     "chunk_id",
-    "generation",
+    "source_generation",
+    "committed_generation",
+    "chunk_index",
     "content_kind",
+    "content_hash",
+    "chunk_hash",
     "chunk_locator",
     "redaction_status",
     "visibility",
     "job_id",
+    "document_status",
     "embedding_model",
     "embedding_dimensions",
+    "embedding_provider",
+    "embedding_profile",
     "embedded_at"
   ],
   "properties": {
+    "payload_contract_version": { "type": "string", "x-qdrant-index": "keyword" },
+    "collection": { "type": "string", "x-qdrant-index": "keyword" },
     "vector_point_id": { "type": "string", "x-qdrant-index": "keyword" },
     "vector_namespace": { "type": "string", "x-qdrant-index": "keyword" },
     "source_id": { "type": "string", "x-qdrant-index": "keyword" },
     "source_kind": { "type": "string", "x-qdrant-index": "keyword" },
+    "source_adapter": { "type": "string", "x-qdrant-index": "keyword" },
+    "source_scope": { "type": "string", "x-qdrant-index": "keyword" },
     "source_canonical_uri": { "type": "string", "x-qdrant-index": "keyword" },
     "item_canonical_uri": { "type": "string", "x-qdrant-index": "keyword" },
     "source_item_key": { "type": "string", "x-qdrant-index": "keyword" },
     "document_id": { "type": "string", "x-qdrant-index": "keyword" },
     "chunk_id": { "type": "string", "x-qdrant-index": "keyword" },
-    "generation": { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
+    "source_generation": { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
+    "committed_generation": { "type": ["integer", "null"], "minimum": 0, "x-qdrant-index": "integer" },
+    "chunk_index": { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
     "content_kind": { "type": "string", "x-qdrant-index": "keyword" },
+    "content_hash": { "type": "string", "x-qdrant-index": "keyword" },
+    "chunk_hash": { "type": "string", "x-qdrant-index": "keyword" },
     "chunk_text": { "type": "string", "x-qdrant-index": "full_text" },
     "chunk_locator": { "type": "string" },
     "source_range": { "$ref": "#/$defs/SourceRange" },
     "redaction_status": { "$ref": "#/$defs/RedactionStatus" },
     "visibility": { "$ref": "#/$defs/Visibility" },
     "job_id": { "type": "string", "x-qdrant-index": "keyword" },
+    "document_status": { "$ref": "#/$defs/DocumentLifecycleStatus" },
     "embedding_model": { "type": "string", "x-qdrant-index": "keyword" },
     "embedding_dimensions": { "type": "integer", "minimum": 1 },
+    "embedding_provider": { "type": "string", "x-qdrant-index": "keyword" },
+    "embedding_profile": { "type": "string", "x-qdrant-index": "keyword" },
     "embedded_at": { "type": "string", "format": "date-time" }
   },
   "additionalProperties": false
@@ -150,12 +175,18 @@ The generated schema emits a Qdrant index plan:
     { "field_name": "source_id", "field_schema": "keyword" },
     { "field_name": "vector_namespace", "field_schema": "keyword" },
     { "field_name": "source_kind", "field_schema": "keyword" },
+    { "field_name": "source_adapter", "field_schema": "keyword" },
+    { "field_name": "source_scope", "field_schema": "keyword" },
     { "field_name": "source_canonical_uri", "field_schema": "keyword" },
     { "field_name": "item_canonical_uri", "field_schema": "keyword" },
     { "field_name": "document_id", "field_schema": "keyword" },
-    { "field_name": "generation", "field_schema": "integer" },
+    { "field_name": "chunk_id", "field_schema": "keyword" },
+    { "field_name": "source_generation", "field_schema": "integer" },
+    { "field_name": "committed_generation", "field_schema": "integer" },
     { "field_name": "content_kind", "field_schema": "keyword" },
+    { "field_name": "document_status", "field_schema": "keyword" },
     { "field_name": "job_id", "field_schema": "keyword" },
+    { "field_name": "embedding_provider", "field_schema": "keyword" },
     { "field_name": "embedding_model", "field_schema": "keyword" }
   ]
 }
@@ -244,7 +275,7 @@ The vector store receives points shaped like:
 Point id rules:
 
 - stable for `(collection, vector_namespace, document_id, chunk_id,
-  embedding_model, generation)`
+  embedding_model, source_generation)`
 - changes when embedding model or chunk hash changes
 - old point ids become cleanup debt when generation is replaced
 
@@ -281,7 +312,7 @@ crates/axon-vectors/tests/fixtures/payload/session.valid.json
 crates/axon-vectors/tests/fixtures/payload/memory.valid.json
 crates/axon-vectors/tests/fixtures/payload/package.valid.json
 crates/axon-vectors/tests/fixtures/payload/secret.invalid.json
-crates/axon-vectors/tests/fixtures/payload/missing_generation.invalid.json
+crates/axon-vectors/tests/fixtures/payload/missing_source_generation.invalid.json
 crates/axon-vectors/tests/fixtures/payload/unknown_source_field.invalid.json
 crates/axon-vectors/tests/fixtures/payload/bad_visibility.invalid.json
 ```
@@ -294,7 +325,7 @@ Source-specific fields are allowed only under approved field families from
 - no secrets
 - no raw absolute local paths as public identity
 - no giant raw content fields
-- generation fields are filterable
+- `source_generation` and `committed_generation` fields are filterable
 - source/document/chunk ids join back to ledger
 - payload indexes are declared here before collection creation
 
@@ -318,7 +349,7 @@ Fail when:
 - generated Qdrant index plan matches schema annotations
 - secret fixture is rejected before vector write
 - every payload joins to ledger by `source_id`, `source_item_key`,
-  `document_id`, `chunk_id`, and `generation`
+  `document_id`, `chunk_id`, and `source_generation`
 - source-specific metadata fields are documented before use
 - all queryable payload fields have generated Qdrant index specs
 - old-generation payload cleanup can be selected without scrolling unrelated

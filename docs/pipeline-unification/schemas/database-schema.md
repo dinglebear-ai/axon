@@ -177,7 +177,8 @@ bounded.
 - cleanup debt
 - leases
 - graph nodes/edges/evidence
-- memory records/links/decay/review
+- memory records/links/reinforcement/review; decay state lives in
+  `memory_records.decay_json`, not a separate table
 - watches/runs
 - artifacts metadata
 - provider health/config snapshots
@@ -214,6 +215,12 @@ Minimum target tables:
 | `artifacts` | `axon-core` | `artifact_id` |
 | `provider_health` | `axon-observe` | `(provider_id, checked_at)` |
 | `config_snapshots` | `axon-jobs` | `config_snapshot_id` |
+
+This table list is canonical. Runtime schema docs, store contracts, reset
+plans, and generated migration docs must project this exact list and owner map.
+There is no target `memory_decay`, `watch_events`, or `job_config_snapshots`
+table; decay lives in `memory_records.decay_json`, watch progress uses
+`job_events`, and config snapshots are `config_snapshots`.
 
 ## Required Indexes
 

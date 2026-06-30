@@ -107,6 +107,48 @@ Config keys can be deleted when:
 Setup/doctor may report unknown keys and suggest editing the file manually.
 There is no requirement to auto-migrate old config files.
 
+Known removed/replaced keys:
+
+| Removed Key | Replacement |
+|---|---|
+| `AXON_MCP_HTTP_HOST` | `AXON_HTTP_HOST` |
+| `AXON_MCP_HTTP_PORT` | `AXON_HTTP_PORT` |
+| `AXON_MCP_HTTP_TOKEN` | `AXON_HTTP_TOKEN` |
+| `AXON_MCP_AUTH_MODE` | `AXON_AUTH_MODE` |
+| `AXON_MCP_PUBLIC_URL` | `AXON_PUBLIC_URL` |
+| `AXON_MCP_GOOGLE_CLIENT_ID` | `AXON_GOOGLE_CLIENT_ID` |
+| `AXON_MCP_GOOGLE_CLIENT_SECRET` | `AXON_GOOGLE_CLIENT_SECRET` |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | `AXON_AUTH_ADMIN_EMAIL` |
+| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | `AXON_ALLOWED_REDIRECT_URIS` |
+| `AXON_MCP_ALLOWED_ORIGINS` | `AXON_ALLOWED_ORIGINS` |
+| `AXON_COLLECTION` | `server.default_collection` in `config.toml` |
+| `AXON_HYBRID_CANDIDATES` | `retrieval.hybrid_candidates` in `config.toml` |
+| `AXON_ASK_HYBRID_CANDIDATES` | `ask.hybrid_candidates` in `config.toml` |
+| `AXON_INGEST_LANES` | `pipeline.ingest_lanes` in `config.toml` |
+| `AXON_EMBED_DOC_TIMEOUT_SECS` | `providers.embedding.doc_timeout_secs` in `config.toml` |
+| `AXON_WATCH_TICK_SECS` | `watch.tick_secs` in `config.toml` |
+| `AXON_WATCH_LEASE_SECS` | `watch.lease_secs` in `config.toml` |
+
+Known removed DTO/request fields:
+
+| Removed Field | Replacement |
+|---|---|
+| `EmbedRequest.input` | `SourceRequest.source` |
+| `EmbedRequest.source_type` | adapter-selected `SourceKind` / `SourceScope` |
+| `IngestRequest.target` | `SourceRequest.source` |
+| `IngestRequest.source_type` | adapter-selected `SourceKind` / `SourceScope` |
+| `IngestRequest.include_source` | `SourceRequest.options.include_source` when an adapter supports it |
+| `CrawlRequest.urls` | `SourceRequest.source` plus multi-source submission when supported |
+| `ScrapeRequest.url` | `SourceRequest.source` with `scope=page` |
+| `PurgeRequest.target` | `PruneSelector` |
+| `PurgeRequest.prefix` | `PruneSelector` scope/options |
+| `CodeSearchRequest.cwd` | `QueryRequest.filters.source_id` or local source filter |
+| `CodeSearchRequest.path_prefix` | `QueryRequest.filters.path_prefix` |
+| `CodeSearchRequest.no_freshness` | `QueryRequest.freshness` |
+
+Removed fields must be absent from generated DTO schemas. They are not accepted
+as hidden aliases.
+
 ## Test Requirements
 
 Tests must prove:

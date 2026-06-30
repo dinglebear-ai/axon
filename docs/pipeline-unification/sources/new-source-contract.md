@@ -295,7 +295,7 @@ Rules:
 - public vector payload fields must be redacted and bounded
 - source-specific fields use approved prefixes
 - every payload joins back to ledger by `source_id`, `source_item_key`,
-  `document_id`, `chunk_id`, and `generation`
+  `document_id`, `chunk_id`, and `source_generation`
 - Qdrant payload indexes are declared before collection creation
 - raw adapter response blobs are artifacts, not vector payload fields
 

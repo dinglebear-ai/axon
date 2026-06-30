@@ -378,6 +378,13 @@ Aggregate check mode validates:
 | graph -> parser | parser emitted kinds exist in graph schema |
 | database -> stores | store-owned tables match table owner metadata |
 | app clients -> OpenAPI/API | generated client schemas do not rename fields |
+| enum -> events/observability | every `PipelinePhase`, `LifecycleStatus`, and `JobKind` projection exactly matches `axon-api` enums |
+| enum -> errors | every `ErrorStage` has either a direct `PipelinePhase` projection or an explicit contextual-boundary rule |
+| jobs -> surfaces | every CLI/MCP/REST job kind is a canonical `JobKind`; aliases such as `watch_run` are forbidden |
+| database -> runtime docs | required tables exactly match `database-schema.md`; legacy names such as `memory_decay`, `watch_events`, and `job_config_snapshots` are forbidden |
+| config -> docs | `.env`, `config.toml`, OpenAPI, MCP, and CLI config schemas expose the same canonical config keys |
+| vector -> qdrant index | every generated Qdrant index targets an existing payload field and uses `source_generation`, never bare `generation` |
+| removal -> generated surfaces | removed commands, actions, routes, DTO fields, and config keys are absent from generated references |
 
 ## CI Contract
 
@@ -400,6 +407,11 @@ CI fails when:
 - schema has a dangling `$ref`
 - public schema includes secret fields
 - removed command/action/route appears
+- removed config key or DTO/request field appears
+- a canonical enum projection adds, drops, or renames a value
+- a required SQLite table list adds a legacy table name or drops a canonical table
+- a vector payload/index example uses bare `generation` where `source_generation`
+  is required
 - markdown reference differs from generated schema
 
 ## Drift Checks
