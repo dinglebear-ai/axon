@@ -169,7 +169,7 @@ Spike boundary:
 Proof:
 
 - local Markdown and Rust fixtures produce `SourceDocument`/prepared chunk
-- metadata with canonical source and draft-generation fields
+  metadata with canonical source and draft-generation fields
 - the ledger draft records source id, source kind, collection, generation,
   item keys, content hashes, and cleanup-debt placeholders
 - existing `prepare_embed_docs` behavior remains unchanged
