@@ -3,6 +3,12 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target provider boundary. Current providers are concrete dispatch
+paths and clients in the existing crates: TEI/OpenAI-compatible embedding,
+Qdrant vector operations, Gemini/OpenAI-compatible/Codex LLM synthesis,
+SearXNG/Tavily search, reqwest/git/registry fetch, and Chrome/CDP rendering.
+They do not yet share one capability registry or reservation model.
+
 Providers are bounded capabilities with health, limits, reservations, errors,
 cooling, and fakes. Provider code performs one class of work; it does not own
 global job scheduling or cross-pipeline fairness.

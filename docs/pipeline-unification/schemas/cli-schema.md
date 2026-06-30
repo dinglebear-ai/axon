@@ -12,6 +12,12 @@ and target help text lives in [../surfaces/axon-help.md](../surfaces/axon-help.m
 
 ## Generated Artifacts
 
+This section is the target generated-artifact contract. The current `xtask`
+surface does not yet expose `cargo xtask schemas cli`, and `docs/reference/cli`
+does not exist yet. Until the generator lands, CLI drift is checked by the
+current parser/help contract tests and by direct review of
+`crates/axon-core/src/config`.
+
 ```text
 docs/reference/cli/commands.json
 docs/reference/cli/commands.md

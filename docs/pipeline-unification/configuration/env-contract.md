@@ -3,6 +3,11 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target clean-break `.env` shape. Current implementation still uses
+several legacy/bootstrap names, especially `AXON_MCP_*` for HTTP MCP auth and
+OAuth settings. The target unified names below intentionally replace those
+transport-specific names when the setting applies to the unified server.
+
 `.env` is for bootstrap values that must be environment variables: service URLs,
 secrets, auth/runtime paths, and Docker Compose interpolation. It is not the
 place for normal tuning knobs.

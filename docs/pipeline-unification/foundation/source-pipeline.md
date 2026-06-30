@@ -38,9 +38,10 @@ configuration, not by creating a second pipeline.
 
 Implemented today:
 
-- The shared post-acquisition boundary exists in `axon-vector`: callers build
-  `SourceDocument`, `prepare_source_document` creates `PreparedDoc`, and
-  `embed_prepared_docs` writes through the TEI/Qdrant embedding pipeline.
+- The shared post-acquisition boundary exists in `axon-vector`: callers either
+  build `SourceDocument` explicitly or call helpers that create a
+  `SourceDocument` internally, `prepare_source_document` creates `PreparedDoc`,
+  and `embed_prepared_docs` writes through the TEI/Qdrant embedding pipeline.
 - Code-search has a real SQLite ledger/generation path in `axon-code-index`.
   It tracks local projects, files, hashes, sizes, mtimes, pending state,
   committed generation, leases, and cleanup debt.
@@ -48,8 +49,11 @@ Implemented today:
   item URLs and payload fields such as `source_type=local_code`,
   `local_project_key`, `local_generation`, and `code_file_path`.
 - Code-search reindexing performs manifest diff, creates the next generation,
-  marks files pending, embeds changed batches, marks files indexed, commits the
-  generation, and then runs generation-fenced cleanup debt.
+  marks files pending, embeds manifest batches for the refresh, marks files
+  indexed, commits the generation, and then runs generation-fenced cleanup debt.
+  Today that refresh path can re-prepare and re-embed all tracked files in the
+  manifest after any diff, even though the diff is still used to decide whether
+  a refresh is needed and to clean removed files.
 
 Partially implemented:
 

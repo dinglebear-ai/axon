@@ -26,6 +26,9 @@ Agents must not learn a new CLI surface while MCP still advertises old actions.
 ## Design Rules
 
 - Expose one MCP tool named `axon`.
+- MCP Apps/widget tools are allowed only as presentation helpers. They are not
+  additional operation tools and must not own source, job, retrieval, memory, or
+  graph semantics.
 - Use `action` plus optional `subaction`; do not expose one MCP tool per
   operation.
 - Route every action to an `axon-api` DTO and `axon-services` entry point.
@@ -46,7 +49,10 @@ Agents must not learn a new CLI surface while MCP still advertises old actions.
 
 Implemented today:
 
-- MCP exposes one tool named `axon`.
+- MCP exposes one routed operation tool named `axon`.
+- Current MCP also exposes an `axon_status_dashboard` MCP Apps/widget tool for
+  dashboard rendering. This is a presentation helper, not a second operation
+  surface.
 - The active action registry still includes older families such as `crawl`,
   `extract`, `embed`, `ingest`, `scrape`, `purge`, `code_search`,
   `vertical_scrape`, system operations, screenshot, query, retrieve, ask,

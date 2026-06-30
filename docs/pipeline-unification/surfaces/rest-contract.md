@@ -42,7 +42,11 @@ Implemented today:
 - REST still exposes direct operation routes such as `/v1/scrape`, `/v1/crawl`,
   `/v1/embed`, `/v1/extract`, `/v1/ingest`, `/v1/purge`, `/v1/dedupe`,
   `/v1/search`, `/v1/research`, `/v1/query`, `/v1/retrieve`, `/v1/map`,
-  `/v1/ask`, `/v1/watch/{id}/run`, `/v1/jobs`, and `/api-docs/openapi.json`.
+  `/v1/ask`, `/v1/watch/{id}/run`, and `/api-docs/openapi.json`.
+- Job REST routes are family-scoped today: `/v1/crawl`, `/v1/embed`,
+  `/v1/extract`, and `/v1/ingest` expose list/status/cancel/errors/cleanup/
+  clear/recover/worker-style operations instead of a generic `/v1/jobs`
+  collection.
 - `GET /v1/sources` is a discovery/listing route today; `POST /v1/sources` is
   not the canonical acquisition path yet.
 - Async job starts return `202` with a narrow job response such as `job_id`,
@@ -1605,6 +1609,13 @@ docs/reference/rest/openapi.md
 apps/web/openapi/axon.json
 apps/android/app/src/main/assets/openapi/axon.json
 ```
+
+The `docs/reference/rest/*` and committed Android asset paths above are target
+artifacts. The current implementation generates and checks
+`apps/web/openapi/axon.json`, TypeScript clients for `apps/web` and
+`apps/palette-tauri`, and Android route-contract generated files derived from
+the web OpenAPI spec. The clean-break generator must converge those current
+outputs into the canonical artifact set above.
 
 The `apps/web` and Android artifacts are generated copies of the canonical
 OpenAPI output, not separate hand-maintained route contracts. Drift checks fail

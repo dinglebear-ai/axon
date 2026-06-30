@@ -3,6 +3,12 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target security contract. Current transport auth is much narrower:
+REST and MCP primarily enforce broad `axon:read` / `axon:write` scopes, and the
+current compatibility behavior treats either Axon scope as sufficient for many
+Axon-scoped routes. The finer-grained `admin`, `execute`, and `local` policies
+below are desired clean-break boundaries.
+
 Source unification increases the number of things Axon can touch: URLs, local
 paths, Git repos, registries, session exports, CLI tools, MCP tools, browser
 rendering, screenshots, artifacts, memories, and graph links. Security policy is
@@ -46,6 +52,10 @@ Scopes:
 
 `axon:write` does not imply `axon:admin`, `axon:execute`, or unrestricted local
 path access.
+
+Current implementation note: these fine-grained scopes are target policy. Today
+REST route layers and MCP action metadata mostly classify operations as broad
+read or write.
 
 ## SSRF Policy
 

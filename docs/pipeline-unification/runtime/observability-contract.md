@@ -68,8 +68,9 @@ Implemented today:
   ingest; crawl remains more specialized.
 - Code-search reindexing has its own progress events such as started, batch
   finished, cleanup started, commit started, and finished.
-- Heartbeat-like freshness is mostly inferred from job row `updated_at` and
-  lifecycle updates, not from a durable event stream.
+- Heartbeat/worker freshness is implemented today by refreshing job row
+  `updated_at`, lifecycle updates, worker heartbeat guards, and a starvation
+  watchdog. It is not a durable heartbeat event stream/table yet.
 
 Planned by this contract:
 

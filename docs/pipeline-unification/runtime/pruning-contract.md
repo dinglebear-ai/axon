@@ -3,6 +3,11 @@ Last Modified: 2026-06-30
 
 ## Contract
 
+This is the target pruning contract. Current implementation still has direct
+purge, dedupe, job cleanup/clear/recover, and family-specific stale cleanup
+paths. Those paths must be folded into planned `axon-prune` / cleanup-debt
+execution during the clean break.
+
 `axon-prune` owns planned destructive cleanup. Pruning is not ad hoc deletion
 from Qdrant, SQLite, or the filesystem. Every destructive operation has a plan,
 scope, authorization requirement, dry-run shape, execution result, and audit

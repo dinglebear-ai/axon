@@ -46,9 +46,12 @@ Implemented today:
 - `Cli` requires a subcommand; there is no default `axon <source>` parser path.
 - Current implemented subcommands include `scrape`, `crawl`, `embed`, `ingest`,
   `code-search`, `code-search-watch`, `query`, `retrieve`, `ask`, `search`,
-  `research`, `map`, `watch`, `memory`, `sessions`, `purge`, `dedupe`,
-  `refresh`, `fresh`, `stats`, `sources`, `domains`, `doctor`, `serve`, `mcp`,
-  `config`, `sync`, `update`, and `palette`.
+  `research`, `map`, `watch`, `monitor`, `endpoints`, `memory`, `sessions`,
+  `extract`, `purge`, `dedupe`, `refresh`, `fresh`, `stats`, `sources`,
+  `domains`, `status`, `debug`, `doctor`, `brand`, `diff`, `summarize`,
+  `evaluate`, `train`, `suggest`, `screenshot`, `completions`, `setup`,
+  `preflight`, `smoke`, `compose`, `serve`, `mcp`, `migrate`, `config`,
+  `sync`, `update`, and `palette`.
 - Async job subcommands are family-specific for `crawl`, `extract`, `embed`,
   and `ingest`: `status`, `cancel`, `errors`, `list`, `cleanup`, `clear`,
   `worker`, and `recover`.

@@ -28,6 +28,12 @@ REST routes.
 
 ## Required Routes
 
+This is the target web route dependency set. Current `apps/web` still calls the
+current direct REST routes such as `/v1/crawl`, `/v1/embed`, `/v1/extract`,
+`/v1/ingest`, `/v1/watch/{id}/run`, and `/api-docs/openapi.json`. The
+clean-break target below moves those calls to canonical source, watch, job,
+artifact, provider, graph, memory, and prune routes.
+
 Web app depends on the full REST contract, with emphasis on:
 
 | Feature | Routes |
