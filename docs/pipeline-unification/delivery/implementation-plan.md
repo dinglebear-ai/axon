@@ -146,9 +146,9 @@ Why this vertical:
 
 - It already uses the shared `SourceDocument -> PreparedDoc ->
   embed_prepared_docs` path.
-- It exercises source resolution, path metadata, content kind routing,
-  document preparation, code/markdown chunking, embedding, and vector payload
-  construction.
+- It exercises source resolution, ledger draft/generation state, path metadata,
+  content kind routing, document preparation, code/markdown chunking,
+  embedding, and vector payload construction.
 - It is cheap to test with local fixtures and does not need network, GitHub,
   browser, Reddit, YouTube, or registry credentials.
 
@@ -157,15 +157,21 @@ Spike boundary:
 - Add `SourceRequest` DTOs and tests.
 - Add a local-source adapter prototype behind an internal module or test-only
   harness.
-- Convert a local file/directory request into the existing prepare path.
+- Create a ledger draft/generation record for the local source before
+  preparation.
+- Convert a local file/directory request into `SourceDocument` values and the
+  existing prepare path.
 - Do not remove old `embed`, `code-search`, or watch commands.
 - Do not wire public CLI/MCP/REST to the new path yet.
-- Do not migrate job tables or ledger tables yet.
+- Do not publish generations, write vectors through the new payload builder, or
+  migrate the job runtime yet.
 
 Proof:
 
 - local Markdown and Rust fixtures produce `SourceDocument`/prepared chunk
-  metadata with canonical source fields
+- metadata with canonical source and draft-generation fields
+- the ledger draft records source id, source kind, collection, generation,
+  item keys, content hashes, and cleanup-debt placeholders
 - existing `prepare_embed_docs` behavior remains unchanged
 - spike notes list what can be moved versus rewritten for local embed/watch
 
