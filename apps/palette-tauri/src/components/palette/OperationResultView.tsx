@@ -1,23 +1,17 @@
 import { memo, type ReactNode } from "react";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
-  FileImage,
-  FileText,
-  ServerCog,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, FileImage, FileText, ServerCog } from "lucide-react";
 
 import { AuthenticatedArtifactImage } from "@/components/palette/AuthenticatedArtifactImage";
 import { HelpResultView } from "@/components/palette/HelpResultView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
+import { ResultRows } from "@/components/palette/OperationResultRows";
+import { RankedResultView, SearchResultView } from "@/components/palette/SearchResultViews";
 import {
   ChipSection,
   DetailLine,
   EmptyResult,
   GenericResultView,
   JobRows,
-  ResultRows,
   ResultHero,
   ResultSummary,
   StatusDot,
@@ -31,7 +25,16 @@ import {
   toneForStatus,
 } from "@/components/palette/OperationResultViewShared";
 import { actionBehavior, maybeActionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
-import { arrField, boolField, isRecord, numField, shortId, strField, titleCase, unwrapPayload } from "@/lib/payload";
+import {
+  arrField,
+  boolField,
+  isRecord,
+  numField,
+  shortId,
+  strField,
+  titleCase,
+  unwrapPayload,
+} from "@/lib/payload";
 
 const LIST_LIMIT = 18;
 export { sanitizeReaderMarkdown } from "@/components/palette/OperationResultViewShared";
@@ -50,18 +53,29 @@ interface OperationResultViewProps {
 // Each entry renders the unwrapped `data`; raw `payload`/`fallbackText` are passed
 // through for views that need them (help). Job-lifecycle subcommands all share the
 // single `"job-lifecycle"` key.
-type ViewContext = { data: Record<string, unknown>; payload: unknown; fallbackText: string; subcommand: string };
+type ViewContext = {
+  data: Record<string, unknown>;
+  payload: unknown;
+  fallbackText: string;
+  subcommand: string;
+};
 
 const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNode> = {
-  help: ({ payload, fallbackText }) => <HelpResultView payload={payload} fallbackText={fallbackText} />,
+  help: ({ payload, fallbackText }) => (
+    <HelpResultView payload={payload} fallbackText={fallbackText} />
+  ),
   scrape: ({ data }) => <ReadingView payload={data} mode="scrape" />,
-  query: ({ data }) => <RankedResultView title="Knowledge matches" payload={data} rowsKey="results" />,
+  query: ({ data }) => (
+    <RankedResultView title="Knowledge matches" payload={data} rowsKey="results" />
+  ),
   retrieve: ({ data }) => <ReadingView payload={data} mode="retrieve" />,
   search: ({ data }) => <SearchResultView payload={data} title="Web search" />,
   research: ({ data }) => <SearchResultView payload={data} title="Research brief" includeSummary />,
   map: ({ data }) => <UrlListView title="Discovered URLs" payload={data} keys={["urls"]} />,
   suggest: ({ data }) => <SuggestionView payload={data} />,
-  sources: ({ data }) => <UrlListView title="Indexed sources" payload={data} keys={["urls", "sources"]} />,
+  sources: ({ data }) => (
+    <UrlListView title="Indexed sources" payload={data} keys={["urls", "sources"]} />
+  ),
   domains: ({ data }) => <DomainView payload={data} />,
   doctor: ({ data }) => <DoctorView payload={data} />,
   crawl: ({ data }) => <JobStartView payload={data} family="crawl" />,
@@ -77,7 +91,9 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   "watch-list": ({ data }) => <WatchListView payload={data} />,
   "watch-create": ({ data }) => <WatchDetailView payload={data} />,
   "watch-run": ({ data }) => <WatchDetailView payload={data} />,
-  "job-lifecycle": ({ data, subcommand }) => <JobLifecycleView payload={data} subcommand={subcommand} />,
+  "job-lifecycle": ({ data, subcommand }) => (
+    <JobLifecycleView payload={data} subcommand={subcommand} />
+  ),
 };
 
 export function hasStructuredOperationView(subcommand: string): boolean {
@@ -104,54 +120,6 @@ export const OperationResultView = memo(function OperationResultView({
   if (render) return render({ data, payload, fallbackText, subcommand });
   return <GenericResultView payload={data} />;
 });
-
-function SearchResultView({
-  payload,
-  title,
-  includeSummary,
-}: {
-  payload: Record<string, unknown>;
-  title: string;
-  includeSummary?: boolean;
-}) {
-  const summary = strField(payload, "summary");
-  const rows = arrayByKeys(payload, ["results", "search_results"]);
-  const jobs = arrayByKeys(payload, ["crawl_jobs", "jobs"]);
-
-  return (
-    <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Results", rows.length], ["Queued crawls", jobs.length], ["View", title]]} />
-      {includeSummary && summary ? (
-        <section className="operation-section">
-          <h3 className="stats-heading">Summary</h3>
-          <div className="operation-markdown">
-            <MarkdownBody>{summary}</MarkdownBody>
-          </div>
-        </section>
-      ) : null}
-      <ResultRows rows={rows} />
-      {jobs.length > 0 ? <JobRows title="Queued crawl jobs" rows={jobs} /> : null}
-    </div>
-  );
-}
-
-function RankedResultView({
-  title,
-  payload,
-  rowsKey,
-}: {
-  title: string;
-  payload: Record<string, unknown>;
-  rowsKey: string;
-}) {
-  const rows = arrField(payload, rowsKey);
-  return (
-    <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Matches", rows.length], ["Collection", strField(payload, "collection") ?? "axon"], ["View", title]]} />
-      <ResultRows rows={rows} preferSnippet />
-    </div>
-  );
-}
 
 function ReadingView({
   payload,
@@ -190,7 +158,12 @@ function SuggestionView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "suggestions");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Suggestions", rows.length], ["View", "Suggested URLs"]]} />
+      <ResultSummary
+        metrics={[
+          ["Suggestions", rows.length],
+          ["View", "Suggested URLs"],
+        ]}
+      />
       <ResultRows rows={rows} />
     </div>
   );
@@ -200,13 +173,20 @@ function DomainView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "domains");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Domains", rows.length], ["View", "Indexed domains"]]} />
+      <ResultSummary
+        metrics={[
+          ["Domains", rows.length],
+          ["View", "Indexed domains"],
+        ]}
+      />
       <section className="operation-section">
         <div className="operation-table">
           {rows.slice(0, LIST_LIMIT).map((row, index) => {
             const record = isRecord(row) ? row : {};
-            const domain = strField(record, "domain") ?? strField(record, "host") ?? `domain-${index + 1}`;
-            const count = numField(record, "count") ?? numField(record, "chunks") ?? numField(record, "urls");
+            const domain =
+              strField(record, "domain") ?? strField(record, "host") ?? `domain-${index + 1}`;
+            const count =
+              numField(record, "count") ?? numField(record, "chunks") ?? numField(record, "urls");
             return (
               <div key={domain} className="operation-table-row">
                 <span>{domain}</span>
@@ -222,7 +202,9 @@ function DomainView({ payload }: { payload: Record<string, unknown> }) {
 
 function DoctorView({ payload }: { payload: Record<string, unknown> }) {
   const checks = arrayByKeys(payload, ["checks", "findings", "services"]);
-  const degraded = boolField(payload, "degraded") ?? checks.some((item) => isRecord(item) && isBadStatus(strField(item, "status")));
+  const degraded =
+    boolField(payload, "degraded") ??
+    checks.some((item) => isRecord(item) && isBadStatus(strField(item, "status")));
   return (
     <div className="output-body operation-view aurora-scrollbar">
       <ResultHero
@@ -242,16 +224,23 @@ function DoctorView({ payload }: { payload: Record<string, unknown> }) {
             {checks.slice(0, LIST_LIMIT).map((item, index) => {
               const check = isRecord(item) ? item : {};
               const status = strField(check, "status") ?? strField(check, "severity") ?? "unknown";
-              const name = strField(check, "name") ?? strField(check, "service") ?? strField(check, "component") ?? `Check ${index + 1}`;
-              const message = strField(check, "message") ?? strField(check, "detail") ?? strField(check, "error");
+              const name =
+                strField(check, "name") ??
+                strField(check, "service") ??
+                strField(check, "component") ??
+                `Check ${index + 1}`;
+              const message =
+                strField(check, "message") ?? strField(check, "detail") ?? strField(check, "error");
               return (
-                <article key={`${name}-${index}`} className="operation-row">
+                <article key={`${name}-${status}-${message ?? ""}`} className="operation-row">
                   <StatusDot status={status} />
                   <div className="operation-row-main">
                     <div className="operation-row-title">{name}</div>
                     {message ? <p className="operation-muted">{message}</p> : null}
                   </div>
-                  <span className={`operation-badge operation-badge-${toneForStatus(status)}`}>{status}</span>
+                  <span className={`operation-badge operation-badge-${toneForStatus(status)}`}>
+                    {status}
+                  </span>
                 </article>
               );
             })}
@@ -280,7 +269,11 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
       <section className="operation-section">
         <div className="operation-detail-card">
           {jobId ? <DetailLine label="Job ID" value={jobId} mono /> : null}
-          <DetailLine label="Status endpoint" value={strField(payload, "status_url") ?? `/v1/${family}/${jobId ?? "{job_id}"}`} mono />
+          <DetailLine
+            label="Status endpoint"
+            value={strField(payload, "status_url") ?? `/v1/${family}/${jobId ?? "{job_id}"}`}
+            mono
+          />
           <DetailLine label="Next action" value={`${family}-status ${jobId ?? "<job_id>"}`} mono />
         </div>
       </section>
@@ -288,9 +281,17 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
   );
 }
 
-function JobLifecycleView({ payload, subcommand }: { payload: Record<string, unknown>; subcommand: string }) {
+function JobLifecycleView({
+  payload,
+  subcommand,
+}: {
+  payload: Record<string, unknown>;
+  subcommand: string;
+}) {
   const rows = arrayByKeys(payload, ["jobs", "items"]);
-  const match = subcommand.match(/^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/);
+  const match = subcommand.match(
+    /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/,
+  );
   const family = strField(payload, "family") ?? strField(payload, "kind") ?? match?.[1] ?? "job";
   const action = match?.[2] ?? "updated";
   const status = strField(payload, "status") ?? strField(payload, "state") ?? "updated";
@@ -305,7 +306,13 @@ function JobLifecycleView({ payload, subcommand }: { payload: Record<string, unk
           ["Jobs", rows.length || 1],
         ]}
       />
-      {rows.length > 0 ? <JobRows rows={rows} /> : Object.keys(payload).length > 0 ? <JobRows rows={[payload]} /> : <EmptyResult kind="jobs" />}
+      {rows.length > 0 ? (
+        <JobRows rows={rows} />
+      ) : Object.keys(payload).length > 0 ? (
+        <JobRows rows={[payload]} />
+      ) : (
+        <EmptyResult kind="jobs" />
+      )}
     </div>
   );
 }
@@ -314,19 +321,34 @@ function EndpointView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrayByKeys(payload, ["endpoints", "candidates", "urls"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Candidates", numField(payload, "total") ?? rows.length], ["View", "Endpoint discovery"]]} />
-      <ResultRows rows={rows.map((item) => (typeof item === "string" ? { url: item, title: item } : item))} />
+      <ResultSummary
+        metrics={[
+          ["Candidates", numField(payload, "total") ?? rows.length],
+          ["View", "Endpoint discovery"],
+        ]}
+      />
+      <ResultRows
+        rows={rows.map((item) => (typeof item === "string" ? { url: item, title: item } : item))}
+      />
     </div>
   );
 }
 
 function BrandView({ payload }: { payload: Record<string, unknown> }) {
   const colors = arrField(payload, "colors");
-  const fonts = arrField(payload, "fonts").filter((item): item is string => typeof item === "string");
+  const fonts = arrField(payload, "fonts").filter(
+    (item): item is string => typeof item === "string",
+  );
   const assets = arrayByKeys(payload, ["logos", "assets"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Colors", colors.length], ["Fonts", fonts.length], ["View", strField(payload, "name") ?? "Brand identity"]]} />
+      <ResultSummary
+        metrics={[
+          ["Colors", colors.length],
+          ["Fonts", fonts.length],
+          ["View", strField(payload, "name") ?? "Brand identity"],
+        ]}
+      />
       {colors.length > 0 ? (
         <section className="operation-section">
           <h3 className="stats-heading">Colors</h3>
@@ -334,7 +356,9 @@ function BrandView({ payload }: { payload: Record<string, unknown> }) {
             {colors.slice(0, 12).map((item, index) => {
               const color = isRecord(item) ? strField(item, "hex") : undefined;
               const label = isRecord(item) ? strField(item, "usage") : undefined;
-              return <Swatch key={`${color ?? index}`} color={color} label={label ?? color ?? "color"} />;
+              return (
+                <Swatch key={`${color ?? index}`} color={color} label={label ?? color ?? "color"} />
+              );
             })}
           </div>
         </section>
@@ -385,7 +409,12 @@ function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
   const alt = `Screenshot of ${strField(payload, "url") ?? "captured page"}`;
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<FileImage size={16} />} title="Screenshot captured" tone="violet" metrics={[["Size", formatDetailValue("size_bytes", numField(payload, "size_bytes"))]]} />
+      <ResultHero
+        icon={<FileImage size={16} />}
+        title="Screenshot captured"
+        tone="violet"
+        metrics={[["Size", formatDetailValue("size_bytes", numField(payload, "size_bytes"))]]}
+      />
       {previewSrc ? (
         <section className="operation-section">
           <figure className="operation-screenshot-preview">
@@ -426,7 +455,12 @@ function WatchListView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "watches");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Watches", rows.length], ["View", "Watch schedules"]]} />
+      <ResultSummary
+        metrics={[
+          ["Watches", rows.length],
+          ["View", "Watch schedules"],
+        ]}
+      />
       {rows.length > 0 ? <ResultRows rows={rows} /> : <EmptyResult kind="watches" />}
     </div>
   );
@@ -435,7 +469,12 @@ function WatchListView({ payload }: { payload: Record<string, unknown> }) {
 function WatchDetailView({ payload }: { payload: Record<string, unknown> }) {
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero icon={<Clock3 size={16} />} title={strField(payload, "name") ?? "Watch updated"} tone="success" metrics={[["Artifacts", arrField(payload, "artifacts").length]]} />
+      <ResultHero
+        icon={<Clock3 size={16} />}
+        title={strField(payload, "name") ?? "Watch updated"}
+        tone="success"
+        metrics={[["Artifacts", arrField(payload, "artifacts").length]]}
+      />
       <GenericResultView payload={payload} embedded />
     </div>
   );

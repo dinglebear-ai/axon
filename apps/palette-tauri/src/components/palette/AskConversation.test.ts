@@ -10,7 +10,8 @@ describe("AskConversation styles", () => {
     // a non-file URL under this vitest config and throws "URL must be of scheme file".
     const styles = readFileSync("src/styles.css", "utf8");
 
-    expect(styles).toContain(".ask-message > p");
+    expect(styles).toContain(".aurora-message-content");
+    expect(styles).not.toContain(".ask-message > p");
     expect(styles).not.toContain(".ask-message p {");
   });
 });

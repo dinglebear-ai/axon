@@ -31,11 +31,7 @@ export const JobProgressView = memo(function JobProgressView({
   // Determinate when the backend exposed a percent; otherwise a low-width
   // "working" bar while running, full when done.
   const pct =
-    snapshot.percent != null
-      ? Math.round(snapshot.percent)
-      : snapshot.phase === "done"
-        ? 100
-        : 0;
+    snapshot.percent != null ? Math.round(snapshot.percent) : snapshot.phase === "done" ? 100 : 0;
 
   return (
     <section className="output-panel output-job-panel">
@@ -50,14 +46,32 @@ export const JobProgressView = memo(function JobProgressView({
             </span>
             <span className="output-subtitle">job {snapshot.jobId || "submitting…"}</span>
           </div>
-          <span className={`output-status output-status-${status.tone}`} role="status" aria-live="polite">
+          <span
+            className={`output-status output-status-${status.tone}`}
+            role="status"
+            aria-live="polite"
+          >
             {status.label}
           </span>
           <span className="output-tools">
-            <Button variant="plain" size="unstyled" type="button" onClick={onMinimize} title="Minimize" aria-label="Minimize to tray">
+            <Button
+              variant="plain"
+              size="unstyled"
+              type="button"
+              onClick={onMinimize}
+              title="Minimize"
+              aria-label="Minimize to tray"
+            >
               <Minus size={13} />
             </Button>
-            <Button variant="plain" size="unstyled" type="button" onClick={onClose} title="Close" aria-label="Close job view">
+            <Button
+              variant="plain"
+              size="unstyled"
+              type="button"
+              onClick={onClose}
+              title="Close"
+              aria-label="Close job view"
+            >
               <X size={13} />
             </Button>
           </span>
@@ -65,9 +79,14 @@ export const JobProgressView = memo(function JobProgressView({
 
         <div className="running-body">
           {snapshot.metrics.length > 0 && (
-            <div className="running-stat-strip" role="group" aria-label="Job progress stats">
+            <div className="running-stat-strip">
               {snapshot.metrics.map((metric, index) => (
-                <Stat key={metric.label} label={metric.label} value={metric.value} accent={index === 0} />
+                <Stat
+                  key={metric.label}
+                  label={metric.label}
+                  value={metric.value}
+                  accent={index === 0}
+                />
               ))}
             </div>
           )}
@@ -109,7 +128,14 @@ export const JobProgressView = memo(function JobProgressView({
 
           <div className="running-actions">
             {active ? (
-              <Button variant="plain" size="unstyled" type="button" className="disabled:opacity-100" onClick={onCancel} disabled={canceling}>
+              <Button
+                variant="plain"
+                size="unstyled"
+                type="button"
+                className="disabled:opacity-100"
+                onClick={onCancel}
+                disabled={canceling}
+              >
                 {canceling ? "Canceling…" : "Cancel job"}
               </Button>
             ) : null}

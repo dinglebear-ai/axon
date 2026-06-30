@@ -18,7 +18,9 @@ export function usePaletteLifecycle(
       appWindow.listen("palette://open-settings", () => dispatchView({ type: "openSettings" })),
     ];
     return () => {
-      void Promise.all(unlisteners).then((items) => items.forEach((unlisten) => unlisten()));
+      void Promise.all(unlisteners).then((items) => {
+        for (const unlisten of items) unlisten();
+      });
     };
   }, [dispatchView, setShownTick]);
 

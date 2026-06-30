@@ -1,5 +1,6 @@
 package com.axon.app.ui.jobs
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,8 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,13 +50,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.WatchUi
+import com.axon.app.ui.common.AxonElevation
+import com.axon.app.ui.common.AxonBadge
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
+import com.axon.app.ui.common.RecoveryActionCard
+import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
 @Composable
-fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
+fun JobsScreen(
+    onOpenAsk: () -> Unit = {},
+    onNestedBackAvailableChange: (Boolean) -> Unit = {},
+    vm: JobsOverviewViewModel = viewModel(),
+) {
     DisposableEffect(vm) {
         vm.setVisible(true)
         onDispose { vm.setVisible(false) }
@@ -65,6 +82,7 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
     var crawledPagesLoading by remember { mutableStateOf(false) }
     var crawledPagesError by remember { mutableStateOf<String?>(null) }
     val overviewRows = jobOverviewRows(jobsByKind, watches)
+    val hasAnyJobs = jobsByKind.values.any { it.isNotEmpty() } || watches.isNotEmpty()
     val reveal = rememberRevealState()
     val selectedJob = selectedJobRef?.let { ref ->
         jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
@@ -84,6 +102,20 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                 onFailure = { error -> crawledPagesError = error.message ?: "Unable to load crawl manifest" },
             )
             crawledPagesLoading = false
+        }
+    }
+    val canHandleNestedBack = selectedJob != null || drill != null
+    LaunchedEffect(canHandleNestedBack) {
+        onNestedBackAvailableChange(canHandleNestedBack)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onNestedBackAvailableChange(false) }
+    }
+    BackHandler(enabled = canHandleNestedBack) {
+        if (selectedJobRef != null) {
+            selectedJobRef = null
+        } else {
+            drill = null
         }
     }
 
@@ -110,9 +142,38 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
             ) {
                 when (val selected = drill) {
                     null -> {
-                        item { SectionLabel("Jobs") }
-                        if (error != null && active.isEmpty() && jobsByKind.isEmpty()) {
-                            item { JobsErrorCard(error.orEmpty()) }
+                        item {
+                            CommandConsoleHeader(
+                                eyebrow = "operations",
+                                title = "Job Command Deck",
+                                description = "Track crawl, ingest, embed, extract, and watch activity without losing scan density.",
+                                icon = Icons.Rounded.TaskAlt,
+                                tone = AxonTheme.colors.accentPrimary,
+                            ) {
+                                MetricPill("active", active.size.toString())
+                                MetricPill("families", overviewRows.count { it.runningCount > 0 || it.failedCount > 0 }.toString(), tone = AxonTheme.colors.accentPink)
+                                MetricPill("watches", watches.size.toString(), tone = AxonTheme.colors.orange)
+                            }
+                        }
+                        if (error != null) {
+                            item {
+                                JobsErrorCard(
+                                    message = error.orEmpty(),
+                                    onRetry = vm::refresh,
+                                )
+                            }
+                        } else if (!hasAnyJobs) {
+                            item {
+                                RecoveryActionCard(
+                                    title = "No jobs yet",
+                                    message = "Start from Ask or the action launcher, then return here to watch crawl, ingest, embed, and extract work progress.",
+                                    primaryLabel = "Create a job",
+                                    onPrimary = onOpenAsk,
+                                    secondaryLabel = "Refresh",
+                                    onSecondary = vm::refresh,
+                                    icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                )
+                            }
                         }
                         itemsIndexed(overviewRows, key = { _, row -> row.key }) { index, row ->
                             JobOverviewRow(
@@ -138,8 +199,8 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                             item { EmptyJobsCard("No ${selected.kind.label().lowercase()} jobs", "New ${selected.kind.label().lowercase()} submissions appear here.") }
                         } else {
                             itemsIndexed(visibleJobs, key = { _, job -> "${selected.kind}-${job.id}" }) { index, job ->
-                                JobDrillRow(
-                                    job,
+                                HierarchyJobRow(
+                                    job = job,
                                     modifier = Modifier
                                         .animateItem()
                                         .revealOnce(reveal, "${selected.kind}-${job.id}", index),
@@ -165,8 +226,8 @@ fun JobsScreen(vm: JobsOverviewViewModel = viewModel()) {
                             item { EmptyJobsCard("No watches", "Recurring URL change detectors appear here.") }
                         } else {
                             itemsIndexed(watches, key = { _, watch -> watch.id }) { index, watch ->
-                                WatchDrillRow(
-                                    watch,
+                                HierarchyWatchRow(
+                                    watch = watch,
                                     modifier = Modifier
                                         .animateItem()
                                         .revealOnce(reveal, watch.id, index),
@@ -185,7 +246,7 @@ private sealed interface JobDrill {
     data object Watches : JobDrill
 }
 
-private data class JobRef(val kind: JobFamily, val id: String)
+internal data class JobRef(val kind: JobFamily, val id: String)
 
 private data class JobOverviewRowModel(
     val key: String,
@@ -209,7 +270,7 @@ private fun jobOverviewRows(
         val jobs = jobsByKind[kind].orEmpty()
         val activeJobs = jobs.filter { isActiveJobStatus(it.status) }
         val runningCount = activeJobs.size
-        val failedCount = jobs.count { it.status.lowercase() in setOf("failed", "error") }
+        val failedCount = jobs.count { isFailedJobStatus(it.status) }
         val running = activeJobs.firstOrNull()
         val representative = running ?: jobs.firstOrNull()
         val aggregateProgress = aggregateProgressForJobs(activeJobs)
@@ -266,9 +327,19 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .axonElevation(shape, AxonElevation.Row)
             .clip(shape)
             .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append(row.title)
+                    if (row.detail.isNotBlank()) append(", ").append(row.detail)
+                    if (row.runningCount > 0) append(", ").append(row.runningCount).append(" running")
+                    if (row.failedCount > 0) append(", ").append(row.failedCount).append(" failed")
+                }
+                role = Role.Button
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = if (quiet) 18.dp else 20.dp, vertical = if (quiet) 13.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -304,7 +375,167 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
                 ProgressBar(progress, row.tone, modifier = Modifier.width(156.dp))
             }
         }
-        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.76f), modifier = Modifier.size(18.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "View jobs",
+                color = colors.textMuted.copy(alpha = 0.82f),
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                fontFamily = AxonTheme.fonts.body,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.76f), modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val colors = AxonTheme.colors
+    val tone = jobTone(job.kind)
+    val statusTone = jobStatusTone(job.status, tone)
+    val source = job.sourceType
+        ?.replace('_', ' ')
+        ?.replaceFirstChar { it.uppercase() }
+        ?: job.kind?.label()
+        ?: "Job"
+    val shape = RoundedCornerShape(8.dp)
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .axonElevation(shape, AxonElevation.Row)
+            .clip(shape)
+            .background(colors.control.copy(alpha = 0.045f), shape)
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${job.kind?.label() ?: "Job"} ${job.status}, ${shortTarget(jobDisplayTarget(job))}, view job details"
+                role = Role.Button
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .background(statusTone, RoundedCornerShape(999.dp)),
+            )
+            Text(
+                shortTarget(jobDisplayTarget(job)),
+                color = colors.textPrimary,
+                fontSize = 13.2.sp,
+                lineHeight = 17.sp,
+                fontFamily = AxonTheme.fonts.mono,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "View details",
+                color = colors.textMuted.copy(alpha = 0.84f),
+                fontSize = 10.8.sp,
+                lineHeight = 13.4.sp,
+                fontFamily = AxonTheme.fonts.body,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.66f), modifier = Modifier.size(16.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AxonBadge(job.kind?.label() ?: "Job", tone)
+            AxonBadge(statusLabel(job.status), statusTone)
+            AxonBadge(source, colors.textMuted)
+        }
+        if (isActiveJobStatus(job.status) || isCompletedJobStatus(job.status)) {
+            ProgressBar(progressForJob(job), tone, modifier = Modifier.width(188.dp))
+        }
+        coverageSummary(job)?.let { summary ->
+            AxonBadge(summary, tone)
+        }
+        Text(
+            jobProgressLabel(job),
+            color = colors.textMuted.copy(alpha = 0.78f),
+            fontSize = 11.4.sp,
+            lineHeight = 15.sp,
+            fontFamily = AxonTheme.fonts.mono,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        job.errorText?.takeIf { it.isNotBlank() }?.let { error ->
+            Text(
+                error,
+                color = colors.error,
+                fontSize = 11.4.sp,
+                lineHeight = 15.sp,
+                fontFamily = AxonTheme.fonts.body,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HierarchyWatchRow(watch: WatchUi, modifier: Modifier = Modifier) {
+    val colors = AxonTheme.colors
+    val tone = if (watch.enabled) colors.accentPrimary else colors.textMuted
+    val shape = RoundedCornerShape(8.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .axonElevation(shape, AxonElevation.Row)
+            .clip(shape)
+            .background(colors.control.copy(alpha = 0.04f), shape)
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .background(tone, RoundedCornerShape(999.dp)),
+            )
+            Text(
+                watch.name,
+                color = colors.textPrimary,
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
+                fontFamily = AxonTheme.fonts.body,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AxonBadge("Watch", colors.accentPrimary)
+            AxonBadge(if (watch.enabled) "Enabled" else "Paused", tone)
+            AxonBadge(watch.taskType, colors.textMuted)
+        }
+        Text(
+            "Every ${watch.everySeconds}s · next ${watch.nextRunAt ?: "not scheduled"}",
+            color = colors.textMuted.copy(alpha = 0.78f),
+            fontSize = 11.4.sp,
+            lineHeight = 15.sp,
+            fontFamily = AxonTheme.fonts.mono,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun jobStatusTone(status: String, activeTone: Color): Color {
+    val colors = AxonTheme.colors
+    return when (status.lowercase()) {
+        in ACTIVE_JOB_STATUSES -> activeTone
+        in COMPLETED_JOB_STATUSES -> colors.success
+        "failed", "error" -> colors.error
+        else -> colors.textMuted
     }
 }
 

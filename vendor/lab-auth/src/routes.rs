@@ -1,12 +1,14 @@
+use axum::Router;
 use axum::extract::Request;
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::{get, post};
-use axum::Router;
 use std::time::Instant;
 
-use crate::authorize::{authorize, browser_login, callback, register_client};
+use crate::authorize::{
+    authorize, browser_login, callback, native_callback, native_poll, register_client,
+};
 use crate::error::AuthErrorKind;
 use crate::metadata::{authorization_server_metadata, jwks, protected_resource_metadata};
 use crate::state::AuthState;
@@ -27,6 +29,8 @@ pub fn router(state: AuthState) -> Router {
         .route("/authorize", get(authorize))
         .route("/auth/login", get(browser_login))
         .route("/auth/google/callback", get(callback))
+        .route("/native/callback", get(native_callback))
+        .route("/native/poll", get(native_poll))
         .route("/token", post(token));
     if enable_registration {
         app = app.route("/register", post(register_client));
@@ -60,6 +64,8 @@ pub fn bearer_only_router(state: AuthState) -> Router {
         .route("/jwks", get(jwks))
         .route("/authorize", get(authorize))
         .route("/auth/google/callback", get(callback))
+        .route("/native/callback", get(native_callback))
+        .route("/native/poll", get(native_poll))
         .route("/token", post(token))
         .with_state(state)
         .layer(middleware::from_fn(auth_dispatch_observability))
@@ -76,6 +82,8 @@ pub const BEARER_ONLY_ROUTER_PATHS: &[(&str, &str)] = &[
     ("GET", "/.well-known/oauth-protected-resource"),
     ("GET", "/authorize"),
     ("GET", "/auth/google/callback"),
+    ("GET", "/native/callback"),
+    ("GET", "/native/poll"),
     ("GET", "/jwks"),
     ("POST", "/token"),
 ];
@@ -149,6 +157,8 @@ fn auth_dispatch_action(path: &str) -> &'static str {
         "/authorize" => "oauth.authorize",
         "/auth/login" => "oauth.browser_login",
         "/auth/google/callback" => "oauth.callback",
+        "/native/callback" => "oauth.native_callback",
+        "/native/poll" => "oauth.native_poll",
         "/token" => "oauth.token",
         _ => "oauth.unknown",
     }

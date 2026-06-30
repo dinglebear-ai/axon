@@ -106,7 +106,11 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
         )
         _jobsByKind.value = byKind
         _activeJobs.value = all
-        _errorMessage.value = if (failures == kinds.size && byKind.isEmpty()) firstError else null
+        _errorMessage.value = when {
+            failures == 0 -> null
+            failures == kinds.size && byKind.isEmpty() -> firstError
+            else -> "Some job types could not refresh; showing available and recent data."
+        }
     }
 
     private fun RecentJob.toFallbackJob(kind: JobFamily): JobUi =

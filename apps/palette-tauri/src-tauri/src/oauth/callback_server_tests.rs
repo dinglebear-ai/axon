@@ -30,7 +30,7 @@ fn parse_callback_params_reads_code_state_and_error() {
 }
 
 async fn send_request(port: u16, line: &str) {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let mut stream = TcpStream::connect(("localhost", port)).await.unwrap();
     stream
         .write_all(format!("{line}\r\nHost: localhost\r\n\r\n").as_bytes())
         .await
@@ -45,7 +45,7 @@ async fn await_code_returns_code_for_matching_state() {
     let port = listener.listener.local_addr().unwrap().port();
     assert_eq!(
         listener.redirect_uri,
-        format!("http://127.0.0.1:{port}/callback")
+        format!("http://localhost:{port}/callback")
     );
 
     let client = tokio::spawn(async move {
