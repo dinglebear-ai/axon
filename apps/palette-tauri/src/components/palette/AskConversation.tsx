@@ -145,8 +145,8 @@ export const ConversationThread = memo(function ConversationThread({
         turn.role === "user" ? (
           <Fragment key={turn.id}>
             <Message
-              role="user"
               className="ask-message ask-message-user"
+              data-role="user"
               time="now"
               actions={(
                 <ChatMessageActions
@@ -168,8 +168,8 @@ export const ConversationThread = memo(function ConversationThread({
         ) : (
           <Fragment key={turn.id}>
             <Message
-              role="assistant"
               className="ask-message ask-message-assistant"
+              data-role="assistant"
               time="now"
               actions={(
                 <ChatMessageActions
@@ -185,7 +185,7 @@ export const ConversationThread = memo(function ConversationThread({
                 />
               )}
             >
-              <span className="ask-assistant-avatar" aria-label="Axon">
+              <span className="ask-assistant-avatar" role="img" aria-label="Axon" title="Axon">
                 <AxonMark size={18} />
               </span>
               <div className="ask-assistant-stack">
