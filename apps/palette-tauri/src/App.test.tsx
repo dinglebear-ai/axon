@@ -49,9 +49,11 @@ describe("App local help", () => {
     window.localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       if (command === "resize_palette" || command === "hide_palette") return undefined;
-      if (command === "axon_http_request") throw new Error("REST should not be called for local help");
+      if (command === "axon_http_request")
+        throw new Error("REST should not be called for local help");
       return undefined;
     });
   });
@@ -84,9 +86,11 @@ describe("App local help", () => {
 
   it("opens selected action help from the command bar and replays it from history as local help", async () => {
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return { ...config, showFooterHints: true };
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return { ...config, showFooterHints: true };
       if (command === "resize_palette" || command === "hide_palette") return undefined;
-      if (command === "axon_http_request") throw new Error("REST should not be called for local help");
+      if (command === "axon_http_request")
+        throw new Error("REST should not be called for local help");
       return undefined;
     });
     await renderAndType("scrape");
@@ -123,7 +127,8 @@ describe("App command palette accessibility + keyboard nav", () => {
     window.localStorage.clear();
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       return undefined;
     });
   });
@@ -202,9 +207,16 @@ describe("App command palette accessibility + keyboard nav", () => {
 
   it("auto-runs only safe no-input switcher actions", async () => {
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       if (command === "axon_http_request") {
-        return { ok: true, status: 200, method: "GET", path: "/v1/sources", payload: { sources: [] } };
+        return {
+          ok: true,
+          status: 200,
+          method: "GET",
+          path: "/v1/sources",
+          payload: { sources: [] },
+        };
       }
       return undefined;
     });
@@ -229,13 +241,16 @@ describe("App command palette accessibility + keyboard nav", () => {
     vi.mocked(invoke).mockClear();
     fireEvent.click(await screen.findByRole("button", { name: /Dedupe/ }));
 
-    expect(await screen.findByRole("button", { name: /Switch from Dedupe collection/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /Switch from Dedupe collection/ }),
+    ).toBeInTheDocument();
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
   it("requires a second Enter before running guarded actions", async () => {
     vi.mocked(invoke).mockImplementation(async (command) => {
-      if (command === "load_palette_config" || command === "load_palette_default_config") return config;
+      if (command === "load_palette_config" || command === "load_palette_default_config")
+        return config;
       if (command === "axon_http_request") {
         return {
           ok: true,
@@ -276,8 +291,6 @@ describe("App command palette accessibility + keyboard nav", () => {
     expect(await screen.findByRole("button", { name: /Switch from/ })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /Switch from/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Switch from/ })).toBeNull());
   });
 });

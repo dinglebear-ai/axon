@@ -45,17 +45,31 @@ export const CrawlJobView = memo(function CrawlJobView({
           </div>
           <span className={`output-status output-status-${status.tone}`}>{status.label}</span>
           <span className="output-tools">
-            <Button variant="plain" size="unstyled" type="button" onClick={onMinimize} title="Minimize" aria-label="Minimize to tray">
+            <Button
+              variant="plain"
+              size="unstyled"
+              type="button"
+              onClick={onMinimize}
+              title="Minimize"
+              aria-label="Minimize to tray"
+            >
               <Minus size={13} />
             </Button>
-            <Button variant="plain" size="unstyled" type="button" onClick={onClose} title="Close" aria-label="Close job view">
+            <Button
+              variant="plain"
+              size="unstyled"
+              type="button"
+              onClick={onClose}
+              title="Close"
+              aria-label="Close job view"
+            >
               <X size={13} />
             </Button>
           </span>
         </header>
 
         <div className="running-body">
-          <div className="running-stat-strip" role="group" aria-label="Crawl progress stats">
+          <div className="running-stat-strip">
             <Stat label="Fetched" value={fmt(snapshot.fetched)} accent />
             <Stat label="Queued" value={fmt(snapshot.queued)} />
             <Stat label={titleCase(third.label.toLowerCase())} value={third.value} />
@@ -65,8 +79,7 @@ export const CrawlJobView = memo(function CrawlJobView({
           <div>
             <div className="running-progress-head">
               <span>
-                {pct}%
-                {snapshot.etaText ? ` · ${snapshot.etaText}` : ""}
+                {pct}%{snapshot.etaText ? ` · ${snapshot.etaText}` : ""}
               </span>
               {live ? (
                 <span>
@@ -101,8 +114,17 @@ export const CrawlJobView = memo(function CrawlJobView({
             </Button>
             {/* Cancel: `.running-actions button` has no :disabled rule (no dim
                 originally), so neutralize the primitive's disabled:opacity-45. */}
-            {snapshot.phase === "crawling" || snapshot.phase === "pending" || snapshot.phase === "embedding" ? (
-              <Button variant="plain" size="unstyled" type="button" className="disabled:opacity-100" onClick={onCancel} disabled={canceling}>
+            {snapshot.phase === "crawling" ||
+            snapshot.phase === "pending" ||
+            snapshot.phase === "embedding" ? (
+              <Button
+                variant="plain"
+                size="unstyled"
+                type="button"
+                className="disabled:opacity-100"
+                onClick={onCancel}
+                disabled={canceling}
+              >
                 {canceling ? "Canceling…" : "Cancel job"}
               </Button>
             ) : null}
@@ -144,7 +166,12 @@ function CrawlLog({
           {phase === "pending" ? "queued — waiting for a worker…" : "starting crawl…"}
         </div>
       ) : (
-        events.map((event, index) => <LogLine key={`${event.t}-${index}`} event={event} />)
+        events.map((event) => (
+          <LogLine
+            key={`${event.t}-${event.kind}-${event.url ?? event.text ?? event.status ?? ""}`}
+            event={event}
+          />
+        ))
       )}
       {live && events.length > 0 ? <span className="running-log-caret" aria-hidden="true" /> : null}
     </div>
@@ -167,7 +194,9 @@ function LogLine({ event }: { event: CrawlLogEvent }) {
     <div className="running-log-line">
       {time} <span className="rl-op">fetch</span> <span className="rl-url">{event.url ?? ""}</span>
       <span className="rl-arrow"> → </span>
-      <span className={warn ? "rl-status rl-status-warn" : "rl-status rl-status-ok"}>{event.status ?? "…"}</span>
+      <span className={warn ? "rl-status rl-status-warn" : "rl-status rl-status-ok"}>
+        {event.status ?? "…"}
+      </span>
       {event.kind === "warn" && event.text ? (
         <span className="rl-dim"> · {event.text}</span>
       ) : event.links != null ? (
@@ -202,7 +231,10 @@ function thirdCell(snap: CrawlSnapshot): { label: string; value: string } {
   return { label: "SAVED", value: fmt(snap.docs) };
 }
 
-function statusPill(snap: CrawlSnapshot): { label: string; tone: "ok" | "warn" | "error" | "neutral" | "info" } {
+function statusPill(snap: CrawlSnapshot): {
+  label: string;
+  tone: "ok" | "warn" | "error" | "neutral" | "info";
+} {
   switch (snap.phase) {
     case "pending":
     case "crawling":

@@ -6,9 +6,9 @@ import { chatToolMessage } from "@/lib/chatToolActions";
 describe("chatToolActions", () => {
   it("formats one-shot tool results for chat", () => {
     const scrape = ACTIONS.find((action) => action.subcommand === "scrape");
-    expect(scrape).toBeDefined();
+    if (!scrape) throw new Error("missing scrape action");
 
-    const message = chatToolMessage(scrape!, "https://example.com", {
+    const message = chatToolMessage(scrape, "https://example.com", {
       ok: true,
       status: 200,
       method: "POST",
@@ -23,9 +23,9 @@ describe("chatToolActions", () => {
 
   it("formats queued jobs with the job id", () => {
     const crawl = ACTIONS.find((action) => action.subcommand === "crawl");
-    expect(crawl).toBeDefined();
+    if (!crawl) throw new Error("missing crawl action");
 
-    const message = chatToolMessage(crawl!, "https://example.com/docs", {
+    const message = chatToolMessage(crawl, "https://example.com/docs", {
       ok: true,
       status: 202,
       method: "POST",

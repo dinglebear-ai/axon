@@ -8,10 +8,23 @@ import type { AskTurn } from "@/lib/runState";
 
 const noop = () => {};
 
-function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
-  Object.defineProperty(element, "scrollHeight", { configurable: true, value: metrics.scrollHeight });
-  Object.defineProperty(element, "clientHeight", { configurable: true, value: metrics.clientHeight });
-  Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: metrics.scrollTop });
+function setScrollMetrics(
+  element: HTMLElement,
+  metrics: { scrollHeight: number; clientHeight: number; scrollTop: number },
+) {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: metrics.scrollHeight,
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: metrics.clientHeight,
+  });
+  Object.defineProperty(element, "scrollTop", {
+    configurable: true,
+    writable: true,
+    value: metrics.scrollTop,
+  });
 }
 
 describe("AskConversation", () => {
@@ -57,7 +70,12 @@ describe("AskConversation", () => {
             pending: true,
             activities: [
               { id: "act1", kind: "thinking", label: "Thinking", detail: "Planning retrieval" },
-              { id: "act2", kind: "tool", label: "Retrieving context", detail: "Querying collection axon" },
+              {
+                id: "act2",
+                kind: "tool",
+                label: "Retrieving context",
+                detail: "Querying collection axon",
+              },
             ],
           },
         ]}
@@ -135,7 +153,9 @@ describe("AskConversation", () => {
     fireEvent.change(input, { target: { value: "/scrape" } });
     fireEvent.click(screen.getByRole("option", { name: /Scrape/i }));
     fireEvent.change(input, { target: { value: "https://example.com" } });
-    fireEvent.submit(input.closest("form")!);
+    const form = input.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
 
     expect(onRunAction).toHaveBeenCalledWith("scrape", "https://example.com");
   });
@@ -188,11 +208,17 @@ describe("AskConversation", () => {
 
     expect(screen.getByRole("button", { name: "Copy user message" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit user message" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Regenerate from user message" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Suggest docs for user message" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Regenerate from user message" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Suggest docs for user message" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Suggest")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit user message" }));
-    expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toHaveValue("how do hooks work?");
+    expect(screen.getByRole("textbox", { name: "Ask a follow-up" })).toHaveValue(
+      "how do hooks work?",
+    );
   });
 });

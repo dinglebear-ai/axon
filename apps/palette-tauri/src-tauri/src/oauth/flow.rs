@@ -223,18 +223,24 @@ pub(crate) async fn poll_native_code(
 ) -> Result<String, String> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if tokio::time::Instant::now() >= deadline {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
             return Err("timed out waiting for the OAuth redirect".to_string());
         }
-        let response = client
-            .get(poll_endpoint)
-            .query(&[("state", state)])
-            .header(reqwest::header::ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(|err| format!("native OAuth poll request failed: {err}"))?;
+        let remaining = deadline.saturating_duration_since(now);
+        let response = tokio::time::timeout(
+            remaining,
+            client
+                .get(poll_endpoint)
+                .query(&[("state", state)])
+                .header(reqwest::header::ACCEPT, "application/json")
+                .send(),
+        )
+        .await
+        .map_err(|_| "timed out waiting for the OAuth redirect".to_string())?
+        .map_err(|err| format!("native OAuth poll request failed: {err}"))?;
         if response.status() == reqwest::StatusCode::ACCEPTED {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(500).min(remaining)).await;
             continue;
         }
         if !response.status().is_success() {
@@ -243,14 +249,16 @@ pub(crate) async fn poll_native_code(
                 response.status()
             ));
         }
-        let body: NativePollResponse = response
-            .json()
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let body: NativePollResponse = tokio::time::timeout(remaining, response.json())
             .await
+            .map_err(|_| "timed out waiting for the OAuth redirect".to_string())?
             .map_err(|err| format!("native OAuth poll returned an invalid response: {err}"))?;
         if let Some(code) = body.code {
             return Ok(code);
         }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        tokio::time::sleep(Duration::from_millis(500).min(remaining)).await;
     }
 }
 

@@ -394,7 +394,17 @@ impl SqliteStore {
                     |row| row.get(0),
                 )
                 .map_err(sqlite_error)?;
-            Ok((authorization_requests + browser_login_states) as usize)
+            let native_authorization_results: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM native_authorization_results WHERE expires_at > ?1",
+                    params![now],
+                    |row| row.get(0),
+                )
+                .map_err(sqlite_error)?;
+            Ok(
+                (authorization_requests + browser_login_states + native_authorization_results)
+                    as usize,
+            )
         })
         .await
     }
@@ -428,10 +438,7 @@ impl SqliteStore {
             conn.execute(
                 "INSERT INTO native_authorization_results (state, code, created_at, expires_at)
                  VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(state) DO UPDATE SET
-                    code = excluded.code,
-                    created_at = excluded.created_at,
-                    expires_at = excluded.expires_at",
+                 ON CONFLICT(state) DO NOTHING",
                 params![
                     result.state,
                     result.code,

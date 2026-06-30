@@ -15,10 +15,12 @@ export interface ResponseProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const Response = React.forwardRef<HTMLDivElement, ResponseProps>(
-  ({ className, markdown, streaming = false, ...props }, ref) => (
+  ({ className, markdown, sources: _sources, streaming = false, ...props }, ref) => (
     <div
       ref={ref}
-      className={["aurora-response", streaming ? "aurora-response-streaming" : "", className].filter(Boolean).join(" ")}
+      className={["aurora-response", streaming ? "aurora-response-streaming" : "", className]
+        .filter(Boolean)
+        .join(" ")}
       aria-busy={streaming || undefined}
       aria-live={streaming ? "polite" : undefined}
       {...props}
