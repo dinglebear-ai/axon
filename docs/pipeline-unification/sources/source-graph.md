@@ -98,6 +98,13 @@ Not implemented yet:
 Edges are never “just true.” They are claims with evidence, confidence, and
 authority.
 
+This file is the canonical graph node-kind, edge-kind, authority, and evidence
+registry. Generated graph schemas, parser fixtures, DTO docs, and GraphStore
+validation must use these names exactly. No schema file may introduce alternate
+node kind names such as `site`, `repository`, `file`, or `api_endpoint` when
+the registry names here are `web_origin`, `repo`, `repo_file`, and
+`api_operation`.
+
 ## Node Kinds
 
 | Kind | Meaning | Canonical URI examples |

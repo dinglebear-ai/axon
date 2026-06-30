@@ -7,9 +7,15 @@ This directory owns per-crate implementation contracts for the pipeline
 unification target crate set.
 
 `foundation/crate-structure.md` is the high-level dependency and ownership map.
-Each `crates/<crate>/README.md` here is the implementation-ready crate contract:
-purpose, public modules, owned traits/DTOs/services, dependencies, generated
-artifacts, fixtures, tests, and acceptance criteria.
+Each `crates/<crate>/README.md` here is the human-facing implementation
+contract for the target crate: purpose, public modules, owned
+traits/DTOs/services, dependencies, generated artifacts, fixtures, tests, and
+acceptance criteria.
+
+When the real crate exists, `crates/<crate>/src/CLAUDE.md` is the agent
+source-of-truth maintenance contract. The README must be generated from or
+checked against `src/CLAUDE.md` plus rustdoc so human docs and agent docs cannot
+drift.
 
 These docs are intentionally under `docs/pipeline-unification/crates/` to avoid
 confusion with the real repo `crates/` source directory.
@@ -66,6 +72,24 @@ layers never depend on higher orchestration or transport layers.
 Transport crates (`axon-cli`, `axon-mcp`, `axon-web`) must consume
 `axon-services` and `axon-api`; they must not import domain crate internals.
 
+## Public Type Ownership
+
+Serializable wire DTOs, enum registries, request/result envelopes, pagination,
+error projections, progress projections, and capability documents are defined in
+`axon-api`.
+
+Domain crates may define internal helper structs and builder types, but any type
+that crosses CLI, MCP, REST, jobs, generated schemas, or app boundaries must
+either be:
+
+- defined in `axon-api`, or
+- explicitly documented as a domain-local type that is converted to an
+  `axon-api` DTO before crossing a boundary.
+
+Per-crate READMEs must label public API entries as `defined here`,
+`re-exported from axon-api`, or `internal builder`. This prevents accidental
+second DTO definitions.
+
 ## Acceptance Criteria
 
 - every target crate has a per-crate contract README
@@ -73,3 +97,5 @@ Transport crates (`axon-cli`, `axon-mcp`, `axon-web`) must consume
 - every crate contract names required public modules and tests
 - every crate contract links back to the high-level crate structure contract
 - crate contracts do not conflict with `foundation/crate-structure.md`
+- every real crate `src/CLAUDE.md` has sibling `AGENTS.md` and `GEMINI.md`
+  symlinks pointing to it

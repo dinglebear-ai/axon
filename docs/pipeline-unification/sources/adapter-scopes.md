@@ -64,7 +64,8 @@ Each adapter exposes:
 {
   "name": "github",
   "version": "2026-06-30",
-  "source_kinds": ["github", "git"],
+  "source_kinds": ["git"],
+  "provider_kinds": ["github"],
   "default_scope": "repo",
   "scopes": [],
   "patterns": [],
@@ -101,36 +102,42 @@ Scope capability:
 | `optional_graph_fact_kinds` | yes | Opportunistic graph facts this scope may emit without failing when absent. |
 | `degraded_modes` | yes | Allowed degraded behavior. |
 
+`source_kinds` uses only the closed `SourceKind` enum from
+[../foundation/types/enum-contract.md](../foundation/types/enum-contract.md).
+Provider-specific names such as `github`, `gitlab`, `npm`, or `local_path`
+belong in `name`, `provider_kinds`, `source_adapter`, or source-specific
+metadata fields.
+
 ## Target Adapter Registry
 
 | Adapter | Source Kinds | Scopes | Default |
 |---|---|---|---|
 | `web` | `web` | `page`, `site`, `docs`, `map` | `site` |
-| `local` | `local_path` | `file`, `directory`, `workspace`, `repo`, `map` | detected |
-| `upload` | `derived`, `session`, `local_path` | `file`, `archive`, `repomix`, `session`, `warc`, `bundle`, `map` | detected |
-| `github` | `github`, `git` | `repo`, `branch`, `commit`, `issues`, `prs`, `wiki`, `org`, `map` | `repo` |
-| `gitlab` | `gitlab`, `git` | `repo`, `branch`, `commit`, `issues`, `mrs`, `wiki`, `group`, `map` | `repo` |
-| `gitea` | `gitea`, `git` | `repo`, `branch`, `commit`, `issues`, `prs`, `wiki`, `org`, `map` | `repo` |
+| `local` | `local` | `file`, `directory`, `workspace`, `repo`, `map` | detected |
+| `upload` | `upload`, `session`, `local` | `file`, `archive`, `repomix`, `session`, `warc`, `bundle`, `map` | detected |
+| `github` | `git` | `repo`, `branch`, `commit`, `issues`, `prs`, `wiki`, `org`, `map` | `repo` |
+| `gitlab` | `git` | `repo`, `branch`, `commit`, `issues`, `mrs`, `wiki`, `group`, `map` | `repo` |
+| `gitea` | `git` | `repo`, `branch`, `commit`, `issues`, `prs`, `wiki`, `org`, `map` | `repo` |
 | `generic_git` | `git` | `repo`, `branch`, `commit`, `map` | `repo` |
-| `crates` | `registry_package` | `package`, `version`, `owner`, `docs`, `dependencies`, `map` | `package` |
-| `npm` | `registry_package` | `package`, `version`, `scope`, `docs`, `dependencies`, `map` | `package` |
-| `pypi` | `registry_package` | `package`, `version`, `docs`, `dependencies`, `map` | `package` |
-| `docker` | `registry_package` | `image`, `tag`, `namespace`, `manifest`, `map` | `image` |
-| `maven` | `registry_package` | `package`, `version`, `group`, `dependencies`, `map` | `package` |
-| `nuget` | `registry_package` | `package`, `version`, `owner`, `dependencies`, `map` | `package` |
-| `rubygems` | `registry_package` | `package`, `version`, `owner`, `dependencies`, `map` | `package` |
-| `packagist` | `registry_package` | `package`, `version`, `vendor`, `dependencies`, `map` | `package` |
-| `hex` | `registry_package` | `package`, `version`, `owner`, `dependencies`, `map` | `package` |
-| `pub` | `registry_package` | `package`, `version`, `publisher`, `dependencies`, `map` | `package` |
-| `terraform_registry` | `registry_package` | `provider`, `module`, `version`, `namespace`, `map` | detected |
-| `helm` | `registry_package` | `chart`, `version`, `repository`, `dependencies`, `map` | `chart` |
-| `huggingface` | `registry_package` | `model`, `dataset`, `space`, `org`, `map` | detected |
+| `crates` | `registry` | `package`, `version`, `owner`, `docs`, `dependencies`, `map` | `package` |
+| `npm` | `registry` | `package`, `version`, `scope`, `docs`, `dependencies`, `map` | `package` |
+| `pypi` | `registry` | `package`, `version`, `docs`, `dependencies`, `map` | `package` |
+| `docker` | `registry` | `image`, `tag`, `namespace`, `manifest`, `map` | `image` |
+| `maven` | `registry` | `package`, `version`, `group`, `dependencies`, `map` | `package` |
+| `nuget` | `registry` | `package`, `version`, `owner`, `dependencies`, `map` | `package` |
+| `rubygems` | `registry` | `package`, `version`, `owner`, `dependencies`, `map` | `package` |
+| `packagist` | `registry` | `package`, `version`, `vendor`, `dependencies`, `map` | `package` |
+| `hex` | `registry` | `package`, `version`, `owner`, `dependencies`, `map` | `package` |
+| `pub` | `registry` | `package`, `version`, `publisher`, `dependencies`, `map` | `package` |
+| `terraform_registry` | `registry` | `provider`, `module`, `version`, `namespace`, `map` | detected |
+| `helm` | `registry` | `chart`, `version`, `repository`, `dependencies`, `map` | `chart` |
+| `huggingface` | `registry` | `model`, `dataset`, `space`, `org`, `map` | detected |
 | `reddit` | `reddit` | `subreddit`, `thread`, `user`, `search`, `map` | detected |
 | `youtube` | `youtube` | `video`, `playlist`, `channel`, `captions`, `map` | detected |
 | `feed` | `feed` | `feed`, `entry`, `site`, `map` | `feed` |
 | `sessions` | `session` | `project`, `provider`, `file`, `upload`, `map` | detected |
-| `cli_tool` | `derived` | `tool`, `script`, `command`, `run`, `help`, `schema`, `map` | `run` |
-| `mcp_tool` | `derived` | `server`, `tool`, `resource`, `prompt`, `schema`, `call`, `map` | detected |
+| `cli_tool` | `cli_tool` | `tool`, `script`, `command`, `run`, `help`, `schema`, `map` | `run` |
+| `mcp_tool` | `mcp_tool` | `server`, `tool`, `resource`, `prompt`, `schema`, `call`, `map` | detected |
 | `deepwiki` | `web`, `git` | `repo`, `org`, `index`, `map` | `repo` |
 
 Memory is intentionally not a source adapter. Durable memory lifecycle belongs
@@ -149,11 +156,6 @@ to `axon-memory`.
 | `commit` | immutable commit snapshot |
 | `org`/`group` | organization/group members |
 | `package` | registry package latest/default |
-
-`map` scopes may support watches. A watched map refreshes the candidate
-manifest and source graph hints for the mapped collection. It does not publish
-vectors unless the watch explicitly creates child source jobs for discovered
-items.
 | `version` | specific package version |
 | `dependencies` | dependency metadata |
 | `file` | one local/uploaded file |
@@ -164,6 +166,11 @@ items.
 | `tool`/`script`/`command`/`run`/`help`/`schema` | CLI tool scopes |
 | `server`/`resource`/`prompt`/`call` | MCP scopes |
 
+`map` scopes may support watches. A watched map refreshes the candidate
+manifest and source graph hints for the mapped collection. It does not publish
+vectors unless the watch explicitly creates child source jobs for discovered
+items.
+
 ## Web Adapter
 
 | Scope | Embeds | Watch | Graph Facts | Notes |
@@ -173,17 +180,34 @@ items.
 | `docs` | yes | yes | official docs authority links | uses authority/docs mapping |
 | `map` | no | yes | candidate links/sitemap refs | discovery only |
 
-Options:
+Required web adapter options:
 
-- `max_pages`
-- `max_depth`
-- `include_subdomains`
-- `respect_robots`
-- `render_mode`
-- `headers`
-- `sitemap`
-- `url_whitelist`
-- `url_blacklist`
+| Option | Type | Default | Applies To | Contract |
+|---|---|---|---|---|
+| `max_pages` | integer | config | `site`, `docs`, `map` | Hard cap for discovered/fetched pages; `0` requires explicit unbounded approval. |
+| `max_depth` | integer | config | `site`, `docs` | Maximum link depth from seed. |
+| `include_subdomains` | bool | `false` | `site`, `docs`, `map` | Broadens host scope only when explicit. |
+| `respect_robots` | bool | config | all web scopes | Records robots decision in metadata. |
+| `render_mode` | enum | `auto_switch` | `page`, `site`, `docs` | `http`, `chrome`, or `auto_switch`; Chrome fallback is observable. |
+| `headers` | redacted map | empty | all web scopes | Custom fetch/render headers, never public. |
+| `discover_sitemaps` | bool | `true` | `site`, `docs`, `map` | Crawl sitemap indexes and sitemap files. |
+| `max_sitemaps` | integer | config | `site`, `docs`, `map` | Hard cap for sitemap entries/imports. |
+| `sitemap_since_days` | integer | `0` | `site`, `docs`, `map` | Optional lastmod filter. |
+| `url_whitelist` | string[] | empty | `site`, `docs`, `map` | Allowlist paths/hosts after canonicalization. |
+| `url_blacklist` | string[] | empty | `site`, `docs`, `map` | Denylist paths/hosts after canonicalization. |
+| `etag_conditional` | bool | config | `site`, `docs`, `page` | Uses ETag/Last-Modified to avoid unchanged fetches. |
+| `cache_policy` | enum | config | all web scopes | `bypass`, `read`, `write`, `read_write`; records cache hit/miss. |
+| `min_markdown_chars` | integer | config | `page`, `site`, `docs` | Thin-content threshold. |
+| `drop_thin_markdown` | bool | config | `page`, `site`, `docs` | Drops thin pages from embedding but records item status. |
+| `warc_path` | artifact path | none | `site`, `docs` | Writes WARC through ArtifactStore and links pages to WARC artifact. |
+| `automation_script` | artifact/source ref | none | Chrome scopes | Bounded Chrome automation steps before capture. |
+| `verticals_enabled` | bool | config | `page`, `site`, `docs` | Allows registered vertical extractors before generic page processing. |
+| `vertical_cache_ttl_secs` | integer | config | verticals | Cache TTL for vertical extraction metadata. |
+
+Chrome fallback and vertical extraction are optional capabilities. If requested
+and unavailable, the web adapter must either fail before mutation or mark the
+job `completed_degraded` according to the requested option's required/fallback
+policy.
 
 ## Local Adapter
 

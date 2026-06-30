@@ -25,7 +25,7 @@ large outputs. Config files are for bootstrap and tuning, not runtime state.
 |---|---|---|
 | `JobStore` | jobs, attempts, events, heartbeats, config snapshots | SQLite |
 | `LedgerStore` | sources, items, manifests, generations, leases, cleanup debt | SQLite |
-| `DocumentStatusStore` | document/chunk lifecycle and publish state | SQLite |
+| document status rows | document/chunk lifecycle and publish state owned by `LedgerStore` | SQLite |
 | `GraphStore` | nodes, edges, evidence, merge/conflict state | SQLite |
 | `MemoryStore` | memory metadata, decay/reinforcement/review | SQLite + VectorStore |
 | `WatchStore` | watch configs, schedules, runs | SQLite |

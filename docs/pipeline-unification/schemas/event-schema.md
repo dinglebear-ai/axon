@@ -104,6 +104,9 @@ cargo xtask schemas events --check
 - `HeartbeatState`
 
 Enum values must match `runtime/observability-contract.md`.
+The canonical enum registry is `foundation/types/enum-contract.md`; generated
+event schemas, job schemas, OpenAPI, MCP schema, and CLI JSON must all consume
+that registry rather than defining local string lists.
 
 ## Required Phase Enum Values
 
@@ -140,6 +143,10 @@ degraded
 failed
 canceled
 ```
+
+If a family needs a narrower projection, the generated schema records a mapping
+from the canonical enum to the projection and fails drift checks when a new
+canonical phase has no explicit mapping.
 
 ## StageCounts Shape
 

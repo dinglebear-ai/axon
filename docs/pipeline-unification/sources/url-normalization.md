@@ -125,7 +125,7 @@ secret
 
 ## Canonical URI Shapes
 
-| Source Kind | Canonical URI Shape |
+| Source Family | Canonical URI Shape |
 |---|---|
 | web page/site/docs | `https://host/path` |
 | local project | `local://<local_project_key>` |

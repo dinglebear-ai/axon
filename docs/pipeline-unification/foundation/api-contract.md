@@ -150,9 +150,9 @@ pub struct PruneExecuteRequest;
 pub struct PruneResult;
 pub struct CleanupDebtRequest;
 pub struct CleanupDebtResult;
-pub struct ResetRequest;
+pub struct ResetPlanRequest;
 pub struct ResetPlan;
-pub struct ResetExecuteRequest;
+pub struct ResetExecRequest;
 pub struct ResetResult;
 pub struct DedupeRequest;
 pub struct DedupeResult;
@@ -503,6 +503,10 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `DedupeResult` | `matched`, `deduped`, `dry_run` | `job`, `warnings` |
 | `PurgeRequest` | `dry_run` | `source_id`, `url`, `prefix`, `filters`, `confirm` |
 | `PurgeResult` | `matched`, `purged`, `dry_run` | `prune_plan`, `job`, `warnings` |
+| `ResetPlanRequest` | `stores`, `dry_run` | `collection`, `include_artifacts`, `include_config`, `reason` |
+| `ResetPlan` | `reset_plan_id`, `stores`, `counts`, `requires_confirmation`, `expires_at` | `warnings`, `receipt_preview` |
+| `ResetExecRequest` | `reset_plan_id`, `confirm` | `reason` |
+| `ResetResult` | `reset_id`, `job_id`, `stores`, `deleted`, `created`, `receipt_artifact_id` | `warnings` |
 | `CollectionListRequest` | none | `include_stats`, `limit`, `cursor` |
 | `CollectionSummary` | `collection`, `vectors`, `points` | `payload_indexes`, `status` |
 | `CollectionDetail` | all `CollectionSummary` fields, `schema`, `health` | `segments`, `source_counts` |
@@ -523,6 +527,18 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `PanelOpsReport` | `qdrant_url`, `tei_url`, `collection`, `mcp_http_url` | `warnings` |
 | `PanelStackReport` | `services`, `status` | `warnings` |
 | `PanelSetupTargets` | `targets` | `warnings` |
+| `ConfigListRequest` | none | `source`, `reveal` |
+| `ConfigValueRequest` | `key` | `source`, `reveal` |
+| `ConfigEditRequest` | `key`, `operation` | `value`, `domain`, `dry_run` |
+| `ConfigValidationReport` | `status`, `files`, `errors`, `warnings` | `suggested_edits` |
+| `SetupRequest` | `operation` | `dry_run`, `profile`, `options` |
+| `SetupResult` | `operation`, `status`, `actions` | `warnings`, `artifacts`, `restart_required` |
+| `ServeRequest` | none | `bind`, `port`, `workers`, `mcp_enabled`, `web_enabled` |
+| `ServeResult` | `bind`, `port`, `started`, `features` | `warnings` |
+| `McpServerRequest` | none | `transport`, `bind`, `port` |
+| `McpServerResult` | `transport`, `started` | `url`, `warnings` |
+| `PaletteRequest` | `operation` | `target`, `options` |
+| `PaletteResult` | `operation`, `status` | `warnings`, `url`, `process_id` |
 
 ## Required Enums
 

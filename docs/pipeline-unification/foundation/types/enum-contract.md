@@ -7,6 +7,12 @@ Enums are closed, documented discriminants owned by `axon-api`. They define
 pipeline state, source kind, scope, content kind, provider kind, visibility,
 severity, and lifecycle behavior.
 
+This file is the sole source of truth for serialized enum values. Every enum
+value used by adapter scopes, metadata payloads, graph contracts,
+observability/events, errors, REST, MCP, CLI schemas, and generated docs must
+appear here. Contract checks must fail when another doc introduces a stable enum
+string that is absent from this file.
+
 ## Rules
 
 - Rust variants are PascalCase.
@@ -24,7 +30,7 @@ pub enum SourceIntent { Acquire, Refresh, Watch, Map }
 pub enum SourceRefreshPolicy { IfStale, Force, Never }
 pub enum SourceWatchPolicy { Disabled, Ensure, Enabled }
 pub enum ExecutionMode { Foreground, Background, Wait }
-pub enum ResponseMode { Summary, Full, JobOnly, ArtifactOnly }
+pub enum ResponseMode { Auto, Summary, Full, Inline, Artifact, Path, JobOnly }
 pub enum ArtifactMode { None, OnLargeOutput, Always }
 
 pub enum SourceKind {
@@ -47,13 +53,23 @@ pub enum SourceScope {
     Site,
     Docs,
     Repo,
+    Workspace,
+    Branch,
     Org,
     Package,
+    Version,
+    Feed,
     Subreddit,
     Thread,
+    Comment,
     Video,
     Playlist,
     Channel,
+    Issue,
+    PullRequest,
+    MergeRequest,
+    Release,
+    Wiki,
     File,
     Directory,
     Map,
@@ -73,6 +89,7 @@ pub enum PipelinePhase {
     Discovering,
     Diffing,
     Fetching,
+    Rendering,
     Enriching,
     Normalizing,
     Parsing,
@@ -82,9 +99,12 @@ pub enum PipelinePhase {
     Embedding,
     Vectorizing,
     Upserting,
+    Retrieving,
+    Synthesizing,
     Publishing,
     Cleaning,
     Complete,
+    Canceled,
 }
 
 pub enum JobKind {
@@ -222,9 +242,18 @@ pub enum ProviderKind {
 
 pub enum HealthStatus { Healthy, Degraded, Unavailable, Cooling, Unknown }
 pub enum Visibility { Public, Internal, Sensitive, Redacted, Derived }
-pub enum Severity { Info, Warning, Degraded, Failed, Fatal }
+pub enum Severity { Debug, Info, Warning, Degraded, Failed, Fatal }
 pub enum JobPriority { Interactive, High, Normal, Background, Maintenance }
-pub enum AuthorityLevel { Official, Verified, Inferred, Community, Mirror, Unknown }
+pub enum AuthorityLevel {
+    Official,
+    Verified,
+    UserPinned,
+    Inferred,
+    Community,
+    Mirror,
+    Conflicting,
+    Unknown,
+}
 pub enum ExecutionAffinity { Inline, Worker, Scheduler, ProviderBound }
 pub enum SafetyClass { PublicNetwork, AuthenticatedNetwork, LocalFilesystem, ToolExecution }
 pub enum CredentialKind { ApiKey, OAuthToken, BearerToken, BasicAuth, Cookie, SshKey, LocalConfig }
@@ -241,6 +270,7 @@ pub enum TransportKind { Cli, Rest, Mcp, Watch, Worker, System }
 |---|---|
 | `SourceKind::CliTool` | `"cli_tool"` |
 | `SourceScope::Subreddit` | `"subreddit"` |
+| `ResponseMode::Auto` | `"auto"` |
 | `LifecycleStatus::CompletedDegraded` | `"completed_degraded"` |
 | `ProviderKind::NetworkCapture` | `"network_capture"` |
 
@@ -250,3 +280,5 @@ pub enum TransportKind { Cli, Rest, Mcp, Watch, Worker, System }
 - every enum appears in generated JSON schema when externally exposed
 - every enum has docs for when each variant is used
 - no stable status/kind/scope is represented as an untyped string
+- schema generation checks fail when docs or registries use stable enum values
+  not listed here

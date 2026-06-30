@@ -81,8 +81,8 @@ Rules:
 - symlinks are resolved before read when policy requires containment
 - ignored files and binary files follow adapter policy
 - secret-looking files are excluded unless explicitly allowed
-- `.env`, private keys, token stores, browser profiles, and credential dirs are
-  denylisted by default
+- `.env`, private keys, token stores, browser profiles, SSH/cloud config dirs,
+  Codex/Gemini/OAuth homes, and credential dirs are denylisted by default
 - local artifacts are stored by artifact id, not raw path
 
 ## Tool Execution Policy
@@ -132,7 +132,8 @@ Redaction must cover:
 - authorization headers
 - private keys
 - database URLs with passwords
-- local credential paths when classified sensitive
+- local credential paths, provider homes, browser profiles, SSH/cloud config,
+  and token-store paths when classified sensitive
 
 ## Artifact Safety
 

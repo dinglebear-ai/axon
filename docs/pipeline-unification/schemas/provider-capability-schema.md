@@ -6,6 +6,11 @@ Last Modified: 2026-06-30
 Provider capability schemas define how providers report features, health,
 limits, cooling, reservations, and degradation behavior.
 
+The provider capability schema is generated from the same provider registry and
+reservation state enum used by `runtime/provider-contract.md` and
+`runtime/job-contract.md`. There is no second hand-maintained list of provider
+kinds, health states, or reservation states.
+
 ## Generated Artifacts
 
 ```text
@@ -66,6 +71,7 @@ Every capability includes:
 - `cooldown_until`
 - `last_error` redacted
 - `reservation_policy`
+- `reservation_state`
 - `cost_class`
 - `degraded_modes`
 - `fake_overrides_supported`
@@ -84,6 +90,7 @@ Every capability includes:
     "limits",
     "features",
     "reservation_policy",
+    "reservation_state",
     "degraded_modes"
   ],
   "properties": {
@@ -100,12 +107,40 @@ Every capability includes:
     "cooldown_until": { "type": ["string", "null"], "format": "date-time" },
     "last_error": { "$ref": "#/$defs/ApiError" },
     "reservation_policy": { "$ref": "#/$defs/ReservationPolicy" },
+    "reservation_state": { "$ref": "#/$defs/ReservationStateSnapshot" },
     "cost_class": { "$ref": "#/$defs/ProviderCostClass" },
     "degraded_modes": {
       "type": "array",
       "items": { "$ref": "#/$defs/DegradedMode" }
     },
     "fake_overrides_supported": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}
+```
+
+## Reservation State Snapshot
+
+```json
+{
+  "type": "object",
+  "required": ["queued", "active", "available_units", "priority_breakdown"],
+  "properties": {
+    "queued": { "type": "integer", "minimum": 0 },
+    "active": { "type": "integer", "minimum": 0 },
+    "available_units": { "type": "integer", "minimum": 0 },
+    "oldest_queued_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "priority_breakdown": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["requested", "queued", "granted", "active", "released", "expired", "canceled", "failed"]
+      }
+    }
   },
   "additionalProperties": false
 }

@@ -166,6 +166,7 @@ validation unless the target DTO explicitly exposes `options`, `metadata`, or
         "collections",
         "graph",
         "providers",
+        "reset",
         "status",
         "doctor",
         "capabilities",
@@ -218,6 +219,7 @@ Every action maps to exactly one `axon-api` request DTO after MCP conversion.
 | `suggest` | `SuggestRequest` |
 | `research` | `ResearchRequest` |
 | `summarize` | `SummarizeRequest` |
+| `reset` | `ResetPlanRequest` or `ResetExecRequest` based on `body.confirm` / `body.reset_plan_id` |
 | `endpoints` | `EndpointDiscoveryRequest` |
 | `brand` | `BrandRequest` |
 | `diff` | `DiffRequest` |

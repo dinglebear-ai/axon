@@ -39,32 +39,44 @@ The generated artifact records these paths in `x-axon.source_inputs`.
 
 ## Required Payload Fields
 
-Every vector point includes:
+Every vector point includes exactly the required fields from
+[../sources/metadata-payload.md](../sources/metadata-payload.md). This schema
+contract must not maintain a second hand-written required-field list.
 
+Canonical required fields:
+
+- `payload_contract_version`
+- `collection`
 - `vector_point_id`
 - `vector_namespace`
 - `source_id`
 - `source_kind`
-- `source_canonical_uri`
-- `item_canonical_uri`
+- `source_adapter`
+- `source_scope`
+- `source_generation`
+- `committed_generation`
 - `source_item_key`
+- `item_canonical_uri`
 - `document_id`
 - `chunk_id`
-- `generation`
+- `chunk_index`
 - `content_kind`
+- `content_hash`
+- `chunk_hash`
 - `chunk_locator`
 - `source_range`
-- `title`
-- `path`
-- `adapter`
-- `parser`
-- `chunking_profile`
-- `redaction_status`
-- `visibility`
 - `job_id`
+- `document_status`
 - `embedding_model`
 - `embedding_dimensions`
+- `embedding_provider`
+- `embedding_profile`
 - `embedded_at`
+
+Current implementation fields such as `payload_schema_version`, `source_type`,
+`url`, and `domain` are current-state only. The clean-break schema replaces
+them with `payload_contract_version`, `source_kind`, `source_adapter`, and
+canonical URI fields.
 
 ## Payload Schema Shape
 

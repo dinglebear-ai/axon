@@ -148,11 +148,26 @@ Adapters acquire source items and emit `SourceDocument`.
 ```rust
 #[async_trait]
 pub trait SourceAdapter {
-    async fn resolve(&self, request: ResolveSourceRequest) -> Result<ResolvedSource>;
-    async fn plan(&self, request: SourceRequest, resolved: ResolvedSource) -> Result<SourcePlan>;
-    async fn acquire(&self, ctx: SourceAcquisitionContext) -> Result<SourceAcquisitionResult>;
+    fn name(&self) -> &'static str;
+    fn version(&self) -> &'static str;
+    async fn capabilities(&self) -> Result<SourceAdapterCapability>;
+    async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest>;
+    async fn acquire(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+    ) -> Result<SourceAcquisition>;
+    async fn normalize(
+        &self,
+        plan: &SourcePlan,
+        acquisition: SourceAcquisition,
+    ) -> Result<StageExecutionResult<Vec<SourceDocument>>>;
 }
 ```
+
+Adapters do not resolve or plan. `SourceResolver` resolves raw user input,
+`SourceRouter` creates `SourcePlan`, and adapters execute discovery, acquisition,
+and normalization for that plan.
 
 Adapters must:
 

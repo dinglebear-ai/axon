@@ -159,6 +159,10 @@ Required job lifecycle tests:
 - event sequence monotonicity
 - progress stream resumes from event cursor
 - retention cleanup preserves required status summary
+- worker panic records a failed attempt and releases leases
+- bounded worker channels apply backpressure instead of unbounded memory growth
+- heartbeat watchdog reports stalled interactive lanes
+- recovery refuses to duplicate an already committed generation
 
 Throughput/backpressure tests:
 
@@ -167,6 +171,9 @@ Throughput/backpressure tests:
 - watch jobs coalesce duplicate source refreshes
 - vector writes are bounded separately from embedding requests
 - LLM concurrency is independent of embedding concurrency
+- queued provider reservations expire or cancel cleanly when jobs are canceled
+- provider cooldown cancels queued background work without canceling safe
+  cleanup/finalization
 
 ## Metadata and Payload Tests
 

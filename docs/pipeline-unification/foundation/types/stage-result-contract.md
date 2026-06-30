@@ -7,27 +7,31 @@ Every pipeline stage has a concrete input, output, status, degradation policy,
 and event emission rule. Stage results are serializable DTOs owned by
 `axon-api`.
 
+Payload DTOs are not stage results by themselves. Every stage returns either
+`StageExecutionResult<T>` for a simple payload or a concrete result DTO that
+includes `StageResultHeader`.
+
 ## Stage Result Registry
 
 | Stage | Input | Output | Required Result Type |
 |---|---|---|---|
-| `requested` | transport input | `SourceRequest` | `SourceRequest` |
-| `resolving` | `SourceRequest` | `ResolvedSource` | `ResolvedSource` |
-| `routing` | `ResolvedSource` | `RoutePlan` | `RoutePlan` |
+| `requested` | transport input | `SourceRequest` | `StageExecutionResult<SourceRequest>` |
+| `resolving` | `SourceRequest` | `ResolvedSource` | `StageExecutionResult<ResolvedSource>` |
+| `routing` | `ResolvedSource` | `RoutePlan` | `StageExecutionResult<RoutePlan>` |
 | `authorizing` | `RoutePlan` | security decision | `AuthorizationResult` |
-| `planning` | `RoutePlan` | `SourcePlan` | `SourcePlan` |
+| `planning` | `RoutePlan` | `SourcePlan` | `StageExecutionResult<SourcePlan>` |
 | `leasing` | `SourcePlan` | lease guard | `LeaseResult` |
-| `discovering` | `SourcePlan` | `SourceManifest` | `SourceManifest` |
+| `discovering` | `SourcePlan` | `SourceManifest` | `StageExecutionResult<SourceManifest>` |
 | `diffing` | `SourceManifest` | `SourceManifestDiff` | `SourceManifestDiff` |
 | `fetching` | `SourceManifestDiff` | `SourceAcquisition` | `SourceAcquisition` |
 | `enriching` | `AcquiredSourceItem` | `SourceEnrichment` | `SourceEnrichment` |
-| `normalizing` | acquired/enriched item | `SourceDocument` | `SourceDocument` |
+| `normalizing` | acquired/enriched item | `SourceDocument` | `StageExecutionResult<SourceDocument>` |
 | `parsing` | `SourceDocument` | facts/candidates | `ParseResult` |
 | `graphing` | `GraphCandidate[]` | graph write result | `GraphWriteResult` |
-| `preparing` | `SourceDocument` | `PreparedDocument` | `PreparedDocument` |
-| `batching` | prepared docs | batches | `EmbeddingBatch` |
+| `preparing` | `SourceDocument` | `PreparedDocument` | `StageExecutionResult<PreparedDocument>` |
+| `batching` | prepared docs | batches | `StageExecutionResult<EmbeddingBatch>` |
 | `embedding` | `EmbeddingBatch` | `EmbeddingResult` | `EmbeddingResult` |
-| `vectorizing` | embeddings + prepared chunks | `VectorPointBatch` | `VectorPointBatch` |
+| `vectorizing` | embeddings + prepared chunks | `VectorPointBatch` | `StageExecutionResult<VectorPointBatch>` |
 | `upserting` | `VectorPointBatch` | write result | `VectorStoreWriteResult` |
 | `publishing` | publish plan | publish result | `PublishGenerationResult` |
 | `cleaning` | cleanup debt | cleanup result | `CleanupDebtResult` |
@@ -48,6 +52,11 @@ pub struct StageResultHeader {
     pub counts: StageCounts,
     pub warnings: Vec<SourceWarning>,
     pub error: Option<SourceError>,
+}
+
+pub struct StageExecutionResult<T> {
+    pub header: StageResultHeader,
+    pub data: T,
 }
 ```
 
@@ -204,6 +213,8 @@ Events use `SourceProgressEvent` and include the stage result id or stage id.
 ## Completion Checklist
 
 - every stage has a concrete result type
+- payload DTOs appear as stage results only through `StageExecutionResult<T>` or
+  a concrete result wrapper with `StageResultHeader`
 - every result has success/degraded/failed fixtures
 - every result updates job progress
 - every result can be rendered by CLI/MCP/REST status surfaces

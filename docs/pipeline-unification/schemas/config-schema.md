@@ -144,15 +144,16 @@ The target `config.toml` schema must include these keys at minimum:
 | `providers.llm.completion_concurrency` | integer | `4` | `axon-llm` |
 | `providers.search.default` | enum | `searxng-then-tavily` | `axon-adapters` |
 | `retrieval.limit` | integer | `10` | `axon-retrieval` |
-| `retrieval.hybrid_candidates` | integer | `150` | `axon-retrieval` |
-| `crawl.max_pages_default` | integer | `2000` | `axon-adapters` |
+| `retrieval.hybrid_candidates` | integer | `100` | `axon-retrieval` |
+| `retrieval.ask_hybrid_candidates` | integer | `150` | `axon-retrieval` |
+| `crawl.max_pages` | integer | `2000` | `axon-adapters` |
 | `crawl.respect_robots` | bool | `false` | `axon-adapters` |
 | `memory.decay_enabled` | bool | `true` | `axon-memory` |
 | `memory.review_interval_days` | integer | `30` | `axon-memory` |
 | `graph.enabled` | bool | `true` | `axon-graph` |
 | `prune.retention_days.jobs` | integer | `14` | `axon-prune` |
 | `observability.log_level` | enum | `info` | `axon-observe` |
-| `security.allow_private_networks` | bool | `false` | `axon-authz` |
+| `security.allow_private_network_fetch` | bool | `false` | `axon-authz` |
 
 This table is intentionally compact. Power-user knobs belong here only when
 they materially affect throughput, safety, cost, freshness, or retrieval quality.

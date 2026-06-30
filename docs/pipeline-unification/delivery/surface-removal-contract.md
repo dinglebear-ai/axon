@@ -32,6 +32,7 @@ preserving old user-facing surfaces.
 | `axon ingest <source>` | `axon <source>` |
 | `axon scrape <url>` | `axon <url> --scope page` |
 | `axon crawl <url>` | `axon <url> --scope site` |
+| `axon code-search <query>` | `axon query <query> --content-kind code --freshness committed` |
 | `axon code-search-watch` | `axon watch <path>` |
 | `axon purge ...` | `axon prune ...` |
 | `axon dedupe ...` | `axon prune dedupe ...` |
@@ -48,7 +49,7 @@ The replacements are documentation guidance, not runtime aliases.
 | `ingest` | `source` |
 | `scrape` | `source` with `scope=page` |
 | `crawl` | `source` with `scope=site` |
-| `code_search` | `query` with source filters or source setup |
+| `code_search` | `query` with `content_kind=code`, source/path filters, and committed-generation freshness |
 | `vertical_scrape` | adapter capabilities plus `source` |
 | `purge` | `prune` |
 | `dedupe` | `prune` |
@@ -68,6 +69,33 @@ Removed actions must not appear in the MCP schema.
 | `POST /v1/watch/{id}/run` | `POST /v1/watches/{watch_id}/exec` |
 
 Removed routes must not appear in OpenAPI.
+
+## Local Code Search Replacement
+
+The old code-search surface is removed, but the behavior is not lost. Local
+code indexing becomes normal source indexing, and local code retrieval becomes
+normal query with code filters:
+
+```text
+axon /home/jmagar/workspace/axon --watch
+axon query "where is provider cooling implemented" \
+  --source /home/jmagar/workspace/axon \
+  --content-kind code \
+  --freshness committed
+```
+
+Required replacement semantics:
+
+- source setup uses `SourceLedger` generations, manifest diffs, AST-backed
+  parser facts, code chunking, `VectorStore` payloads, and cleanup debt
+- query filters can target `source_id`, canonical URI, local path, repository,
+  branch, content kind, language, symbol, and path prefix
+- default code query freshness is `committed`; callers never see an
+  uncommitted generation unless an explicit debug flag is used
+- stale or in-progress refreshes surface warnings and job ids, not empty
+  success-looking results
+- local absolute paths are subject to execution-affinity and redaction policy
+- there is no `code-search` or `code_search` compatibility dispatcher
 
 ## Removed Config Keys
 
@@ -90,6 +118,8 @@ Tests must prove:
 - generated clients do not expose removed operations
 - old code paths are not reachable from canonical commands/actions/routes
 - canonical replacements perform the intended behavior
+- local code query replacement preserves committed-generation safety, path
+  filters, and progress visibility
 
 ## Developer Ergonomics
 

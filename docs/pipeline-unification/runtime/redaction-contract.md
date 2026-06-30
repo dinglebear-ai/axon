@@ -63,7 +63,12 @@ Minimum detectors:
 - GitHub/GitLab/Gitea tokens
 - Reddit credentials
 - OpenAI-compatible API keys
-- local credential-store paths
+- local credential-store paths, including Codex, Gemini, browser, SSH, cloud,
+  and provider SDK homes
+
+Credential identifiers such as OAuth client ids are not cryptographic secrets,
+but they are still credential metadata. Public surfaces redact them unless a
+contract explicitly marks the field public.
 
 ## Metadata Classification
 

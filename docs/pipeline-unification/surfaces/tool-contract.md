@@ -34,6 +34,8 @@ Agents must not learn a new CLI surface while MCP still advertises old actions.
 - Keep durable memory under `action=memory`.
 - Keep operational surfaces grouped: `jobs`, `watches`, `artifacts`, `uploads`,
   `prune`, `collections`, `graph`, `providers`.
+- Keep destructive clean-slate reset under `action=reset` with admin scope and
+  explicit confirmation.
 - Return structured envelopes for every response.
 - Background work must always return a pollable `job` or `watch`.
 - Removed actions must be absent from the MCP schema.
@@ -107,13 +109,9 @@ Minimum tool input schema:
       "type": "boolean",
       "default": false
     },
-    "json": {
-      "type": "boolean",
-      "default": true
-    },
     "response_mode": {
       "type": "string",
-      "enum": ["inline", "summary", "artifact", "path", "auto"],
+      "enum": ["auto", "summary", "full", "inline", "artifact", "path", "job_only"],
       "default": "auto"
     }
   },
@@ -149,7 +147,7 @@ These fields may appear on many actions.
 | `include` | string[] | get/detail actions | Extra related data to include. |
 | `include_content` | bool | retrieve/artifacts/chunks | Include stored content bytes/text when allowed. |
 | `collection` | string | vector actions | Vector collection override. |
-| `response_mode` | string | all | `inline`, `summary`, `artifact`, `path`, or `auto`. |
+| `response_mode` | string | all | `auto`, `summary`, `full`, `inline`, `artifact`, `path`, or `job_only`. |
 | `idempotency_key` | string | mutating actions | Caller-provided dedupe key. |
 
 ## Canonical Actions
@@ -183,6 +181,7 @@ prune
 collections
 graph
 providers
+reset
 status
 doctor
 capabilities
@@ -235,6 +234,7 @@ compatibility aliases.
 | `collections` | required | `Collection*Request` | `Collection*Result` | maybe | no | Collection listing/detail/maintenance. |
 | `graph` | required | `Graph*Request` | `Graph*Result` | no | no | SourceGraph query/resolve/detail. |
 | `providers` | required | `Provider*Request` | `Provider*Result` | no | no | Provider capabilities/health. |
+| `reset` | none | `Reset*Request` | `Reset*Result` | yes | yes | Explicit destructive clean-slate reset. |
 | `status` | none | `StatusRequest` | `StatusReport` | no | no | Runtime status. |
 | `doctor` | none | `DoctorRequest` | `DoctorReport` | no | maybe | Diagnostic checks. |
 | `capabilities` | none | `CapabilityRequest` | `CapabilityDocument` | no | no | Machine-readable server capability contract. |
@@ -395,7 +395,7 @@ Result data:
   "action": "query",
   "query": "source ledger generation cleanup",
   "filters": {
-    "source_kind": "github",
+    "source_kind": "git",
     "content_kind": "code"
   },
   "generation": "committed",
@@ -923,7 +923,8 @@ It must include:
 - graph support
 - memory support
 - known degraded modes
-- removed actions and remap targets
+- reset support and confirmation policy
+- removed action absence
 
 ## Auth and Visibility
 
@@ -934,7 +935,7 @@ MCP auth scopes map to the same auth model as REST.
 | read status/capabilities/help | `axon:read` |
 | query/retrieve/ask/search/research/summarize | `axon:read` |
 | source acquisition/watch/upload/prune/memory mutation | `axon:write` |
-| destructive prune/purge/forget/hard delete | `axon:write` plus explicit confirmation |
+| destructive prune/purge/forget/hard delete/reset | `axon:write` plus admin policy and explicit confirmation |
 | provider diagnostics that reveal config | admin/internal policy |
 
 Visibility rules:
@@ -943,6 +944,19 @@ Visibility rules:
 - Local absolute paths are hidden unless explicitly allowed by local policy.
 - Artifact content may require an additional read check.
 - Tool/MCP-source execution must declare side-effect class and allowlist policy.
+
+Action auth metadata:
+
+Every action/subaction in the generated schema includes:
+
+| Field | Meaning |
+|---|---|
+| `required_scope` | Minimum scope for the default non-mutating form. |
+| `required_scope_if` | Conditional scope upgrades, such as `auto_source=true` or `persist_artifact=true`. |
+| `mutates` | Whether the default form writes state. |
+| `mutates_if` | Conditional mutation rules for options that create jobs/artifacts/graph writes. |
+| `side_effect_class` | `none`, `read_external`, `write_local`, `call_tool`, `destructive`. |
+| `execution_affinity` | `local`, `server`, `remote_safe`, or `restricted`. |
 
 ## Errors
 
@@ -982,9 +996,10 @@ Common error codes:
 Removed actions are absent from the MCP schema. They are not runtime aliases and
 do not have a public tombstone window. If a caller sends a removed action string
 anyway, the server treats it as `action.unknown` and performs no side effects.
-| `code_search_watch` | `{"action":"watches","subaction":"create"}` |
-| `purge` | `{"action":"prune","subaction":"purge"}` |
-| `dedupe` | `{"action":"prune","subaction":"dedupe"}` |
+
+Removed-action guidance may appear only in human documentation and generated
+developer diagnostics. It must not appear as executable remap code, schema
+aliases, hidden action variants, or tool examples that an agent could call.
 
 ## Crosswalk to CLI and REST
 
@@ -1016,6 +1031,7 @@ anyway, the server treats it as `action.unknown` and performs no side effects.
 | `action=collections` | `axon collections <sub>` | `/v1/collections/*` | `Collection*` |
 | `action=graph` | `axon graph <sub>` | `/v1/graph/*` | `Graph*` |
 | `action=providers` | `axon providers <sub>` | `/v1/providers/*` | `Provider*` |
+| `action=reset` | `axon reset` | `/v1/reset/*` | `Reset*` |
 
 ## Validation Checklist
 

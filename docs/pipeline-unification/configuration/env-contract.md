@@ -81,7 +81,7 @@ end-state schema.
 | `GITHUB_TOKEN` | private/high-rate GitHub | yes | GitHub API/token. |
 | `GITLAB_TOKEN` | private/high-rate GitLab | yes | GitLab token. |
 | `GITEA_TOKEN` | private/high-rate Gitea/Forgejo | yes | Gitea token. |
-| `REDDIT_CLIENT_ID` | Reddit | yes-ish | Reddit OAuth id. |
+| `REDDIT_CLIENT_ID` | Reddit | no | Reddit OAuth client id; credential metadata, redacted from public output. |
 | `REDDIT_CLIENT_SECRET` | Reddit | yes | Reddit OAuth secret. |
 | `HF_TOKEN` | private HF model | yes | Hugging Face token. |
 
@@ -105,6 +105,12 @@ These stay in `.env` only when they are host/runtime/auth specific:
 
 Model names, context assumptions, completion concurrency, and timeouts belong
 in `config.toml`.
+
+Runtime home/path values such as `AXON_CODEX_HOME`,
+`AXON_HEADLESS_GEMINI_HOME`, and `GEMINI_HOME` are not secrets by value, but
+they are sensitive local credential paths. Public status, logs, MCP, REST, and
+vector payloads must redact or hash them unless the caller has local/admin
+visibility.
 
 ## Optional Ingest Endpoints
 
