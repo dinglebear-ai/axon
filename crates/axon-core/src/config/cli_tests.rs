@@ -44,13 +44,27 @@ fn parse_retrieve_max_points_flag() {
 }
 
 #[test]
-fn parse_code_search_watch_enable_subcommand_with_cwd_after_enable() {
-    let result =
-        Cli::try_parse_from(["axon", "code-search-watch", "enable", "--cwd", "/workspace"]);
-    assert!(
-        result.is_ok(),
-        "code-search-watch enable --cwd should parse: {result:?}"
-    );
+fn embed_accepts_watch_flag() {
+    let result = Cli::try_parse_from(["axon", "embed", "/tmp/project", "--watch"]);
+    assert!(result.is_ok(), "embed --watch should parse: {result:?}");
+}
+
+#[test]
+fn embed_accepts_no_watch_flag() {
+    let result = Cli::try_parse_from(["axon", "embed", "/tmp/project", "--no-watch"]);
+    assert!(result.is_ok(), "embed --no-watch should parse: {result:?}");
+}
+
+#[test]
+fn code_search_watch_returns_tombstone_error() {
+    let err = Cli::try_parse_from(["axon", "code-search-watch"]).unwrap_err();
+    assert!(err.to_string().contains("use `axon embed <path>`"), "{err}");
+}
+
+#[test]
+fn code_search_watch_rejects_extra_args_without_dispatch_panic() {
+    let err = Cli::try_parse_from(["axon", "code-search-watch", "anything"]).unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::UnknownArgument);
 }
 
 #[test]

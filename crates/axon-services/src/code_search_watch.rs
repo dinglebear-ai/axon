@@ -1,7 +1,5 @@
 mod event;
 mod roots;
-mod systemd;
-
 use crate::context::ServiceContext;
 use crate::query;
 use crate::types::CodeSearchCaller;
@@ -23,7 +21,6 @@ use roots::{
     build_code_search_watch_dry_run_plan, code_search_watch_dirs, code_search_watch_dirty_roots,
     discover_code_search_watch_roots_for_dirs,
 };
-use systemd::enable_code_search_watch_service;
 
 const WATCH_EVENT_BUFFER: usize = 1024;
 
@@ -39,19 +36,15 @@ pub async fn run_code_search_watch(
         return Ok(());
     }
     if options.enable {
-        let report = enable_code_search_watch_service(&watch_dirs, &options)?;
-        events.emit(CodeSearchWatchEvent::Enabled {
-            unit_path: report.unit_path,
-            env_path: report.env_path,
-            roots: report.roots,
-        });
-        return Ok(());
+        anyhow::bail!(
+            "persistent code-search-watch service installation was removed; run `axon embed <path> --watch` under your supervisor instead"
+        );
     }
 
     let roots = prepare_watch_roots(&watch_dirs, options.initial_refresh, events)?;
     if options.initial_refresh {
         for root in &roots {
-            refresh_code_search_watch_root(ctx, events, root, "initial").await;
+            refresh_code_search_watch_root(ctx, events, root, "initial").await?;
         }
     }
 
@@ -82,7 +75,7 @@ fn prepare_watch_roots(
     let mut roots = discover_code_search_watch_roots_for_dirs(watch_dirs)?;
     if roots.is_empty() {
         return Err(anyhow::anyhow!(
-            "code-search-watch found no Git checkouts to watch"
+            "embed --watch found no Git checkouts to watch"
         ));
     }
     roots.sort();
@@ -135,19 +128,22 @@ fn queue_dirty_roots(
     dirty: &mut BTreeMap<PathBuf, DirtyRoot>,
 ) {
     for root in code_search_watch_dirty_roots(roots, event, overflow_rescan) {
-        let entry = dirty.entry(root.clone()).or_insert_with(|| DirtyRoot {
-            since: Instant::now(),
-            paths: 0,
-        });
-        entry.since = Instant::now();
-        entry.paths = entry.paths.saturating_add(1);
-        if entry.paths == 1 || entry.paths.is_multiple_of(100) {
-            events.emit(CodeSearchWatchEvent::Pending {
-                root,
-                paths: entry.paths,
-            });
+        let paths = mark_dirty_root(dirty, root.clone(), Instant::now());
+        if paths == 1 || paths.is_multiple_of(100) {
+            events.emit(CodeSearchWatchEvent::Pending { root, paths });
         }
     }
+}
+
+fn mark_dirty_root(
+    dirty: &mut BTreeMap<PathBuf, DirtyRoot>,
+    root: PathBuf,
+    since: Instant,
+) -> usize {
+    let entry = dirty.entry(root).or_insert(DirtyRoot { since, paths: 0 });
+    entry.since = since;
+    entry.paths = entry.paths.saturating_add(1);
+    entry.paths
 }
 
 async fn refresh_due_roots(
@@ -167,16 +163,30 @@ async fn refresh_due_roots(
             });
         }
     }
-    let due = dirty
+    let due = due_dirty_roots(dirty, refresh_delay);
+    for root in due {
+        if let Err(error) = refresh_code_search_watch_root(ctx, events, &root, "file_change").await
+        {
+            if let Some(state) = dirty.get_mut(&root) {
+                state.since = Instant::now();
+            }
+            events.emit(CodeSearchWatchEvent::RefreshFailed {
+                root,
+                error: error.to_string(),
+            });
+        } else {
+            dirty.remove(&root);
+        }
+    }
+}
+
+fn due_dirty_roots(dirty: &BTreeMap<PathBuf, DirtyRoot>, refresh_delay: Duration) -> Vec<PathBuf> {
+    dirty
         .iter()
         .filter_map(|(root, state)| {
             (state.since.elapsed() >= refresh_delay).then_some(root.clone())
         })
-        .collect::<Vec<_>>();
-    for root in due {
-        dirty.remove(&root);
-        refresh_code_search_watch_root(ctx, events, &root, "file_change").await;
-    }
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -190,7 +200,7 @@ async fn refresh_code_search_watch_root(
     events: &dyn CodeSearchWatchEventSink,
     root: &Path,
     reason: &'static str,
-) {
+) -> Result<()> {
     events.emit(CodeSearchWatchEvent::RefreshStarted {
         root: root.to_path_buf(),
         reason,
@@ -204,18 +214,39 @@ async fn refresh_code_search_watch_root(
     )
     .await
     {
-        Ok(result) => events.emit(CodeSearchWatchEvent::RefreshFinished {
-            root: root.to_path_buf(),
-            status: result.freshness.status,
-            warning: result.freshness.warning,
-            indexed_files: result.freshness.indexed_files,
-            removed_files: result.freshness.removed_files,
-            generation: result.generation,
-        }),
-        Err(error) => events.emit(CodeSearchWatchEvent::RefreshFailed {
-            root: root.to_path_buf(),
-            error: error.to_string(),
-        }),
+        Ok(result) => {
+            let status = result.freshness.status;
+            let warning = result.freshness.warning;
+            let indexed_files = result.freshness.indexed_files;
+            let removed_files = result.freshness.removed_files;
+            let generation = result.generation;
+            let failed_initial = reason == "initial" && (status != "fresh" || warning.is_some());
+            let warning_message = warning.clone();
+            events.emit(CodeSearchWatchEvent::RefreshFinished {
+                root: root.to_path_buf(),
+                status,
+                warning,
+                indexed_files,
+                removed_files,
+                generation,
+            });
+            if failed_initial {
+                return Err(anyhow::anyhow!(
+                    "initial local code index refresh failed for {}: {}",
+                    root.display(),
+                    warning_message
+                        .unwrap_or_else(|| "refresh did not produce a fresh index".to_string())
+                ));
+            }
+            Ok(())
+        }
+        Err(error) => {
+            events.emit(CodeSearchWatchEvent::RefreshFailed {
+                root: root.to_path_buf(),
+                error: error.to_string(),
+            });
+            Err(anyhow::anyhow!("{error}"))
+        }
     }
 }
 
@@ -249,5 +280,26 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watcher_event_storm_coalesces_to_one_refresh() {
+        let root = PathBuf::from("/workspace/repo");
+        let mut dirty = BTreeMap::new();
+        let old_enough = Instant::now() - Duration::from_secs(5);
+
+        for _ in 0..100 {
+            mark_dirty_root(&mut dirty, root.clone(), old_enough);
+        }
+
+        let refreshes_started = due_dirty_roots(&dirty, Duration::from_secs(1)).len();
+
+        assert_eq!(refreshes_started, 1);
+        assert_eq!(dirty.get(&root).map(|state| state.paths), Some(100));
     }
 }

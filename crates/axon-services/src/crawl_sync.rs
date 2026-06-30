@@ -5,8 +5,8 @@
 //! All business logic lives here; the CLI command is a thin formatting wrapper.
 
 pub mod chrome_fallback;
+mod source_ledger;
 
-use crate::embed::embed_now_with_source;
 use crate::types::CrawlSyncResult;
 use axon_core::config::{Config, ScrapeFormat};
 use axon_core::content::url_to_domain;
@@ -16,9 +16,15 @@ use axon_crawl::engine::{
     CrawlSummary, build_waf_diagnostics, run_crawl_once, run_sitemap_only, update_latest_reflink,
 };
 use axon_crawl::manifest::{
-    manifest_cache_is_stale, read_manifest_data, read_manifest_urls, write_audit_diff,
+    ManifestEntry, manifest_cache_is_stale, read_manifest_data, read_manifest_urls,
+    write_audit_diff,
 };
 use chrome_fallback::maybe_chrome_fallback;
+use source_ledger::embed_and_commit_sync_crawl_manifest_to_ledger;
+#[cfg(test)]
+pub(crate) use source_ledger::{
+    crawl_changed_manifest_keys, crawl_manifest_to_ledger_items, crawl_source_identity,
+};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -179,7 +185,7 @@ async fn run_sitemap_only_crawl(
 async fn run_crawl_phase(
     cfg: &mut Config,
     start_url: &str,
-    previous_manifest: Arc<HashMap<String, axon_crawl::manifest::ManifestEntry>>,
+    previous_manifest: Arc<HashMap<String, ManifestEntry>>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     let initial_mode = axon_crawl::chrome_bootstrap::resolve_initial_mode(cfg);
     let chrome_bootstrap = axon_crawl::chrome_bootstrap::bootstrap_chrome_runtime(cfg).await;
@@ -268,7 +274,8 @@ async fn finalize_crawl(
         let markdown_dir = cfg.output_dir.join("markdown");
         let input = markdown_dir.to_string_lossy().to_string();
         let spinner = Spinner::new("embedding crawl output");
-        embed_now_with_source(cfg, &input, Some("crawl")).await?;
+        embed_and_commit_sync_crawl_manifest_to_ledger(cfg, start_url, manifest_path, &input)
+            .await?;
         spinner.finish("embedded into Qdrant");
     }
 
