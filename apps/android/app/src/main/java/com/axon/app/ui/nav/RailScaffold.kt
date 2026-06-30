@@ -74,6 +74,8 @@ fun RailScaffold(
     var activePage by remember { mutableStateOf<DrawerSection?>(null) }
     var activeOverlay by remember { mutableStateOf<ShellOverlay?>(null) }
     var sidebarOpen by remember { mutableStateOf(false) }
+    var childCanHandleBack by remember { mutableStateOf(false) }
+    var askReturnPage by remember { mutableStateOf<DrawerSection?>(null) }
     val colors = AxonTheme.colors
     val askVm: AskViewModel = viewModel()
 
@@ -97,6 +99,8 @@ fun RailScaffold(
     }
     fun selectSidebarValue(value: String) {
         activeOverlay = null
+        childCanHandleBack = false
+        askReturnPage = null
         activePage = when (value) {
             "sessions" -> DrawerSection.Sessions
             "activity" -> DrawerSection.Activity
@@ -111,14 +115,35 @@ fun RailScaffold(
         activeOverlay = overlay
         sidebarOpen = false
     }
+    fun showAsk(returnTo: DrawerSection? = null) {
+        activeOverlay = null
+        sidebarOpen = false
+        childCanHandleBack = false
+        askReturnPage = returnTo
+        activePage = null
+    }
 
-    BackHandler(enabled = activeOverlay != null || sidebarOpen || activePage != null) {
-        if (activeOverlay != null) {
-            activeOverlay = null
-        } else if (sidebarOpen) {
-            sidebarOpen = false
-        } else {
-            activePage = null
+    val shellBackTarget = resolveShellBackTarget(
+        activeOverlay = activeOverlay != null,
+        sidebarOpen = sidebarOpen,
+        activePage = activePage,
+        childCanHandleBack = childCanHandleBack,
+        askReturnPage = askReturnPage,
+    )
+    BackHandler(enabled = shellBackTarget !is ShellBackTarget.None && shellBackTarget !is ShellBackTarget.Child) {
+        when (val target = shellBackTarget) {
+            ShellBackTarget.Overlay -> activeOverlay = null
+            ShellBackTarget.Sidebar -> sidebarOpen = false
+            is ShellBackTarget.ReturnToPage -> {
+                askReturnPage = null
+                activePage = target.page
+            }
+            ShellBackTarget.Ask -> {
+                askReturnPage = null
+                activePage = null
+            }
+            ShellBackTarget.Child,
+            ShellBackTarget.None -> Unit
         }
     }
 
@@ -165,17 +190,21 @@ fun RailScaffold(
                             page = target,
                             navController = navController,
                             askVm = askVm,
-                            onShowAsk = { activePage = null },
+                            onShowAsk = { showAsk() },
+                            onShowAskFromPage = ::showAsk,
                             onOpenJobs = { activePage = DrawerSection.Jobs },
                             onOpenOverlay = ::openOverlay,
+                            onChildBackAvailableChange = { childCanHandleBack = it },
                         )
                         else -> ShellPageContent(
                             page = null,
                             navController = navController,
                             askVm = askVm,
-                            onShowAsk = { activePage = null },
+                            onShowAsk = { showAsk() },
+                            onShowAskFromPage = ::showAsk,
                             onOpenJobs = { activePage = DrawerSection.Jobs },
                             onOpenOverlay = ::openOverlay,
+                            onChildBackAvailableChange = { childCanHandleBack = it },
                         )
                     }
                 }
@@ -236,23 +265,35 @@ private fun ShellPageContent(
     navController: NavController,
     askVm: AskViewModel,
     onShowAsk: () -> Unit,
+    onShowAskFromPage: (DrawerSection?) -> Unit,
     onOpenJobs: () -> Unit,
     onOpenOverlay: (ShellOverlay) -> Unit,
+    onChildBackAvailableChange: (Boolean) -> Unit,
 ) {
+    DisposableEffect(page) {
+        if (page == null) onChildBackAvailableChange(false)
+        onDispose { onChildBackAvailableChange(false) }
+    }
     when (page) {
         null -> AskScreen(
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },
             onOpenJobs = onOpenJobs,
             vm = askVm,
         )
-        DrawerSection.Activity -> ActivityHistoryScreen(onOpenAsk = onShowAsk)
+        DrawerSection.Activity -> ActivityHistoryScreen(
+            onOpenAsk = { onShowAskFromPage(DrawerSection.Activity) },
+            onNestedBackAvailableChange = onChildBackAvailableChange,
+        )
         DrawerSection.Sessions -> SessionsDrawerContent(
             onSelect = { sessionId ->
                 if (sessionId == "new") askVm.startNewSession() else askVm.loadSession(sessionId)
-                onShowAsk()
+                onShowAskFromPage(DrawerSection.Sessions)
             },
         )
-        DrawerSection.Jobs -> JobsScreen(onOpenAsk = onShowAsk)
+        DrawerSection.Jobs -> JobsScreen(
+            onOpenAsk = { onShowAskFromPage(DrawerSection.Jobs) },
+            onNestedBackAvailableChange = onChildBackAvailableChange,
+        )
         DrawerSection.Knowledge -> KnowledgeScreen(
             onOpenTab = { tab -> onOpenOverlay(ShellOverlay.Knowledge(tab)) },
             onOpenDocument = { url -> navController.navigate(DocumentRoute(Uri.encode(url))) },

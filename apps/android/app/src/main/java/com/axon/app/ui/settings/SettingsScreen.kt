@@ -251,7 +251,6 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.tint(colors.accentPrimary, 7, colors.pageBg) else colors.control.copy(alpha = 0.01f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 20, colors.pageBg) else colors.borderDefault.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = buildString {
                     append(tab.label)
@@ -260,6 +259,7 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
                 role = Role.Button
                 this.selected = selected
             }
+            .clickable(onClick = onClick)
             .height(50.dp)
             .padding(horizontal = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),

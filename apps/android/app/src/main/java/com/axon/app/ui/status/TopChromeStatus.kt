@@ -39,6 +39,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,6 +100,14 @@ fun TopChromeStatus(
             .background(colors.control.copy(alpha = 0.42f), shape)
             .border(1.dp, dot.copy(alpha = 0.34f), shape)
             .clickable { detailOpen = true }
+            .clearAndSetSemantics {
+                contentDescription = "Axon status, $label"
+                role = Role.Button
+                onClick("Open Axon status") {
+                    detailOpen = true
+                    true
+                }
+            }
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

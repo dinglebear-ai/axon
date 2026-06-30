@@ -161,11 +161,11 @@ fun FabLauncher(
                     }
                     .background(colors.panelStrong.copy(alpha = 0.76f), RoundedCornerShape(15.dp))
                     .border(1.dp, colors.borderStrong.copy(alpha = 0.74f), RoundedCornerShape(15.dp))
-                    .pressScale(role = Role.Button) { state = FabState.Ring }
                     .semantics {
                         contentDescription = "Launch operation"
                         role = Role.Button
-                    },
+                    }
+                    .pressScale(role = Role.Button) { state = FabState.Ring },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
