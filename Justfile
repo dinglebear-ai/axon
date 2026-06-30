@@ -179,7 +179,7 @@ sync-container:
           release_stale=1
           break
         fi
-      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo build.rs src config.example.toml config migrations apps/web/out assets)
+      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo build.rs src crates config.example.toml config migrations apps/web/out assets)
     fi
     if [ "$release_stale" -eq 1 ]; then
       CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile "$profile" --locked --bin axon
@@ -242,7 +242,7 @@ install-debug:
           stale=1
           break
         fi
-      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo src config.example.toml docker-compose.prod.yaml docker-compose.yaml config migrations)
+      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo src crates config.example.toml docker-compose.prod.yaml docker-compose.yaml config migrations)
     fi
     if [ "$stale" -eq 1 ]; then
       just debug
