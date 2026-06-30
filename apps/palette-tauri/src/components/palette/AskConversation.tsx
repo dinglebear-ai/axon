@@ -248,11 +248,22 @@ export const AskConversation = memo(function AskConversation({
         action.subcommand.toLowerCase().includes(needle) ||
         action.label.toLowerCase().includes(needle) ||
         meta.label.toLowerCase().includes(needle) ||
+        action.description.toLowerCase().includes(needle) ||
         action.aliases.some((alias) => alias.toLowerCase().includes(needle))
       );
     }), needle).slice(0, 10);
   }, [slashQuery]);
   const clampedSelectedCommand = Math.min(selectedCommand, Math.max(slashCommands.length - 1, 0));
+  const slashCommandGroups = useMemo(() => {
+    const groups: { category: string; actions: PaletteAction[] }[] = [];
+    for (const action of slashCommands) {
+      const category = actionDisplayMeta(action).category;
+      const group = groups.find((candidate) => candidate.category === category);
+      if (group) group.actions.push(action);
+      else groups.push({ category, actions: [action] });
+    }
+    return groups;
+  }, [slashCommands]);
 
   useEffect(() => {
     setSelectedCommand(0);
@@ -355,34 +366,40 @@ export const AskConversation = memo(function AskConversation({
       >
         {slashMenuOpen && slashCommands.length > 0 ? (
           <div className="ask-slash-menu" role="listbox" aria-label="Palette commands">
-            {slashCommands.map((action, index) => {
-              const Icon = actionIcon(action.subcommand);
-              const meta = actionDisplayMeta(action);
-              const selected = index === clampedSelectedCommand;
-              return (
-                <Button
-                  variant="plain"
-                  size="unstyled"
-                  className={`ask-slash-option${selected ? " ask-slash-option-selected" : ""}`}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  key={action.subcommand}
-                  onMouseEnter={() => setSelectedCommand(index)}
-                  onClick={() => {
-                    const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
-                    selectSlashCommand(action, argument);
-                  }}
-                >
-                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
-                  <span>
-                    <strong>{meta.label}</strong>
-                    <small>{action.description}</small>
-                  </span>
-                  <code>/{action.subcommand}</code>
-                </Button>
-              );
-            })}
+            {slashCommandGroups.map((group) => (
+              <Fragment key={group.category}>
+                <div className="ask-slash-heading">{group.category}</div>
+                {group.actions.map((action) => {
+                  const Icon = actionIcon(action.subcommand);
+                  const meta = actionDisplayMeta(action);
+                  const index = slashCommands.findIndex((candidate) => candidate.subcommand === action.subcommand);
+                  const selected = index === clampedSelectedCommand;
+                  return (
+                    <Button
+                      variant="plain"
+                      size="unstyled"
+                      className={`ask-slash-option${selected ? " ask-slash-option-selected" : ""}`}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      key={action.subcommand}
+                      onMouseEnter={() => setSelectedCommand(index)}
+                      onClick={() => {
+                        const argument = draft.slice(1).trim().split(/\s+/).slice(1).join(" ");
+                        selectSlashCommand(action, argument);
+                      }}
+                    >
+                      <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                      <span>
+                        <strong>/{action.subcommand}</strong>
+                        <small>{meta.input === "none" ? meta.output : `${meta.input} -> ${meta.output}`}</small>
+                      </span>
+                      <em>{meta.method}</em>
+                    </Button>
+                  );
+                })}
+              </Fragment>
+            ))}
           </div>
         ) : null}
         <Button

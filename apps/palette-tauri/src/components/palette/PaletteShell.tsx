@@ -117,12 +117,11 @@ interface PaletteShellProps {
 }
 
 export function PaletteShell(props: PaletteShellProps) {
-  function activateHighlightedAction(runImmediately: boolean) {
+  function runHighlightedAction() {
     const action = props.filtered[props.selected] ?? props.active;
     if (!action) return;
 
     if (
-      runImmediately ||
       props.parsed.invoked ||
       action.argMode === "none" ||
       (action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)) ||
@@ -140,6 +139,16 @@ export function PaletteShell(props: PaletteShellProps) {
     props.enterActionMode(action);
   }
 
+  function selectHighlightedAction() {
+    const action = props.filtered[props.selected] ?? props.active;
+    if (!action) return;
+    if (props.parsed.invoked && action.argMode === "none") {
+      props.requestSubmit(action);
+      return;
+    }
+    props.enterActionMode(action);
+  }
+
   function onShellKeyDownCapture(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!props.listboxOpen || props.submitDisabled || event.defaultPrevented) return;
     if (event.key !== "Tab" && event.key !== "Enter") return;
@@ -148,7 +157,8 @@ export function PaletteShell(props: PaletteShellProps) {
     if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
 
     event.preventDefault();
-    activateHighlightedAction(event.key === "Enter");
+    if (event.key === "Enter") runHighlightedAction();
+    else selectHighlightedAction();
   }
 
   return (

@@ -110,6 +110,23 @@ describe("AskConversation", () => {
     expect(onRunAction).not.toHaveBeenCalled();
   });
 
+  it("renders grouped slash commands and keeps the remaining argument after selection", () => {
+    const onRunAction = vi.fn();
+    render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);
+
+    const input = screen.getByRole("textbox", { name: "Ask a follow-up" });
+    fireEvent.change(input, { target: { value: "/scra code.claude.com" } });
+
+    expect(screen.getByText("Fetch & read")).toBeInTheDocument();
+    expect(screen.getByText("Reason")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /\/scrape/i }));
+
+    expect(screen.queryByRole("listbox", { name: "Palette commands" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Scrape selection" })).toBeInTheDocument();
+    expect(input).toHaveValue("code.claude.com");
+    expect(onRunAction).not.toHaveBeenCalled();
+  });
+
   it("runs the selected slash command chip with the prompt input", () => {
     const onRunAction = vi.fn();
     render(<AskConversation answer="answer" onFollowUp={noop} onRunAction={onRunAction} />);

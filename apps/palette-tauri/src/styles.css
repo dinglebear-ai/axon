@@ -2918,15 +2918,15 @@ textarea {
 .ask-slash-menu {
   position: absolute;
   z-index: 20;
-  right: calc(var(--ask-compose-send-width) + var(--ask-compose-gap));
+  width: min(456px, calc(100% - var(--ask-compose-attach-width) - var(--ask-compose-send-width) - (var(--ask-compose-gap) * 2)));
   bottom: calc(100% + var(--ask-compose-menu-gap));
   left: calc(var(--ask-compose-attach-width) + var(--ask-compose-gap));
   display: flex;
   max-height: min(376px, 48vh);
   overflow-y: auto;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px;
+  gap: 3px;
+  padding: 10px;
   color: var(--aurora-text-primary);
   background: color-mix(in srgb, var(--aurora-panel-strong) 96%, transparent);
   border: 1px solid color-mix(in srgb, var(--aurora-border-strong) 60%, transparent);
@@ -2936,14 +2936,24 @@ textarea {
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
+.ask-slash-heading {
+  padding: 3px 10px 4px;
+  color: var(--aurora-text-muted);
+  font-family: var(--aurora-font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .ask-slash-option {
   all: unset;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 5px 8px;
+  gap: 11px;
+  min-height: 52px;
+  padding: 8px 10px;
   color: var(--aurora-text-muted);
   background: transparent;
   border: 1px solid transparent;
@@ -2975,20 +2985,22 @@ textarea {
 
 .ask-slash-option strong {
   color: var(--aurora-text-primary);
-  font-size: 12.5px;
+  font-size: 15px;
   font-weight: 740;
 }
 
 .ask-slash-option small {
   color: var(--aurora-text-muted);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 520;
 }
 
-.ask-slash-option code {
+.ask-slash-option em {
   color: var(--aurora-text-muted);
   font-family: var(--aurora-font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 720;
   white-space: nowrap;
 }
 
