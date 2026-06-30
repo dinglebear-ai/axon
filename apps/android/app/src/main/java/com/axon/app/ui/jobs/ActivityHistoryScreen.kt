@@ -70,7 +70,11 @@ fun ActivityHistoryScreen(
     val jobsByKind by vm.jobsByKind.collectAsStateWithLifecycle()
     val error by vm.errorMessage.collectAsStateWithLifecycle()
     val rows = remember(recent, jobsByKind) { recentActivityRows(recent, jobsByKind) }
-    var selectedJob by remember { mutableStateOf<JobUi?>(null) }
+    var selectedJobRef by remember { mutableStateOf<JobRef?>(null) }
+    var selectedJobSnapshot by remember { mutableStateOf<JobUi?>(null) }
+    val selectedJob = selectedJobRef?.let { ref ->
+        jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
+    } ?: selectedJobSnapshot
     var crawledPages by remember { mutableStateOf<List<String>>(emptyList()) }
     var crawledPagesLoading by remember { mutableStateOf(false) }
     var crawledPagesError by remember { mutableStateOf<String?>(null) }
@@ -99,7 +103,8 @@ fun ActivityHistoryScreen(
         onDispose { onNestedBackAvailableChange(false) }
     }
     BackHandler(enabled = selectedJob != null) {
-        selectedJob = null
+        selectedJobRef = null
+        selectedJobSnapshot = null
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -113,7 +118,10 @@ fun ActivityHistoryScreen(
                     .fillMaxWidth()
                     .widthIn(max = 520.dp)
                     .padding(start = 6.dp, top = 10.dp, end = 6.dp),
-                onBack = { selectedJob = null },
+                onBack = {
+                    selectedJobRef = null
+                    selectedJobSnapshot = null
+                },
             )
         } else {
             LazyColumn(
@@ -133,10 +141,10 @@ fun ActivityHistoryScreen(
                     ) {
                         MetricPill("recent", rows.size.toString(), tone = AxonTheme.colors.accentPink)
                         MetricPill("active", rows.count { isActiveJobStatus(it.job.status) }.toString())
-                        MetricPill("failed", rows.count { it.job.status.lowercase() in setOf("failed", "error", "cancelled", "canceled") }.toString(), tone = AxonTheme.colors.orange)
+                        MetricPill("failed", rows.count { isFailedJobStatus(it.job.status) }.toString(), tone = AxonTheme.colors.orange)
                     }
                 }
-                if (error != null && rows.isEmpty()) {
+                if (error != null) {
                     item {
                         JobsErrorCard(
                             message = error.orEmpty(),
@@ -144,7 +152,7 @@ fun ActivityHistoryScreen(
                         )
                     }
                 }
-                if (rows.isEmpty()) {
+                if (rows.isEmpty() && error == null) {
                     item {
                         RecoveryActionCard(
                             title = "No activity yet",
@@ -169,7 +177,10 @@ fun ActivityHistoryScreen(
                             modifier = Modifier
                                 .animateItem()
                                 .revealOnce(reveal, "activity-${row.recent.jobId}", index),
-                            onClick = { selectedJob = row.job },
+                            onClick = {
+                                selectedJobRef = JobRef(row.kind, row.job.id)
+                                selectedJobSnapshot = row.job
+                            },
                         )
                     }
                 }
@@ -182,7 +193,7 @@ fun ActivityHistoryScreen(
 private fun ActivitySummaryCard(rows: List<ActivityJobRow>, onRefresh: () -> Unit) {
     val colors = AxonTheme.colors
     val running = rows.count { isActiveJobStatus(it.job.status) }
-    val failed = rows.count { it.job.status.lowercase() in setOf("failed", "error", "cancelled", "canceled") }
+    val failed = rows.count { isFailedJobStatus(it.job.status) }
     Row(
         modifier = Modifier
             .fillMaxWidth()

@@ -155,7 +155,7 @@ fun JobsScreen(
                                 MetricPill("watches", watches.size.toString(), tone = AxonTheme.colors.orange)
                             }
                         }
-                        if (error != null && active.isEmpty() && jobsByKind.isEmpty()) {
+                        if (error != null) {
                             item {
                                 JobsErrorCard(
                                     message = error.orEmpty(),
@@ -246,7 +246,7 @@ private sealed interface JobDrill {
     data object Watches : JobDrill
 }
 
-private data class JobRef(val kind: JobFamily, val id: String)
+internal data class JobRef(val kind: JobFamily, val id: String)
 
 private data class JobOverviewRowModel(
     val key: String,
@@ -270,7 +270,7 @@ private fun jobOverviewRows(
         val jobs = jobsByKind[kind].orEmpty()
         val activeJobs = jobs.filter { isActiveJobStatus(it.status) }
         val runningCount = activeJobs.size
-        val failedCount = jobs.count { it.status.lowercase() in setOf("failed", "error") }
+        val failedCount = jobs.count { isFailedJobStatus(it.status) }
         val running = activeJobs.firstOrNull()
         val representative = running ?: jobs.firstOrNull()
         val aggregateProgress = aggregateProgressForJobs(activeJobs)
@@ -410,7 +410,7 @@ private fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick: 
             .background(colors.control.copy(alpha = 0.045f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
             .semantics(mergeDescendants = true) {
-                contentDescription = "${job.kind?.label() ?: "Job"} ${job.status}, ${jobDisplayTarget(job)}, view job details"
+                contentDescription = "${job.kind?.label() ?: "Job"} ${job.status}, ${shortTarget(jobDisplayTarget(job))}, view job details"
                 role = Role.Button
             }
             .clickable(onClick = onClick)

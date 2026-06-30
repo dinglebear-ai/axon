@@ -164,7 +164,7 @@ private fun StatusDetailDialog(
         ConnectionState.Online -> "Online"
         ConnectionState.Offline -> "Offline"
     }
-    val safeServerUrl = remember(serverUrl) { redactUrlUserInfo(serverUrl) }
+    val safeServerUrl = remember(serverUrl) { healthCheckOriginUrl(serverUrl) }
     val curlCommand = remember(safeServerUrl) {
         val base = safeServerUrl.trim().trimEnd('/')
         if (base.isBlank()) "curl -i http://<axon-host>/healthz" else "curl -i $base/healthz"
@@ -371,6 +371,31 @@ internal fun redactUrlUserInfo(value: String): String {
             redactedUri()
         }
     }.getOrElse { trimmed.replace(Regex("(?<=://)[^/@]+@"), "").substringBefore('?').substringBefore('#') }
+}
+
+internal fun healthCheckOriginUrl(value: String): String {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return trimmed
+    return runCatching {
+        val uri = URI(trimmed)
+        if (uri.scheme.isNullOrBlank() || uri.host.isNullOrBlank()) {
+            redactUrlUserInfo(trimmed)
+        } else {
+            URI(uri.scheme, null, uri.host, uri.port, null, null, null).toString()
+        }
+    }.getOrElse {
+        val origin = Regex("""^([a-zA-Z][a-zA-Z0-9+.-]*://)([^/?#;]+)""")
+            .find(trimmed)
+            ?.let { match ->
+                val scheme = match.groupValues[1]
+                val authority = match.groupValues[2].substringAfterLast('@')
+                "$scheme$authority"
+            }
+        origin ?: redactUrlUserInfo(trimmed)
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringBefore(';')
+    }
 }
 
 @Composable

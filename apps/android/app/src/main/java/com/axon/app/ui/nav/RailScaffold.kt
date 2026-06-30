@@ -125,6 +125,14 @@ fun RailScaffold(
         activePage = null
     }
 
+    fun showPage(page: DrawerSection) {
+        activeOverlay = null
+        sidebarOpen = false
+        childCanHandleBack = false
+        askReturnPage = null
+        activePage = page
+    }
+
     val shellBackTarget = resolveShellBackTarget(
         activeOverlay = activeOverlay != null,
         sidebarOpen = sidebarOpen,
@@ -194,7 +202,7 @@ fun RailScaffold(
                             askVm = askVm,
                             onShowAsk = { showAsk() },
                             onShowAskFromPage = ::showAsk,
-                            onOpenJobs = { activePage = DrawerSection.Jobs },
+                            onOpenJobs = { showPage(DrawerSection.Jobs) },
                             onOpenOverlay = ::openOverlay,
                             onChildBackAvailableChange = { childCanHandleBack = it },
                         )
@@ -204,7 +212,7 @@ fun RailScaffold(
                             askVm = askVm,
                             onShowAsk = { showAsk() },
                             onShowAskFromPage = ::showAsk,
-                            onOpenJobs = { activePage = DrawerSection.Jobs },
+                            onOpenJobs = { showPage(DrawerSection.Jobs) },
                             onOpenOverlay = ::openOverlay,
                             onChildBackAvailableChange = { childCanHandleBack = it },
                         )

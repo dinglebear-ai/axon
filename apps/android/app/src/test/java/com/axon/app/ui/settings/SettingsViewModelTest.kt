@@ -135,6 +135,12 @@ class SettingsSecurityHelpersTest {
         assertEquals(AuthMode.Bearer, authModeFromWireValue("bearer"))
     }
 
+    @Test fun `missing persisted auth mode preserves upgraded bearer installs`() {
+        assertEquals(AuthMode.Bearer, authModeFromWireValue(null, hasBearerToken = true))
+        assertEquals(AuthMode.Bearer, authModeFromWireValue("", hasBearerToken = true))
+        assertEquals(AuthMode.OAuth, authModeFromWireValue(null, hasBearerToken = false))
+    }
+
     @Test fun `validateServerUrl rejects cleartext outside tailnet allowlist`() {
         val result = runCatching { validateAxonServerUrl("http://axon.example.com") }
         assertTrue(result.isFailure)

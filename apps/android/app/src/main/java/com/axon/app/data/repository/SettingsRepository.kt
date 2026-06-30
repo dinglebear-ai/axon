@@ -76,15 +76,14 @@ class SettingsRepository(
             // default at the call site rather than letting the value class throw.
             val rawUrl = prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
             val collection = prefs[KEY_COLLECTION] ?: DEFAULT_COLLECTION
-            val authMode = authModeFromWireValue(prefs[KEY_AUTH_MODE])
-            Triple(rawUrl, collection, authMode)
+            Triple(rawUrl, collection, prefs[KEY_AUTH_MODE])
         }
-        .combine(tokenMirror) { (rawUrl, collection, authMode), token ->
+        .combine(tokenMirror) { (rawUrl, collection, rawAuthMode), token ->
             AxonSettings(
                 serverUrl  = ServerUrl(rawUrl),
                 token      = ApiToken(token),
                 collection = collection,
-                authMode   = authMode,
+                authMode   = authModeFromWireValue(rawAuthMode, hasBearerToken = token.isNotBlank()),
             )
         }
 

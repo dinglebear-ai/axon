@@ -16,3 +16,6 @@ fun authModeFromWireValue(value: String?): AuthMode = when (value?.trim()?.lower
     "oauth" -> AuthMode.OAuth
     else -> AuthMode.Bearer
 }
+
+fun authModeFromWireValue(value: String?, hasBearerToken: Boolean): AuthMode =
+    if (value.isNullOrBlank() && hasBearerToken) AuthMode.Bearer else authModeFromWireValue(value)
