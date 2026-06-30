@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +52,8 @@ import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.WatchUi
 import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.AxonBadge
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.common.rememberRevealState
@@ -139,7 +142,19 @@ fun JobsScreen(
             ) {
                 when (val selected = drill) {
                     null -> {
-                        item { SectionLabel("Jobs") }
+                        item {
+                            CommandConsoleHeader(
+                                eyebrow = "operations",
+                                title = "Job Command Deck",
+                                description = "Track crawl, ingest, embed, extract, and watch activity without losing scan density.",
+                                icon = Icons.Rounded.TaskAlt,
+                                tone = AxonTheme.colors.accentPrimary,
+                            ) {
+                                MetricPill("active", active.size.toString())
+                                MetricPill("families", overviewRows.count { it.runningCount > 0 || it.failedCount > 0 }.toString(), tone = AxonTheme.colors.accentPink)
+                                MetricPill("watches", watches.size.toString(), tone = AxonTheme.colors.orange)
+                            }
+                        }
                         if (error != null && active.isEmpty() && jobsByKind.isEmpty()) {
                             item {
                                 JobsErrorCard(

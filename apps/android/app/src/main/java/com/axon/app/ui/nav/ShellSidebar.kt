@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -64,8 +65,16 @@ internal fun AxonSidebarSheet(
         modifier = modifier
             .width(SidebarSheetWidth)
             .fillMaxHeight()
-            .background(colors.panelStrong)
-            .border(width = 1.dp, color = colors.borderDefault)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.tint(colors.accentPrimary, 8, colors.panelStrong),
+                        colors.panelStrong,
+                        colors.tint(colors.accentPink, 5, colors.panelStrong),
+                    ),
+                ),
+            )
+            .border(width = 1.dp, color = colors.tint(colors.accentPrimary, 16, colors.borderDefault))
             .padding(horizontal = 14.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -81,7 +90,7 @@ internal fun AxonSidebarSheet(
             Text(
                 "Axon",
                 color = colors.textPrimary,
-                fontSize = 16.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = AxonTheme.fonts.display,
             )
@@ -109,14 +118,14 @@ private fun AxonSidebarRow(
     // rather than snapping — keeps the rail feeling physical, not stateful.
     val colorSpec = tween<androidx.compose.ui.graphics.Color>(durationMillis = 220)
     val rowBg by animateColorAsState(
-        targetValue = if (selected) colors.tint(colors.accentPrimary, 11, colors.panelStrong)
-        else colors.panelStrong.copy(alpha = 0.16f),
+        targetValue = if (selected) colors.tint(colors.accentPrimary, 16, colors.panelStrong)
+        else colors.control.copy(alpha = 0.2f),
         animationSpec = colorSpec,
         label = "row-bg",
     )
     val rowBorder by animateColorAsState(
-        targetValue = if (selected) colors.tint(colors.accentPrimary, 28, colors.panelStrong)
-        else colors.borderDefault.copy(alpha = 0.08f),
+        targetValue = if (selected) colors.tint(colors.accentPrimary, 42, colors.panelStrong)
+        else colors.borderDefault.copy(alpha = 0.12f),
         animationSpec = colorSpec,
         label = "row-border",
     )

@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.system.SystemScreen
 import com.axon.app.ui.theme.AxonTheme
@@ -110,6 +112,25 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            CommandConsoleHeader(
+                eyebrow = "control plane",
+                title = "Settings Console",
+                description = "Connection, OAuth, environment, config, and system diagnostics live in one operator surface.",
+                icon = tab.icon,
+                tone = when (tab) {
+                    SettingsTab.Connection -> AxonTheme.colors.accentPrimary
+                    SettingsTab.Env -> AxonTheme.colors.accentPink
+                    SettingsTab.Config -> AxonTheme.colors.orange
+                    SettingsTab.System -> AxonTheme.colors.accentStrong
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 600.dp),
+            ) {
+                MetricPill("tab", tab.shortLabel)
+                MetricPill("env", AxonSettingsCatalog.envGroups.sumOf { it.fields.size }.toString(), tone = AxonTheme.colors.accentPink)
+                MetricPill("cfg", AxonSettingsCatalog.configGroups.sumOf { it.fields.size }.toString(), tone = AxonTheme.colors.orange)
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
