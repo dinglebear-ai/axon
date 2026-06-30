@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.axon.app.ui.ask.AskScreen
 import com.axon.app.ui.ask.AskViewModel
+import com.axon.app.ui.jobs.ActivityHistoryScreen
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.jobs.JobsScreen
 import com.axon.app.ui.knowledge.KnowledgeScreen
@@ -79,6 +80,7 @@ fun RailScaffold(
     val sidebarItems = remember {
         listOf(
             SidebarItem("Ask", "ask", Icons.Rounded.Home),
+            SidebarItem("Activity", "activity", Icons.Rounded.History),
             SidebarItem("Sessions", "sessions", Icons.Rounded.History),
             SidebarItem("Jobs", "jobs", Icons.Rounded.TaskAlt),
             SidebarItem("Knowledge", "knowledge", Icons.Rounded.Hub),
@@ -87,6 +89,7 @@ fun RailScaffold(
     }
     fun selectedValue(): String = when (activePage) {
         null -> "ask"
+        DrawerSection.Activity -> "activity"
         DrawerSection.Sessions -> "sessions"
         DrawerSection.Jobs -> "jobs"
         DrawerSection.Knowledge -> "knowledge"
@@ -96,6 +99,7 @@ fun RailScaffold(
         activeOverlay = null
         activePage = when (value) {
             "sessions" -> DrawerSection.Sessions
+            "activity" -> DrawerSection.Activity
             "jobs" -> DrawerSection.Jobs
             "knowledge" -> DrawerSection.Knowledge
             "settings" -> DrawerSection.Settings
@@ -241,6 +245,7 @@ private fun ShellPageContent(
             onOpenJobs = onOpenJobs,
             vm = askVm,
         )
+        DrawerSection.Activity -> ActivityHistoryScreen(onOpenAsk = onShowAsk)
         DrawerSection.Sessions -> SessionsDrawerContent(
             onSelect = { sessionId ->
                 if (sessionId == "new") askVm.startNewSession() else askVm.loadSession(sessionId)
@@ -257,6 +262,7 @@ private fun ShellPageContent(
 }
 
 private fun DrawerSection.title(): String = when (this) {
+    DrawerSection.Activity -> "Activity"
     DrawerSection.Sessions -> "Sessions"
     DrawerSection.Jobs -> "Jobs"
     DrawerSection.Knowledge -> "Knowledge"
