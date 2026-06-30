@@ -1,5 +1,6 @@
 package com.axon.app.ui.jobs
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +56,7 @@ import com.axon.app.ui.theme.tint
 @Composable
 fun ActivityHistoryScreen(
     onOpenAsk: () -> Unit = {},
+    onNestedBackAvailableChange: (Boolean) -> Unit = {},
     vm: JobsOverviewViewModel = viewModel(),
 ) {
     DisposableEffect(vm) {
@@ -83,6 +89,15 @@ fun ActivityHistoryScreen(
             )
             crawledPagesLoading = false
         }
+    }
+    LaunchedEffect(selectedJob != null) {
+        onNestedBackAvailableChange(selectedJob != null)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onNestedBackAvailableChange(false) }
+    }
+    BackHandler(enabled = selectedJob != null) {
+        selectedJob = null
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -161,6 +176,10 @@ private fun ActivitySummaryCard(rows: List<ActivityJobRow>, onRefresh: () -> Uni
             .clip(RoundedCornerShape(12.dp))
             .background(colors.panelStrong.copy(alpha = 0.64f), RoundedCornerShape(12.dp))
             .border(1.dp, colors.borderDefault.copy(alpha = 0.26f), RoundedCornerShape(12.dp))
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${rows.size} recent ${if (rows.size == 1) "item" else "items"}, $running active, $failed need attention, refresh activity"
+                role = Role.Button
+            }
             .clickable(onClick = onRefresh)
             .padding(14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -200,6 +219,10 @@ private fun ActivityHistoryRow(row: ActivityJobRow, modifier: Modifier = Modifie
             .clip(shape)
             .background(colors.control.copy(alpha = 0.18f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), shape)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${row.kind.label()} ${statusLabel(row.job.status)}, ${shortTarget(jobDisplayTarget(row.job))}, ${formatWhen(row.recent.submittedAt)}, view details"
+                role = Role.Button
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),

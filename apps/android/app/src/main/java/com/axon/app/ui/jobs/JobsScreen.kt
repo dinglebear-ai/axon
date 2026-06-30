@@ -1,5 +1,6 @@
 package com.axon.app.ui.jobs
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,6 +61,7 @@ import com.axon.app.ui.theme.tint
 @Composable
 fun JobsScreen(
     onOpenAsk: () -> Unit = {},
+    onNestedBackAvailableChange: (Boolean) -> Unit = {},
     vm: JobsOverviewViewModel = viewModel(),
 ) {
     DisposableEffect(vm) {
@@ -97,6 +99,20 @@ fun JobsScreen(
                 onFailure = { error -> crawledPagesError = error.message ?: "Unable to load crawl manifest" },
             )
             crawledPagesLoading = false
+        }
+    }
+    val canHandleNestedBack = selectedJob != null || drill != null
+    LaunchedEffect(canHandleNestedBack) {
+        onNestedBackAvailableChange(canHandleNestedBack)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onNestedBackAvailableChange(false) }
+    }
+    BackHandler(enabled = canHandleNestedBack) {
+        if (selectedJobRef != null) {
+            selectedJobRef = null
+        } else {
+            drill = null
         }
     }
 
@@ -300,7 +316,6 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
             .clip(shape)
             .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
-            .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = buildString {
                     append(row.title)
@@ -310,6 +325,7 @@ private fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifi
                 }
                 role = Role.Button
             }
+            .clickable(onClick = onClick)
             .padding(horizontal = if (quiet) 18.dp else 20.dp, vertical = if (quiet) 13.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (quiet) 13.dp else 15.dp),
@@ -378,11 +394,11 @@ private fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick: 
             .clip(shape)
             .background(colors.control.copy(alpha = 0.045f), shape)
             .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
-            .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = "${job.kind?.label() ?: "Job"} ${job.status}, ${jobDisplayTarget(job)}, view job details"
                 role = Role.Button
             }
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

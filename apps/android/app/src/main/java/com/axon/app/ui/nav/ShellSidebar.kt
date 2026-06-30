@@ -146,12 +146,12 @@ private fun AxonSidebarRow(
             .clip(shape)
             .background(rowBg, shape)
             .border(1.dp, rowBorder, shape)
-            .pressScale(onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = item.label
                 role = Role.Button
                 this.selected = selected
             }
+            .pressScale(role = Role.Button, onClick = onClick)
             .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),

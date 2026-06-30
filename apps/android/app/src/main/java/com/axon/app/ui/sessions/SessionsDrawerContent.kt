@@ -263,10 +263,6 @@ private fun SessionRow(
                 .clip(RoundedCornerShape(8.dp))
                 .background(colors.control.copy(alpha = 0.075f))
                 .border(1.dp, colors.borderDefault.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-                .combinedClickable(
-                    onClick = onSelect,
-                    onLongClick = { showMenu = true },
-                )
                 .semantics(mergeDescendants = true) {
                     contentDescription = "${session.title}, ${session.firstMessagePreview}, ${session.turnCount} turns, ${session.injectedOpCount} operations, ${if (pinned) "pinned, " else ""}${relativeTime(session.updatedAt)}"
                     role = Role.Button
@@ -283,6 +279,10 @@ private fun SessionRow(
                         },
                     )
                 }
+                .combinedClickable(
+                    onClick = onSelect,
+                    onLongClick = { showMenu = true },
+                )
             .padding(horizontal = 14.dp, vertical = 11.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
@@ -317,11 +317,11 @@ private fun SessionRow(
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
-                        .clickable { showMenu = true }
                         .semantics(mergeDescendants = true) {
                             contentDescription = "Session actions"
                             role = Role.Button
                         }
+                        .clickable { showMenu = true }
                         .padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
