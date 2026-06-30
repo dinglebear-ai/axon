@@ -8,66 +8,47 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceIntent {
+    #[default]
     Acquire,
     Refresh,
     Watch,
     Map,
 }
 
-impl Default for SourceIntent {
-    fn default() -> Self {
-        Self::Acquire
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceRefreshPolicy {
+    #[default]
     IfStale,
     Force,
     Never,
 }
 
-impl Default for SourceRefreshPolicy {
-    fn default() -> Self {
-        Self::IfStale
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceWatchPolicy {
+    #[default]
     Disabled,
     Ensure,
     Enabled,
 }
 
-impl Default for SourceWatchPolicy {
-    fn default() -> Self {
-        Self::Disabled
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
     Foreground,
+    #[default]
     Background,
     Wait,
 }
 
-impl Default for ExecutionMode {
-    fn default() -> Self {
-        Self::Background
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseMode {
+    #[default]
     Auto,
     Summary,
     Full,
@@ -75,12 +56,6 @@ pub enum ResponseMode {
     Artifact,
     Path,
     JobOnly,
-}
-
-impl Default for ResponseMode {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,7 +107,7 @@ pub enum SourceScope {
     Api,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceLimits {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_items: Option<u64>,
@@ -140,16 +115,6 @@ pub struct SourceLimits {
     pub max_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_depth: Option<u32>,
-}
-
-impl Default for SourceLimits {
-    fn default() -> Self {
-        Self {
-            max_items: None,
-            max_bytes: None,
-            max_depth: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
