@@ -11,13 +11,13 @@ import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import { Button } from "@/components/ui/aurora/button";
-import type { PaletteAction } from "@/lib/actions";
+import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
 import type { PaletteConfig } from "@/lib/axonClient";
 import { MIN_PROGRESS_PCT } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke } from "@/lib/invoke";
 import { jobFamilyVerb } from "@/lib/jobProgress";
-import type { ParsedCommand } from "@/lib/paletteView";
+import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
 import type { ViewIntent } from "@/lib/paletteViewState";
 import type { ChatSuggestion, RunState } from "@/lib/runState";
 import type { SourceSortMode } from "@/lib/sourcesModel";
@@ -117,8 +117,45 @@ interface PaletteShellProps {
 }
 
 export function PaletteShell(props: PaletteShellProps) {
+  function activateHighlightedAction(runImmediately: boolean) {
+    const action = props.filtered[props.selected] ?? props.active;
+    if (!action) return;
+
+    if (
+      runImmediately ||
+      props.parsed.invoked ||
+      action.argMode === "none" ||
+      (action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)) ||
+      (acceptsDirectUrl(action) && looksLikeUrl(props.parsed.search))
+    ) {
+      props.requestSubmit(
+        action,
+        action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)
+          ? props.parsed.search
+          : undefined,
+      );
+      return;
+    }
+
+    props.enterActionMode(action);
+  }
+
+  function onShellKeyDownCapture(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!props.listboxOpen || props.submitDisabled || event.defaultPrevented) return;
+    if (event.key !== "Tab" && event.key !== "Enter") return;
+
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+
+    event.preventDefault();
+    activateHighlightedAction(event.key === "Enter");
+  }
+
   return (
-    <div className={`aurora-page-shell palette-shell${props.compact ? " palette-shell-compact" : ""}${props.showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${props.jobExpanded ? " palette-shell-job" : ""}`}>
+    <div
+      className={`aurora-page-shell palette-shell${props.compact ? " palette-shell-compact" : ""}${props.showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${props.jobExpanded ? " palette-shell-job" : ""}`}
+      onKeyDownCapture={onShellKeyDownCapture}
+    >
       <AuthNotice />
       {!props.hideCommandBar && (
         <PaletteCommandBar
