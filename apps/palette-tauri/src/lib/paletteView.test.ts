@@ -35,6 +35,14 @@ describe("palette view parsing helpers", () => {
     });
   });
 
+  it("parses slash-prefixed action aliases and keeps the remaining argument", () => {
+    expect(parseCommand("/scrape https://example.com/docs")).toMatchObject({
+      invoked: action("scrape"),
+      search: "scrape",
+      arg: "https://example.com/docs",
+    });
+  });
+
   it("parses bare help as the local help action", () => {
     expect(parseCommand("help")).toMatchObject({ invoked: action("help"), search: "help", arg: "" });
   });

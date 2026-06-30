@@ -36,7 +36,7 @@ class AxonApp : Application() {
             if (s != null) {
                 container.applySettings(s.serverUrl.value, s.token.value, s.authMode)
             } else {
-                container.applySettings(DEFAULT_SERVER_URL, "", AuthMode.Bearer)
+                container.applySettings(DEFAULT_SERVER_URL, "", AuthMode.OAuth)
             }
         }
     }

@@ -23,6 +23,7 @@ const config = {
 };
 
 const scrape = ACTIONS.find((a) => a.subcommand === "scrape") as PaletteAction;
+const ask = ACTIONS.find((a) => a.subcommand === "ask") as PaletteAction;
 
 function renderBar(overrides: Partial<Parameters<typeof PaletteCommandBar>[0]> = {}) {
   const props = {
@@ -40,13 +41,18 @@ function renderBar(overrides: Partial<Parameters<typeof PaletteCommandBar>[0]> =
     showBackButton: false,
     submitDisabled: false,
     validation: "",
+    askSessions: [],
+    askSessionsOpen: false,
+    onAskSessionsOpenChange: vi.fn(),
     onBack: vi.fn(),
     onHelp: vi.fn(),
     onInputKeyDown: vi.fn(),
     onQueryChange: vi.fn(),
     onReset: vi.fn(),
+    onResumeAskSession: vi.fn(),
     onSubmit: vi.fn(),
     onSwitchAction: vi.fn(),
+    onSwitcherOpenChange: vi.fn(),
     onToggleMaximize: vi.fn(),
     onToggleSettings: vi.fn(),
     ...overrides,
@@ -92,8 +98,6 @@ describe("PaletteCommandBar combobox ARIA (A11Y-C1)", () => {
 });
 
 describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => {
-  const ask = ACTIONS.find((a) => a.subcommand === "ask") as PaletteAction;
-
   it("is a closed disclosure (not a role=menu) until activated", () => {
     renderBar({ modeAction: scrape });
     const trigger = screen.getByRole("button", { name: /Switch from/ });
@@ -106,10 +110,11 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
   it("opens to plain Tab-focusable buttons and switches action on click", async () => {
     const user = userEvent.setup();
     const onSwitchAction = vi.fn();
-    renderBar({ modeAction: scrape, onSwitchAction });
+    const { props } = renderBar({ modeAction: scrape, onSwitchAction });
 
     await user.click(screen.getByRole("button", { name: /Switch from/ }));
     expect(screen.getByRole("button", { name: /Switch from/ })).toHaveAttribute("aria-expanded", "true");
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(true);
 
     const askButton = screen
       .getAllByRole("button")
@@ -118,6 +123,7 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     await user.click(askButton);
     expect(onSwitchAction).toHaveBeenCalledTimes(1);
     expect(onSwitchAction.mock.calls[0][0].subcommand).toBe("ask");
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("uses sentence casing for action descriptors", async () => {
@@ -144,9 +150,10 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
   it("opens the utility menu and routes help through the menu", async () => {
     const user = userEvent.setup();
     const onHelp = vi.fn();
-    renderBar({ onHelp });
+    const { props } = renderBar({ onHelp });
 
     await user.click(screen.getByRole("button", { name: "Menu" }));
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(true);
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
     expect(screen.getByText("Config")).toBeInTheDocument();
@@ -155,6 +162,7 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     await user.click(screen.getByText("Help"));
     expect(onHelp).toHaveBeenCalledTimes(1);
     expect(onHelp.mock.calls[0][0].subcommand).toBe("scrape");
+    expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("closes the disclosure on Escape and keeps focus on the trigger", async () => {
@@ -168,5 +176,43 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     await user.keyboard("{Escape}");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(trigger).toHaveFocus();
+  });
+});
+
+describe("PaletteCommandBar Ask session disclosure", () => {
+  it("opens previous Ask sessions from the prompt and resumes the selected session", async () => {
+    const user = userEvent.setup();
+    const onAskSessionsOpenChange = vi.fn();
+    const onResumeAskSession = vi.fn();
+    const session = {
+      action: ask,
+      target: "What is a Claude Code hook?",
+      status: 0,
+      title: "Ask completed",
+      subtitle: "POST /v1/ask/stream",
+      text: "Hooks let you run commands around Claude Code events.",
+      outputKind: "markdown" as const,
+      prompt: "What is a Claude Code hook?",
+      transcript: [
+        { id: "u1", role: "user" as const, content: "What is a Claude Code hook?" },
+        { id: "a1", role: "assistant" as const, content: "Hooks let you run commands around Claude Code events." },
+      ],
+      when: "just now",
+    };
+
+    renderBar({
+      active: ask,
+      modeAction: ask,
+      query: "",
+      listboxOpen: false,
+      askSessions: [session],
+      askSessionsOpen: true,
+      onAskSessionsOpenChange,
+      onResumeAskSession,
+    });
+
+    expect(screen.getByRole("listbox", { name: "Previous Ask sessions" })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /What is a Claude Code hook/ }));
+    expect(onResumeAskSession).toHaveBeenCalledWith(session);
   });
 });

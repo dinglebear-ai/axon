@@ -2,7 +2,11 @@ import type { AskActivity, AskSource, AskTurn } from "@/lib/runState";
 
 type RecordLike = Record<string, unknown>;
 
-export function appendAskPendingTurn(previous: AskTurn[] | undefined, prompt: string, id: string): AskTurn[] {
+export function appendAskPendingTurn(
+  previous: AskTurn[] | undefined,
+  prompt: string,
+  id: string,
+): AskTurn[] {
   return [
     ...(previous ?? []),
     { id: `${id}:user`, role: "user", content: prompt },
@@ -26,7 +30,24 @@ export function completeLastAssistantTurn(
   return next;
 }
 
-export function updateLastAssistantTurn(transcript: AskTurn[] | undefined, content: string): AskTurn[] | undefined {
+export function completeAssistantTurnById(
+  transcript: AskTurn[] | undefined,
+  assistantId: string,
+  content: string,
+  sources: AskSource[] = [],
+): AskTurn[] | undefined {
+  if (!transcript?.length) return undefined;
+  return transcript.map((turn) =>
+    turn.id === assistantId && turn.role === "assistant"
+      ? { ...turn, content, pending: false, sources }
+      : turn,
+  );
+}
+
+export function updateLastAssistantTurn(
+  transcript: AskTurn[] | undefined,
+  content: string,
+): AskTurn[] | undefined {
   if (!transcript?.length) return undefined;
   const next = [...transcript];
   for (let index = next.length - 1; index >= 0; index -= 1) {
@@ -55,7 +76,10 @@ export function appendAskActivity(
   return next;
 }
 
-export function answerParts(answer: string, payload?: unknown): { answer: string; sources: AskSource[] } {
+export function answerParts(
+  answer: string,
+  payload?: unknown,
+): { answer: string; sources: AskSource[] } {
   const split = splitInlineSources(answer);
   const sources = [...sourcesFromPayload(payload), ...split.sources];
   return { answer: split.answer, sources: dedupeSources(sources) };
@@ -102,8 +126,11 @@ function sourceFromUnknown(value: unknown): AskSource[] {
   if (!record) return [];
   const url = stringValue(record.url ?? record.href ?? record.source_url);
   const label =
-    stringValue(record.label ?? record.title ?? record.name ?? record.src ?? record.source) ?? (url ? hostLabel(url) : undefined);
-  return label || url ? [{ label: label ?? hostLabel(url ?? ""), url, title: stringValue(record.title) }] : [];
+    stringValue(record.label ?? record.title ?? record.name ?? record.src ?? record.source) ??
+    (url ? hostLabel(url) : undefined);
+  return label || url
+    ? [{ label: label ?? hostLabel(url ?? ""), url, title: stringValue(record.title) }]
+    : [];
 }
 
 function dedupeSources(sources: AskSource[]): AskSource[] {

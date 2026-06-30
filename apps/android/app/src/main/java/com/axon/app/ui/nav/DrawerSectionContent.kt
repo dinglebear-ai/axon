@@ -2,6 +2,7 @@ package com.axon.app.ui.nav
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavController
+import com.axon.app.ui.jobs.ActivityHistoryScreen
 import com.axon.app.ui.jobs.JobsDrawerContent
 import com.axon.app.ui.knowledge.KnowledgeTab
 import com.axon.app.ui.knowledge.KnowledgeDrawerContent
@@ -20,6 +21,7 @@ fun DrawerSectionContent(
     }
 
     when (section) {
+        DrawerSection.Activity -> ActivityHistoryScreen()
         DrawerSection.Sessions   -> SessionsDrawerContent(onSelect = { _ -> onDismiss() })
         DrawerSection.Jobs       -> JobsDrawerContent()
         DrawerSection.Knowledge  -> KnowledgeDrawerContent(

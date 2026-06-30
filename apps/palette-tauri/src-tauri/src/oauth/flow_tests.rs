@@ -5,6 +5,8 @@ fn meta() -> AuthServerMetadata {
         authorization_endpoint: "https://axon.example.com/authorize".to_string(),
         token_endpoint: "https://axon.example.com/token".to_string(),
         registration_endpoint: Some("https://axon.example.com/register".to_string()),
+        native_callback_endpoint: Some("https://axon.example.com/native/callback".to_string()),
+        native_poll_endpoint: Some("https://axon.example.com/native/poll".to_string()),
     }
 }
 
@@ -31,6 +33,26 @@ fn metadata_deserializes_ignoring_extra_fields_and_optional_registration() {
     assert_eq!(
         parsed.registration_endpoint.as_deref(),
         Some("https://axon.example.com/register")
+    );
+    assert!(parsed.native_callback_endpoint.is_none());
+    assert!(parsed.native_poll_endpoint.is_none());
+
+    let native = r#"{
+        "issuer": "https://axon.example.com",
+        "authorization_endpoint": "https://axon.example.com/authorize",
+        "token_endpoint": "https://axon.example.com/token",
+        "registration_endpoint": "https://axon.example.com/register",
+        "native_callback_endpoint": "https://axon.example.com/native/callback",
+        "native_poll_endpoint": "https://axon.example.com/native/poll"
+    }"#;
+    let parsed: AuthServerMetadata = serde_json::from_str(native).unwrap();
+    assert_eq!(
+        parsed.native_callback_endpoint.as_deref(),
+        Some("https://axon.example.com/native/callback")
+    );
+    assert_eq!(
+        parsed.native_poll_endpoint.as_deref(),
+        Some("https://axon.example.com/native/poll")
     );
 
     // DCR-disabled server omits registration_endpoint → None, not a parse error.
@@ -139,4 +161,36 @@ fn grant_rejection_only_for_definitive_codes_not_transient_4xx() {
     assert!(!is_grant_rejection(StatusCode::REQUEST_TIMEOUT)); // 408
     assert!(!is_grant_rejection(StatusCode::INTERNAL_SERVER_ERROR)); // 500
     assert!(!is_grant_rejection(StatusCode::SERVICE_UNAVAILABLE)); // 503
+}
+
+#[tokio::test]
+async fn poll_native_code_times_out_stalled_response_within_budget() {
+    let listener = tokio::net::TcpListener::bind(("localhost", 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let _server = tokio::spawn(async move {
+        let Ok((socket, _)) = listener.accept().await else {
+            return;
+        };
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        drop(socket);
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    let start = tokio::time::Instant::now();
+    let err = poll_native_code(
+        &client,
+        &format!("http://localhost:{port}/native/poll"),
+        "state",
+        Duration::from_millis(100),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(err.contains("timed out"), "unexpected error: {err}");
+    assert!(start.elapsed() < Duration::from_secs(2));
 }
