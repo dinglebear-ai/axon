@@ -127,7 +127,7 @@ sealed interface ChatItem {
         val chunkCount: Int? = null,
         val status: String = "202 Accepted",
         val endpoint: String = "POST /v1/{operation}",
-        val detail: String = "Job submitted. Track it from Jobs.",
+        val detail: String = "Job submitted. Open Jobs to monitor status, retry, or inspect details.",
     ) : ChatItem
 }
 

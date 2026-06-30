@@ -1,6 +1,7 @@
 package com.axon.app.ui.nav
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -39,12 +40,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.axon.app.AxonApp
+import com.axon.app.data.repository.AxonSettings
 import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.document.DocumentScreen
 import com.axon.app.ui.knowledge.SuggestScreen
 import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.options.ModeOptionsScreen
 import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.ui.status.StatusDiagnostics
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.theme.AxonTheme
 import kotlinx.serialization.SerialName
@@ -89,6 +92,14 @@ fun AxonNavGraph() {
     }
 
     val navController = rememberNavController()
+    val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = AxonSettings())
+    val diagnostics = remember(settings.serverUrl.value, settings.authMode, settings.collection) {
+        StatusDiagnostics(
+            serverUrl = settings.serverUrl.value,
+            authMode = settings.authMode.name,
+            collection = settings.collection,
+        )
+    }
     // Stable callback: same lambda identity across recompositions so deep children
     // don't see a new function reference per render.
     val openDocument = remember(navController) {
@@ -101,27 +112,30 @@ fun AxonNavGraph() {
             navController = navController,
             startDestination = RailShellRoute,
         ) {
-            composable<RailShellRoute>  { RailScaffold(navController = navController) }
-            composable<SettingsRoute>   { BackShell("Settings", navController::popBackStack) { SettingsScreen() } }
+            composable<RailShellRoute>  { RailScaffold(navController = navController, diagnostics = diagnostics) }
+            composable<SettingsRoute>   { BackShell("Settings", navController::popBackStack, diagnostics = diagnostics) { SettingsScreen() } }
             composable<DocumentRoute> { entry ->
                 val route: DocumentRoute = entry.toRoute()
-                BackShell("Document", navController::popBackStack) { DocumentScreen(url = Uri.decode(route.url)) }
+                BackShell("Document", navController::popBackStack, diagnostics = diagnostics) { DocumentScreen(url = Uri.decode(route.url)) }
             }
             composable<ModeOptionsRoute> { entry ->
                 val route: ModeOptionsRoute = entry.toRoute()
                 val mode = runCatching { OperationMode.valueOf(route.modeName) }.getOrNull()
                 if (mode == null) {
-                    // Unknown mode name — bounce back. Cheaper than a crash dialog.
-                    LaunchedPopBack(navController)
+                    LaunchedPopBack(
+                        navController = navController,
+                        message = "That tool is no longer available",
+                    )
                 } else {
                     BackShell(
                         title = "${mode.label} options",
                         onBack = navController::popBackStack,
+                        diagnostics = diagnostics,
                     ) { ModeOptionsScreen(mode) }
                 }
             }
             composable<SuggestRoute> {
-                BackShell("Suggest", navController::popBackStack) {
+                BackShell("Suggest", navController::popBackStack, diagnostics = diagnostics) {
                     SuggestScreen()
                 }
             }
@@ -130,14 +144,21 @@ fun AxonNavGraph() {
 }
 
 @Composable
-private fun LaunchedPopBack(navController: NavController) {
-    androidx.compose.runtime.LaunchedEffect(Unit) { navController.popBackStack() }
+private fun LaunchedPopBack(navController: NavController, message: String? = null) {
+    val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(message) {
+        if (message != null) {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+        navController.popBackStack()
+    }
 }
 
 @Composable
 internal fun BackShell(
     title: String,
     onBack: () -> Unit,
+    diagnostics: StatusDiagnostics,
     content: @Composable () -> Unit,
 ) {
     val colors = AxonTheme.colors
@@ -178,7 +199,7 @@ internal fun BackShell(
                     .align(Alignment.Center)
                     .widthIn(max = 220.dp),
             )
-            TopChromeStatus(modifier = Modifier.align(Alignment.CenterEnd))
+            TopChromeStatus(modifier = Modifier.align(Alignment.CenterEnd), diagnostics = diagnostics)
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.borderDefault))
         Box(

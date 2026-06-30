@@ -83,7 +83,7 @@ internal fun AskViewModel.askFromQuery(query: String, attachment: String? = null
                         )
                         if (finalAnswer.isBlank()) {
                             _uiState.value = AskUiState.Error("No response received from server")
-                            replaceLastAxonMsg("Error: No response received from server", isStreaming = false)
+                            replaceLastAxonMsg(userFacingAskError("No response received from server"), isStreaming = false)
                             return@collect
                         }
                         val result = AskResultUi(query = query, answer = finalAnswer, timingMs = null)
@@ -102,7 +102,7 @@ internal fun AskViewModel.askFromQuery(query: String, attachment: String? = null
                     is AskStreamEvent.Error -> {
                         if (accumulated.isNotBlank()) flushStreaming(force = true)
                         _uiState.value = AskUiState.Error(event.message)
-                        replaceLastAxonMsg("Error: ${event.message}", isStreaming = false)
+                        replaceLastAxonMsg(userFacingAskError(event.message), isStreaming = false)
                     }
                 }
             }
@@ -110,8 +110,9 @@ internal fun AskViewModel.askFromQuery(query: String, attachment: String? = null
             // Re-throw CancellationException so structured cancellation propagates correctly.
             // Any other exception is surfaced as an error state.
             if (err is CancellationException) throw err
-            _uiState.value = AskUiState.Error(err.message ?: "Unknown error")
-            replaceLastAxonMsg("Error: ${err.message ?: "Unknown error"}", isStreaming = false)
+            val message = err.message ?: "Unknown error"
+            _uiState.value = AskUiState.Error(message)
+            replaceLastAxonMsg(userFacingAskError(message), isStreaming = false)
         }
 
         // Fallback: stream ended without a Done/Error event (truncated SSE response).
@@ -138,8 +139,19 @@ internal fun AskViewModel.askFromQuery(query: String, attachment: String? = null
                 lastAskProducedTurn = true
             } else {
                 _uiState.value = AskUiState.Error("No response received from server")
-                replaceLastAxonMsg("Error: No response received from server", isStreaming = false)
+                replaceLastAxonMsg(userFacingAskError("No response received from server"), isStreaming = false)
             }
         }
+    }
+}
+
+internal fun userFacingAskError(message: String): String {
+    val detail = message.trim().ifBlank { "Unknown error" }
+    return when {
+        detail.contains("No candidates passed topical overlap", ignoreCase = true) ->
+            "Error: I couldn't find indexed context for this question. Switch to Chat for a general answer, or use + to Search, Crawl, Embed, or Retrieve the relevant source first.\n\nDetail: $detail"
+        detail.contains("No response received from server", ignoreCase = true) ->
+            "Error: Axon did not receive a response from the server. Check the connection status, then retry or switch to Chat if this is a general question.\n\nDetail: $detail"
+        else -> "Error: Axon couldn't complete this request. Retry, switch modes, or use + to gather the source material first.\n\nDetail: $detail"
     }
 }
