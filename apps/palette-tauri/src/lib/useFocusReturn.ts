@@ -43,7 +43,8 @@ export function usePaletteHotkeys(
         event.preventDefault();
         if (state.settingsOpen) act.closeSettings();
         else if (state.historyOpen) act.toBrowseFromHistory();
-        else if (state.browseOpen && !state.query && !state.modeAction && state.run.kind === "idle") act.closeBrowse();
+        else if (state.browseOpen && !state.query && !state.modeAction && state.run.kind === "idle")
+          act.closeBrowse();
         else if (state.modeAction && !state.query) act.clearMode();
         else if (state.query) act.clearQuery();
         else void invoke("hide_palette");
@@ -67,7 +68,7 @@ export function usePaletteHotkeys(
     // volatile values are read through `.current` inside the handler. Depending
     // on `stateRef.current` (a fresh object each render) would re-bind the
     // listener on every keystroke/stream tick — the exact churn P-H2 removed.
-  }, [stateRef, actionsRef]);
+  }, [stateRef]);
 }
 
 // A11Y-H2 — focus management for transient overlays (Settings / History / result
@@ -90,12 +91,11 @@ export function useFocusReturn<T extends HTMLElement = HTMLElement>(open: boolea
       // Move focus into the overlay on the next frame so the node is mounted.
       const container = containerRef.current;
       if (container) {
-        const target =
-          container.matches("[tabindex], a[href], button, input, select, textarea")
-            ? container
-            : container.querySelector<HTMLElement>(
-                "[tabindex]:not([tabindex='-1']), a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
-              ) ?? container;
+        const target = container.matches("[tabindex], a[href], button, input, select, textarea")
+          ? container
+          : (container.querySelector<HTMLElement>(
+              "[tabindex]:not([tabindex='-1']), a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+            ) ?? container);
         target.focus();
       }
       return;

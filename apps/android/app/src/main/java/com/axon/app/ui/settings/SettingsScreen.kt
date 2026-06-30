@@ -1,5 +1,6 @@
 package com.axon.app.ui.settings
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -38,6 +39,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.humanizeJsonFragmentText
 import com.axon.app.ui.system.SystemScreen
 import com.axon.app.ui.theme.AxonTheme
@@ -54,7 +63,7 @@ import kotlinx.coroutines.launch
 private enum class SettingsTab(val label: String, val shortLabel: String, val icon: ImageVector) {
     Connection("Connection", "Conn", Icons.Rounded.Link),
     Env("Env", "Env", Icons.Rounded.Key),
-    Config("Config", "Config", Icons.Rounded.Slideshow),
+    Config("Config", "Cfg", Icons.Rounded.Slideshow),
     System("System", "Sys", Icons.Rounded.MonitorHeart),
 }
 
@@ -67,6 +76,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val saveState by vm.saveState.collectAsStateWithLifecycle()
     val draftAuthMode by vm.draftAuthMode.collectAsStateWithLifecycle()
     val oauthStatus by vm.oauthStatus.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val oauthLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.data == null) vm.cancelOAuthSignIn() else vm.completeOAuthSignIn(result.data)
@@ -102,6 +112,25 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            CommandConsoleHeader(
+                eyebrow = "control plane",
+                title = "Settings Console",
+                description = "Connection, OAuth, environment, config, and system diagnostics live in one operator surface.",
+                icon = tab.icon,
+                tone = when (tab) {
+                    SettingsTab.Connection -> AxonTheme.colors.accentPrimary
+                    SettingsTab.Env -> AxonTheme.colors.accentPink
+                    SettingsTab.Config -> AxonTheme.colors.orange
+                    SettingsTab.System -> AxonTheme.colors.accentStrong
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 600.dp),
+            ) {
+                MetricPill("tab", tab.shortLabel)
+                MetricPill("env", AxonSettingsCatalog.envGroups.sumOf { it.fields.size }.toString(), tone = AxonTheme.colors.accentPink)
+                MetricPill("cfg", AxonSettingsCatalog.configGroups.sumOf { it.fields.size }.toString(), tone = AxonTheme.colors.orange)
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
@@ -151,13 +180,20 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                                 scope.launch {
                                     vm.beginOAuthSignIn(serverUrl).fold(
                                         onSuccess = oauthLauncher::launch,
-                                        onFailure = { },
+                                        onFailure = {
+                                            Toast.makeText(
+                                                context,
+                                                it.message ?: "OAuth sign-in failed to start",
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        },
                                     )
                                 }
                             },
                             onSignOutOAuth = vm::signOutOAuth,
                             collections = collections,
                             onRefreshCollections = vm::refreshCollections,
+                            onTestConnection = { vm.testConnection(serverUrl, token) },
                             connection = connection,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -236,10 +272,18 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.tint(colors.accentPrimary, 7, colors.pageBg) else colors.control.copy(alpha = 0.01f), RoundedCornerShape(8.dp))
             .border(1.dp, if (selected) colors.tint(colors.accentPrimary, 20, colors.pageBg) else colors.borderDefault.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append(tab.label)
+                    count?.let { append(", ").append(it).append(" settings") }
+                }
+                role = Role.Button
+                this.selected = selected
+            }
             .clickable(onClick = onClick)
-            .height(48.dp)
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            .height(50.dp)
+            .padding(horizontal = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(tab.icon, contentDescription = null, tint = if (selected) colors.accentStrong else colors.textMuted.copy(alpha = 0.72f), modifier = Modifier.size(15.dp))
@@ -252,19 +296,20 @@ private fun SettingsTabButton(tab: SettingsTab, selected: Boolean, modifier: Mod
             fontFamily = AxonTheme.fonts.body,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
         )
         count?.let {
             Text(
                 it.toString(),
                 modifier = Modifier
-                    .width(32.dp)
-                    .height(22.dp)
+                    .width(24.dp)
+                    .height(18.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(colors.control.copy(alpha = if (selected) 0.34f else 0.18f))
                     .border(1.dp, colors.borderDefault.copy(alpha = if (selected) 0.18f else 0.08f), RoundedCornerShape(999.dp)),
                 color = colors.textMuted.copy(alpha = 0.78f),
-                fontSize = 10.4.sp,
-                lineHeight = 22.sp,
+                fontSize = 8.8.sp,
+                lineHeight = 18.sp,
                 fontFamily = AxonTheme.fonts.mono,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,

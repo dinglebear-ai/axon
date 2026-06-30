@@ -9,63 +9,43 @@ import { hostLabel } from "@/lib/url";
 const LIST_LIMIT = 18;
 
 type Tone = "info" | "success" | "warn" | "error" | "neutral" | "rose" | "violet";
-type EmptyKind = "generic" | "results" | "urls" | "sources" | "jobs" | "watches" | "scrape" | "retrieve";
+type EmptyKind =
+  | "generic" | "results" | "urls" | "sources" | "jobs" | "watches" | "scrape" | "retrieve";
 
-export function ResultRows({ rows, preferSnippet }: { rows: unknown[]; preferSnippet?: boolean }) {
-  if (rows.length === 0) return <EmptyResult kind="results" />;
-  return (
-    <section className="operation-section">
-      <h3 className="stats-heading">Results</h3>
-      <div className="operation-list">
-        {rows.slice(0, LIST_LIMIT).map((row, index) => {
-          const record = isRecord(row) ? row : {};
-          const title = strField(record, "title") ?? strField(record, "name") ?? strField(record, "url") ?? `Result ${index + 1}`;
-          const url = strField(record, "url") ?? strField(record, "source_url");
-          const snippet =
-            strField(record, "snippet") ??
-            strField(record, "content") ??
-            strField(record, "text") ??
-            strField(record, "reason");
-          const score = numField(record, "score");
-          const rank = numField(record, "rank") ?? index + 1;
-          return (
-            <article key={`${url ?? title}-${index}`} className="operation-row">
-              <div className="operation-row-index">{rank}</div>
-              <div className="operation-row-main">
-                <div className="operation-row-title">
-                  {url ? (
-                    <a href={url} target="_blank" rel="noopener noreferrer">
-                      {title}
-                    </a>
-                  ) : (
-                    title
-                  )}
-                </div>
-                {url ? <div className="operation-url">{url}</div> : null}
-                {snippet ? <p className={preferSnippet ? "operation-snippet" : "operation-muted"}>{snippet}</p> : null}
-              </div>
-              {score !== undefined ? <span className="operation-score">{score.toFixed(3)}</span> : null}
-            </article>
-          );
-        })}
-      </div>
-    </section>
+export function UrlListView({
+  title,
+  payload,
+  keys,
+}: {
+  title: string;
+  payload: Record<string, unknown>;
+  keys: string[];
+}) {
+  const urls = arrayByKeys(payload, keys).filter(
+    (item): item is string => typeof item === "string",
   );
-}
-
-export function UrlListView({ title, payload, keys }: { title: string; payload: Record<string, unknown>; keys: string[] }) {
-  const urls = arrayByKeys(payload, keys).filter((item): item is string => typeof item === "string");
   const count = numField(payload, "count") ?? numField(payload, "total") ?? urls.length;
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Total", count], ["View", title]]} />
+      <ResultSummary
+        metrics={[
+          ["Total", count],
+          ["View", title],
+        ]}
+      />
       {urls.length === 0 ? (
         <EmptyResult kind={title.toLowerCase().includes("indexed") ? "sources" : "urls"} />
       ) : (
         <section className="operation-section">
           <div className="operation-url-grid">
             {urls.slice(0, LIST_LIMIT * 2).map((url) => (
-              <a key={url} className="operation-url-card" href={url} target="_blank" rel="noopener noreferrer">
+              <a
+                key={url}
+                className="operation-url-card"
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <span>{hostLabel(url)}</span>
                 <code>{url}</code>
               </a>
@@ -91,10 +71,14 @@ export function JobRows({ rows, title = "Jobs" }: { rows: unknown[]; title?: str
             <article key={`${id ?? index}`} className="operation-row">
               <StatusDot status={status} />
               <div className="operation-row-main">
-                <div className="operation-row-title">{target ?? (id ? shortId(id) : undefined) ?? `Job ${index + 1}`}</div>
+                <div className="operation-row-title">
+                  {target ?? (id ? shortId(id) : undefined) ?? `Job ${index + 1}`}
+                </div>
                 {id ? <div className="operation-url">{id}</div> : null}
               </div>
-              <span className={`operation-badge operation-badge-${toneForStatus(status)}`}>{status}</span>
+              <span className={`operation-badge operation-badge-${toneForStatus(status)}`}>
+                {status}
+              </span>
             </article>
           );
         })}
@@ -103,19 +87,36 @@ export function JobRows({ rows, title = "Jobs" }: { rows: unknown[]; title?: str
   );
 }
 
-export function GenericResultView({ payload, embedded }: { payload: Record<string, unknown>; embedded?: boolean }) {
-  const fields = Object.entries(payload).filter(([, value]) => typeof value !== "object" || value === null);
+export function GenericResultView({
+  payload,
+  embedded,
+}: {
+  payload: Record<string, unknown>;
+  embedded?: boolean;
+}) {
+  const fields = Object.entries(payload).filter(
+    ([, value]) => typeof value !== "object" || value === null,
+  );
   if (fields.length === 0) return embedded ? <EmptyResult /> : null;
   const body = (
     <section className="operation-section">
       <div className="operation-detail-card">
         {fields.slice(0, 14).map(([key, value]) => (
-          <DetailLine key={key} label={labelize(key)} value={formatDetailValue(key, value)} mono={isMonoDetail(key)} />
+          <DetailLine
+            key={key}
+            label={labelize(key)}
+            value={formatDetailValue(key, value)}
+            mono={isMonoDetail(key)}
+          />
         ))}
       </div>
     </section>
   );
-  return embedded ? body : <div className="output-body operation-view aurora-scrollbar">{body}</div>;
+  return embedded ? (
+    body
+  ) : (
+    <div className="output-body operation-view aurora-scrollbar">{body}</div>
+  );
 }
 
 export function ResultSummary({ metrics }: { metrics: Array<[string, string | number]> }) {
@@ -160,7 +161,15 @@ export function ResultHero({
   );
 }
 
-export function DetailLine({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+export function DetailLine({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <div className="operation-detail-line">
       <span>{label}</span>
@@ -236,21 +245,45 @@ export function arrayByKeys(payload: Record<string, unknown>, keys: string[]): u
 function emptyCopy(kind: EmptyKind): { title: string; body: string } {
   switch (kind) {
     case "results":
-      return { title: "No matches", body: "The operation completed, but Axon did not return any ranked results." };
+      return {
+        title: "No matches",
+        body: "The operation completed, but Axon did not return any ranked results.",
+      };
     case "urls":
-      return { title: "No URLs discovered", body: "Try a higher-level page, sitemap, or a domain with crawlable links." };
+      return {
+        title: "No URLs discovered",
+        body: "Try a higher-level page, sitemap, or a domain with crawlable links.",
+      };
     case "sources":
-      return { title: "No indexed sources", body: "This collection does not have source URLs yet. Scrape, crawl, or ingest something first." };
+      return {
+        title: "No indexed sources",
+        body: "This collection does not have source URLs yet. Scrape, crawl, or ingest something first.",
+      };
     case "jobs":
-      return { title: "No jobs in this lane", body: "There are no queued, running, or recent jobs for this operation family." };
+      return {
+        title: "No jobs in this lane",
+        body: "There are no queued, running, or recent jobs for this operation family.",
+      };
     case "watches":
-      return { title: "No watches configured", body: "Create a watch from a URL to schedule recurring crawls or diffs." };
+      return {
+        title: "No watches configured",
+        body: "Create a watch from a URL to schedule recurring crawls or diffs.",
+      };
     case "scrape":
-      return { title: "No page body returned", body: "The page was reachable, but the scrape result did not include markdown content." };
+      return {
+        title: "No page body returned",
+        body: "The page was reachable, but the scrape result did not include markdown content.",
+      };
     case "retrieve":
-      return { title: "No chunks returned", body: "Axon did not find stored chunks for that source URL in the active collection." };
+      return {
+        title: "No chunks returned",
+        body: "Axon did not find stored chunks for that source URL in the active collection.",
+      };
     default:
-      return { title: "No structured fields", body: "The response was successful, but it did not include displayable fields." };
+      return {
+        title: "No structured fields",
+        body: "The response was successful, but it did not include displayable fields.",
+      };
   }
 }
 
@@ -289,7 +322,10 @@ export function sanitizeReaderMarkdown(value: string | undefined): string | unde
     }
   }
 
-  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return kept
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function cleanupScrapeArtifactLine(line: string): string | undefined {
@@ -392,7 +428,12 @@ function formatBytes(bytes: number): string {
 
 function isMonoDetail(key: string): boolean {
   const lower = key.toLowerCase();
-  return lower.endsWith("id") || lower.includes("url") || lower.includes("path") || lower.includes("endpoint");
+  return (
+    lower.endsWith("id") ||
+    lower.includes("url") ||
+    lower.includes("path") ||
+    lower.includes("endpoint")
+  );
 }
 
 export function isBadStatus(status: string | undefined): boolean {
@@ -426,14 +467,29 @@ export function toneForStatus(status: string | undefined): Tone {
 function statusPresentation(tone: Tone): { indicatorTone: StatusTone; dotStyle: CSSProperties } {
   switch (tone) {
     case "success":
-      return { indicatorTone: "online", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-success-surface)" } };
+      return {
+        indicatorTone: "online",
+        dotStyle: { boxShadow: "0 0 0 3px var(--aurora-success-surface)" },
+      };
     case "warn":
-      return { indicatorTone: "degraded", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-warn-surface)" } };
+      return {
+        indicatorTone: "degraded",
+        dotStyle: { boxShadow: "0 0 0 3px var(--aurora-warn-surface)" },
+      };
     case "error":
-      return { indicatorTone: "error", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-error-surface)" } };
+      return {
+        indicatorTone: "error",
+        dotStyle: { boxShadow: "0 0 0 3px var(--aurora-error-surface)" },
+      };
     case "violet":
-      return { indicatorTone: "automating", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" } };
+      return {
+        indicatorTone: "automating",
+        dotStyle: { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" },
+      };
     default:
-      return { indicatorTone: "queued", dotStyle: { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" } };
+      return {
+        indicatorTone: "queued",
+        dotStyle: { boxShadow: "0 0 0 3px var(--aurora-neutral-surface)" },
+      };
   }
 }

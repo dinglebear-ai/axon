@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.Pending
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -18,6 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -26,9 +31,12 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.ui.fab.FabOp
+import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.AuroraProgressBar
 import com.axon.app.ui.common.ProgressSize
 import com.axon.app.ui.common.ProgressVariant
+import com.axon.app.ui.common.axonElevation
+import com.axon.app.ui.common.pressScale
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.AxonTone
 import com.axon.app.ui.theme.tint
@@ -38,6 +46,7 @@ import com.axon.app.ui.theme.toneOf
 fun InjectionCard(
     item: ChatItem.Injection,
     modifier: Modifier = Modifier,
+    onOpenJobs: () -> Unit = {},
 ) {
     val op = item.op
     val jobId = item.jobId
@@ -56,6 +65,7 @@ fun InjectionCard(
         modifier = modifier
             .fillMaxWidth(0.84f)
             .widthIn(max = 356.dp)
+            .axonElevation(shape, AxonElevation.Card)
             .clip(shape)
             .background(colors.panelStrong.copy(alpha = 0.22f), shape)
             .border(1.dp, colors.tint(warm.base, 9, colors.panelStrong), shape)
@@ -121,6 +131,45 @@ fun InjectionCard(
                 if (jobId != null) JobMetaPill("job ${jobId.take(8)}")
             }
         }
+        if (jobId != null || !item.isIndexedEvent()) {
+            OpenJobsAction(onOpenJobs = onOpenJobs)
+        }
+    }
+}
+
+@Composable
+private fun OpenJobsAction(onOpenJobs: () -> Unit) {
+    val colors = AxonTheme.colors
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.control.copy(alpha = 0.34f), RoundedCornerShape(8.dp))
+            .border(1.dp, colors.borderDefault.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Open Jobs"
+                role = Role.Button
+            }
+            .pressScale(role = Role.Button, onClick = onOpenJobs)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Icon(
+            Icons.Rounded.TaskAlt,
+            contentDescription = null,
+            tint = colors.accentStrong.copy(alpha = 0.86f),
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            "Open Jobs",
+            color = colors.textPrimary.copy(alpha = 0.88f),
+            fontSize = 11.6.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = AxonTheme.fonts.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -163,13 +212,37 @@ private fun injectionNarrative(item: ChatItem.Injection) = buildAnnotatedString 
 }
 
 private fun ChatItem.Injection.isIndexedEvent(): Boolean =
-    pageCount != null && !status.contains("fail", ignoreCase = true) && !status.contains("error", ignoreCase = true)
+    pageCount != null && isFinalSuccessfulStatus(status)
+
+internal fun isFinalSuccessfulStatus(status: String): Boolean {
+    val normalized = status.trim().lowercase()
+    if (normalized.isBlank() || isFailedStatus(normalized)) return false
+    if (
+        normalized.contains("accepted") ||
+        normalized.contains("pending") ||
+        normalized.contains("queued") ||
+        normalized.contains("running")
+    ) {
+        return false
+    }
+    val code = normalized.takeWhile { it.isDigit() }.toIntOrNull()
+    if (code != null) return code in 200..299 && code != 202
+    return normalized.contains("complete") ||
+        normalized.contains("completed") ||
+        normalized.contains("done") ||
+        normalized.contains("indexed")
+}
+
+internal fun isFailedStatus(status: String): Boolean {
+    val normalized = status.trim().lowercase()
+    return normalized.contains("fail") || normalized.contains("error")
+}
 
 @Composable
 private fun AsyncProgressStrip(item: ChatItem.Injection) {
     val colors = AxonTheme.colors
-    val complete = item.status.contains("complete", ignoreCase = true) || item.status.startsWith("2")
-    val failed = item.status.contains("fail", ignoreCase = true) || item.status.contains("error", ignoreCase = true)
+    val complete = isFinalSuccessfulStatus(item.status)
+    val failed = isFailedStatus(item.status)
     val progress = when {
         failed -> 1f
         complete -> 1f
@@ -213,8 +286,8 @@ private fun AsyncProgressStrip(item: ChatItem.Injection) {
 @Composable
 private fun JobStatusPill(status: String) {
     val colors = AxonTheme.colors
-    val isDone = status.contains("complete", ignoreCase = true) || status.startsWith("2")
-    val isFailed = status.contains("fail", ignoreCase = true) || status.contains("error", ignoreCase = true)
+    val isDone = isFinalSuccessfulStatus(status)
+    val isFailed = isFailedStatus(status)
     val tintColor = when {
         isFailed -> colors.error
         isDone -> colors.success

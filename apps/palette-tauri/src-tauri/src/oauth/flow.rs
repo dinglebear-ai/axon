@@ -4,6 +4,7 @@
 //! reqwest calls. Token-bearing error strings never echo response bodies.
 
 use serde::Deserialize;
+use std::time::Duration;
 
 use crate::oauth::secret::Secret;
 
@@ -16,6 +17,15 @@ pub(crate) struct AuthServerMetadata {
     pub token_endpoint: String,
     #[serde(default)]
     pub registration_endpoint: Option<String>,
+    #[serde(default)]
+    pub native_callback_endpoint: Option<String>,
+    #[serde(default)]
+    pub native_poll_endpoint: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct NativePollResponse {
+    code: Option<String>,
 }
 
 /// The `/token` success response (lab-auth omits `refresh_token` when the
@@ -203,6 +213,53 @@ pub(crate) async fn exchange_code(
     )
     .await
     .map_err(|e| e.message)
+}
+
+pub(crate) async fn poll_native_code(
+    client: &reqwest::Client,
+    poll_endpoint: &str,
+    state: &str,
+    timeout: Duration,
+) -> Result<String, String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err("timed out waiting for the OAuth redirect".to_string());
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        let response = tokio::time::timeout(
+            remaining,
+            client
+                .get(poll_endpoint)
+                .query(&[("state", state)])
+                .header(reqwest::header::ACCEPT, "application/json")
+                .send(),
+        )
+        .await
+        .map_err(|_| "timed out waiting for the OAuth redirect".to_string())?
+        .map_err(|err| format!("native OAuth poll request failed: {err}"))?;
+        if response.status() == reqwest::StatusCode::ACCEPTED {
+            tokio::time::sleep(Duration::from_millis(500).min(remaining)).await;
+            continue;
+        }
+        if !response.status().is_success() {
+            return Err(format!(
+                "native OAuth poll returned HTTP {}",
+                response.status()
+            ));
+        }
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let body: NativePollResponse = tokio::time::timeout(remaining, response.json())
+            .await
+            .map_err(|_| "timed out waiting for the OAuth redirect".to_string())?
+            .map_err(|err| format!("native OAuth poll returned an invalid response: {err}"))?;
+        if let Some(code) = body.code {
+            return Ok(code);
+        }
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        tokio::time::sleep(Duration::from_millis(500).min(remaining)).await;
+    }
 }
 
 pub(crate) async fn refresh_access_token(

@@ -1,9 +1,10 @@
 package com.axon.app.ui.ask
 
 import android.widget.Toast
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.fab.FabLauncher
+import com.axon.app.ui.common.CommandConsoleBackground
+import com.axon.app.ui.common.CommandConsoleHeader
+import com.axon.app.ui.common.MetricPill
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
@@ -45,6 +51,7 @@ import tv.tootie.aurora.components.AuroraThinking
 @Composable
 fun AskScreen(
     onOpenDocument: (String) -> Unit = {},
+    onOpenJobs: () -> Unit = {},
     onFabOverlayVisibleChange: (Boolean) -> Unit = {},
     vm: AskViewModel = viewModel(),
 ) {
@@ -119,14 +126,22 @@ fun AskScreen(
     }
     val askSuggestions = remember {
         listOf(
-            "What is Axon and what can it do?",
-            "How do I crawl and index a docs site?",
-            "What embedding model does Axon use?",
+            "What can Axon help me do?",
+            "Help me choose between Ask and Chat mode",
+            "How should I crawl and index a docs site?",
         )
     }
+    fun submitStarterPrompt(prompt: String) {
+        vm.setMode(ConversationMode.Chat)
+        vm.ask(prompt)
+    }
     fun copyMessage(value: String) {
-        context.getSystemService(android.content.ClipboardManager::class.java)
-            ?.setPrimaryClip(android.content.ClipData.newPlainText("Axon message", value))
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        if (clipboard == null) {
+            Toast.makeText(context, "Clipboard is unavailable", Toast.LENGTH_LONG).show()
+            return
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Axon message", value))
         Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
     }
     val historyPreview = remember(chatItems, history) {
@@ -146,7 +161,7 @@ fun AskScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(AxonTheme.colors.pageBg)) {
+    CommandConsoleBackground(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
@@ -159,8 +174,24 @@ fun AskScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .widthIn(max = 460.dp),
-                    contentPadding = PaddingValues(start = 6.dp, top = 12.dp, end = 6.dp, bottom = 148.dp),
+                    contentPadding = PaddingValues(start = 6.dp, top = 12.dp, end = 6.dp, bottom = 176.dp),
                 ) {
+                    item {
+                        CommandConsoleHeader(
+                            eyebrow = "Axon command console",
+                            title = "Agent Console",
+                            description = "Ask, chat, and launch indexed operations from one live workspace surface.",
+                            icon = Icons.Rounded.Hub,
+                            tone = AxonTheme.colors.accentPrimary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 14.dp),
+                        ) {
+                            MetricPill("mode", mode.label)
+                            MetricPill("turns", chatItems.count { it is ChatItem.UserMsg }.toString(), tone = AxonTheme.colors.accentPink)
+                            MetricPill("ops", chatItems.count { it is ChatItem.Activity || it is ChatItem.ActionResult || it is ChatItem.Injection }.toString(), tone = AxonTheme.colors.orange)
+                        }
+                    }
                     when {
                         chatItems.isNotEmpty() -> {
                             itemsIndexed(
@@ -189,6 +220,7 @@ fun AskScreen(
                                     ChatItemContent(
                                         item = item,
                                         onOpenDocument = onOpenDocument,
+                                        onOpenJobs = onOpenJobs,
                                         isLastAxon = index == lastAxonIdx,
                                         showAvatar = showAvatar,
                                         onCopy = ::copyMessage,
@@ -246,19 +278,33 @@ fun AskScreen(
                                         .fillParentMaxHeight()
                                         .fillMaxWidth(),
                                     suggestions = askSuggestions,
-                                    onSuggestion = { vm.ask(it) },
+                                    onSuggestion = ::submitStarterPrompt,
                                 )
                             }
                         }
                     }
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ModeExplanationPill(
+                    mode = mode,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 460.dp)
+                        .padding(horizontal = 12.dp),
+                )
                 AskPromptBar(
                     value = input,
                     onValueChange = { input = it },
                     loading = uiState is AskUiState.Loading || uiState is AskUiState.Streaming,
-                    placeholder = if (chatItems.isEmpty() && historyPreview.isEmpty()) "Ask Axon…" else if (mode == ConversationMode.Chat) "Chat with Axon…" else "Ask a follow-up…",
+                    placeholder = when {
+                        mode == ConversationMode.Chat -> "Chat with Axon…"
+                        chatItems.isEmpty() && historyPreview.isEmpty() -> "Ask indexed docs…"
+                        else -> "Ask a follow-up…"
+                    },
                     mode = mode,
                     onModeChange = vm::setMode,
                     attachments = attachments,
@@ -284,7 +330,7 @@ fun AskScreen(
                 listState = listState,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 3.dp, bottom = 88.dp),
+                    .padding(end = 3.dp, bottom = 116.dp),
             )
         }
         val lastListIndex = if (chatItems.isNotEmpty()) chatItems.lastIndex else historyPreview.lastIndex
@@ -296,7 +342,7 @@ fun AskScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 92.dp),
+                .padding(bottom = 120.dp),
         )
         FabLauncher(
             onOpSubmit = { op, fabInput -> vm.submitFabOp(op, fabInput) },
@@ -309,6 +355,7 @@ fun AskScreen(
 private fun ChatItemContent(
     item: ChatItem,
     onOpenDocument: (String) -> Unit,
+    onOpenJobs: () -> Unit,
     isLastAxon: Boolean,
     showAvatar: Boolean,
     onCopy: (String) -> Unit,
@@ -337,13 +384,13 @@ private fun ChatItemContent(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            ActionResultCard(item)
+            ActionResultCard(item, onOpenJobs = onOpenJobs)
         }
         is ChatItem.Injection -> Box(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            InjectionCard(item)
+            InjectionCard(item, onOpenJobs = onOpenJobs)
         }
     }
 }

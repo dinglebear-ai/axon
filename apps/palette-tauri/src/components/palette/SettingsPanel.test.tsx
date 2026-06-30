@@ -40,6 +40,8 @@ const baseConfig: PaletteConfig = {
   theme: "system",
   hideOnBlur: true,
   openResultsInline: true,
+  agentBubbles: false,
+  showFooterHints: false,
 };
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof SettingsPanel>> = {}) {
@@ -107,6 +109,19 @@ describe("SettingsPanel", () => {
     expect(last.hideOnBlur).toBe(false);
   });
 
+  it("hides footer hints by default and lets the user enable them", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPanel();
+
+    const toggle = screen.getByRole("button", { name: /Show footer hints/i });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(toggle);
+
+    const last = onChange.mock.calls.at(-1)?.[0] as PaletteConfig;
+    expect(last.showFooterHints).toBe(true);
+  });
+
   describe("tabs (A11Y-H2)", () => {
     it("exposes a tablist with three tabs and one selected tabpanel", () => {
       renderPanel();
@@ -157,6 +172,8 @@ const authConfig: PaletteConfig = {
   theme: "dark",
   hideOnBlur: false,
   openResultsInline: true,
+  agentBubbles: false,
+  showFooterHints: false,
   envValues: {},
   configValues: {},
 };

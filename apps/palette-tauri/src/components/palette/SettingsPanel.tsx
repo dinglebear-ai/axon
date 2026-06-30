@@ -247,6 +247,18 @@ function ConnectionPanel({
           on={draftConfig.openResultsInline ?? true}
           onChange={(value) => updateConfig("openResultsInline", value)}
         />
+        <ToggleRow
+          label="Agent replies in a bubble"
+          sub="Frame assistant messages like user messages"
+          on={draftConfig.agentBubbles ?? false}
+          onChange={(value) => updateConfig("agentBubbles", value)}
+        />
+        <ToggleRow
+          label="Show footer hints"
+          sub="Display the keyboard hint legend under the palette"
+          on={draftConfig.showFooterHints ?? false}
+          onChange={(value) => updateConfig("showFooterHints", value)}
+        />
       </div>
     </div>
   );
@@ -417,7 +429,7 @@ function ToggleRow({ label, sub, on, onChange }: { label: string; sub?: string; 
         <span>{label}</span>
         {sub && <span>{sub}</span>}
       </span>
-      <MiniToggle on={on} onChange={onChange} />
+      <MiniToggle label={label} on={on} onChange={onChange} />
     </div>
   );
 }
