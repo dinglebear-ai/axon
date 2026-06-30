@@ -41,6 +41,7 @@ pub(super) fn component_changed_since_ref(
         changed_paths_since_ref(root, base, head, &component.shipping_paths)?
             .into_iter()
             .filter(|path| !is_changelog_path(path))
+            .filter(|path| !is_non_shipping_documentation_path(path))
             .collect();
     if changed.is_empty() {
         return Ok(false);
@@ -62,6 +63,18 @@ pub(super) fn component_changed_since_ref(
 /// shipping paths; this keeps the rule uniform across components.)
 fn is_changelog_path(path: &str) -> bool {
     path == "CHANGELOG.md" || path.ends_with("/CHANGELOG.md")
+}
+
+fn is_non_shipping_documentation_path(path: &str) -> bool {
+    path == "README.md"
+        || path == "CLAUDE.md"
+        || path == "AGENTS.md"
+        || path == "GEMINI.md"
+        || path.ends_with("/README.md")
+        || path.ends_with("/CLAUDE.md")
+        || path.ends_with("/AGENTS.md")
+        || path.ends_with("/GEMINI.md")
+        || path.starts_with("docs/")
 }
 
 fn changed_paths_since_ref(
