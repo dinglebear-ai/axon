@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { loadArtifactObjectUrl } from "@/lib/artifactPreview";
 
@@ -8,19 +8,25 @@ import { loadArtifactObjectUrl } from "@/lib/artifactPreview";
  * shared `activeUrlRef` consulted by both the effect cleanup and the `<img>`
  * onError handler — so a decode failure or unmount never leaks it.
  */
-export function AuthenticatedArtifactImage({ relativePath, alt }: { relativePath: string; alt: string }) {
+export function AuthenticatedArtifactImage({
+  relativePath,
+  alt,
+}: {
+  relativePath: string;
+  alt: string;
+}) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Single source of truth for the live blob URL so the effect cleanup and the
   // <img> onError handler revoke it exactly once (no double-revoke).
   const activeUrlRef = useRef<string | null>(null);
 
-  function revokeActiveUrl() {
+  const revokeActiveUrl = useCallback(() => {
     if (activeUrlRef.current) {
       URL.revokeObjectURL(activeUrlRef.current);
       activeUrlRef.current = null;
     }
-  }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +51,7 @@ export function AuthenticatedArtifactImage({ relativePath, alt }: { relativePath
       cancelled = true;
       revokeActiveUrl();
     };
-  }, [relativePath]);
+  }, [relativePath, revokeActiveUrl]);
 
   if (error) {
     return (

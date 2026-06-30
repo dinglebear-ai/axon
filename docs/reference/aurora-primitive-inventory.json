@@ -81,6 +81,20 @@
       "stale_bead_links": []
     },
     {
+      "id": "W-PAL-006",
+      "platform": "web",
+      "file_paths": ["apps/palette-tauri/src/components/aurora/ai/message.tsx"],
+      "symbols": ["MessageActionButton"],
+      "current_primitive_smell": "The local Aurora AI message adapter exposes a raw button as its action control primitive.",
+      "classification": "axon-composite",
+      "migration_owner": "axon_rust-hrqn.3",
+      "upstream_requirement": "Keep this local only while Axon carries the Aurora AI message adapter in-repo; replace with the registry-provided Message action primitive when the adapter is resynced.",
+      "app_specific_exception": "Message actions need the native button element for icon-only copy/edit/regenerate/suggest affordances while preserving the Aurora message API surface.",
+      "secret_classification": "non-secret",
+      "expected_verification": ["web-raw-control-guard", "palette message reaction hover parity"],
+      "stale_bead_links": []
+    },
+    {
       "id": "A-AND-001",
       "platform": "android",
       "file_paths": [
@@ -244,7 +258,9 @@
       "stale_bead_links": ["axon_rust-dnu7"]
     }
   ],
-  "web_raw_control_allowlist": [],
+  "web_raw_control_allowlist": [
+    { "row_id": "W-PAL-006", "file_path": "apps/palette-tauri/src/components/aurora/ai/message.tsx", "tag": "button" }
+  ],
   "android_reusable_control_allowlist": [
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt", "pattern": "BasicTextField" },
