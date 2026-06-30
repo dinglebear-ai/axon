@@ -10,6 +10,7 @@ import path from "node:path";
 // client bundle. Set AXON_DEV_SERVER + AXON_DEV_TOKEN when starting the dev server.
 const devServer = process.env.AXON_DEV_SERVER ?? "http://127.0.0.1:8001";
 const devToken = process.env.AXON_DEV_TOKEN ?? "";
+const stripOrigin = process.env.AXON_DEV_STRIP_ORIGIN === "true";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -23,6 +24,14 @@ export default defineConfig({
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq) => {
+            // QA against the public reverse proxy may need an explicit
+            // server-side-proxy mode: browser-origin POSTs can be rejected
+            // before Axon handles auth. Keep this opt-in so normal dev still
+            // exposes public-origin/CORS drift instead of masking it.
+            if (stripOrigin) {
+              proxyReq.removeHeader("origin");
+              proxyReq.setHeader("x-axon-dev-proxy", "origin-stripped");
+            }
             if (devToken) {
               proxyReq.setHeader("authorization", `Bearer ${devToken}`);
               proxyReq.setHeader("x-api-key", devToken);

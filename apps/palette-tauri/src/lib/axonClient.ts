@@ -20,6 +20,8 @@ export interface PaletteConfig {
   theme: "system" | "dark" | "light";
   hideOnBlur: boolean;
   openResultsInline?: boolean;
+  agentBubbles?: boolean;
+  showFooterHints?: boolean;
   envValues?: Record<string, string | number | boolean | string[]>;
   configValues?: Record<string, string | number | boolean | string[]>;
 }

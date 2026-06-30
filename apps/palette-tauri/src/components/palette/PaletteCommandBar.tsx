@@ -1,8 +1,20 @@
-import { ArrowLeft, ChevronDown, CircleHelp, Menu, Search, Send, Settings, SlidersHorizontal, TerminalSquare } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  CircleHelp,
+  Menu,
+  Search,
+  Send,
+  Settings,
+  SlidersHorizontal,
+  TerminalSquare,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
+import { AskSessionMenu } from "@/components/palette/AskSessionMenu";
 import { AxonMark } from "@/components/palette/AxonMark";
+import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { Kbd } from "@/components/ui/aurora/kbd";
@@ -26,18 +38,22 @@ interface PaletteCommandBarProps {
   showBackButton: boolean;
   submitDisabled: boolean;
   validation: string;
+  askSessions: HistoryItem[];
+  askSessionsOpen: boolean;
+  onAskSessionsOpenChange: (open: boolean) => void;
   onBack: () => void;
   onHelp: (action?: PaletteAction, unknownTarget?: string) => void;
   onInputKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
   onQueryChange: (value: string) => void;
   onReset: () => void;
+  onResumeAskSession: (item: HistoryItem) => void;
   onSubmit: (action: PaletteAction) => void;
   onSwitchAction: (action: PaletteAction) => void;
+  onSwitcherOpenChange: (open: boolean) => void;
   onToggleMaximize: () => void;
   onToggleSettings: () => void;
 }
 
-// Human-readable connection state for the status dot's sr-only label (A11Y-M2).
 function endpointStatusLabel(tone: string, endpointLabel: string): string {
   switch (tone) {
     case "error":
@@ -53,7 +69,14 @@ function sentenceCase(value: string): string {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
-const SWITCHER_GROUPS = ["Fetch & read", "Crawl & ingest", "Search & discover", "Reason", "System", "Jobs"] as const;
+const SWITCHER_GROUPS = [
+  "Fetch & read",
+  "Crawl & ingest",
+  "Search & discover",
+  "Reason",
+  "System",
+  "Jobs",
+] as const;
 
 export function PaletteCommandBar({
   active,
@@ -70,13 +93,18 @@ export function PaletteCommandBar({
   showBackButton,
   submitDisabled,
   validation,
+  askSessions,
+  askSessionsOpen,
+  onAskSessionsOpenChange,
   onBack,
   onHelp,
   onInputKeyDown,
   onQueryChange,
   onReset,
+  onResumeAskSession,
   onSubmit,
   onSwitchAction,
+  onSwitcherOpenChange,
   onToggleMaximize,
   onToggleSettings,
 }: PaletteCommandBarProps) {
@@ -85,10 +113,15 @@ export function PaletteCommandBar({
   const switcherTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const askSessionsRef = useRef<HTMLDivElement | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedAskSession, setSelectedAskSession] = useState(0);
   const switcherActions = useMemo(
-    () => sortActionsForDisplay(ACTIONS).filter((action) => action.subcommand !== modeAction?.subcommand),
+    () =>
+      sortActionsForDisplay(ACTIONS).filter(
+        (action) => action.subcommand !== modeAction?.subcommand,
+      ),
     [modeAction?.subcommand],
   );
   const groupedSwitcherActions = useMemo(() => {
@@ -100,27 +133,67 @@ export function PaletteCommandBar({
     return [
       ...SWITCHER_GROUPS.map((category) => ({ category, actions: groups.get(category) ?? [] })),
       ...[...groups.entries()]
-        .filter(([category]) => !SWITCHER_GROUPS.includes(category as (typeof SWITCHER_GROUPS)[number]))
+        .filter(
+          ([category]) => !SWITCHER_GROUPS.includes(category as (typeof SWITCHER_GROUPS)[number]),
+        )
         .map(([category, actions]) => ({ category, actions })),
     ].filter((group) => group.actions.length > 0);
   }, [switcherActions]);
 
   useEffect(() => {
-    if (!switcherOpen && !menuOpen) return;
+    if (!switcherOpen && !menuOpen && !askSessionsOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       if (switcherRef.current?.contains(event.target as Node)) return;
       if (menuRef.current?.contains(event.target as Node)) return;
+      if (askSessionsRef.current?.contains(event.target as Node)) return;
       setSwitcherOpen(false);
       setMenuOpen(false);
+      onAskSessionsOpenChange(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [switcherOpen, menuOpen]);
+  }, [askSessionsOpen, menuOpen, onAskSessionsOpenChange, switcherOpen]);
 
   useEffect(() => {
     setSwitcherOpen(false);
     setMenuOpen(false);
-  }, []);
+    onAskSessionsOpenChange(false);
+  }, [onAskSessionsOpenChange]);
+
+  useEffect(() => {
+    onSwitcherOpenChange(switcherOpen || menuOpen || askSessionsOpen);
+  }, [askSessionsOpen, menuOpen, onSwitcherOpenChange, switcherOpen]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset highlighted session when the visible session set changes.
+  useEffect(() => {
+    setSelectedAskSession(0);
+  }, [askSessions.length, askSessionsOpen]);
+
+  function onCommandInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (askSessionsOpen && askSessions.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSelectedAskSession((index) => Math.min(index + 1, askSessions.length - 1));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSelectedAskSession((index) => Math.max(index - 1, 0));
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onResumeAskSession(askSessions[selectedAskSession]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onAskSessionsOpenChange(false);
+        return;
+      }
+    }
+    onInputKeyDown(event);
+  }
 
   // A11Y-M2 — surface submit validation as text tied to the input via
   // aria-describedby (not just a `title` tooltip). The id is referenced only when
@@ -137,7 +210,15 @@ export function PaletteCommandBar({
       }}
     >
       {showBackButton && (
-        <Button variant="plain" size="unstyled" className="command-back" type="button" onClick={onBack} aria-label="Back" title="Back">
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="command-back"
+          type="button"
+          onClick={onBack}
+          aria-label="Back"
+          title="Back"
+        >
           <ArrowLeft size={17} />
         </Button>
       )}
@@ -159,13 +240,16 @@ export function PaletteCommandBar({
       <span className="axon-divider" aria-hidden="true" />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users focus the input directly; this wrapper only expands the pointer target */}
-      <div className="command-input-wrap" onClick={() => focusInput()}>
+      <div
+        className="command-input-wrap"
+        onClick={() => {
+          focusInput();
+          if (modeAction?.subcommand === "ask" && askSessions.length > 0)
+            onAskSessionsOpenChange(true);
+        }}
+      >
         {modeAction && ModeIcon ? (
-          // A11Y-H1 — the action switcher is an `aria-expanded` disclosure of plain
-          // Tab-focusable buttons (not a `role="menu"`), so each item is reachable
-          // by keyboard with no custom menu key handling. Escape on the trigger
-          // closes it and restores focus to the trigger.
-          <div className="command-action-switcher" ref={switcherRef}>
+              <div className="command-action-switcher" ref={switcherRef}>
             <Button
               variant="plain"
               size="unstyled"
@@ -249,13 +333,31 @@ export function PaletteCommandBar({
           unstyled
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder={modeAction ? argumentPlaceholder(modeAction) : hasQuery ? active?.example ?? "Search commands" : "Search or run an operation — scrape, crawl, map, ask…"}
+          onFocus={() => {
+            if (modeAction?.subcommand === "ask" && askSessions.length > 0)
+              onAskSessionsOpenChange(true);
+          }}
+          onKeyDown={onCommandInputKeyDown}
+          placeholder={
+            modeAction
+              ? argumentPlaceholder(modeAction)
+              : hasQuery
+                ? (active?.example ?? "Search commands")
+                : "Search or run an operation — scrape, crawl, map, ask…"
+          }
           className="command-input"
           role="combobox"
-          aria-expanded={listboxOpen}
-          aria-controls={listboxOpen ? "palette-action-list" : undefined}
-          aria-activedescendant={listboxOpen ? activeDescendantId : undefined}
+          aria-expanded={listboxOpen || askSessionsOpen}
+          aria-controls={
+            listboxOpen ? "palette-action-list" : askSessionsOpen ? "ask-session-list" : undefined
+          }
+          aria-activedescendant={
+            listboxOpen
+              ? activeDescendantId
+              : askSessionsOpen
+                ? `ask-session-option-${selectedAskSession}`
+                : undefined
+          }
           aria-autocomplete="list"
           aria-describedby={validation ? validationId : undefined}
           aria-label={modeAction ? `${modeAction.label} argument` : "Axon command"}
@@ -264,6 +366,16 @@ export function PaletteCommandBar({
           <span id={validationId} className="sr-only" role="status">
             {validation}
           </span>
+        )}
+        {askSessionsOpen && askSessions.length > 0 && (
+          <AskSessionMenu
+            askSessions={askSessions}
+            askSessionsRef={askSessionsRef}
+            selectedAskSession={selectedAskSession}
+            onAskSessionsOpenChange={onAskSessionsOpenChange}
+            onResumeAskSession={onResumeAskSession}
+            onSelect={setSelectedAskSession}
+          />
         )}
       </div>
       <Button
@@ -285,7 +397,11 @@ export function PaletteCommandBar({
           variant="plain"
           size="unstyled"
           ref={menuTriggerRef}
-          className={settingsOpen || menuOpen ? "command-settings command-settings-active" : "command-settings"}
+          className={
+            settingsOpen || menuOpen
+              ? "command-settings command-settings-active"
+              : "command-settings"
+          }
           type="button"
           onClick={(event) => {
             event.stopPropagation();
@@ -320,7 +436,10 @@ export function PaletteCommandBar({
               }}
             >
               <Settings size={15} strokeWidth={1.7} aria-hidden="true" />
-              <span><strong>Settings</strong><small>Palette preferences</small></span>
+              <span>
+                <strong>Settings</strong>
+                <small>Palette preferences</small>
+              </span>
             </Button>
             <Button
               variant="plain"
@@ -333,7 +452,10 @@ export function PaletteCommandBar({
               }}
             >
               <SlidersHorizontal size={15} strokeWidth={1.7} aria-hidden="true" />
-              <span><strong>Config</strong><small>config.toml tuning</small></span>
+              <span>
+                <strong>Config</strong>
+                <small>config.toml tuning</small>
+              </span>
             </Button>
             <Button
               variant="plain"
@@ -346,7 +468,10 @@ export function PaletteCommandBar({
               }}
             >
               <TerminalSquare size={15} strokeWidth={1.7} aria-hidden="true" />
-              <span><strong>Environment</strong><small>.env secrets & URLs</small></span>
+              <span>
+                <strong>Environment</strong>
+                <small>.env secrets & URLs</small>
+              </span>
             </Button>
             <Button
               variant="plain"
@@ -360,7 +485,10 @@ export function PaletteCommandBar({
               disabled={running}
             >
               <CircleHelp size={15} strokeWidth={1.7} aria-hidden="true" />
-              <span><strong>Help</strong><small>Shortcuts & action docs</small></span>
+              <span>
+                <strong>Help</strong>
+                <small>Shortcuts & action docs</small>
+              </span>
             </Button>
           </div>
         )}

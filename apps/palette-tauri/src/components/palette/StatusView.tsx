@@ -1,12 +1,18 @@
 import { memo } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
-import { arrField, boolField, isRecord, numField, shortId, strField, unwrapPayload } from "@/lib/payload";
+import {
+  arrField,
+  boolField,
+  isRecord,
+  numField,
+  shortId,
+  strField,
+  unwrapPayload,
+} from "@/lib/payload";
 
-export interface OpenJobHandler {
-  /** Open the live job card for a job shown in the status queue. */
-  (family: string, jobId: string, label: string): void;
-}
+/** Open the live job card for a job shown in the status queue. */
+export type OpenJobHandler = (family: string, jobId: string, label: string) => void;
 
 const TOTAL_FAMILIES = ["crawl", "extract", "embed", "ingest"] as const;
 const OPENABLE_FAMILIES = new Set<string>(TOTAL_FAMILIES);
@@ -34,13 +40,18 @@ function JobRow({
   const id = strField(job, "id") ?? strField(job, "job_id");
   // Only live (pending/running) jobs have a live card worth tailing.
   const openable = Boolean(
-    onOpenJob && id && OPENABLE_FAMILIES.has(family) && (status === "running" || status === "pending"),
+    onOpenJob &&
+      id &&
+      OPENABLE_FAMILIES.has(family) &&
+      (status === "running" || status === "pending"),
   );
 
   const body = (
     <>
       <span className={`status-pill status-pill-${status}`}>{status}</span>
-      <span className="status-job-url" title={url}>{url ?? (id ? shortId(id) : "—")}</span>
+      <span className="status-job-url" title={url}>
+        {url ?? (id ? shortId(id) : "—")}
+      </span>
       <span className="status-job-meta">
         {id ? <code>{shortId(id)}</code> : null}
         {attempts !== undefined ? <span>attempt {attempts}</span> : null}
@@ -86,14 +97,20 @@ export const StatusView = memo(function StatusView({
   return (
     <div className="output-body status-view aurora-scrollbar">
       <div className="status-summary">
-        <span className={degraded ? "status-health status-health-bad" : "status-health status-health-ok"}>
+        <span
+          className={
+            degraded ? "status-health status-health-bad" : "status-health status-health-ok"
+          }
+        >
           {degraded ? "Degraded" : "Healthy"}
         </span>
-        <span className="status-summary-meta">{totalJobs} active job{totalJobs === 1 ? "" : "s"}</span>
+        <span className="status-summary-meta">
+          {totalJobs} active job{totalJobs === 1 ? "" : "s"}
+        </span>
       </div>
 
       {totals && (
-        <div className="status-totals" role="group" aria-label="Total jobs by family">
+        <div className="status-totals">
           {TOTAL_FAMILIES.map((family) => (
             <div key={family} className="status-total-cell">
               <span>{family}</span>
@@ -105,8 +122,10 @@ export const StatusView = memo(function StatusView({
 
       {errors.length > 0 && (
         <div className="status-errors">
-          {errors.map((err, i) => (
-            <div key={i} className="status-error-row">{err}</div>
+          {errors.map((err) => (
+            <div key={err} className="status-error-row">
+              {err}
+            </div>
           ))}
         </div>
       )}
@@ -116,14 +135,17 @@ export const StatusView = memo(function StatusView({
       ) : (
         families.map(([family, jobs]) => (
           <section key={family} className="status-section">
-            <h3 className="stats-heading">{family} · {jobs.length}</h3>
+            <h3 className="stats-heading">
+              {family} · {jobs.length}
+            </h3>
             <div className="status-job-list">
               {jobs.map((job, i) => {
                 const record = isRecord(job) ? job : {};
                 // M4: key on the stable job id so React reconciles rows by identity,
                 // not position — prevents row state/DOM reuse glitches when the poll
                 // reorders or drops jobs. Falls back to family+index only when no id.
-                const key = strField(record, "job_id") ?? strField(record, "id") ?? `${family}-${i}`;
+                const key =
+                  strField(record, "job_id") ?? strField(record, "id") ?? `${family}-${i}`;
                 return <JobRow key={key} job={record} family={family} onOpenJob={onOpenJob} />;
               })}
             </div>

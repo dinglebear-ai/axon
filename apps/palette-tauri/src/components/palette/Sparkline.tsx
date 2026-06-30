@@ -22,7 +22,8 @@ export const Sparkline = memo(function Sparkline({
   const max = Math.max(...clean, 1);
   const gap = 2;
   const barWidth = Math.max(1, (width - gap * (clean.length - 1)) / clean.length);
-  const label = ariaLabel ?? `Sparkline of ${clean.length} values, latest ${clean[clean.length - 1]}`;
+  const label =
+    ariaLabel ?? `Sparkline of ${clean.length} values, latest ${clean[clean.length - 1]}`;
 
   return (
     <svg
@@ -41,7 +42,7 @@ export const Sparkline = memo(function Sparkline({
         const last = index === clean.length - 1;
         return (
           <rect
-            key={index}
+            key={x}
             x={x}
             y={y}
             width={barWidth}

@@ -11,15 +11,15 @@ import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import { Button } from "@/components/ui/aurora/button";
-import type { PaletteAction } from "@/lib/actions";
+import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
 import type { PaletteConfig } from "@/lib/axonClient";
 import { MIN_PROGRESS_PCT } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke } from "@/lib/invoke";
 import { jobFamilyVerb } from "@/lib/jobProgress";
-import type { ParsedCommand } from "@/lib/paletteView";
+import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
 import type { ViewIntent } from "@/lib/paletteViewState";
-import type { RunState } from "@/lib/runState";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
 import type { SourceSortMode } from "@/lib/sourcesModel";
 import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 
@@ -44,6 +44,9 @@ interface PaletteShellProps {
   filtered: PaletteAction[];
   guardMessage: string;
   hasQuery: boolean;
+  askSessions: HistoryItem[];
+  askSessionsOpen: boolean;
+  hideCommandBar: boolean;
   history: HistoryItem[];
   historyFocusRef: RefObject<HTMLDivElement | null>;
   historyOpen: boolean;
@@ -61,13 +64,17 @@ interface PaletteShellProps {
   onDrillDomain: (domain: string) => void;
   onFollowUp: (text: string) => void;
   onHistory: () => void;
+  onAskSessionsOpenChange: (open: boolean) => void;
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   onOpenJob: (family: string, jobId: string, label: string) => void;
   onReset: () => void;
+  onResumeAskSession: (item: HistoryItem) => void;
   onRetry: () => void;
   onRunAction: (subcommand: string, argument: string) => void;
+  onSuggestMessage: (message: string) => Promise<ChatSuggestion[]>;
   onSaveSettings: () => void;
   onSubmitAction: (action: PaletteAction) => void;
+  onSwitcherOpenChange: (open: boolean) => void;
   onToggleLivePause: () => void;
   onToggleMaximize: () => void;
   onTogglePin: () => void;
@@ -110,34 +117,88 @@ interface PaletteShellProps {
 }
 
 export function PaletteShell(props: PaletteShellProps) {
+  function runHighlightedAction() {
+    const action = props.filtered[props.selected] ?? props.active;
+    if (!action) return;
+
+    if (
+      props.parsed.invoked ||
+      action.argMode === "none" ||
+      (action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)) ||
+      (acceptsDirectUrl(action) && looksLikeUrl(props.parsed.search))
+    ) {
+      props.requestSubmit(
+        action,
+        action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)
+          ? props.parsed.search
+          : undefined,
+      );
+      return;
+    }
+
+    props.enterActionMode(action);
+  }
+
+  function selectHighlightedAction() {
+    const action = props.filtered[props.selected] ?? props.active;
+    if (!action) return;
+    if (props.parsed.invoked && action.argMode === "none") {
+      props.requestSubmit(action);
+      return;
+    }
+    props.enterActionMode(action);
+  }
+
+  function onShellKeyDownCapture(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!props.listboxOpen || props.submitDisabled || event.defaultPrevented) return;
+    if (event.key !== "Tab" && event.key !== "Enter") return;
+
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+
+    event.preventDefault();
+    if (event.key === "Enter") runHighlightedAction();
+    else selectHighlightedAction();
+  }
+
   return (
-    <div className={`aurora-page-shell palette-shell${props.compact ? " palette-shell-compact" : ""}${props.showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${props.jobExpanded ? " palette-shell-job" : ""}`}>
+    <div
+      className={`aurora-page-shell palette-shell${props.compact ? " palette-shell-compact" : ""}${props.showResultsLayout ? " palette-shell-results" : " palette-shell-browse"}${props.jobExpanded ? " palette-shell-job" : ""}`}
+      onKeyDownCapture={onShellKeyDownCapture}
+    >
       <AuthNotice />
-      <PaletteCommandBar
-        active={props.active}
-        activeDescendantId={props.activeDescendantId}
-        config={props.config}
-        endpointLabel={props.endpointLabel}
-        endpointTone={props.endpointTone}
-        hasQuery={props.hasQuery}
-        listboxOpen={props.listboxOpen}
-        modeAction={props.modeAction}
-        query={props.query}
-        running={props.commandRunning}
-        settingsOpen={props.settingsOpen}
-        showBackButton={props.showBackButton}
-        submitDisabled={props.submitDisabled}
-        validation={props.validation || props.guardMessage}
-        onBack={props.onBack}
-        onHelp={props.showHelpFor}
-        onInputKeyDown={props.onInputKeyDown}
-        onQueryChange={props.setQuery}
-        onReset={props.onReset}
-        onSubmit={props.onSubmitAction}
-        onSwitchAction={props.switchActionMode}
-        onToggleMaximize={props.onToggleMaximize}
-        onToggleSettings={props.onToggleSettings}
-      />
+      {!props.hideCommandBar && (
+        <PaletteCommandBar
+          active={props.active}
+          activeDescendantId={props.activeDescendantId}
+          config={props.config}
+          endpointLabel={props.endpointLabel}
+          endpointTone={props.endpointTone}
+          hasQuery={props.hasQuery}
+          listboxOpen={props.listboxOpen}
+          modeAction={props.modeAction}
+          query={props.query}
+          running={props.commandRunning}
+          settingsOpen={props.settingsOpen}
+          showBackButton={props.showBackButton}
+          submitDisabled={props.submitDisabled}
+          validation={props.validation || props.guardMessage}
+          askSessions={props.askSessions}
+          askSessionsOpen={props.askSessionsOpen}
+          onBack={props.onBack}
+          onAskSessionsOpenChange={props.onAskSessionsOpenChange}
+          onHelp={props.showHelpFor}
+          onInputKeyDown={props.onInputKeyDown}
+          onQueryChange={props.setQuery}
+          onReset={props.onReset}
+          onResumeAskSession={props.onResumeAskSession}
+          onSubmit={props.onSubmitAction}
+          onSwitchAction={props.switchActionMode}
+          onSwitcherOpenChange={props.onSwitcherOpenChange}
+          onToggleMaximize={props.onToggleMaximize}
+          onToggleSettings={props.onToggleSettings}
+        />
+      )}
 
       <JobTray {...props} />
       <SettingsRegion {...props} />
@@ -149,15 +210,17 @@ export function PaletteShell(props: PaletteShellProps) {
 
 function JobTray(props: PaletteShellProps) {
   if (props.jobMinimized && props.run.kind === "job") {
+    const pct = Math.round(props.run.snapshot.percent);
+    const totalPages = props.run.snapshot.fetched + props.run.snapshot.queued;
     return (
       <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={props.expandJob} title="Expand crawl job">
-        <span className="idle-tray-dot" />
         <Workflow size={14} strokeWidth={1.9} />
         <span>Crawling {props.run.snapshot.host}</span>
         <span className="idle-tray-bar">
-          <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, Math.round(props.run.snapshot.percent))}%` }} />
+          <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, pct)}%` }} />
         </span>
-        <strong>{Math.round(props.run.snapshot.percent)}%</strong>
+        <span className="idle-tray-pages">{totalPages.toLocaleString("en-US")} pages</span>
+        <strong>{pct}%</strong>
         <ChevronRight size={15} />
       </Button>
     );
@@ -166,7 +229,6 @@ function JobTray(props: PaletteShellProps) {
   if (props.jobMinimized && props.run.kind === "asyncJob") {
     return (
       <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={props.expandAsyncJob} title="Expand job">
-        <span className="idle-tray-dot" />
         <Workflow size={14} strokeWidth={1.9} />
         <span>
           {jobFamilyVerb(props.run.family)} {props.run.snapshot.label}
@@ -300,10 +362,12 @@ function OutputRegion(props: PaletteShellProps) {
         onCollapse={props.onCollapse}
         onTogglePin={props.onTogglePin}
         pinned={props.pinned}
+        agentBubbles={props.config?.agentBubbles ?? false}
         liveRefresh={props.liveRefresh}
         onToggleLivePause={props.onToggleLivePause}
         onOpenJob={props.onOpenJob}
         onRunAction={props.onRunAction}
+        onSuggestMessage={props.onSuggestMessage}
         onDrillDomain={props.onDrillDomain}
         sourcesFilter={props.sourcesFilter}
         sourcesSort={props.sourcesSort}

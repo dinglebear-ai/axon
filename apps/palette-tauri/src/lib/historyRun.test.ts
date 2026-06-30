@@ -99,4 +99,40 @@ describe("runStateFromHistory", () => {
       },
     });
   });
+
+  it("restores Ask prompt and transcript so previous sessions can resume", () => {
+    const item: HistoryItem = {
+      action: action("ask"),
+      target: "What is a Claude Code hook?",
+      status: 0,
+      title: "Ask completed",
+      subtitle: "POST /v1/ask/stream",
+      text: "A hook runs commands around Claude Code events.",
+      outputKind: "markdown",
+      prompt: "What is a Claude Code hook?",
+      transcript: [
+        { id: "u1", role: "user", content: "What is a Claude Code hook?" },
+        { id: "a1", role: "assistant", content: "A hook runs commands around Claude Code events." },
+      ],
+      result: {
+        ok: true,
+        status: 0,
+        method: "POST",
+        path: "/v1/ask/stream",
+        payload: { answer: "A hook runs commands around Claude Code events." },
+      },
+      when: "just now",
+    };
+
+    const replay = runStateFromHistory(item);
+
+    expect(replay).toMatchObject({
+      kind: "success",
+      prompt: "What is a Claude Code hook?",
+      transcript: [
+        { role: "user", content: "What is a Claude Code hook?" },
+        { role: "assistant", content: "A hook runs commands around Claude Code events." },
+      ],
+    });
+  });
 });
