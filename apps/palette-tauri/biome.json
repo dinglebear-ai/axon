@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -11,12 +11,10 @@
       "src/**/*.tsx",
       "*.ts",
       "*.tsx",
-      "*.mjs"
-    ],
-    "experimentalScannerIgnores": [
-      "dist",
-      "src-tauri/target",
-      "src/lib/axon-api.d.ts"
+      "*.mjs",
+      "!!**/dist",
+      "!!**/src-tauri/target",
+      "!!**/src/lib/axon-api.d.ts"
     ]
   },
   "formatter": {
@@ -28,9 +26,9 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
-        "recommended": true,
+        "preset": "recommended",
         "useKeyWithClickEvents": "warn",
         "useValidAriaProps": "error",
         "useValidAriaValues": "error",
@@ -43,19 +41,19 @@
         "noInteractiveElementToNoninteractiveRole": "warn"
       },
       "correctness": {
-        "recommended": true,
+        "preset": "recommended",
         "useExhaustiveDependencies": "warn",
         "useHookAtTopLevel": "error"
       },
       "suspicious": {
-        "recommended": true,
+        "preset": "recommended",
         "noExplicitAny": "error",
         "noArrayIndexKey": "warn",
         "useIterableCallbackReturn": "warn",
         "noShadowRestrictedNames": "warn"
       },
       "style": {
-        "recommended": true,
+        "preset": "recommended",
         "useImportType": "error",
         "noNonNullAssertion": "warn"
       }

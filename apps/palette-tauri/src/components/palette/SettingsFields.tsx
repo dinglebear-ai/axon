@@ -79,9 +79,17 @@ export function SelectInput({ value, options, onChange }: { value: string; optio
   );
 }
 
-export function MiniToggle({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
+export function MiniToggle({ label, on, onChange }: { label?: string; on: boolean; onChange: (value: boolean) => void }) {
   return (
-    <Button variant="plain" size="unstyled" className={on ? "settings-toggle settings-toggle-on" : "settings-toggle"} type="button" onClick={() => onChange(!on)} aria-pressed={on}>
+    <Button
+      variant="plain"
+      size="unstyled"
+      className={on ? "settings-toggle settings-toggle-on" : "settings-toggle"}
+      type="button"
+      onClick={() => onChange(!on)}
+      aria-label={label}
+      aria-pressed={on}
+    >
       <span />
     </Button>
   );

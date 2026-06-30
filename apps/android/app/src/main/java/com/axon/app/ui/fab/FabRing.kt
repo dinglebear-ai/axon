@@ -29,6 +29,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -69,6 +75,10 @@ fun FabRing(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.scrim.copy(alpha = openProgress * 0.94f))
+                    .semantics {
+                        contentDescription = "Dismiss operations"
+                        role = Role.Button
+                    }
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             )
         }
@@ -109,7 +119,15 @@ fun FabRing(
                 .graphicsLayer { this.alpha = openProgress }
                 .background(AxonTheme.colors.panelMedium.copy(alpha = 0.32f), RoundedCornerShape(12.dp))
                 .border(1.dp, AxonTheme.colors.borderStrong.copy(alpha = 0.48f), RoundedCornerShape(12.dp))
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
+                .clearAndSetSemantics {
+                    contentDescription = "Close operations"
+                    role = Role.Button
+                    onClick("Close operations") {
+                        onDismiss()
+                        true
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -128,11 +146,19 @@ private fun OpTile(op: FabOp, modifier: Modifier, alpha: Float, onClick: () -> U
     val tone = colors.toneOf(if (op.isAsync) AxonTone.Orange else AxonTone.Cyan)
     Column(
         modifier = modifier
-            .width(TileWidth)
-            .graphicsLayer { this.alpha = alpha }
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(vertical = 2.dp),
+                .width(TileWidth)
+                .graphicsLayer { this.alpha = alpha }
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+                .clearAndSetSemantics {
+                    contentDescription = op.label
+                    role = Role.Button
+                    onClick(op.label) {
+                        onClick()
+                        true
+                    }
+                }
+                .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {

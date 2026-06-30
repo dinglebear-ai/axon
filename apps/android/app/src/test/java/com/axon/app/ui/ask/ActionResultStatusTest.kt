@@ -15,6 +15,16 @@ class ActionResultStatusTest {
     }
 
     @Test
+    fun `injection status classifier keeps accepted jobs pending`() {
+        assertEquals(true, isFinalSuccessfulStatus("200 OK"))
+        assertEquals(true, isFinalSuccessfulStatus("complete"))
+        assertEquals(false, isFinalSuccessfulStatus("202 Accepted"))
+        assertEquals(false, isFinalSuccessfulStatus("queued"))
+        assertEquals(false, isFinalSuccessfulStatus("running"))
+        assertEquals(false, isFinalSuccessfulStatus("failed"))
+    }
+
+    @Test
     fun `action result body preview clamps long search output`() {
         val rendered = compactActionResultBody(
             (1..12).joinToString("\n") { index ->

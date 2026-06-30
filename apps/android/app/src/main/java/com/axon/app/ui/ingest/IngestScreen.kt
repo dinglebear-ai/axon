@@ -21,13 +21,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
+import com.axon.app.ui.common.JobIdChip
 import com.axon.app.ui.common.LoadingContent
+import com.axon.app.ui.common.RecoveryActionCard
 import com.axon.app.ui.jobs.JobRow
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCard
 import tv.tootie.aurora.components.AuroraCardVariant
-import tv.tootie.aurora.components.AuroraKbd
 import tv.tootie.aurora.components.AuroraSelect
 import tv.tootie.aurora.components.AuroraSeparator
 import tv.tootie.aurora.components.AuroraTextField
@@ -97,7 +98,13 @@ fun IngestScreen(vm: IngestViewModel = viewModel()) {
                 ) { Text("Submit another") }
             }
             is IngestUi.Error -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ErrorContent(message = s.message, onRetry = { vm.reset() })
+                RecoveryActionCard(
+                    title = "Ingest could not start",
+                    message = s.message,
+                    primaryLabel = "Edit request",
+                    onPrimary = vm::reset,
+                    icon = Icons.Outlined.CloudUpload,
+                )
                 IngestForm(
                     selectedSource = selectedSource,
                     onSourceChange = { selectedSource = it },
@@ -171,7 +178,7 @@ private fun SubmittedCard(
             Text(target, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("ID:", style = MaterialTheme.typography.labelSmall)
-                AuroraKbd(key = jobId)
+                JobIdChip(jobId)
             }
             AuroraButton(
                 onClick = onCheckStatus,

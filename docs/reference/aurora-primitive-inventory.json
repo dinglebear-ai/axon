@@ -81,6 +81,20 @@
       "stale_bead_links": []
     },
     {
+      "id": "W-PAL-006",
+      "platform": "web",
+      "file_paths": ["apps/palette-tauri/src/components/aurora/ai/message.tsx"],
+      "symbols": ["MessageActionButton"],
+      "current_primitive_smell": "The local Aurora AI message adapter exposes a raw button as its action control primitive.",
+      "classification": "axon-composite",
+      "migration_owner": "axon_rust-hrqn.3",
+      "upstream_requirement": "Keep this local only while Axon carries the Aurora AI message adapter in-repo; replace with the registry-provided Message action primitive when the adapter is resynced.",
+      "app_specific_exception": "Message actions need the native button element for icon-only copy/edit/regenerate/suggest affordances while preserving the Aurora message API surface.",
+      "secret_classification": "non-secret",
+      "expected_verification": ["web-raw-control-guard", "palette message reaction hover parity"],
+      "stale_bead_links": []
+    },
+    {
       "id": "A-AND-001",
       "platform": "android",
       "file_paths": [
@@ -106,9 +120,11 @@
       "platform": "android",
       "file_paths": [
         "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/common/CompactActionButton.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConnectionTab.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/status/TopChromeStatus.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/common/AxonSensitiveTextField.kt"
@@ -171,6 +187,7 @@
       "platform": "android",
       "file_paths": [
         "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellSidebar.kt",
+        "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellBackBehavior.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt",
         "apps/android/app/src/main/java/com/axon/app/ui/nav/AxonRail.kt"
       ],
@@ -241,7 +258,9 @@
       "stale_bead_links": ["axon_rust-dnu7"]
     }
   ],
-  "web_raw_control_allowlist": [],
+  "web_raw_control_allowlist": [
+    { "row_id": "W-PAL-006", "file_path": "apps/palette-tauri/src/components/aurora/ai/message.tsx", "tag": "button" }
+  ],
   "android_reusable_control_allowlist": [
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt", "pattern": "BasicTextField" },
@@ -251,9 +270,11 @@
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "BasicTextField" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "ToolbarIconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/AskPromptBar.kt", "pattern": "SendButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/CompactActionButton.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsConnectionTab.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsControls.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/settings/SettingsScreen.kt", "pattern": "CompactActionButton" },
+    { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/status/TopChromeStatus.kt", "pattern": "CompactActionButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsDrawerContent.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/options/components/HeadersField.kt", "pattern": "IconButton" },
     { "row_id": "A-AND-002", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/AxonSensitiveTextField.kt", "pattern": "IconButton" },
@@ -267,10 +288,12 @@
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/common/AuroraStatusDot.kt", "pattern": "AuroraStatusDot" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsRows.kt", "pattern": "ProgressBar" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobsScreen.kt", "pattern": "ProgressBar" },
+    { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/ActivityHistoryScreen.kt", "pattern": "ProgressBar" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/jobs/JobDetailScreen.kt", "pattern": "ProgressBar" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/ChatBubble.kt", "pattern": "AuroraStatusDot" },
     { "row_id": "A-AND-004", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/ask/InjectionCard.kt", "pattern": "AuroraProgressBar" },
-    { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt", "pattern": "Sidebar" }
+    { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/RailScaffold.kt", "pattern": "Sidebar" },
+    { "row_id": "A-AND-005", "file_path": "apps/android/app/src/main/java/com/axon/app/ui/nav/ShellBackBehavior.kt", "pattern": "Sidebar" }
   ],
   "stale_bead_recommendations": [
     {

@@ -1,13 +1,9 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { actionOptionId } from "@/components/palette/ActionList";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { PaletteShell } from "@/components/palette/PaletteShell";
-import {
-  ACTIONS,
-  type PaletteAction,
-  actionMatches,
-} from "@/lib/actions";
+import { ACTIONS, type PaletteAction, type RemotePaletteAction, actionMatches } from "@/lib/actions";
 import {
   actionConfirmationArmed,
   actionConfirmationMessage,
@@ -17,9 +13,11 @@ import {
 } from "@/lib/actionGuard";
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
 import { currentOutputTarget } from "@/lib/appHelpers";
-import { createAxonClient } from "@/lib/axonClient";
+import { createAxonClient, executeAction } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
+import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
+import { loadPaletteHistory, normalizeChatSuggestions, persistPaletteHistory } from "@/lib/paletteHistoryStorage";
 import {
   argumentFor,
   focusInput,
@@ -37,10 +35,11 @@ import {
   modeOf,
   viewReducer,
 } from "@/lib/paletteViewState";
-import type { RunState } from "@/lib/runState";
-import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
-import { summarizeJob } from "@/lib/jobProgress";
-import { useActionRunner } from "@/lib/useActionRunner";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
+import { strField, unwrapPayload } from "@/lib/payload";
+import { useAskHistoryRecorder } from "@/lib/useAskHistoryRecorder";
+import { capHistory, useActionRunner } from "@/lib/useActionRunner";
+import { useChatToolRunner } from "@/lib/useChatToolRunner";
 import { useCrawlJob } from "@/lib/useCrawlJob";
 import { useJobPoll } from "@/lib/useJobPoll";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
@@ -48,25 +47,30 @@ import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
 import { usePaletteConfig } from "@/lib/usePaletteConfig";
 import { usePaletteLifecycle } from "@/lib/usePaletteLifecycle";
 import { usePalettePins } from "@/lib/usePalettePins";
+import { useOpenJob } from "@/lib/useOpenJob";
 import { useSourcesNavigation } from "@/lib/useSourcesNavigation";
 import { useWindowChrome } from "@/lib/useWindowChrome";
 import { hostLabel } from "@/lib/url";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
+
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
 
 export default function App() {
-  // A-M1 — the top-level view is a single discriminated union driven by a reducer;
-  // the legacy settingsOpen/browseOpen/historyOpen/modeAction flags derive from it below.
   const [view, dispatchView] = useReducer(viewReducer, INITIAL_VIEW);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
-  const { config, draftConfig, setDraftConfig, configError, saveSettings } = usePaletteConfig(dispatchView);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const { config, draftConfig, setDraftConfig, configError, saveSettings } =
+    usePaletteConfig(dispatchView);
+  const [history, setHistory] = useState<HistoryItem[]>(() => loadPaletteHistory());
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [shownTick, setShownTick] = useState(0);
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingActionConfirmation | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingActionConfirmation | null>(
+    null,
+  );
+  const [actionSwitcherOpen, setActionSwitcherOpen] = useState(false);
+  const [askSessionsOpen, setAskSessionsOpen] = useState(false);
 
   const modeAction = modeOf(view);
   const settingsOpen = isSettingsOpen(view);
@@ -74,9 +78,18 @@ export default function App() {
   const browseOpen = isBrowseOpen(view);
   usePaletteLifecycle(dispatchView, setShownTick);
 
-  // R-M1/H3/P-H2 — ref-for-latest-value; the keydown listener binds once.
+  useEffect(() => {
+    persistPaletteHistory(history);
+  }, [history]);
+
   const keyStateRef = useRef({ settingsOpen, historyOpen, browseOpen, query, modeAction, run });
   keyStateRef.current = { settingsOpen, historyOpen, browseOpen, query, modeAction, run };
+  const copyOutput = useCallback((text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  }, []);
   usePaletteHotkeys(keyStateRef, {
     closeSettings: () => dispatchView({ type: "closeSettings" }),
     toBrowseFromHistory: () => dispatchView({ type: "closeHistoryToBrowse" }),
@@ -101,12 +114,8 @@ export default function App() {
       const ask = ACTIONS.find((action) => action.subcommand === "ask");
       return ask ? [ask] : [];
     }
-    return sortActionsByRelevance(
-      matches,
-      parsed.search,
-    ).slice(0, 12);
+    return sortActionsByRelevance(matches, parsed.search).slice(0, 12);
   }, [parsed.invoked, parsed.search]);
-  // R-M3 — reset + clamp selection during render (no reset-on-prop-change effect).
   const selectionKey = `${parsed.search} ${modeAction?.subcommand ?? ""}`;
   const prevSelectionKeyRef = useRef(selectionKey);
   let selectedIndex = selected;
@@ -117,12 +126,31 @@ export default function App() {
   }
   selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
   const suggestedAction = filtered[selectedIndex];
-  const active = modeAction ?? suggestedAction;
-  const askFallback = active?.subcommand === "ask" && !modeAction && !parsed.invoked && parsed.search.trim().length > 0 && !actionMatches(active, parsed.search);
-  const activeArgument = active ? (askFallback ? parsed.search : argumentFor(active, modeAction, parsed, query)) : "";
+  const slashInvokedAction = query.trimStart().startsWith("/") ? parsed.invoked : undefined;
+  const active = slashInvokedAction ?? modeAction ?? suggestedAction;
+  const askSessions = useMemo(
+    () =>
+      history.filter(
+        (item) => item.action.subcommand === "ask" && item.text && (item.prompt || item.target),
+      ),
+    [history],
+  );
+  const askFallback =
+    active?.subcommand === "ask" &&
+    !modeAction &&
+    !parsed.invoked &&
+    parsed.search.trim().length > 0 &&
+    !actionMatches(active, parsed.search);
+  const activeArgument = active
+    ? askFallback
+      ? parsed.search
+      : argumentFor(active, slashInvokedAction ? null : modeAction, parsed, query)
+    : "";
   const validation = active ? validationMessage(active, activeArgument) : "No matching action";
   const confirmationArmed =
-    active && !validation ? actionConfirmationArmed(pendingConfirmation, active, activeArgument) : false;
+    active && !validation
+      ? actionConfirmationArmed(pendingConfirmation, active, activeArgument)
+      : false;
   const guardMessage =
     active && !validation && actionNeedsConfirmation(active)
       ? actionConfirmationMessage(active, Boolean(confirmationArmed))
@@ -131,29 +159,26 @@ export default function App() {
   const jobMinimized = (run.kind === "job" || run.kind === "asyncJob") && run.minimized;
   const jobExpanded = (run.kind === "job" || run.kind === "asyncJob") && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
-  // Once an action mode is picked, the input collects that action's argument —
-  // the palette should NOT keep listing other actions. Stay compact (just the
-  // command bar + mode pill) until the run produces output.
   const enteringArgument = Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen;
   const showContent =
     settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
   const showResultsLayout = showOutput || settingsOpen || historyOpen;
+  const hideCommandBar =
+    showOutput && (active?.subcommand === "ask" || active?.subcommand === "chat");
   const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
-  // A11Y-C1 — the listbox is only mounted when the action panel is shown AND there
-  // is content to show. The combobox must only reference ids that exist in the DOM,
-  // so gate aria-controls/aria-activedescendant on the listbox actually rendering.
   const listboxOpen = showContent && showActionPanel;
   const activeDescendantId =
     listboxOpen && suggestedAction ? actionOptionId(suggestedAction) : undefined;
 
-  // A11Y-H2 — focus into overlays on open, restore on close. Wrappers use
-  // `display: contents` so they stay transparent to the grid layout.
   const settingsFocusRef = useFocusReturn<HTMLDivElement>(settingsOpen);
   const historyFocusRef = useFocusReturn<HTMLDivElement>(historyOpen && !settingsOpen);
-  const outputFocusRef = useFocusReturn<HTMLDivElement>(showOutput && !settingsOpen && !historyOpen);
+  const outputFocusRef = useFocusReturn<HTMLDivElement>(
+    showOutput && !settingsOpen && !historyOpen,
+  );
 
   useWindowChrome({
+    actionSwitcherOpen,
     jobExpanded,
     jobMinimized,
     settingsOpen,
@@ -166,8 +191,12 @@ export default function App() {
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
 
-  // A-M2 — the runner dispatches view intents + resets orthogonal query/run via
-  // these stable callbacks instead of 5 raw setters; the view rules live in the reducer.
+  useEffect(() => {
+    if (modeAction?.subcommand !== "ask") setAskSessionsOpen(false);
+  }, [modeAction?.subcommand]);
+
+  useAskHistoryRecorder({ active, run, setHistory });
+
   const enterModeForRun = useCallback((action: PaletteAction, argument: string) => {
     dispatchView({ type: "enterModeForRun", action });
     setQuery(argument);
@@ -209,8 +238,6 @@ export default function App() {
     [modeAction, parsed, pendingConfirmation, query, submit],
   );
 
-  // A-M2 — useCrawlJob's 6 setters collapse to 3 view intents + the query reset
-  // each implies. setRun stays (it owns the live poll snapshot, which is run state).
   const onMinimizeJob = useCallback(() => {
     dispatchView({ type: "minimizeJob" });
     setQuery("");
@@ -221,17 +248,15 @@ export default function App() {
     setQuery("");
   }, []);
 
-  const { nowMs, canceling, cancelJob, viewPartialJob, minimizeJob, expandJob, closeJob } = useCrawlJob({
-    run,
-    setRun,
-    onMinimizeJob,
-    onExpandJob,
-    onCloseJob,
-  });
+  const { nowMs, canceling, cancelJob, viewPartialJob, minimizeJob, expandJob, closeJob } =
+    useCrawlJob({
+      run,
+      setRun,
+      onMinimizeJob,
+      onExpandJob,
+      onCloseJob,
+    });
 
-  // Sibling lifecycle for embed/extract/ingest. The two hooks are mutually
-  // exclusive at runtime — each only acts when `run.kind` matches its variant —
-  // and reuse the same view-intent callbacks (family-agnostic).
   const {
     nowMs: jobNowMs,
     canceling: jobCanceling,
@@ -241,8 +266,6 @@ export default function App() {
     closeJob: closeAsyncJob,
   } = useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob });
 
-  // Live-refresh for the zero-input dynamic views (stats/status): re-poll the
-  // result endpoint on an interval while it is open, with a pause toggle.
   const [livePaused, setLivePaused] = useState(false);
   const liveRefresh = useLiveRefresh({ run, setRun, paused: livePaused });
   const {
@@ -259,47 +282,21 @@ export default function App() {
     onDrillDomain,
   } = useSourcesNavigation(requestSubmit);
 
-  // Open the live job card for a job listed in StatusView. Crawl gets the rich
-  // crawl view; embed/extract/ingest get the generic async-job card. The poll
-  // hooks (useCrawlJob/useJobPoll) take over once the run state is set.
-  const onOpenJob = useCallback((family: string, jobId: string, label: string) => {
-    const startedAtMs = Date.now();
-    if (family === "crawl") {
-      setRun({
-        kind: "job",
-        family: "crawl",
-        title: `Crawling ${hostFromUrl(label)}`,
-        subtitle: `job ${jobId}`,
-        jobId,
-        statusUrl: `/v1/crawl/${jobId}`,
-        url: label,
-        startedAtMs,
-        maxPages: 0,
-        maxDepth: 0,
-        snapshot: summarizeCrawl({ job: { status: "running" } }, { jobId, url: label }),
-        minimized: false,
-      });
-    } else if (family === "embed" || family === "extract" || family === "ingest") {
-      setRun({
-        kind: "asyncJob",
-        family,
-        title: `${family[0].toUpperCase()}${family.slice(1)}`,
-        subtitle: `job ${jobId}`,
-        jobId,
-        statusUrl: `/v1/${family}/${jobId}`,
-        target: label,
-        startedAtMs,
-        snapshot: summarizeJob(family, { job: { status: "running" } }, { jobId, label }),
-        minimized: false,
-      });
-    }
-  }, []);
+  const onOpenJob = useOpenJob(setRun);
 
   function enterActionMode(action: PaletteAction) {
     setPendingConfirmation(null);
     clearSourcesForAction(action);
     dispatchView({ type: "enterMode", action });
-    setQuery(parsed.invoked?.subcommand === action.subcommand ? parsed.arg : "");
+    setQuery(
+      parsed.invoked?.subcommand === action.subcommand
+        ? parsed.arg
+        : action.subcommand === "ask" &&
+            parsed.search.trim().length > 0 &&
+            !actionMatches(action, parsed.search)
+          ? parsed.search
+          : "",
+    );
     setSelected(0);
     setRun({ kind: "idle" });
     focusInput(true);
@@ -344,12 +341,16 @@ export default function App() {
     dispatchView({ type: "showHelp", action: localHelpAction });
     setQuery(action?.subcommand ?? cleanUnknownTarget ?? "");
     setRun(helpRun);
-    setHistory((items) => [historyItem, ...items].slice(0, 18));
+    setHistory((items) => capHistory([historyItem, ...items]));
   }
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
+      if (modeAction?.subcommand === "ask" && askSessions.length > 0) {
+        setAskSessionsOpen(true);
+        return;
+      }
       // Arrow-down is the keyboard affordance to browse all actions without
       // typing (focus alone no longer expands the palette).
       if (!modeAction) dispatchView({ type: "openBrowse" });
@@ -360,7 +361,12 @@ export default function App() {
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (!active) return;
-      if (!modeAction && !parsed.invoked && active.argMode !== "none" && !looksLikeUrl(parsed.search)) {
+      if (
+        !modeAction &&
+        !parsed.invoked &&
+        active.argMode !== "none" &&
+        !looksLikeUrl(parsed.search)
+      ) {
         enterActionMode(active);
       } else {
         requestSubmit(active, askFallback ? parsed.search : undefined);
@@ -374,8 +380,13 @@ export default function App() {
     }
   }
 
-  const outputKind = "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
-  const endpointLabel = config ? hostLabel(config.serverUrl) : configError ? "Config error" : "Loading";
+  const outputKind =
+    "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
+  const endpointLabel = config
+    ? hostLabel(config.serverUrl)
+    : configError
+      ? "Config error"
+      : "Loading";
   const endpointTone = configError ? "error" : "syncing";
   const showBackButton = settingsOpen || historyOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
@@ -394,7 +405,10 @@ export default function App() {
   }
 
   // P-M2 — stable callbacks for the memoized children (CommandBar/OutputPanel).
-  const onSubmitAction = useCallback((action: PaletteAction) => requestSubmit(action), [requestSubmit]);
+  const onSubmitAction = useCallback(
+    (action: PaletteAction) => requestSubmit(action),
+    [requestSubmit],
+  );
   const onReset = useCallback(() => {
     setQuery("");
     setRun({ kind: "idle" });
@@ -404,48 +418,82 @@ export default function App() {
   }, [clearSourcesFilter]);
   const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
   const onToggleMaximize = useCallback(() => void invoke("toggle_maximize"), []);
-  const onCopy = useCallback((text: string) => void copyOutput(text), [copyOutput]);
+  const onCopy = copyOutput;
   const onRetry = useCallback(() => active && void submit(active), [active, submit]);
-  const onFollowUp = useCallback((text: string) => {
-    const askAction = ACTIONS.find((action) => action.subcommand === "ask");
-    if (!askAction) return;
-    dispatchView({ type: "enterModeForRun", action: askAction });
-    setQuery(text);
-    void submit(askAction, text);
-  }, [submit]);
+  const onFollowUp = useCallback(
+    (text: string) => {
+      const conversationAction =
+        active?.subcommand === "chat"
+          ? active
+          : ACTIONS.find((action) => action.subcommand === "ask");
+      if (!conversationAction) return;
+      dispatchView({ type: "enterModeForRun", action: conversationAction });
+      setQuery(text);
+      void submit(conversationAction, text);
+    },
+    [active, submit],
+  );
+  const onConversationRunAction = useChatToolRunner({
+    active,
+    client,
+    config,
+    run,
+    setRun,
+    onFallbackRunAction: onRunAction,
+  });
+  const onSuggestMessage = useCallback(
+    async (message: string): Promise<ChatSuggestion[]> => {
+      if (!client || !config) throw new Error("Axon is not connected.");
+      const queryAction = ACTIONS.find(
+        (action): action is RemotePaletteAction =>
+          action.subcommand === "query" && action.kind !== "local",
+      );
+      if (!queryAction) throw new Error("Query action is unavailable.");
+      const result = await executeAction(client, queryAction, message, config);
+      if (!result.ok) {
+        const payload = unwrapPayload(result.payload);
+        throw new Error(
+          strField(payload, "message") ??
+            strField(payload, "error") ??
+            strField(payload, "detail") ??
+            `Query failed with HTTP ${result.status}`,
+        );
+      }
+      return normalizeChatSuggestions(result.payload);
+    },
+    [client, config],
+  );
   const onHistory = useCallback(() => {
     setRun({ kind: "idle" });
     dispatchView({ type: "openHistory" });
+  }, []);
+  const onResumeAskSession = useCallback((item: HistoryItem) => {
+    setPendingConfirmation(null);
+    setAskSessionsOpen(false);
+    dispatchView({ type: "openHistoryItem", action: item.action });
+    setQuery(item.prompt ?? item.target);
+    const historyRun = runStateFromHistory(item);
+    setRun(historyRun ?? { kind: "idle" });
   }, []);
   const onCollapse = useCallback(() => {
     setRun({ kind: "idle" });
     setQuery("");
     dispatchView({ type: "collapse" });
   }, []);
-  const shellProps = {
-    active, activeDescendantId, cancelAsyncJob, cancelJob, canceling, commandRunning, compact, config,
-    configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode,
-    expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, history, historyFocusRef, historyOpen,
-    jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs,
-    onBack: goBackToBrowse, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown,
-    onOpenJob, onReset, onRetry, onRunAction, onSaveSettings: () => {
-      setPendingConfirmation(null);
-      void saveSettings();
-    }, onSubmitAction,
-    onToggleLivePause: () => setLivePaused((paused) => !paused), onToggleMaximize, onTogglePin,
-    onToggleSettings, outputFocusRef, outputKind, parsed, pinned: currentTarget ? pinnedTargets.has(currentTarget) : false,
-    query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected,
-    settingsFocusRef, settingsOpen, shortcutOptions, showActionPanel, showBackButton, showContent,
-    showResultsLayout, sourcesFilter: sourcesFilter || sourcesDrillFilter, sourcesGrouped, sourcesSort,
-    submitDisabled, switchActionMode, validation, viewPartialJob, showHelpFor, minimizeJob, closeJob,
-    minimizeAsyncJob, closeAsyncJob, setSourcesFilter, setSourcesSort, setSourcesGrouped,
-  };
-
-  return <PaletteShell {...shellProps} />;
-
-  async function copyOutput(text: string) {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  }
+  return (
+    <PaletteShell
+      {...{ active, activeDescendantId, cancelAsyncJob, cancelJob, canceling, commandRunning, compact, config, configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode, expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, hideCommandBar, history, historyFocusRef, historyOpen, askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown, onOpenJob, onReset, onResumeAskSession, onRetry, onSubmitAction, onSuggestMessage, onToggleMaximize, onTogglePin, onToggleSettings, outputFocusRef, outputKind, parsed, query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected, settingsFocusRef, settingsOpen, shortcutOptions, showActionPanel, showBackButton, showContent, showResultsLayout, sourcesGrouped, sourcesSort, submitDisabled, switchActionMode, validation, viewPartialJob, showHelpFor, minimizeJob, closeJob, minimizeAsyncJob, closeAsyncJob, setSourcesFilter, setSourcesSort, setSourcesGrouped }}
+      onBack={goBackToBrowse}
+      onAskSessionsOpenChange={setAskSessionsOpen}
+      onRunAction={onConversationRunAction}
+      onSaveSettings={() => {
+        setPendingConfirmation(null);
+        void saveSettings();
+      }}
+      onSwitcherOpenChange={setActionSwitcherOpen}
+      onToggleLivePause={() => setLivePaused((paused) => !paused)}
+      pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
+      sourcesFilter={sourcesFilter || sourcesDrillFilter}
+    />
+  );
 }
