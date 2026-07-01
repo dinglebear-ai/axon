@@ -20,6 +20,12 @@ pub trait LedgerStore: Send + Sync {
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>>;
+    async fn heartbeat_lease(
+        &self,
+        lease_id: LeaseId,
+        heartbeat_at: Timestamp,
+        ttl_seconds: u64,
+    ) -> Result<Option<LeaseGuard>>;
     async fn release_lease(&self, lease_id: LeaseId) -> Result<()>;
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<LedgerStoreCapability>;
@@ -286,6 +292,25 @@ impl LedgerStore for FakeLedgerStore {
             state.lease_ids_by_key.remove(&guard.lease_key);
         }
         Ok(())
+    }
+
+    async fn heartbeat_lease(
+        &self,
+        lease_id: LeaseId,
+        heartbeat_at: Timestamp,
+        ttl_seconds: u64,
+    ) -> Result<Option<LeaseGuard>> {
+        let mut state = self.state.lock().await;
+        let Some(existing) = state.leases.get(&lease_id).cloned() else {
+            return Ok(None);
+        };
+        let guard = LeaseGuard {
+            heartbeat_at: heartbeat_at.clone(),
+            expires_at: add_seconds(&heartbeat_at, ttl_seconds),
+            ..existing
+        };
+        state.leases.insert(lease_id, guard.clone());
+        Ok(Some(guard))
     }
 
     async fn reset(&self) -> Result<()> {

@@ -591,6 +591,53 @@ impl LedgerStore for SqliteLedgerStore {
         Ok(())
     }
 
+    async fn heartbeat_lease(
+        &self,
+        lease_id: LeaseId,
+        heartbeat_at: Timestamp,
+        ttl_seconds: u64,
+    ) -> Result<Option<LeaseGuard>> {
+        let row = sqlx::query(
+            r#"
+            SELECT lease_json
+            FROM leases
+            WHERE lease_id = ?1
+            "#,
+        )
+        .bind(&lease_id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let lease_json: String = row.get("lease_json");
+        let existing: LeaseGuard = serde_json::from_str(&lease_json).map_err(json_error)?;
+        let guard = LeaseGuard {
+            heartbeat_at: heartbeat_at.clone(),
+            expires_at: add_seconds(&heartbeat_at, ttl_seconds),
+            ..existing
+        };
+        let lease_json = serde_json::to_string(&guard).map_err(json_error)?;
+        sqlx::query(
+            r#"
+            UPDATE leases
+            SET expires_at = ?1,
+                heartbeat_at = ?2,
+                lease_json = ?3
+            WHERE lease_id = ?4
+            "#,
+        )
+        .bind(&guard.expires_at.0)
+        .bind(&guard.heartbeat_at.0)
+        .bind(lease_json)
+        .bind(&guard.lease_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+        Ok(Some(guard))
+    }
+
     async fn reset(&self) -> Result<()> {
         clear_ledger(&self.pool).await
     }
