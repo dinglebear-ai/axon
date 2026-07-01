@@ -15,11 +15,11 @@ impl ChunkRouter {
             return Ok(profile);
         }
 
-        if is_manifest(doc) {
-            return Ok(ChunkingProfile::CodeManifest);
-        }
         if is_api_schema(doc) {
             return Ok(ChunkingProfile::ApiSchema);
+        }
+        if is_manifest(doc) {
+            return Ok(ChunkingProfile::CodeManifest);
         }
 
         Ok(match doc.content_kind {
@@ -49,7 +49,7 @@ fn explicit_profile(doc: &SourceDocument) -> Result<Option<ChunkingProfile>, Str
 }
 
 fn profile_value(map: &MetadataMap) -> Option<&str> {
-    ["axon_document_profile", "chunking_profile", "profile"]
+    ["axon_document_profile", "chunking_profile"]
         .iter()
         .find_map(|key| map.get(*key).and_then(serde_json::Value::as_str))
 }
@@ -59,10 +59,29 @@ fn is_manifest(doc: &SourceDocument) -> bool {
         .as_deref()
         .or_else(|| doc.canonical_uri.rsplit('/').next())
         .is_some_and(|path| {
+            let filename = path.rsplit('/').next().unwrap_or(path);
             matches!(
-                path,
-                "Cargo.toml" | "package.json" | "pyproject.toml" | "go.mod" | "pom.xml"
-            )
+                filename,
+                "Cargo.toml"
+                    | "package.json"
+                    | "package-lock.json"
+                    | "pnpm-lock.yaml"
+                    | "yarn.lock"
+                    | "requirements.txt"
+                    | "pyproject.toml"
+                    | "go.mod"
+                    | "pom.xml"
+                    | "Dockerfile"
+                    | "docker-compose.yml"
+                    | "docker-compose.yaml"
+                    | ".env.example"
+                    | "Chart.yaml"
+                    | "values.yaml"
+                    | "kustomization.yaml"
+                    | "kustomization.yml"
+            ) || filename.ends_with(".tf")
+                || filename.ends_with(".tfvars")
+                || filename.ends_with(".env.example")
         })
 }
 

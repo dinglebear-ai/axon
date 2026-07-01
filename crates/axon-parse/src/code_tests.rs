@@ -69,3 +69,14 @@ fn emits_graph_candidates_for_code_symbols_without_breaking_fact_api() {
         Some("pub enum Mode {}")
     );
 }
+
+#[test]
+fn ignores_commented_out_symbols() {
+    let facts = symbol_facts(&input(
+        "src/lib.rs",
+        "// fn not_real() {}\n# def not_python():\n/* struct NotReal; */\nfn real() {}\n",
+    ));
+
+    let names: Vec<_> = facts.iter().map(|fact| fact.name.as_str()).collect();
+    assert_eq!(names, vec!["real"]);
+}

@@ -17,7 +17,6 @@ pub mod testing;
 pub mod text;
 pub mod transcript;
 
-pub use chunk::DocumentChunk;
 pub use chunk_router::ChunkRouter;
 pub use prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 pub use preparer::DocumentPreparer;

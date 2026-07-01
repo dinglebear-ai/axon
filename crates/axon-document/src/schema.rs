@@ -3,7 +3,7 @@
 use crate::chunk::DocumentChunk;
 use crate::metadata::structured_records;
 
-pub fn api_schema(
+pub(crate) fn api_schema(
     text: &str,
     structured_payload: Option<&serde_json::Value>,
 ) -> Vec<DocumentChunk> {

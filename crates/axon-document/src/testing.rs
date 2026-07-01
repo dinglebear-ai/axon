@@ -4,12 +4,12 @@ use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult}
 use crate::preparer::DocumentPreparer;
 
 #[derive(Debug, Clone)]
-pub struct FakePreparer {
+pub struct RecordingPreparer {
     inner: DocumentPreparer,
     requests: Vec<PrepareSourceDocumentRequest>,
 }
 
-impl FakePreparer {
+impl RecordingPreparer {
     pub fn new(inner: DocumentPreparer) -> Self {
         Self {
             inner,

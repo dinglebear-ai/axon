@@ -7,29 +7,25 @@ use crate::chunk::DocumentChunk;
 pub(crate) const MAX_PLAIN_TEXT_CHUNK_BYTES: usize = 4096;
 pub(crate) const MAX_PLAIN_TEXT_CHUNK_CHARS: usize = 2000;
 
-pub fn plain_text_windows(text: &str) -> Vec<DocumentChunk> {
-    let normalized = text.replace("\r\n", "\n");
-    paragraphs(&normalized)
+pub(crate) fn plain_text_windows(text: &str) -> Vec<DocumentChunk> {
+    paragraphs(text)
         .into_iter()
-        .flat_map(|(start, end)| bounded_windows(&normalized, start, end))
+        .flat_map(|(start, end)| bounded_windows(text, start, end))
         .map(|(start, end)| {
-            DocumentChunk::new(
-                normalized[start..end].trim().to_string(),
-                source_range(&normalized, start, end),
-            )
+            DocumentChunk::new(text[start..end].to_string(), source_range(text, start, end))
         })
         .filter(|chunk| !chunk.content.is_empty())
         .collect()
 }
 
-pub fn atomic_text(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn atomic_text(text: &str) -> Vec<DocumentChunk> {
     vec![DocumentChunk::new(
         text.to_string(),
         source_range(text, 0, text.len()),
     )]
 }
 
-pub fn source_range(text: &str, start: usize, end: usize) -> SourceRange {
+pub(crate) fn source_range(text: &str, start: usize, end: usize) -> SourceRange {
     let line_start = line_number_at(text, start);
     let line_end = line_number_at(text, end.saturating_sub(1).min(text.len()));
     SourceRange {
@@ -60,7 +56,7 @@ fn paragraphs(text: &str) -> Vec<(usize, usize)> {
         let byte_end = byte_start + line.len();
         if line.trim().is_empty() {
             if let Some(open) = start.take() {
-                spans.push((open, byte_start));
+                spans.push(trim_span(text, open, byte_start));
             }
         } else if start.is_none() {
             start = Some(byte_start);
@@ -68,12 +64,15 @@ fn paragraphs(text: &str) -> Vec<(usize, usize)> {
         byte_start = byte_end;
     }
     if let Some(open) = start {
-        spans.push((open, text.len()));
+        spans.push(trim_span(text, open, text.len()));
     }
     if spans.is_empty() && !text.trim().is_empty() {
-        spans.push((0, text.len()));
+        spans.push(trim_span(text, 0, text.len()));
     }
     spans
+        .into_iter()
+        .filter(|(start, end)| start < end)
+        .collect()
 }
 
 fn bounded_windows(text: &str, start: usize, end: usize) -> Vec<(usize, usize)> {
@@ -106,6 +105,26 @@ fn line_number_at(text: &str, byte: usize) -> u32 {
     1 + text[..capped].bytes().filter(|b| *b == b'\n').count() as u32
 }
 
+fn trim_span(text: &str, start: usize, end: usize) -> (usize, usize) {
+    let mut trimmed_start = start;
+    for (relative, ch) in text[start..end].char_indices() {
+        if !ch.is_whitespace() {
+            trimmed_start = start + relative;
+            break;
+        }
+    }
+
+    let mut trimmed_end = end;
+    for (relative, ch) in text[start..end].char_indices().rev() {
+        if !ch.is_whitespace() {
+            trimmed_end = start + relative + ch.len_utf8();
+            break;
+        }
+    }
+
+    (trimmed_start, trimmed_end)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{MAX_PLAIN_TEXT_CHUNK_BYTES, MAX_PLAIN_TEXT_CHUNK_CHARS, plain_text_windows};
@@ -128,5 +147,20 @@ mod tests {
             assert!(chunk.content.len() <= MAX_PLAIN_TEXT_CHUNK_BYTES);
             assert!(chunk.content.chars().count() <= MAX_PLAIN_TEXT_CHUNK_CHARS);
         }
+    }
+
+    #[test]
+    fn plain_text_windows_preserves_original_crlf_ranges() {
+        let text = " alpha\r\n\r\nbeta ";
+
+        let chunks = plain_text_windows(text);
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].content, "alpha");
+        assert_eq!(chunks[0].range.byte_start, Some(1));
+        assert_eq!(chunks[0].range.byte_end, Some(6));
+        assert_eq!(chunks[1].content, "beta");
+        assert_eq!(chunks[1].range.byte_start, Some(10));
+        assert_eq!(chunks[1].range.byte_end, Some(14));
     }
 }

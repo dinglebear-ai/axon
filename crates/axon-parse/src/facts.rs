@@ -2,6 +2,7 @@ use axon_api::source::{ContentRef, MetadataMap, SourceParseFacts, SourceRange};
 use serde_json::Value;
 
 pub const MODULE_NAME: &str = "facts";
+pub const PARSER_VERSION: &str = "pr8-baseline";
 
 use crate::parser::ParseInput;
 
@@ -55,7 +56,7 @@ pub fn source_fact(
         name: name.into(),
         value,
         parser_id: parser_id.to_string(),
-        parser_version: "pr8-baseline".to_string(),
+        parser_version: PARSER_VERSION.to_string(),
         parser_method: parser_method.to_string(),
         range: line.map(line_range),
         confidence: confidence_for_method(parser_method),

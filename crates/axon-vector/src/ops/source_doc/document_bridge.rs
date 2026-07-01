@@ -40,8 +40,15 @@ fn prepare_with_document_crate(
 ) -> Result<axon_api::source::PreparedDocument, String> {
     let result = DocumentPreparer::default().prepare(PrepareSourceDocumentRequest {
         document: to_document_source(doc, content_kind, path),
-        generation: SourceGenerationId::from("legacy-vector-adapter"),
+        generation: SourceGenerationId::from(format!(
+            "legacy-vector-adapter:{}",
+            uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, doc.url.as_bytes())
+        )),
         profile: Some(profile),
+        parse_facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
     })?;
     Ok(result.document)
 }
@@ -56,7 +63,13 @@ fn to_document_source(
             "legacy-vector:{}",
             uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, doc.url.as_bytes())
         )),
-        source_id: SourceId::from(doc.source_type.clone()),
+        source_id: SourceId::from(format!(
+            "legacy-vector:{}",
+            uuid::Uuid::new_v5(
+                &uuid::Uuid::NAMESPACE_URL,
+                format!("{}:{}", doc.source_type, doc.url).as_bytes()
+            )
+        )),
         source_item_key: SourceItemKey::from(doc.url.clone()),
         canonical_uri: doc.url.clone(),
         content_kind,

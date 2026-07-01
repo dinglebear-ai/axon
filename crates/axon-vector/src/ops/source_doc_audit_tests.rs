@@ -42,13 +42,10 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
 
     let mut violations = Vec::new();
     for file in files {
-        if is_allowed(&file) {
-            continue;
-        }
         let content = fs::read_to_string(&file)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", file.display()));
         for needle in forbidden {
-            if content.contains(needle) {
+            if content.contains(needle) && !is_allowed_violation(&file, needle, &content) {
                 violations.push(format!("{} contains {needle}", file.display()));
             }
         }
@@ -115,12 +112,18 @@ fn collect_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn is_allowed(path: &Path) -> bool {
+fn is_allowed_violation(path: &Path, needle: &str, content: &str) -> bool {
     let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.contains("/crates/axon-document/src/")
-        // TODO(PR8/#298): remove this temporary adapter allowance after markdown,
-        // plain text, and code chunk compatibility move fully into axon-document.
-        || normalized.ends_with("crates/axon-vector/src/ops/source_doc.rs")
-        || normalized.ends_with("crates/axon-vector/src/ops/tei.rs")
-        || normalized.contains("_tests.rs")
+    if normalized.contains("_tests.rs") {
+        return true;
+    }
+    if normalized.ends_with("crates/axon-vector/src/ops/tei.rs") {
+        return true;
+    }
+    normalized.ends_with("crates/axon-vector/src/ops/source_doc.rs")
+        && matches!(
+            needle,
+            "PreparedDoc {" | "PreparedDoc::from_planned_chunks("
+        )
+        && content.contains("TODO(PR8/#298)")
 }

@@ -232,6 +232,8 @@ impl SourceDocument {
         content_type: &'static str,
         chunk_extra: Vec<Value>,
     ) -> PreparedDoc {
+        // TODO(PR8/#298): remove this legacy conversion once markdown, plain text,
+        // and code file preparation move behind axon-document in later PRs.
         PreparedDoc::from_planned_chunks(
             self.url,
             self.domain,

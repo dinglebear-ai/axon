@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axon_api::source::*;
 
-use crate::parser::{ParseInput, ParseResult, SourceParser, stage_header};
+use crate::parser::{ParseInput, ParseResult, ParserCapability, SourceParser, stage_header};
 
 #[derive(Clone, Default)]
 pub struct ParserRegistry {
@@ -23,10 +23,7 @@ impl ParserRegistry {
 
     pub fn select(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
         self.select_explicit(input)
-            .or_else(|| self.select_by(|parser| parser.capability().matches_content_kind(input)))
-            .or_else(|| self.select_by(|parser| parser.capability().matches_mime_type(input)))
-            .or_else(|| self.select_by(|parser| parser.capability().matches_path(input)))
-            .or_else(|| self.select_by(|parser| parser.capability().matches_sniffing(input)))
+            .or_else(|| self.select_best_match(input))
     }
 
     pub fn parse(&self, input: &ParseInput) -> ParseResult {
@@ -56,6 +53,37 @@ impl ParserRegistry {
             .find(|parser| predicate(parser))
             .cloned()
     }
+
+    fn select_best_match(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
+        let mut best: Option<(u8, u32, Arc<dyn SourceParser>)> = None;
+
+        for parser in &self.parsers {
+            let Some(score) = match_score(parser.capability(), input) else {
+                continue;
+            };
+            let priority = parser.capability().priority;
+            let should_replace = best.as_ref().is_none_or(|(best_score, best_priority, _)| {
+                score > *best_score || (score == *best_score && priority < *best_priority)
+            });
+            if should_replace {
+                best = Some((score, priority, parser.clone()));
+            }
+        }
+
+        best.map(|(_, _, parser)| parser)
+    }
+}
+
+fn match_score(capability: &ParserCapability, input: &ParseInput) -> Option<u8> {
+    [
+        (50, capability.matches_path(input)),
+        (40, capability.matches_mime_type(input)),
+        (30, capability.matches_sniffing(input)),
+        (10, capability.matches_content_kind(input)),
+    ]
+    .into_iter()
+    .filter_map(|(score, matched)| matched.then_some(score))
+    .max()
 }
 
 fn unsupported_result(input: &ParseInput) -> ParseResult {

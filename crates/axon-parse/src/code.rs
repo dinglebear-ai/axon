@@ -17,6 +17,9 @@ pub fn symbol_facts_with_graph(input: &ParseInput) -> (Vec<SourceParseFacts>, Ve
 
     for (idx, line) in inline_text(input).lines().enumerate() {
         let trimmed = line.trim_start();
+        if is_comment_or_string_line(trimmed) {
+            continue;
+        }
         let Some((language, symbol_kind, name)) =
             rust_symbol(trimmed).or_else(|| python_symbol(trimmed))
         else {
@@ -77,6 +80,17 @@ fn take_identifier(rest: &str) -> String {
     rest.chars()
         .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
         .collect()
+}
+
+fn is_comment_or_string_line(line: &str) -> bool {
+    line.starts_with("//")
+        || line.starts_with('#')
+        || line.starts_with("/*")
+        || line.starts_with('*')
+        || line.starts_with("\"")
+        || line.starts_with('\'')
+        || line.starts_with("r#\"")
+        || line.starts_with("r\"")
 }
 
 #[cfg(test)]

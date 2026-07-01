@@ -2,7 +2,7 @@ use axon_api::source::*;
 use uuid::Uuid;
 
 use crate::parser::ParseInput;
-use crate::tool::{tool_facts, tool_parse_items};
+use crate::tool::{tool_parse_items, tool_parse_result};
 
 fn input(text: &str) -> ParseInput {
     ParseInput {
@@ -33,15 +33,29 @@ fn input(text: &str) -> ParseInput {
 
 #[test]
 fn extracts_tool_call_and_output_facts() {
-    let facts = tool_facts(&input(
+    let parsed = tool_parse_items(&input(
         r#"{"tool":"axon","action":"search","status":"ok","output":{"count":2}}"#,
     ));
 
+    let facts = parsed.facts;
     assert_eq!(facts.len(), 1);
     assert_eq!(facts[0].fact_kind, "tool_output");
     assert_eq!(facts[0].name, "axon.search");
     assert_eq!(facts[0].value["status"], "ok");
     assert_eq!(facts[0].value["output_kind"], "object");
+}
+
+#[test]
+fn malformed_jsonl_degrades_with_warning() {
+    let result = tool_parse_result(&input(
+        "{\"tool\":\"axon\",\"action\":\"search\"}\nnot-json\n",
+    ));
+
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.facts.len(), 1);
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(result.warnings[0].code, "parse.jsonl.invalid_line");
+    assert!(result.warnings[0].message.contains("line 2"));
 }
 
 #[test]
