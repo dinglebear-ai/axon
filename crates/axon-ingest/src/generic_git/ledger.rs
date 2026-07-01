@@ -180,22 +180,36 @@ pub(super) async fn finalize_git_ledger_refresh(
         .store
         .release_lease(&prepared.source.source_id, &prepared.lease_owner)
         .await;
-    if let Err(err) = &result {
-        set_source_backoff(
-            &prepared.store,
-            &prepared.source.source_id,
-            "qdrant",
-            &err.to_string(),
+    let backoff_result = if let Err(err) = &result {
+        Some(
+            set_source_backoff(
+                &prepared.store,
+                &prepared.source.source_id,
+                "qdrant",
+                &err.to_string(),
+            )
+            .await,
         )
-        .await;
-    }
+    } else {
+        None
+    };
     match (result, release_result) {
         (Ok(()), Ok(())) => Ok(()),
-        (Err(err), Ok(())) => Err(err),
+        (Err(err), Ok(())) => match backoff_result {
+            Some(Err(backoff_err)) => Err(anyhow!(
+                "{err}; additionally failed to set source ledger backoff: {backoff_err}"
+            )),
+            _ => Err(err),
+        },
         (Ok(()), Err(release_err)) => Err(release_err),
-        (Err(err), Err(release_err)) => Err(anyhow!(
-            "{err}; additionally failed to release source ledger lease: {release_err}"
-        )),
+        (Err(err), Err(release_err)) => match backoff_result {
+            Some(Err(backoff_err)) => Err(anyhow!(
+                "{err}; additionally failed to set source ledger backoff: {backoff_err}; additionally failed to release source ledger lease: {release_err}"
+            )),
+            _ => Err(anyhow!(
+                "{err}; additionally failed to release source ledger lease: {release_err}"
+            )),
+        },
     }
 }
 
@@ -306,18 +320,13 @@ async fn set_source_backoff(
     source_id: &str,
     dependency: &str,
     message: &str,
-) {
+) -> Result<()> {
     let until_ms = chrono::Utc::now()
         .timestamp_millis()
         .saturating_add(SOURCE_LEDGER_BACKOFF_MS);
-    if let Err(err) = store
+    store
         .set_backoff(source_id, until_ms, dependency, message)
         .await
-    {
-        log_warn(&format!(
-            "command=ingest_git source_ledger_backoff_failed source_id={source_id} err={err}"
-        ));
-    }
 }
 
 pub(super) async fn release_git_ledger_after_error<T>(

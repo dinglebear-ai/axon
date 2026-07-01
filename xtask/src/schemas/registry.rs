@@ -188,6 +188,18 @@ pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
             "skipped",
         ],
     ),
+    (
+        "PublishState",
+        &[
+            "planning",
+            "writing",
+            "publishing",
+            "committed",
+            "cleanup_pending",
+            "cleaning",
+            "cleaned",
+        ],
+    ),
 ];
 
 pub fn check_removed_surface_drift(artifacts: &[SchemaArtifact]) -> Result<()> {

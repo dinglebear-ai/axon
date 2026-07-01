@@ -10,6 +10,7 @@ pub(super) async fn record_cleanup_debt(
     store: &SqliteLedgerStore,
     debt: CleanupDebt,
 ) -> Result<()> {
+    validate_cleanup_debt(&debt)?;
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
     insert_cleanup_debt_in_tx(&mut tx, debt).await?;
     tx.commit().await.map_err(sqlite_error)?;
@@ -51,6 +52,7 @@ pub(super) async fn insert_cleanup_debt_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     debt: CleanupDebt,
 ) -> Result<()> {
+    validate_cleanup_debt(&debt)?;
     let debt_json = serde_json::to_string(&debt).map_err(json_error)?;
     let selector_hash = cleanup_selector_hash(&debt.selector)?;
     let generation_key = debt
@@ -123,6 +125,7 @@ pub(super) async fn insert_cleanup_debt_once_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     debt: CleanupDebt,
 ) -> Result<()> {
+    validate_cleanup_debt(&debt)?;
     let debt_json = serde_json::to_string(&debt).map_err(json_error)?;
     let selector_hash = cleanup_selector_hash(&debt.selector)?;
     let generation_key = debt
@@ -167,4 +170,35 @@ pub(super) async fn insert_cleanup_debt_once_in_tx(
     .await
     .map_err(sqlite_error)?;
     Ok(())
+}
+
+fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
+    match &debt.selector {
+        CleanupSelector::Source { source_id } if source_id != &debt.source_id => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
+        CleanupSelector::Generation {
+            source_id,
+            generation,
+        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
+        CleanupSelector::SourceItem {
+            source_id,
+            generation,
+            ..
+        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {
+    ApiError::new(
+        "source.ledger.cleanup_selector_mismatch",
+        ErrorStage::Cleaning,
+        "cleanup selector does not match cleanup debt source/generation",
+    )
+    .with_source_id(debt.source_id.0.clone())
 }

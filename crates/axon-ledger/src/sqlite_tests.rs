@@ -490,6 +490,25 @@ async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
     assert_ne!(expired.lease_id, reclaimed.lease_id);
     assert_eq!(reclaimed.owner_id, "owner-b");
 
+    let stale_heartbeat = store
+        .heartbeat_lease(expired.lease_id.clone(), "owner-a".to_string(), 30)
+        .await
+        .expect("heartbeat with stale guard");
+    assert_eq!(stale_heartbeat, None);
+    let stale_release = store
+        .release_lease(expired.lease_id, "owner-a".to_string())
+        .await
+        .expect_err("stale guard cannot release reclaimed lease");
+    assert_eq!(
+        stale_release.code.to_string(),
+        "source.ledger.lease_missing"
+    );
+    let owner_c_conflict = store
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-c"))
+        .await
+        .expect("owner-c conflict");
+    assert_eq!(owner_c_conflict, None);
+
     store
         .release_lease(reclaimed.lease_id.clone(), "owner-b".to_string())
         .await
@@ -530,7 +549,7 @@ async fn sqlite_heartbeat_extends_lease_by_id() {
         .expect("lease");
 
     let heartbeat = store
-        .heartbeat_lease(first.lease_id.clone(), "owner-a".to_string(), ts_at(20), 30)
+        .heartbeat_lease(first.lease_id.clone(), "owner-a".to_string(), 30)
         .await
         .expect("heartbeat")
         .expect("lease should still exist");
@@ -550,7 +569,7 @@ async fn sqlite_heartbeat_rejects_expired_lease() {
         .expect("lease");
 
     let heartbeat = store
-        .heartbeat_lease(first.lease_id, "owner-a".to_string(), ts_at(31), 30)
+        .heartbeat_lease(first.lease_id, "owner-a".to_string(), 30)
         .await
         .expect("heartbeat");
 
@@ -567,7 +586,7 @@ async fn sqlite_heartbeat_rejects_wrong_owner() {
         .expect("lease");
 
     let heartbeat = store
-        .heartbeat_lease(first.lease_id, "owner-b".to_string(), ts_at(20), 30)
+        .heartbeat_lease(first.lease_id, "owner-b".to_string(), 30)
         .await
         .expect("heartbeat");
 
@@ -623,6 +642,45 @@ async fn sqlite_store_enables_foreign_keys() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
 
     assert!(store.foreign_keys_enabled().await.expect("foreign keys"));
+}
+
+#[tokio::test]
+async fn sqlite_generation_sequence_is_unique_per_source() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    let duplicate = sqlx::query(
+        r#"
+        INSERT INTO source_generations (
+            source_id,
+            generation,
+            sequence,
+            status,
+            publish_state,
+            generation_json,
+            created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+    )
+    .bind("src_sqlite")
+    .bind("gen_duplicate")
+    .bind(1_i64)
+    .bind("running")
+    .bind("writing")
+    .bind("{}")
+    .bind(ts().0)
+    .execute(&store.pool)
+    .await;
+
+    assert!(
+        duplicate.is_err(),
+        "duplicate sequence for {:?} should violate the unique index",
+        gen1.generation
+    );
 }
 
 #[tokio::test]
@@ -821,4 +879,153 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
             generation: gen1.generation,
         }
     );
+    let generation_json: String =
+        sqlx::query_scalar("SELECT generation_json FROM source_generations WHERE generation = ?1")
+            .bind(&gen2.generation.0)
+            .fetch_one(&store.pool)
+            .await
+            .expect("read generation json");
+    let stored_generation: SourceGeneration =
+        serde_json::from_str(&generation_json).expect("parse generation json");
+    assert_eq!(stored_generation.cleanup_debt, vec![debt.debt_id]);
+}
+
+#[tokio::test]
+async fn sqlite_publish_creates_cleanup_debt_for_modified_items() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    store
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![manifest_item("src/lib.rs", "old")],
+        ))
+        .await
+        .expect("put gen1");
+    store
+        .publish_generation(completed_generation_from(&gen1))
+        .await
+        .expect("publish gen1");
+
+    let gen2 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen2");
+    store
+        .put_manifest(manifest_with_items(
+            &gen2.generation.0,
+            vec![manifest_item("src/lib.rs", "new")],
+        ))
+        .await
+        .expect("put gen2");
+    store
+        .publish_generation(completed_generation_from(&gen2))
+        .await
+        .expect("publish gen2");
+
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
+    let debt_json: String = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
+        .fetch_one(&store.pool)
+        .await
+        .expect("read cleanup debt");
+    let debt: CleanupDebt = serde_json::from_str(&debt_json).expect("parse cleanup debt");
+    assert_eq!(
+        debt.selector,
+        CleanupSelector::SourceItem {
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new("src/lib.rs"),
+            generation: gen1.generation,
+        }
+    );
+}
+
+#[tokio::test]
+async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    store
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![manifest_item("src/old.rs", "first")],
+        ))
+        .await
+        .expect("put gen1");
+    store
+        .publish_generation(completed_generation_from(&gen1))
+        .await
+        .expect("publish gen1");
+
+    let gen2 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen2");
+    store
+        .put_manifest(manifest_with_items(&gen2.generation.0, vec![]))
+        .await
+        .expect("put gen2");
+    store
+        .publish_generation(completed_generation_from(&gen2))
+        .await
+        .expect("publish gen2");
+
+    let gen3 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen3");
+    store
+        .put_manifest(manifest_with_items(
+            &gen3.generation.0,
+            vec![manifest_item("src/old.rs", "second")],
+        ))
+        .await
+        .expect("put gen3");
+    store
+        .publish_generation(completed_generation_from(&gen3))
+        .await
+        .expect("publish gen3");
+
+    let gen4 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen4");
+    store
+        .put_manifest(manifest_with_items(&gen4.generation.0, vec![]))
+        .await
+        .expect("put gen4");
+    store
+        .publish_generation(completed_generation_from(&gen4))
+        .await
+        .expect("publish gen4");
+
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 2);
+    let rows = sqlx::query_scalar::<_, String>("SELECT debt_json FROM cleanup_debt")
+        .fetch_all(&store.pool)
+        .await
+        .expect("read cleanup debt");
+    let selectors = rows
+        .into_iter()
+        .map(|json| {
+            let debt: CleanupDebt = serde_json::from_str(&json).expect("parse cleanup debt");
+            debt.selector
+        })
+        .collect::<Vec<_>>();
+    assert!(selectors.contains(&CleanupSelector::SourceItem {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/old.rs"),
+        generation: gen1.generation,
+    }));
+    assert!(selectors.contains(&CleanupSelector::SourceItem {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/old.rs"),
+        generation: gen3.generation,
+    }));
 }

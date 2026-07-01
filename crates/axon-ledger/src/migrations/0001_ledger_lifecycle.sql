@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS source_generations (
 CREATE INDEX IF NOT EXISTS idx_source_generations_source_status_created
   ON source_generations(source_id, status, created_at);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_source_sequence
+  ON source_generations(source_id, sequence);
+
 CREATE TABLE IF NOT EXISTS source_manifests (
   source_id TEXT NOT NULL,
   generation TEXT NOT NULL,

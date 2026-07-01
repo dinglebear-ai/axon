@@ -85,6 +85,7 @@ pub enum CleanupSelector {
         source_id: SourceId,
     },
     Generation {
+        source_id: SourceId,
         generation: SourceGenerationId,
     },
     SourceItem {

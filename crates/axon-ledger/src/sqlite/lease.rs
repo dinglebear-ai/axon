@@ -160,7 +160,11 @@ pub(super) async fn release_lease(
             "lease owner does not match release owner",
         ));
     }
-    Ok(())
+    Err(ApiError::new(
+        "source.ledger.lease_missing",
+        ErrorStage::Leasing,
+        format!("lease {} does not exist", lease_id.0),
+    ))
 }
 
 pub(super) async fn heartbeat_lease(

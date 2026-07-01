@@ -401,10 +401,14 @@
             "kind": {
               "const": "generation",
               "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
             }
           },
           "required": [
             "kind",
+            "source_id",
             "generation"
           ],
           "type": "object"
@@ -613,10 +617,14 @@
             "kind": {
               "const": "generation",
               "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
             }
           },
           "required": [
             "kind",
+            "source_id",
             "generation"
           ],
           "type": "object"
@@ -2601,6 +2609,22 @@
           "rust_enum": "PipelinePhase"
         }
       },
+      "PublishState": {
+        "enum": [
+          "planning",
+          "writing",
+          "publishing",
+          "committed",
+          "cleanup_pending",
+          "cleaning",
+          "cleaned"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "PublishState"
+        }
+      },
       "SourceIntent": {
         "enum": [
           "acquire",
@@ -2658,7 +2682,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:09cdf54502f713c96078b0a612b5a86e28b76fdfcab66769d14175e178921741",
+        "checksum": "sha256:440df35a4770496537f5653b2db00303d4289aece42a0aa393b7a50a5f6dd985",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },

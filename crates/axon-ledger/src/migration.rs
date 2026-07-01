@@ -18,6 +18,7 @@ pub async fn migrate_ledger(pool: &SqlitePool) -> Result<()> {
 }
 
 pub(crate) async fn clear_ledger(pool: &SqlitePool) -> Result<()> {
+    let mut tx = pool.begin().await.map_err(sqlite_error)?;
     for statement in [
         "DELETE FROM source_items",
         "DELETE FROM document_status",
@@ -27,8 +28,9 @@ pub(crate) async fn clear_ledger(pool: &SqlitePool) -> Result<()> {
         "DELETE FROM source_generations",
         "DELETE FROM sources",
     ] {
-        pool.execute(statement).await.map_err(sqlite_error)?;
+        tx.execute(statement).await.map_err(sqlite_error)?;
     }
+    tx.commit().await.map_err(sqlite_error)?;
     Ok(())
 }
 
