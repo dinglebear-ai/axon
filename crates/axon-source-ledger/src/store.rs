@@ -94,16 +94,19 @@ impl SourceLedgerStore {
         ttl_ms: i64,
     ) -> anyhow::Result<()> {
         let now_ms = now_ms();
+        self.validate_owner_lease_active(source_id, owner, now_ms)
+            .await?;
         let expires_at = now_ms.saturating_add(ttl_ms.max(0));
         let result = sqlx::query(
             "UPDATE axon_source_sources
              SET lease_expires_at_ms = ?, updated_at_ms = ?
-             WHERE source_id = ? AND lease_owner = ?",
+             WHERE source_id = ? AND lease_owner = ? AND lease_expires_at_ms > ?",
         )
         .bind(expires_at)
         .bind(now_ms)
         .bind(source_id)
         .bind(owner)
+        .bind(now_ms)
         .execute(&self.pool)
         .await
         .context("failed to extend source ledger lease")?;
@@ -177,18 +180,22 @@ impl SourceLedgerStore {
         .fetch_one(&mut *tx)
         .await
         .context("failed to read current source generation")?;
+        if let Some(owner) = owner {
+            validate_owner_lease_active_in_tx(&mut tx, &source.source_id, owner, now_ms).await?;
+        }
         let next = current.saturating_add(1);
         let result = sqlx::query(
             "UPDATE axon_source_sources
              SET max_generation = ?, updated_at_ms = ?
              WHERE source_id = ?
-               AND (? IS NULL OR lease_owner = ?)",
+               AND (? IS NULL OR (lease_owner = ? AND lease_expires_at_ms > ?))",
         )
         .bind(next)
         .bind(now_ms)
         .bind(&source.source_id)
         .bind(owner)
         .bind(owner)
+        .bind(now_ms)
         .execute(&mut *tx)
         .await
         .context("failed to allocate source generation")?;
@@ -357,6 +364,51 @@ impl SourceLedgerStore {
             .await
             .context("failed to read source max generation")
     }
+
+    async fn validate_owner_lease_active(
+        &self,
+        source_id: &str,
+        owner: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("failed to begin source ledger lease validation")?;
+        validate_owner_lease_active_in_tx(&mut tx, source_id, owner, now_ms).await?;
+        tx.commit()
+            .await
+            .context("failed to commit source ledger lease validation")?;
+        Ok(())
+    }
+}
+
+pub(crate) async fn validate_owner_lease_active_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &str,
+    owner: &str,
+    now_ms: i64,
+) -> anyhow::Result<()> {
+    let row = sqlx::query(
+        "SELECT lease_owner, lease_expires_at_ms
+         FROM axon_source_sources
+         WHERE source_id = ?",
+    )
+    .bind(source_id)
+    .fetch_optional(tx.as_mut())
+    .await
+    .context("failed to read source ledger lease state")?
+    .ok_or_else(|| anyhow::anyhow!("source ledger source {source_id} does not exist"))?;
+    let lease_owner: Option<String> = row.try_get("lease_owner")?;
+    if lease_owner.as_deref() != Some(owner) {
+        anyhow::bail!("source ledger lease for {source_id} was lost");
+    }
+    let lease_expires_at_ms: i64 = row.try_get("lease_expires_at_ms")?;
+    if lease_expires_at_ms <= now_ms {
+        anyhow::bail!("source ledger lease for {source_id} owned by {owner} expired");
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_cleanup_debt_item(
@@ -365,26 +417,26 @@ pub(crate) fn validate_cleanup_debt_item(
 ) -> anyhow::Result<()> {
     let selector: serde_json::Value = serde_json::from_str(&debt.selector_json)
         .context("failed to parse source cleanup selector json")?;
-    if selector
+    let selector_source_id = selector
         .get("source_id")
         .and_then(|value| value.as_str())
-        .is_some_and(|selector_source_id| selector_source_id != source_id)
-    {
+        .ok_or_else(|| anyhow::anyhow!("cleanup selector missing source_id"))?;
+    if selector_source_id != source_id {
         anyhow::bail!("cleanup selector source_id does not match debt source_id");
     }
-    if selector
+    let selector_generation = selector
         .get("source_generation")
         .and_then(|value| value.as_i64())
-        .is_some_and(|selector_generation| selector_generation != debt.generation)
-    {
+        .ok_or_else(|| anyhow::anyhow!("cleanup selector missing source_generation"))?;
+    if selector_generation != debt.generation {
         anyhow::bail!("cleanup selector source_generation does not match debt generation");
     }
-    if selector
+    let selector_item_key = selector
         .get("item_key")
         .or_else(|| selector.get("source_item_key"))
         .and_then(|value| value.as_str())
-        .is_some_and(|selector_item_key| selector_item_key != debt.item_key)
-    {
+        .ok_or_else(|| anyhow::anyhow!("cleanup selector missing item_key"))?;
+    if selector_item_key != debt.item_key {
         anyhow::bail!("cleanup selector item_key does not match debt item_key");
     }
     Ok(())

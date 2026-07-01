@@ -613,28 +613,36 @@ impl LedgerStore for SqliteLedgerStore {
         };
         let lease_json: String = row.get("lease_json");
         let existing: LeaseGuard = serde_json::from_str(&lease_json).map_err(json_error)?;
+        if existing.expires_at.0 <= heartbeat_at.0 {
+            return Ok(None);
+        }
         let guard = LeaseGuard {
             heartbeat_at: heartbeat_at.clone(),
             expires_at: add_seconds(&heartbeat_at, ttl_seconds),
             ..existing
         };
         let lease_json = serde_json::to_string(&guard).map_err(json_error)?;
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             UPDATE leases
             SET expires_at = ?1,
                 heartbeat_at = ?2,
                 lease_json = ?3
             WHERE lease_id = ?4
+              AND expires_at > ?5
             "#,
         )
         .bind(&guard.expires_at.0)
         .bind(&guard.heartbeat_at.0)
         .bind(lease_json)
         .bind(&guard.lease_id.0)
+        .bind(&heartbeat_at.0)
         .execute(&self.pool)
         .await
         .map_err(sqlite_error)?;
+        if result.rows_affected() != 1 {
+            return Ok(None);
+        }
         Ok(Some(guard))
     }
 

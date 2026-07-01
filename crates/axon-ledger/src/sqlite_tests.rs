@@ -443,6 +443,27 @@ async fn sqlite_heartbeat_extends_lease_by_id() {
 }
 
 #[tokio::test]
+async fn sqlite_heartbeat_rejects_expired_lease() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    let first = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            ts_at(0),
+        ))
+        .await
+        .expect("acquire")
+        .expect("lease");
+
+    let heartbeat = store
+        .heartbeat_lease(first.lease_id, ts_at(31), 30)
+        .await
+        .expect("heartbeat");
+
+    assert_eq!(heartbeat, None);
+}
+
+#[tokio::test]
 async fn sqlite_migration_creates_required_ledger_tables() {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)

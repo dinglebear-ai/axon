@@ -170,6 +170,79 @@ async fn first_generation_commit_requires_manifest_state() {
 }
 
 #[tokio::test]
+async fn explicit_empty_first_generation_payload_can_commit() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+
+    store
+        .commit_generation_payload_for_owner("source-a", generation, "owner-a", &[], &[])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        generation
+    );
+}
+
+#[tokio::test]
+async fn explicit_empty_first_generation_delta_can_commit() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Crawl, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+
+    store
+        .commit_generation_delta_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[],
+            &BTreeSet::new(),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        generation
+    );
+}
+
+#[tokio::test]
 async fn preflight_backoff_blocks_generation_allocation() {
     let pool = axon_jobs::store::open_sqlite_pool(":memory:")
         .await
@@ -187,6 +260,34 @@ async fn preflight_backoff_blocks_generation_allocation() {
         RefreshPreflight::BackingOff { .. }
     ));
     assert_eq!(store.max_generation("source-a").await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn owner_guarded_paths_reject_expired_lease() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    assert!(store.acquire_lease(&source, "owner-a", 0).await.unwrap());
+
+    let extend_err = store
+        .extend_lease_for_owner("source-a", "owner-a", 60_000)
+        .await
+        .unwrap_err();
+    assert!(
+        extend_err.to_string().contains("expired"),
+        "expired extend should fail clearly: {extend_err}"
+    );
+
+    let begin_err = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap_err();
+    assert!(
+        begin_err.to_string().contains("expired"),
+        "expired generation allocation should fail clearly: {begin_err}"
+    );
 }
 
 #[tokio::test]
@@ -222,6 +323,53 @@ async fn owner_guarded_commit_fails_after_lease_is_lost() {
     assert!(
         err.to_string().contains("lease"),
         "owner mismatch must fail clearly: {err}"
+    );
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        0
+    );
+}
+
+#[tokio::test]
+async fn owner_guarded_commit_rejects_expired_lease() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            generation,
+            ManifestItem::new("src/lib.rs", "hash", 10),
+        )
+        .await
+        .unwrap();
+    store.release_lease("source-a", "owner-a").await.unwrap();
+    assert!(store.acquire_lease(&source, "owner-a", 0).await.unwrap());
+
+    let err = store
+        .commit_generation_for_owner("source-a", generation, "owner-a")
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("expired"),
+        "expired commit should fail clearly: {err}"
     );
     assert_eq!(
         store
@@ -282,7 +430,7 @@ async fn payload_commit_atomically_commits_manifest_and_cleanup_debt() {
             &[CleanupDebtItem::new(
                 3,
                 "src/old.rs",
-                r#"{"kind":"source_cleanup_v1"}"#,
+                r#"{"collection":"axon","source_id":"source-a","source_index_version":1,"source_generation":3,"item_key":"src/old.rs"}"#,
             )],
         )
         .await
@@ -296,6 +444,54 @@ async fn payload_commit_atomically_commits_manifest_and_cleanup_debt() {
         .await
         .unwrap();
     assert_eq!(diff, Default::default());
+}
+
+#[tokio::test]
+async fn payload_commit_rejects_incomplete_cleanup_selector() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+
+    let err = store
+        .commit_generation_payload_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-a", 10)],
+            &[CleanupDebtItem::new(
+                generation,
+                "src/old.rs",
+                r#"{"kind":"source_cleanup_v1"}"#,
+            )],
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("missing source_id"),
+        "incomplete cleanup selector should fail clearly: {err}"
+    );
+    assert_eq!(store.cleanup_debt_count("source-a").await.unwrap(), 0);
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        0
+    );
 }
 
 #[tokio::test]

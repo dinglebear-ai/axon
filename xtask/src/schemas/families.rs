@@ -70,9 +70,13 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         root,
         &[
             "crates/axon-api/src/source.rs",
+            "crates/axon-api/src/source/document.rs",
             "crates/axon-api/src/source/lifecycle.rs",
             "crates/axon-api/src/source/enums.rs",
+            "crates/axon-api/src/source/ids.rs",
             "crates/axon-api/src/source/stage.rs",
+            "crates/axon-api/src/source/state.rs",
+            "crates/axon-api/src/source/status.rs",
             "crates/axon-error/src/api_error.rs",
         ],
     )?;
@@ -89,6 +93,30 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             (
                 "ResolvedSource",
                 schemars::schema_for!(axon_api::source::ResolvedSource).into(),
+            ),
+            (
+                "SourceGeneration",
+                schemars::schema_for!(axon_api::source::SourceGeneration).into(),
+            ),
+            (
+                "CleanupDebt",
+                schemars::schema_for!(axon_api::source::CleanupDebt).into(),
+            ),
+            (
+                "LeaseRequest",
+                schemars::schema_for!(axon_api::source::LeaseRequest).into(),
+            ),
+            (
+                "LeaseGuard",
+                schemars::schema_for!(axon_api::source::LeaseGuard).into(),
+            ),
+            (
+                "CleanupSelector",
+                schemars::schema_for!(axon_api::source::CleanupSelector).into(),
+            ),
+            (
+                "DocumentStatus",
+                schemars::schema_for!(axon_api::source::DocumentStatus).into(),
             ),
             (
                 "ApiError",
