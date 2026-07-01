@@ -290,12 +290,85 @@ impl LedgerStore for SqliteLedgerStore {
         Ok(())
     }
 
-    async fn update_document_status(&self, _status: DocumentStatus) -> Result<()> {
-        Err(unimplemented_error("update_document_status"))
+    async fn update_document_status(&self, status: DocumentStatus) -> Result<()> {
+        let status_json = serde_json::to_string(&status).map_err(json_error)?;
+        sqlx::query(
+            r#"
+            INSERT INTO axon_ledger_document_status (
+                document_id,
+                source_id,
+                source_item_key,
+                generation,
+                status,
+                status_json,
+                updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(document_id) DO UPDATE SET
+                source_id = excluded.source_id,
+                source_item_key = excluded.source_item_key,
+                generation = excluded.generation,
+                status = excluded.status,
+                status_json = excluded.status_json,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(&status.document_id.0)
+        .bind(&status.source_id.0)
+        .bind(&status.source_item_key.0)
+        .bind(&status.generation.0)
+        .bind(format!("{:?}", status.status))
+        .bind(status_json)
+        .bind(&status.updated_at.0)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+        Ok(())
     }
 
-    async fn record_cleanup_debt(&self, _debt: CleanupDebt) -> Result<()> {
-        Err(unimplemented_error("record_cleanup_debt"))
+    async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
+        let debt_json = serde_json::to_string(&debt).map_err(json_error)?;
+        sqlx::query(
+            r#"
+            INSERT INTO axon_ledger_cleanup_debt (
+                debt_id,
+                job_id,
+                source_id,
+                generation,
+                kind,
+                status,
+                debt_json,
+                attempts,
+                created_at,
+                next_retry_at,
+                completed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(debt_id) DO UPDATE SET
+                job_id = excluded.job_id,
+                source_id = excluded.source_id,
+                generation = excluded.generation,
+                kind = excluded.kind,
+                status = excluded.status,
+                debt_json = excluded.debt_json,
+                attempts = excluded.attempts,
+                next_retry_at = excluded.next_retry_at,
+                completed_at = excluded.completed_at
+            "#,
+        )
+        .bind(&debt.debt_id.0)
+        .bind(debt.job_id.0.to_string())
+        .bind(&debt.source_id.0)
+        .bind(debt.generation.as_ref().map(|value| value.0.as_str()))
+        .bind(format!("{:?}", debt.kind))
+        .bind(format!("{:?}", debt.status))
+        .bind(debt_json)
+        .bind(i64::from(debt.attempts))
+        .bind(&debt.created_at.0)
+        .bind(debt.next_retry_at.as_ref().map(|value| value.0.as_str()))
+        .bind(debt.completed_at.as_ref().map(|value| value.0.as_str()))
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+        Ok(())
     }
 
     async fn reset(&self) -> Result<()> {
@@ -365,6 +438,37 @@ impl SqliteLedgerStore {
         upsert_generation_in_tx(&mut tx, generation, sequence).await?;
         tx.commit().await.map_err(sqlite_error)?;
         Ok(())
+    }
+
+    pub async fn document_status(
+        &self,
+        document_id: &DocumentId,
+    ) -> Result<Option<DocumentStatus>> {
+        let row = sqlx::query(
+            r#"
+            SELECT status_json
+            FROM axon_ledger_document_status
+            WHERE document_id = ?1
+            "#,
+        )
+        .bind(&document_id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+
+        row.map(|row| {
+            let status_json: String = row.get("status_json");
+            serde_json::from_str(&status_json).map_err(json_error)
+        })
+        .transpose()
+    }
+
+    pub async fn cleanup_debt_count(&self) -> Result<usize> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_ledger_cleanup_debt")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sqlite_error)?;
+        Ok(count as usize)
     }
 }
 
@@ -452,13 +556,5 @@ fn json_error(error: serde_json::Error) -> ApiError {
         "source.ledger.json",
         ErrorStage::Upserting,
         format!("ledger JSON operation failed: {error}"),
-    )
-}
-
-fn unimplemented_error(operation: &str) -> ApiError {
-    ApiError::new(
-        "source.ledger.sqlite_unimplemented",
-        ErrorStage::Validation,
-        format!("SQLite ledger operation is not implemented yet: {operation}"),
     )
 }
