@@ -797,6 +797,13 @@ version = "6.2.1"
 [[package]]
 name = "axon-route"
 version = "6.2.1"
+dependencies = [
+ "axon-api",
+ "axon-error",
+ "hex",
+ "sha2 0.11.0",
+ "url",
+]
 
 [[package]]
 name = "axon-services"

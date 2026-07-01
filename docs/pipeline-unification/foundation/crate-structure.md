@@ -442,7 +442,9 @@ router.rs
 canonical.rs
 authority.rs
 source_id.rs
-patterns.rs
+alias.rs
+scope.rs
+capability.rs
 testing.rs
 ```
 
@@ -452,11 +454,13 @@ Must expose:
 - `SourceRouter`
 - `ResolvedSource`
 - `RoutePlan`
+- `RouteDecision`
 - canonical URI utilities
 - source id/fingerprint utilities
 - adapter candidate matching
 - authority map lookup hooks
-- fake resolver/router
+- alias records
+- adapter capability/scope registry
 
 Must not own:
 

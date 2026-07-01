@@ -59,9 +59,12 @@ These pieces should not be carried forward as-is:
 
 ## Follow-Up PR Boundaries
 
-- PR3 should promote the spike shape into real local-source service boundaries.
-- PR4 should introduce committed-generation publish and source-owned cleanup debt
-  execution.
-- PR5 should cut CLI/MCP/REST to the unified source command/action/route model.
-- PR6 should move the proven code into the target crates once behavior is stable
-  enough to relocate without guessing.
+- PR5 is the resolver/router registry: source canonicalization, source IDs,
+  authority/alias mapping, adapter capability/scope metadata, and route-time
+  validation before acquisition.
+- PR6 is the local-source ledger spike: local source adapter prototype, ledger
+  draft/generation row, `SourceDocument`, and existing prepare path proof.
+- Later lifecycle PRs introduce committed-generation publish and source-owned
+  cleanup debt execution.
+- Public CLI/MCP/REST cutover is intentionally later, after source-family ports
+  and generated-surface removal checks are ready.

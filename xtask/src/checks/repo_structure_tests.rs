@@ -116,10 +116,10 @@ fn missing_target_crate_fails() {
 #[test]
 fn broken_agent_memory_symlink_fails() {
     let fixture = complete_fixture();
-    fs::remove_file(fixture.root.join("crates/axon-route/src/AGENTS.md")).unwrap();
+    fs::remove_file(fixture.root.join("crates/axon-observe/src/AGENTS.md")).unwrap();
     write_symlink(
         "../CLAUDE.md",
-        &fixture.root.join("crates/axon-route/src/AGENTS.md"),
+        &fixture.root.join("crates/axon-observe/src/AGENTS.md"),
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -129,23 +129,23 @@ fn broken_agent_memory_symlink_fails() {
 #[test]
 fn missing_target_module_fails() {
     let fixture = complete_fixture();
-    fs::remove_file(fixture.root.join("crates/axon-route/src/resolver.rs")).unwrap();
+    fs::remove_file(fixture.root.join("crates/axon-observe/src/event.rs")).unwrap();
 
     let err = check_root(&fixture.root).unwrap_err();
-    assert!(err.contains("resolver.rs"), "{err}");
+    assert!(err.contains("event.rs"), "{err}");
 }
 
 #[test]
 fn missing_target_module_declaration_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-route/src/lib.rs"),
-        "pub const CRATE_NAME: &str = \"axon-route\";\n",
+        &fixture.root.join("crates/axon-observe/src/lib.rs"),
+        "pub const CRATE_NAME: &str = \"axon-observe\";\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("lib.rs is missing module declaration: pub mod resolver;"),
+        err.contains("lib.rs is missing module declaration: pub mod event;"),
         "{err}"
     );
 }
@@ -154,8 +154,8 @@ fn missing_target_module_declaration_fails() {
 fn unexpected_target_module_declaration_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-route/src/lib.rs"),
-        "pub mod resolver;\npub mod surprise;\n",
+        &fixture.root.join("crates/axon-observe/src/lib.rs"),
+        "pub mod event;\npub mod surprise;\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -169,7 +169,7 @@ fn unexpected_target_module_declaration_fails() {
 fn unexpected_target_module_file_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-route/src/surprise.rs"),
+        &fixture.root.join("crates/axon-observe/src/surprise.rs"),
         "pub const MODULE_NAME: &str = \"surprise\";\n",
     );
 
@@ -227,13 +227,13 @@ fn package_metadata_dependencies_are_allowed() {
 fn target_package_name_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-memory/Cargo.toml"),
+        &fixture.root.join("crates/axon-observe/Cargo.toml"),
         "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-memory must set package.name = \"axon-memory\""),
+        err.contains("PR0 target crate axon-observe must set package.name = \"axon-observe\""),
         "{err}"
     );
 }
@@ -242,13 +242,13 @@ fn target_package_name_fails() {
 fn missing_target_rust_version_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-memory/Cargo.toml"),
-        "[package]\nname = \"axon-memory\"\n\n[dependencies]\n",
+        &fixture.root.join("crates/axon-observe/Cargo.toml"),
+        "[package]\nname = \"axon-observe\"\n\n[dependencies]\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-memory must set rust-version.workspace = true"),
+        err.contains("PR0 target crate axon-observe must set rust-version.workspace = true"),
         "{err}"
     );
 }
