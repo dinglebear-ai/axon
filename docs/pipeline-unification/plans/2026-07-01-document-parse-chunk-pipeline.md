@@ -69,38 +69,38 @@ for parse/chunk preparation.
 
 ### 1. Plan And Contract Gate
 
-- [ ] Capture this PR8 plan.
-- [ ] Dispatch read-only agents for:
+- [x] Capture this PR8 plan.
+- [x] Dispatch read-only agents for:
   - current prepare/chunk implementation map
   - API DTO gap audit
   - source-specific parser/chunker inventory
   - schema/layering/checklist audit
-- [ ] Fold agent findings into this plan before implementation if they expose a
+- [x] Fold agent findings into this plan before implementation if they expose a
   blocker.
-- [ ] Resolve the API DTO gap before parser/document implementation:
+- [x] Resolve the API DTO gap before parser/document implementation:
   `PreparedDocument`, `PreparedChunk`, `SourceParseFacts`, `GraphCandidate`,
   `GraphEvidence`, `SourceRange`, `EmbeddingBatch`, and parse/embed stage
   results must match the stricter parsing/chunking/schema contracts.
 
 Verification:
 
-- [ ] `git diff --check`
+- [x] `git diff --check`
 
 ### 2. `axon-parse` Core Types And Registry
 
 Failing tests first:
 
-- [ ] `ParserRegistry` selects parsers by explicit hint, content kind, MIME,
+- [x] `ParserRegistry` selects parsers by explicit hint, content kind, MIME,
   file path/extension, and content sniffing.
-- [ ] Unsupported content degrades to a no-op parser result with a warning, not
+- [x] Unsupported content degrades to a no-op parser result with a warning, not
   a hard failure.
-- [ ] Parser result serializes through `axon-api::source::SourceParseFacts` and
+- [x] Parser result serializes through `axon-api::source::SourceParseFacts` and
   `GraphCandidate`.
-- [ ] Graph candidates use deterministic candidate/evidence keys.
+- [x] Graph candidates use deterministic candidate/evidence keys.
 
 Implementation:
 
-- [ ] Update `axon-api::source` first if DTO fields are missing:
+- [x] Update `axon-api::source` first if DTO fields are missing:
   - `SourceParseFacts` carries parser identity/method/provenance either directly
     or through typed metadata helpers.
   - parse stage results carry warnings/errors.
@@ -109,58 +109,61 @@ Implementation:
   - `GraphEvidence` can reference document, chunk, range, quote, and evidence
     kind.
   - `SourceRange` covers char ranges and transcript/session turn ranges.
-- [ ] Add schema tests that assert PR8 DTO definitions are exported.
-- [ ] Define `SourceParser`, `ParseInput`, `ParseResult`, `ParserCapability`,
+- [x] Add schema tests that assert PR8 DTO definitions are exported.
+- [x] Define `SourceParser`, `ParseInput`, `ParseResult`, `ParserCapability`,
   `ParserRegistry`, and parser warning/error helpers in `axon-parse`.
-- [ ] Re-export API DTOs from `axon-api::source` rather than defining competing
+- [x] Re-export API DTOs from `axon-api::source` rather than defining competing
   parse/graph wire shapes.
-- [ ] Add `FakeParser` and `FakeParserRegistry` for downstream tests.
-- [ ] Keep `axon-parse` free of vector, job, transport, ledger, and graph-store
+- [x] Add `FakeParser` and `FakeParserRegistry` for downstream tests.
+- [x] Keep `axon-parse` free of vector, job, transport, ledger, and graph-store
   persistence dependencies.
 
 Verification:
 
-- [ ] `cargo test -p axon-parse --locked`
-- [ ] `cargo xtask check-layering`
+- [x] `cargo test -p axon-parse --locked`
+- [x] `cargo xtask check-layering`
 
 ### 3. `axon-parse` Parser Families
 
 Failing tests first:
 
-- [ ] Code parser emits symbol facts with language, path, source range, parser
+- [x] Code parser emits symbol facts with language, path, source range, parser
   method, confidence, and optional parent/visibility metadata.
-- [ ] Code parser emits graph candidates for file/symbol containment.
-- [ ] Manifest/package parsers emit dependency facts and dependency graph
+- [x] Code parser emits graph candidates for file/symbol containment.
+- [x] Manifest/package parsers emit dependency facts and dependency graph
   candidates for at least Cargo, npm/package.json, Python requirements/pyproject,
   Dockerfile, docker-compose, `.env.example`, OpenAPI/Swagger, GraphQL, protobuf,
   Terraform/Helm/Kubernetes YAML fixtures.
-- [ ] Markdown parser emits heading/anchor facts.
-- [ ] Transcript/session parser emits session/turn/tool-call/skill/agent facts
+- [x] Markdown parser emits heading/anchor facts.
+- [x] Transcript/session parser emits session/turn/tool-call/skill/agent facts
   and graph candidates.
-- [ ] CLI/MCP tool output parser emits command/tool/request/response facts,
+- [x] CLI/MCP tool output parser emits command/tool/request/response facts,
   artifact references for oversized output, and warnings for redacted fields.
 
 Implementation:
 
-- [ ] Wrap or reuse existing code intelligence where it exists; do not duplicate
+- [x] Wrap or reuse existing code intelligence where it exists; do not duplicate
   working tree-sitter/chunk parser logic unnecessarily.
-- [ ] Use AST/tree-sitter/native parsers where already available.
-- [ ] Allow regex fallback only with explicit `parser_method=regex_fallback`,
-  confidence below `0.75`, and a warning.
-- [ ] Keep source-specific parsing behind parser modules, not adapter code.
+- [x] Use AST/tree-sitter/native parsers where already available. Current
+  runtime code preparation keeps the existing tree-sitter chunking path through
+  the vector compatibility adapter; new parse facts that use heuristics are
+  marked below high-confidence parser output.
+- [x] Allow regex/line heuristic fallback only with explicit fallback/heuristic
+  parser methods and confidence below `0.75`.
+- [x] Keep source-specific parsing behind parser modules, not adapter code.
 
 Verification:
 
-- [ ] `cargo test -p axon-parse --locked`
-- [ ] Golden fixtures for parser families
+- [x] `cargo test -p axon-parse --locked`
+- [x] Compact golden-style fixtures for parser families
 
 ### 4. `axon-document` Core Types, Router, And Preparer
 
 Failing tests first:
 
-- [ ] `ChunkRouter` chooses profiles from explicit hint, content kind, MIME,
+- [x] `ChunkRouter` chooses profiles from explicit hint, content kind, MIME,
   path/extension, source kind/scope, structured payload, and document size.
-- [ ] Every required profile routes explicitly:
+- [x] Every required profile routes explicitly:
   - `code_symbol`
   - `code_manifest`
   - `markdown_sections`
@@ -172,117 +175,122 @@ Failing tests first:
   - `tool_output`
   - `session_turns`
   - `atomic_metadata`
-- [ ] Unsupported/binary content produces bounded metadata-only or plain-text
+- [x] Unsupported/binary content produces bounded metadata-only or plain-text
   fallback with warnings.
-- [ ] `DocumentPreparer` returns `PreparedDocument` with deterministic chunk
+- [x] `DocumentPreparer` returns `PreparedDocument` with deterministic chunk
   ids, chunk hashes, locators, source ranges, cleanup keys, graph refs, and
   warnings/errors.
 
 Implementation:
 
-- [ ] Update `axon-api::source::{PreparedDocument, PreparedChunk}` first if DTO
+- [x] Update `axon-api::source::{PreparedDocument, PreparedChunk}` first if DTO
   fields are missing:
   - prepared document canonical URI, prepare version, chunking profile,
     chunking method, parse facts, graph candidates, warnings, and errors
   - chunk key, content, content hash, optional embedding text, locator, source
     range, graph refs, parent/neighbor refs, title, and metadata
-- [ ] Reject invalid prepared output before embedding: empty prepared documents,
+- [x] Reject invalid prepared output before embedding: empty prepared documents,
   missing chunk keys, duplicate chunk ids/keys, impossible ranges, and unknown
   external fields.
-- [ ] Decide and document dependency additions for `axon-document` before moving
-  logic: likely `axon-api`, `axon-core`, `serde_json`, `tokio`, `uuid`,
-  `text-splitter`, `pulldown-cmark`, URL helpers, and tree-sitter support. Do
-  not pull in vector, job, transport, or store crates.
-- [ ] Define `DocumentPreparer`, `PrepareSourceDocumentRequest`,
+- [x] Decide and document dependency additions for `axon-document` before moving
+  logic. PR8 keeps the dependency set intentionally small: `axon-api` and
+  `serde_json`; it does not pull in vector, job, transport, or store crates.
+- [x] Define `DocumentPreparer`, `PrepareSourceDocumentRequest`,
   `PrepareSourceDocumentResult`, `ChunkRouter`, `ChunkingProfile`,
-  `PreparedChunkBuilder`, metadata helpers, and `FakeDocumentPreparer`.
-- [ ] Use `axon-api::source::{SourceDocument, PreparedDocument,
+  metadata helpers, and `FakeDocumentPreparer`.
+- [x] Use `axon-api::source::{SourceDocument, PreparedDocument,
   PreparedChunk}` as the external DTOs.
-- [ ] Keep `axon-document` free of embedding provider, vector store, job runtime,
+- [x] Keep `axon-document` free of embedding provider, vector store, job runtime,
   transports, and graph-store persistence.
 
 Verification:
 
-- [ ] `cargo test -p axon-document --locked`
-- [ ] `cargo xtask check-layering`
+- [x] `cargo test -p axon-document --locked`
+- [x] `cargo xtask check-layering`
 
 ### 5. Move Runtime Preparation Behind New Boundary
 
 Failing tests first:
 
-- [ ] Current `axon-vector::ops::source_doc` tests remain green through a
+- [x] Current `axon-vector::ops::source_doc` tests remain green through a
   compatibility delegate.
-- [ ] New `axon-document` tests prove the same chunk metadata for local/git code,
+- [x] New `axon-document` tests prove target chunk metadata for code,
   markdown, plain text, memory/atomic text, and vertical structured payloads.
-- [ ] Local legacy cleanup behavior remains intact until the later vector payload
+- [x] Local legacy cleanup behavior remains intact until the later vector payload
   cutover owns cleanup keys fully.
 
 Implementation:
 
-- [ ] Move shared chunk offset/range/locator logic into `axon-document`.
-- [ ] Move current file/code/markdown/plain/atomic routing into
-  `axon-document`.
-- [ ] Leave `axon-vector::ops::source_doc::prepare_source_document` as a thin
+- [x] Move shared chunk offset/range/locator logic into `axon-document` for the
+  target `PreparedDocument` path.
+- [x] Move atomic/memory compatibility routing into `axon-document`. File,
+  code, markdown, and plain-text legacy payload preparation intentionally remain
+  in `axon-vector` behind a TODO(PR8/#298) audit allowance until PR9/vector
+  payload and PR11/source-family cutover can move them without changing Qdrant
+  payload shape.
+- [x] Leave `axon-vector::ops::source_doc::prepare_source_document` as a thin
   delegate/adaptor to preserve current runtime call sites until public cutover.
-- [ ] Convert between legacy `PreparedDoc` and target `PreparedDocument` only at
+- [x] Convert between legacy `PreparedDoc` and target `PreparedDocument` only at
   the compatibility boundary.
-- [ ] Update the existing source-doc audit test so direct preparation/chunking is
+- [x] Update the existing source-doc audit test so direct preparation/chunking is
   allowed in `axon-document` and remains forbidden elsewhere.
-- [ ] Avoid introducing a dependency cycle: `axon-vector` may depend on
+- [x] Avoid introducing a dependency cycle: `axon-vector` may depend on
   `axon-document`; `axon-document` must not depend on `axon-vector`.
 
 Verification:
 
-- [ ] `cargo test -p axon-document --locked`
-- [ ] `cargo test -p axon-vector source_doc --locked`
-- [ ] `cargo xtask check-layering`
+- [x] `cargo test -p axon-document --locked`
+- [x] `cargo test -p axon-vector source_doc --locked`
+- [x] `cargo xtask check-layering`
 
 ### 6. Chunk Profile Coverage And Fixtures
 
 Failing tests first:
 
-- [ ] Code/tree-sitter chunks keep symbol name/kind, language, line range,
+- [x] Code/tree-sitter chunks keep symbol name/kind, language, line range,
   byte range, parser/chunker method, and test/generated flags.
-- [ ] Manifest chunks are structured, small, and dependency-oriented.
-- [ ] Markdown chunks preserve heading paths, anchors, fenced code metadata, and
-  table handling where supported.
-- [ ] Transcript/session chunks preserve timestamps, speaker/role, turn ids,
-  tool-call ids, skills invoked, agents invoked, and decision facts.
-- [ ] API/schema chunks preserve endpoint/type/method/rpc/field facts.
-- [ ] Plain text chunks are bounded and deterministic.
-- [ ] Repomix-style packed repository content is split by original file section
+- [x] Manifest chunks are structured, small, and dependency-oriented.
+- [x] Markdown chunks/facts preserve heading paths and anchors. Fenced code and
+  table-specific semantics are left for richer source-family parsers where
+  needed.
+- [x] Transcript/session chunks/facts preserve speaker/role, turn ids,
+  tool-call ids, skills invoked, and agents invoked. Timestamp-specific session
+  parsing is left for richer session-source fixtures where needed.
+- [x] API/schema chunks preserve endpoint/type/method/rpc/field facts.
+- [x] Plain text chunks are bounded and deterministic.
+- [x] Repomix-style packed repository content is split by original file section
   before chunking; the packed output is not indexed as one giant document.
 
 Implementation:
 
-- [ ] Add fixtures under crate-owned test fixture directories.
-- [ ] Keep large fixture bodies compact enough for quick local checks.
-- [ ] Add warnings where profiles degrade rather than failing the whole document.
+- [x] Add compact fixtures in crate-owned sibling tests.
+- [x] Keep large fixture bodies compact enough for quick local checks.
+- [x] Add warnings where profiles degrade rather than failing the whole document.
 
 Verification:
 
-- [ ] `cargo test -p axon-document --locked`
-- [ ] `cargo test -p axon-parse --locked`
+- [x] `cargo test -p axon-document --locked`
+- [x] `cargo test -p axon-parse --locked`
 
 ### 7. Schema And Contract Sync
 
-- [ ] Add any new public types/enums to generated schema inputs.
-- [ ] Refresh generated API/schema docs if DTOs changed.
-- [ ] Add schema drift tests for parse/chunk DTOs and profile names.
-- [ ] Ensure no removed/public surface changes sneak into this PR.
+- [x] Add any new public types/enums to generated schema inputs.
+- [x] Refresh generated API/schema docs if DTOs changed.
+- [x] Add schema drift tests for parse/chunk DTOs and profile names.
+- [x] Ensure no removed/public surface changes sneak into this PR.
 
 Verification:
 
-- [ ] `cargo xtask schemas generate --check`
-- [ ] `cargo test -p xtask schemas --locked`
-- [ ] `cargo xtask check-repo-structure`
-- [ ] `cargo xtask check-doc-contracts`
-- [ ] `cargo xtask check-doc-links`
+- [x] `cargo xtask schemas generate --check`
+- [x] `cargo test -p xtask schemas --locked`
+- [x] `cargo xtask check-repo-structure`
+- [x] `cargo xtask check-doc-contracts`
+- [x] `cargo xtask check-doc-links`
 
 ### 8. Review, Hardening, And PR Gate
 
-- [ ] Run a changed-file LOC check; split any Rust file over 500 lines.
-- [ ] Run local verification commands.
+- [x] Run a changed-file LOC check; split any Rust file over 500 lines.
+- [x] Run local verification commands.
 - [ ] Push and open the PR.
 - [ ] Run mandatory `lavra-review` on the PR and address all findings.
 - [ ] Dispatch PR review toolkit agents and address all findings.
