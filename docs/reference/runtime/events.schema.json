@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "SchemaFamilyContract": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "events"
+        },
+        "future_registry": {
+          "type": "string"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "skeleton"
+        }
+      },
+      "required": [
+        "family",
+        "status",
+        "owner_crates"
+      ],
+      "type": "object",
+      "x-axon": {
+        "replaced_by": "crate-owned registry generator in the matching implementation PR",
+        "skeleton": true
+      }
+    }
+  },
+  "$id": "https://axon.local/schemas/runtime/events.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon schema contract artifact.",
+  "title": "AxonEventSchema",
+  "type": "object",
+  "x-axon": {
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas events",
+    "owner_crates": [
+      "axon-observe"
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:9a9b6fbf8a8c5525e12c25eb3a468c450dace8fc55d210e84fe549bd90ff9e1c",
+        "kind": "rust_directory",
+        "path": "crates/axon-observe/src"
+      },
+      {
+        "checksum": "sha256:a378f301ea863acdc7d2a3f7d7ba1940c8cb80fb3c78e035db2e2c33bf3eab6c",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/runtime/observability-contract.md"
+      }
+    ]
+  }
+}
