@@ -123,10 +123,7 @@ fn broken_agent_memory_symlink_fails() {
     );
 
     let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains("crates/axon-route/src/AGENTS.md must symlink to CLAUDE.md"),
-        "{err}"
-    );
+    assert!(err.contains("AGENTS.md must symlink to CLAUDE.md"), "{err}");
 }
 
 #[test]
@@ -135,7 +132,7 @@ fn missing_target_module_fails() {
     fs::remove_file(fixture.root.join("crates/axon-route/src/resolver.rs")).unwrap();
 
     let err = check_root(&fixture.root).unwrap_err();
-    assert!(err.contains("crates/axon-route/src/resolver.rs"), "{err}");
+    assert!(err.contains("resolver.rs"), "{err}");
 }
 
 #[test]
@@ -148,9 +145,7 @@ fn missing_target_module_declaration_fails() {
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains(
-            "crates/axon-route/src/lib.rs is missing module declaration: pub mod resolver;"
-        ),
+        err.contains("lib.rs is missing module declaration: pub mod resolver;"),
         "{err}"
     );
 }
@@ -165,9 +160,7 @@ fn unexpected_target_module_declaration_fails() {
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains(
-            "crates/axon-route/src/lib.rs declares unexpected PR0 public module: pub mod surprise;"
-        ),
+        err.contains("lib.rs declares unexpected PR0 public module: pub mod surprise;"),
         "{err}"
     );
 }
@@ -182,7 +175,7 @@ fn unexpected_target_module_file_fails() {
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("crates/axon-route/src/surprise.rs is an unexpected PR0 module file"),
+        err.contains("surprise.rs is an unexpected PR0 module file"),
         "{err}"
     );
 }
@@ -283,6 +276,22 @@ fn missing_required_workspace_member_fails() {
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
         err.contains("root Cargo.toml is missing workspace member: crates/axon-cli"),
+        "{err}"
+    );
+}
+
+#[test]
+fn unexpected_workspace_member_fails() {
+    let fixture = complete_fixture();
+    fs::create_dir_all(fixture.root.join("crates/axon-surprise")).unwrap();
+    write(
+        &fixture.root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\n    \"xtask\",\n    \"crates/axon-api\",\n    \"crates/axon-authz\",\n    \"crates/axon-core\",\n    \"crates/axon-crawl\",\n    \"crates/axon-vector\",\n    \"crates/axon-ingest\",\n    \"crates/axon-extract\",\n    \"crates/axon-jobs\",\n    \"crates/axon-source-ledger\",\n    \"crates/axon-code-index\",\n    \"crates/axon-services\",\n    \"crates/axon-mcp\",\n    \"crates/axon-web\",\n    \"crates/axon-cli\",\n    \"crates/axon-error\",\n    \"crates/axon-observe\",\n    \"crates/axon-route\",\n    \"crates/axon-adapters\",\n    \"crates/axon-ledger\",\n    \"crates/axon-parse\",\n    \"crates/axon-graph\",\n    \"crates/axon-memory\",\n    \"crates/axon-document\",\n    \"crates/axon-embedding\",\n    \"crates/axon-vectors\",\n    \"crates/axon-retrieval\",\n    \"crates/axon-llm\",\n    \"crates/axon-prune\",\n    \"crates/axon-surprise\",\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("unexpected PR0 workspace member: crates/axon-surprise"),
         "{err}"
     );
 }

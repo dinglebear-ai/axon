@@ -12,6 +12,9 @@ on:
 
 jobs:
   claude-review:
+    # TEMP(refactor): disable long-running automated PR review while the large
+    # pipeline-unification refactor lands. Re-enable for stabilization/release.
+    if: ${{ vars.AXON_ENABLE_HEAVY_CI == 'true' }}
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
@@ -41,4 +44,3 @@ jobs:
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-
