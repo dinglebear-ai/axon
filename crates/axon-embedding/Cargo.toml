@@ -7,3 +7,10 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+async-trait = "0.1"
+axon-api = { path = "../axon-api" }
+axon-error = { path = "../axon-error" }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4", "v5", "serde"] }

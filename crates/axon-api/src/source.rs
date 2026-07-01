@@ -4,6 +4,7 @@
 //! stores, providers, and future adapters without pulling runtime crates into
 //! `axon-api`.
 
+pub mod boundary;
 pub mod capability;
 pub mod common;
 pub mod document;
@@ -17,6 +18,7 @@ pub mod state;
 pub mod status;
 pub mod vector;
 
+pub use boundary::*;
 pub use capability::*;
 pub use common::*;
 pub use document::*;
