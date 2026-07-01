@@ -7,12 +7,15 @@ use super::input::{chunk_markdown_with_offsets, chunk_text_with_offsets};
 use super::tei::{PreparedDoc, StructuredPayload};
 use axon_core::logging::log_warn;
 
+mod document_bridge;
 mod ledger;
 mod support;
-
+use document_bridge::prepare_atomic_source;
 pub use ledger::LedgerPayload;
 use ledger::sanitize_doc_extra;
-use support::{LineIndex, domain_for_origin, domain_from_web_url, file_locator};
+use support::{
+    LineIndex, domain_for_origin, domain_from_web_url, file_locator, insert_missing_or_null,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceOrigin {
@@ -260,7 +263,7 @@ pub async fn prepare_source_document(doc: SourceDocument) -> Result<PreparedDoc,
                 .await
                 .map_err(|e| format!("chunk_text panicked: {e}"))
         }
-        SourceChunkHint::AtomicText { point_id } => Ok(prepare_atomic_source(doc, point_id)),
+        SourceChunkHint::AtomicText { point_id } => prepare_atomic_source(doc, point_id),
     }
 }
 
@@ -424,22 +427,6 @@ fn prepare_plain_source(doc: SourceDocument) -> PreparedDoc {
     doc.into_prepared(chunks, "text", chunk_extra)
 }
 
-fn prepare_atomic_source(doc: SourceDocument, point_id: uuid::Uuid) -> PreparedDoc {
-    let line_index = LineIndex::new(&doc.text);
-    let (line_start, line_end) = line_index.line_range_for_bytes(0, doc.text.len());
-    let chunk_extra = vec![chunk_metadata(base_chunk_metadata(
-        "plain_text",
-        &format!("{}#chunk-0", doc.url),
-        line_start,
-        line_end,
-        0,
-        doc.text.len(),
-    ))];
-    let chunk = doc.text.clone();
-    doc.into_prepared(vec![chunk], "text", chunk_extra)
-        .with_chunk_point_ids(vec![point_id])
-}
-
 fn safe_markdown_chunks_with_offsets(text: &str) -> (Vec<(usize, usize, String)>, bool) {
     if text
         .chars()
@@ -503,12 +490,6 @@ fn ensure_file_doc_extra(
     insert_missing_or_null(&mut map, "code_is_test", is_test_path(path).into());
     insert_missing_or_null(&mut map, "symbol_extraction_status", symbol_status.into());
     Some(Value::Object(map))
-}
-
-fn insert_missing_or_null(map: &mut Map<String, Value>, key: &str, value: Value) {
-    if !map.contains_key(key) || map.get(key).is_some_and(Value::is_null) {
-        map.insert(key.to_string(), value);
-    }
 }
 
 #[cfg(test)]
