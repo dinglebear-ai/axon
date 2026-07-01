@@ -703,6 +703,13 @@ dependencies = [
 [[package]]
 name = "axon-ledger"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-llm"
