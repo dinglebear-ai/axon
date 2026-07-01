@@ -7,3 +7,5 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+axon-api = { path = "../axon-api" }
+serde_json = "1"

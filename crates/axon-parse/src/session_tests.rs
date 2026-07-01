@@ -1,0 +1,106 @@
+use axon_api::source::*;
+use uuid::Uuid;
+
+use crate::parser::ParseInput;
+use crate::session::{session_parse_items, session_parse_result};
+
+fn input(text: &str) -> ParseInput {
+    ParseInput {
+        job_id: JobId::new(Uuid::from_u128(51)),
+        stage_id: StageId::new(Uuid::from_u128(52)),
+        requested_parser: None,
+        document: SourceDocument {
+            document_id: DocumentId::from("doc_session"),
+            source_id: SourceId::from("src_session"),
+            source_item_key: SourceItemKey::from("session.jsonl"),
+            canonical_uri: "file:///repo/session.jsonl".to_string(),
+            content_kind: ContentKind::Transcript,
+            content: ContentRef::InlineText {
+                text: text.to_string(),
+            },
+            metadata: MetadataMap::new(),
+            title: None,
+            language: None,
+            path: Some("session.jsonl".to_string()),
+            mime_type: None,
+            structured_payload: None,
+            artifact_id: None,
+            chunk_hints: Vec::new(),
+            parser_hints: Vec::new(),
+        },
+    }
+}
+
+#[test]
+fn extracts_jsonl_session_turn_facts() {
+    let parsed = session_parse_items(&input(
+        r#"{"type":"message","role":"user","content":"hello"}"#,
+    ));
+
+    let facts = parsed.facts;
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].fact_kind, "session_turn");
+    assert_eq!(facts[0].name, "user");
+    assert_eq!(facts[0].value["type"], "message");
+    assert_eq!(
+        facts[0].range.as_ref().unwrap().session_turn_id,
+        Some("1".to_string())
+    );
+}
+
+#[test]
+fn extracts_session_tool_skill_and_agent_invocations() {
+    let parsed = session_parse_items(&input(
+        r#"{"type":"message","role":"assistant","tool_calls":[{"id":"call_1","name":"axon.search"}],"skills":["axon:using-axon"],"agents_invoked":[{"name":"researcher"}]}"#,
+    ));
+
+    let kinds: Vec<_> = parsed
+        .facts
+        .iter()
+        .map(|fact| fact.fact_kind.as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "session_turn",
+            "session_tool_call",
+            "session_skill_invocation",
+            "session_agent_invocation"
+        ]
+    );
+    assert_eq!(parsed.facts[1].name, "axon.search");
+    assert_eq!(parsed.facts[1].value["call_id"], "call_1");
+    assert_eq!(parsed.facts[2].name, "axon:using-axon");
+    assert_eq!(parsed.facts[3].name, "researcher");
+    assert_eq!(
+        parsed.facts[1].range.as_ref().unwrap().session_turn_id,
+        Some("1".to_string())
+    );
+
+    let candidate_kinds: Vec<_> = parsed
+        .graph_candidates
+        .iter()
+        .map(|candidate| candidate.kind.as_str())
+        .collect();
+    assert_eq!(
+        candidate_kinds,
+        vec![
+            "session_tool_call",
+            "session_skill_invocation",
+            "session_agent_invocation"
+        ]
+    );
+}
+
+#[test]
+fn malformed_jsonl_degrades_with_warning() {
+    let result = session_parse_result(&input(
+        "{\"type\":\"message\",\"role\":\"user\"}\nnot-json\n",
+    ));
+
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.facts.len(), 1);
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(result.warnings[0].code, "parse.jsonl.invalid_line");
+    assert!(result.warnings[0].message.contains("line 2"));
+}

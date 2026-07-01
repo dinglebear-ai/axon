@@ -586,6 +586,10 @@ dependencies = [
 [[package]]
 name = "axon-document"
 version = "6.2.1"
+dependencies = [
+ "axon-api",
+ "serde_json",
+]
 
 [[package]]
 name = "axon-embedding"
@@ -799,6 +803,12 @@ dependencies = [
 [[package]]
 name = "axon-parse"
 version = "6.2.1"
+dependencies = [
+ "axon-api",
+ "chrono",
+ "serde_json",
+ "uuid",
+]
 
 [[package]]
 name = "axon-prune"
@@ -889,6 +899,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-core",
+ "axon-document",
  "axon-source-ledger",
  "chrono",
  "futures-util",

@@ -1,4 +1,5 @@
 use super::SourceOrigin;
+use serde_json::{Map, Value};
 use spider::url::Url;
 
 pub(super) fn domain_from_web_url(url: &str) -> Result<String, String> {
@@ -57,5 +58,11 @@ impl LineIndex {
         self.newline_offsets
             .partition_point(|offset| *offset < capped) as u32
             + 1
+    }
+}
+
+pub(super) fn insert_missing_or_null(map: &mut Map<String, Value>, key: &str, value: Value) {
+    if !map.contains_key(key) || map.get(key).is_some_and(Value::is_null) {
+        map.insert(key.to_string(), value);
     }
 }

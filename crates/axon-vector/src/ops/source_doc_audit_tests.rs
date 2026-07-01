@@ -9,9 +9,13 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
         .and_then(Path::parent)
         .expect("axon-vector lives under crates/");
     let mut files = collect_files(&workspace_root.join("crates/axon-ingest/src"));
+    files.extend(collect_files(
+        &workspace_root.join("crates/axon-document/src"),
+    ));
     files.push(workspace_root.join("crates/axon-cli/src/commands/scrape.rs"));
     files.push(workspace_root.join("crates/axon-services/src/memory.rs"));
     files.push(workspace_root.join("crates/axon-services/src/scrape.rs"));
+    files.push(workspace_root.join("crates/axon-vector/src/ops/source_doc.rs"));
     files.push(workspace_root.join("crates/axon-vector/src/ops/tei/prepare.rs"));
     files.push(workspace_root.join("crates/axon-web/src/server/handlers/rest/sync_post.rs"));
 
@@ -38,13 +42,10 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
 
     let mut violations = Vec::new();
     for file in files {
-        if is_allowed(&file) {
-            continue;
-        }
         let content = fs::read_to_string(&file)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", file.display()));
         for needle in forbidden {
-            if content.contains(needle) {
+            if content.contains(needle) && !is_allowed_violation(&file, needle, &content) {
                 violations.push(format!("{} contains {needle}", file.display()));
             }
         }
@@ -54,6 +55,37 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
         violations.is_empty(),
         "source document audit violations:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn source_doc_adapter_declares_axon_document_bridge() {
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source_doc_path = crate_root.join("src/ops/source_doc.rs");
+    let source_doc = fs::read_to_string(&source_doc_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", source_doc_path.display()));
+    let bridge_path = crate_root.join("src/ops/source_doc/document_bridge.rs");
+    let bridge = fs::read_to_string(&bridge_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", bridge_path.display()));
+    let manifest_path = crate_root.join("Cargo.toml");
+    let manifest = fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", manifest_path.display()));
+
+    assert!(
+        manifest.contains("axon-document"),
+        "axon-vector must declare the axon-document preparation boundary"
+    );
+    assert!(
+        source_doc.contains("prepare_atomic_source"),
+        "source_doc should dispatch safely-owned preparation through its bridge module"
+    );
+    assert!(
+        bridge.contains("DocumentPreparer::default().prepare"),
+        "source_doc bridge should call axon-document"
+    );
+    assert!(
+        bridge.contains("ChunkingProfile::AtomicMetadata"),
+        "memory/atomic source preparation should use axon-document's atomic profile"
     );
 }
 
@@ -80,9 +112,18 @@ fn collect_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn is_allowed(path: &Path) -> bool {
+fn is_allowed_violation(path: &Path, needle: &str, content: &str) -> bool {
     let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with("src/vector/ops/source_doc.rs")
-        || normalized.ends_with("src/vector/ops/tei.rs")
-        || normalized.contains("_tests.rs")
+    if normalized.contains("_tests.rs") {
+        return true;
+    }
+    if normalized.ends_with("crates/axon-vector/src/ops/tei.rs") {
+        return true;
+    }
+    normalized.ends_with("crates/axon-vector/src/ops/source_doc.rs")
+        && matches!(
+            needle,
+            "PreparedDoc {" | "PreparedDoc::from_planned_chunks("
+        )
+        && content.contains("TODO(PR8/#298)")
 }

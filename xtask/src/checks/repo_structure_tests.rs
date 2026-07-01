@@ -116,10 +116,10 @@ fn missing_target_crate_fails() {
 #[test]
 fn broken_agent_memory_symlink_fails() {
     let fixture = complete_fixture();
-    fs::remove_file(fixture.root.join("crates/axon-parse/src/AGENTS.md")).unwrap();
+    fs::remove_file(fixture.root.join("crates/axon-retrieval/src/AGENTS.md")).unwrap();
     write_symlink(
         "../CLAUDE.md",
-        &fixture.root.join("crates/axon-parse/src/AGENTS.md"),
+        &fixture.root.join("crates/axon-retrieval/src/AGENTS.md"),
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -129,23 +129,23 @@ fn broken_agent_memory_symlink_fails() {
 #[test]
 fn missing_target_module_fails() {
     let fixture = complete_fixture();
-    fs::remove_file(fixture.root.join("crates/axon-parse/src/parser.rs")).unwrap();
+    fs::remove_file(fixture.root.join("crates/axon-retrieval/src/engine.rs")).unwrap();
 
     let err = check_root(&fixture.root).unwrap_err();
-    assert!(err.contains("parser.rs"), "{err}");
+    assert!(err.contains("engine.rs"), "{err}");
 }
 
 #[test]
 fn missing_target_module_declaration_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/src/lib.rs"),
-        "pub const CRATE_NAME: &str = \"axon-parse\";\n",
+        &fixture.root.join("crates/axon-retrieval/src/lib.rs"),
+        "pub const CRATE_NAME: &str = \"axon-retrieval\";\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("lib.rs is missing module declaration: pub mod parser;"),
+        err.contains("lib.rs is missing module declaration: pub mod engine;"),
         "{err}"
     );
 }
@@ -154,8 +154,8 @@ fn missing_target_module_declaration_fails() {
 fn unexpected_target_module_declaration_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/src/lib.rs"),
-        "pub mod parser;\npub mod surprise;\n",
+        &fixture.root.join("crates/axon-retrieval/src/lib.rs"),
+        "pub mod engine;\npub mod surprise;\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -169,7 +169,7 @@ fn unexpected_target_module_declaration_fails() {
 fn unexpected_target_module_file_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/src/surprise.rs"),
+        &fixture.root.join("crates/axon-retrieval/src/surprise.rs"),
         "pub const MODULE_NAME: &str = \"surprise\";\n",
     );
 
@@ -184,13 +184,13 @@ fn unexpected_target_module_file_fails() {
 fn target_dependency_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/Cargo.toml"),
-        "[package]\nname = \"axon-parse\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        &fixture.root.join("crates/axon-retrieval/Cargo.toml"),
+        "[package]\nname = \"axon-retrieval\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-parse must keep [dependencies] empty"),
+        err.contains("PR0 target crate axon-retrieval must keep [dependencies] empty"),
         "{err}"
     );
 }
@@ -199,13 +199,15 @@ fn target_dependency_fails() {
 fn target_specific_dependency_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/Cargo.toml"),
-        "[package]\nname = \"axon-parse\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        &fixture.root.join("crates/axon-retrieval/Cargo.toml"),
+        "[package]\nname = \"axon-retrieval\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-parse must keep [target.cfg(unix).dependencies] empty"),
+        err.contains(
+            "PR0 target crate axon-retrieval must keep [target.cfg(unix).dependencies] empty"
+        ),
         "{err}"
     );
 }
@@ -214,8 +216,8 @@ fn target_specific_dependency_fails() {
 fn package_metadata_dependencies_are_allowed() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/Cargo.toml"),
-        "[package]\nname = \"axon-parse\"\nrust-version.workspace = true\n\n[package.metadata.dependencies]\nnotes = \"not a Cargo dependency table\"\n\n[dependencies]\n",
+        &fixture.root.join("crates/axon-retrieval/Cargo.toml"),
+        "[package]\nname = \"axon-retrieval\"\nrust-version.workspace = true\n\n[package.metadata.dependencies]\nnotes = \"not a Cargo dependency table\"\n\n[dependencies]\n",
     );
 
     check_root(&fixture.root).unwrap();
@@ -225,13 +227,13 @@ fn package_metadata_dependencies_are_allowed() {
 fn target_package_name_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/Cargo.toml"),
+        &fixture.root.join("crates/axon-retrieval/Cargo.toml"),
         "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-parse must set package.name = \"axon-parse\""),
+        err.contains("PR0 target crate axon-retrieval must set package.name = \"axon-retrieval\""),
         "{err}"
     );
 }
@@ -240,13 +242,13 @@ fn target_package_name_fails() {
 fn missing_target_rust_version_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-parse/Cargo.toml"),
-        "[package]\nname = \"axon-parse\"\n\n[dependencies]\n",
+        &fixture.root.join("crates/axon-retrieval/Cargo.toml"),
+        "[package]\nname = \"axon-retrieval\"\n\n[dependencies]\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-parse must set rust-version.workspace = true"),
+        err.contains("PR0 target crate axon-retrieval must set rust-version.workspace = true"),
         "{err}"
     );
 }

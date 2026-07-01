@@ -229,13 +229,13 @@ fn provider_requirements(adapter: &AdapterDefinition) -> Vec<ProviderRequirement
 
 fn chunking_hints(source_kind: SourceKind) -> Vec<ChunkHint> {
     let profile = match source_kind {
-        SourceKind::Git | SourceKind::Local => ChunkProfile::CodeAst,
-        SourceKind::Session => ChunkProfile::Session,
-        SourceKind::Youtube => ChunkProfile::Transcript,
+        SourceKind::Git | SourceKind::Local => ChunkProfile::CodeSymbol,
+        SourceKind::Session => ChunkProfile::SessionTurns,
+        SourceKind::Youtube => ChunkProfile::TranscriptSegments,
         SourceKind::Registry | SourceKind::McpTool | SourceKind::CliTool | SourceKind::Upload => {
-            ChunkProfile::Structured
+            ChunkProfile::StructuredRecords
         }
-        _ => ChunkProfile::Markdown,
+        _ => ChunkProfile::MarkdownSections,
     };
     vec![ChunkHint {
         profile,

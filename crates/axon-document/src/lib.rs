@@ -17,4 +17,17 @@ pub mod testing;
 pub mod text;
 pub mod transcript;
 
+pub use chunk_router::ChunkRouter;
+pub use prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
+pub use preparer::DocumentPreparer;
+pub use profile::ChunkingProfile;
+
+#[cfg(test)]
+#[path = "chunk_router_tests.rs"]
+mod chunk_router_tests;
+
+#[cfg(test)]
+#[path = "preparer_tests.rs"]
+mod preparer_tests;
+
 pub const CRATE_NAME: &str = "axon-document";
