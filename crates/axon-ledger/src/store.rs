@@ -19,6 +19,7 @@ pub trait LedgerStore: Send + Sync {
     async fn publish_generation(&self, generation: SourceGeneration) -> Result<()>;
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<LedgerStoreCapability>;
 }
 
@@ -189,6 +190,11 @@ impl LedgerStore for FakeLedgerStore {
             .await
             .cleanup_debt
             .insert(debt.debt_id.clone(), debt);
+        Ok(())
+    }
+
+    async fn reset(&self) -> Result<()> {
+        *self.state.lock().await = FakeLedgerState::default();
         Ok(())
     }
 

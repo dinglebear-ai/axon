@@ -100,4 +100,7 @@ async fn fake_memory_store_links_reinforces_and_reports_capabilities() {
 
     let capability = store.capabilities().await.unwrap();
     assert_eq!(capability.0.owner_crate, "axon-memory");
+
+    store.reset().await.unwrap();
+    assert!(store.get(remembered.memory_id).await.unwrap().is_none());
 }

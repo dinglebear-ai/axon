@@ -17,6 +17,7 @@ pub trait JobStore: Send + Sync {
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()>;
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>>;
     async fn events(&self, request: JobEventListRequest) -> Result<JobEventPage>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<JobStoreCapability>;
 }
 
@@ -28,6 +29,7 @@ pub trait WatchStore: Send + Sync {
     async fn list(&self, request: WatchListRequest) -> Result<Page<WatchSummary>>;
     async fn record_run(&self, watch_id: WatchId, job_id: JobId) -> Result<()>;
     async fn history(&self, request: WatchHistoryRequest) -> Result<WatchHistoryResult>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<WatchStoreCapability>;
 }
 
@@ -165,6 +167,14 @@ impl JobStore for FakeJobWatchStore {
         })
     }
 
+    async fn reset(&self) -> Result<()> {
+        let mut state = self.state.lock().await;
+        state.jobs.clear();
+        state.events.clear();
+        state.watch_runs.clear();
+        Ok(())
+    }
+
     async fn capabilities(&self) -> Result<JobStoreCapability> {
         Ok(capability("fake-job-store").into())
     }
@@ -277,6 +287,13 @@ impl WatchStore for FakeJobWatchStore {
             runs,
             warnings: Vec::new(),
         })
+    }
+
+    async fn reset(&self) -> Result<()> {
+        let mut state = self.state.lock().await;
+        state.watches.clear();
+        state.watch_runs.clear();
+        Ok(())
     }
 
     async fn capabilities(&self) -> Result<WatchStoreCapability> {

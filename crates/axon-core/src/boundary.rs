@@ -12,6 +12,7 @@ pub trait ArtifactStore: Send + Sync {
     async fn put(&self, artifact: ArtifactWriteRequest) -> Result<ArtifactHandle>;
     async fn get(&self, handle: ArtifactHandle) -> Result<ArtifactReadResult>;
     async fn delete(&self, handle: ArtifactHandle) -> Result<()>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<ArtifactStoreCapability>;
 }
 
@@ -20,6 +21,7 @@ pub trait ConfigStore: Send + Sync {
     async fn load(&self) -> Result<EffectiveConfig>;
     async fn validate(&self) -> Result<ConfigValidationReport>;
     async fn snapshot(&self) -> Result<ConfigSnapshotId>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<ConfigStoreCapability>;
 }
 
@@ -28,6 +30,7 @@ pub trait DocumentCache: Send + Sync {
     async fn get(&self, key: DocumentCacheKey) -> Result<Option<CachedDocument>>;
     async fn put(&self, key: DocumentCacheKey, value: CachedDocument) -> Result<()>;
     async fn invalidate(&self, selector: DocumentCacheInvalidation) -> Result<()>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<DocumentCacheCapability>;
 }
 
@@ -126,6 +129,11 @@ impl ArtifactStore for FakeCoreBoundaries {
         Ok(())
     }
 
+    async fn reset(&self) -> Result<()> {
+        self.artifacts.lock().await.clear();
+        Ok(())
+    }
+
     async fn capabilities(&self) -> Result<ArtifactStoreCapability> {
         Ok(capability("fake-artifact", "axon-core").into())
     }
@@ -149,6 +157,10 @@ impl ConfigStore for FakeCoreBoundaries {
 
     async fn snapshot(&self) -> Result<ConfigSnapshotId> {
         Ok(ConfigSnapshotId::new("cfg_fake"))
+    }
+
+    async fn reset(&self) -> Result<()> {
+        Ok(())
     }
 
     async fn capabilities(&self) -> Result<ConfigStoreCapability> {
@@ -181,6 +193,11 @@ impl DocumentCache for FakeCoreBoundaries {
                 cache.retain(|key, _| key.generation.as_ref() != Some(&generation));
             }
         }
+        Ok(())
+    }
+
+    async fn reset(&self) -> Result<()> {
+        self.cache.lock().await.clear();
         Ok(())
     }
 
