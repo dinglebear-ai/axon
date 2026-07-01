@@ -77,6 +77,53 @@ async fn fake_ledger_owns_document_status_and_cleanup_debt() {
 }
 
 #[tokio::test]
+async fn fake_document_status_ignores_stale_updates() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let newer = DocumentStatus {
+        document_id: DocumentId::new("doc-a"),
+        source_id: SourceId::new("src_a"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: SourceGenerationId::new("gen_2"),
+        status: DocumentLifecycleStatus::Published,
+        updated_at: ts_at(9),
+        chunk_count: 2,
+        vector_point_count: 2,
+        error: None,
+        cleanup_status: None,
+    };
+    ledger.update_document_status(newer.clone()).await.unwrap();
+
+    let stale = DocumentStatus {
+        document_id: DocumentId::new("doc-a"),
+        source_id: SourceId::new("src_a"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: SourceGenerationId::new("gen_1"),
+        status: DocumentLifecycleStatus::Failed,
+        updated_at: ts(),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: Some(SourceError {
+            code: "embed.failed".to_string(),
+            severity: Severity::Failed,
+            message: "embedding failed".to_string(),
+            source_item_key: Some(SourceItemKey::new("src/lib.rs")),
+            retryable: true,
+            provider_id: None,
+            cause: None,
+        }),
+        cleanup_status: Some(LifecycleStatus::Pending),
+    };
+    ledger.update_document_status(stale).await.unwrap();
+
+    assert_eq!(
+        ledger.document_status(&DocumentId::new("doc-a")).await,
+        Some(newer)
+    );
+}
+
+#[tokio::test]
 async fn fake_rejects_document_status_and_cleanup_debt_for_missing_sources() {
     let ledger = FakeLedgerStore::new();
 
@@ -201,11 +248,148 @@ async fn fake_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() {
     ledger.record_cleanup_debt(debt).await.unwrap();
 
     let stored = ledger
-        .cleanup_debt(&CleanupDebtId::new("debt-b"))
+        .cleanup_debt(&CleanupDebtId::new("debt-a"))
         .await
         .expect("stored debt");
     assert_eq!(stored.status, LifecycleStatus::Completed);
     assert_eq!(stored.completed_at, Some(ts_at(10)));
+}
+
+#[tokio::test]
+async fn fake_cleanup_debt_update_preserves_unrelated_colliding_debt_id() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let debt_a = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-a"),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::new("src_a"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::Document {
+            document_id: DocumentId::new("doc-a"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+    let debt_b = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-b"),
+        job_id: JobId::new(Uuid::from_u128(2)),
+        source_id: SourceId::new("src_a"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::Document {
+            document_id: DocumentId::new("doc-b"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+
+    ledger.record_cleanup_debt(debt_a.clone()).await.unwrap();
+    ledger.record_cleanup_debt(debt_b.clone()).await.unwrap();
+
+    let mut update_a = debt_a;
+    update_a.debt_id = CleanupDebtId::new("debt-b");
+    update_a.attempts = 3;
+    update_a.last_error = Some(SourceError {
+        code: "cleanup.retry".to_string(),
+        severity: Severity::Failed,
+        message: "retry later".to_string(),
+        source_item_key: None,
+        retryable: true,
+        provider_id: None,
+        cause: None,
+    });
+    ledger.record_cleanup_debt(update_a).await.unwrap();
+
+    assert_eq!(ledger.cleanup_debt_count().await, 2);
+    let stored_a = ledger
+        .cleanup_debt(&CleanupDebtId::new("debt-a"))
+        .await
+        .expect("debt-a preserved");
+    let stored_b = ledger
+        .cleanup_debt(&CleanupDebtId::new("debt-b"))
+        .await
+        .expect("debt-b preserved");
+    assert_eq!(stored_a.attempts, 3);
+    assert_eq!(
+        stored_a
+            .last_error
+            .as_ref()
+            .map(|error| error.message.as_str()),
+        Some("retry later")
+    );
+    assert_eq!(stored_b.selector, debt_b.selector);
+    assert_eq!(stored_b.job_id, debt_b.job_id);
+}
+
+#[tokio::test]
+async fn fake_cleanup_debt_ignores_stale_replay() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let mut debt = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-a"),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::new("src_a"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::Document {
+            document_id: DocumentId::new("doc-a"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+
+    ledger.record_cleanup_debt(debt.clone()).await.unwrap();
+
+    debt.debt_id = CleanupDebtId::new("debt-b");
+    debt.job_id = JobId::new(Uuid::from_u128(2));
+    debt.status = LifecycleStatus::Failed;
+    debt.created_at = ts_at(9);
+    debt.attempts = 3;
+    debt.last_error = Some(SourceError {
+        code: "cleanup.failed".to_string(),
+        severity: Severity::Failed,
+        message: "cleanup failed".to_string(),
+        source_item_key: Some(SourceItemKey::new("src/lib.rs")),
+        retryable: true,
+        provider_id: None,
+        cause: None,
+    });
+    debt.next_retry_at = Some(ts_at(30));
+    let newer = debt.clone();
+    ledger.record_cleanup_debt(newer.clone()).await.unwrap();
+
+    let mut stale = debt;
+    stale.debt_id = CleanupDebtId::new("debt-c");
+    stale.job_id = JobId::new(Uuid::from_u128(3));
+    stale.status = LifecycleStatus::Pending;
+    stale.created_at = ts_at(1);
+    stale.attempts = 1;
+    stale.last_error = None;
+    stale.next_retry_at = None;
+    ledger.record_cleanup_debt(stale).await.unwrap();
+
+    let mut expected = newer;
+    expected.debt_id = CleanupDebtId::new("debt-a");
+    assert_eq!(
+        ledger.cleanup_debt(&CleanupDebtId::new("debt-a")).await,
+        Some(expected)
+    );
+    assert_eq!(ledger.cleanup_debt_count().await, 1);
 }
 
 #[tokio::test]

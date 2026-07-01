@@ -5,7 +5,7 @@ use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::util::{cleanup_selector_hash, enum_wire_value, json_error};
 use crate::store::Result;
-use crate::validation::source_missing_error;
+use crate::validation::{source_missing_error, validate_cleanup_debt};
 
 pub(super) async fn record_cleanup_debt(
     store: &SqliteLedgerStore,
@@ -81,27 +81,53 @@ pub(super) async fn insert_cleanup_debt_in_tx(
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
         ON CONFLICT(source_id, generation_key, kind, selector_hash) DO UPDATE SET
             debt_id = CASE
-                WHEN cleanup_debt.completed_at IS NULL THEN excluded.debt_id
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.debt_id
                 ELSE cleanup_debt.debt_id
             END,
             job_id = CASE
-                WHEN cleanup_debt.completed_at IS NULL THEN excluded.job_id
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.job_id
                 ELSE cleanup_debt.job_id
             END,
             status = CASE
-                WHEN cleanup_debt.completed_at IS NULL THEN excluded.status
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.status
                 ELSE cleanup_debt.status
             END,
             debt_json = CASE
-                WHEN cleanup_debt.completed_at IS NULL THEN excluded.debt_json
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.debt_json
                 ELSE cleanup_debt.debt_json
             END,
-            attempts = MAX(cleanup_debt.attempts, excluded.attempts),
+            attempts = CASE
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN MAX(cleanup_debt.attempts, excluded.attempts)
+                ELSE cleanup_debt.attempts
+            END,
+            created_at = CASE
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.created_at
+                ELSE cleanup_debt.created_at
+            END,
             next_retry_at = CASE
-                WHEN cleanup_debt.completed_at IS NULL THEN excluded.next_retry_at
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.next_retry_at
                 ELSE cleanup_debt.next_retry_at
             END,
-            completed_at = COALESCE(cleanup_debt.completed_at, excluded.completed_at)
+            completed_at = CASE
+                WHEN cleanup_debt.completed_at IS NULL
+                    AND excluded.created_at >= cleanup_debt.created_at
+                THEN excluded.completed_at
+                ELSE cleanup_debt.completed_at
+            END
         "#,
     )
     .bind(&debt.debt_id.0)
@@ -174,28 +200,6 @@ pub(super) async fn insert_cleanup_debt_once_in_tx(
     Ok(())
 }
 
-fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
-    match &debt.selector {
-        CleanupSelector::Source { source_id } if source_id != &debt.source_id => {
-            Err(cleanup_selector_mismatch_error(debt))
-        }
-        CleanupSelector::Generation {
-            source_id,
-            generation,
-        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
-            Err(cleanup_selector_mismatch_error(debt))
-        }
-        CleanupSelector::SourceItem {
-            source_id,
-            generation,
-            ..
-        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
-            Err(cleanup_selector_mismatch_error(debt))
-        }
-        _ => Ok(()),
-    }
-}
-
 async fn ensure_source_exists_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &SourceId,
@@ -209,13 +213,4 @@ async fn ensure_source_exists_in_tx(
         return Err(source_missing_error(source_id));
     }
     Ok(())
-}
-
-fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {
-    ApiError::new(
-        "source.ledger.cleanup_selector_mismatch",
-        ErrorStage::Cleaning,
-        "cleanup selector does not match cleanup debt source/generation",
-    )
-    .with_source_id(debt.source_id.0.clone())
 }

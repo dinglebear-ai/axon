@@ -91,6 +91,38 @@ async fn fake_ledger_same_owner_can_renew_lease() {
 }
 
 #[tokio::test]
+async fn fake_ledger_rejects_oversized_lease_ttl() {
+    let ledger = FakeLedgerStore::new();
+
+    let acquire_err = ledger
+        .acquire_lease(lease_request_ttl(
+            "source:src_a:refresh",
+            "owner-a",
+            u64::MAX,
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        acquire_err.code.to_string(),
+        "source.ledger.lease_ttl_invalid"
+    );
+
+    let first = ledger
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a"))
+        .await
+        .unwrap()
+        .expect("lease");
+    let heartbeat_err = ledger
+        .heartbeat_lease(first.lease_id, "owner-a".to_string(), u64::MAX)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        heartbeat_err.code.to_string(),
+        "source.ledger.lease_ttl_invalid"
+    );
+}
+
+#[tokio::test]
 async fn fake_ledger_heartbeat_rejects_expired_lease() {
     let ledger = FakeLedgerStore::new();
     let first = ledger

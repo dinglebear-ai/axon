@@ -383,6 +383,13 @@ impl LedgerStore for FakeLedgerStore {
         if !state.sources.contains_key(&status.source_id) {
             return Err(source_missing_error(&status.source_id));
         }
+        if state
+            .document_statuses
+            .get(&status.document_id)
+            .is_some_and(|existing| existing.updated_at.0 > status.updated_at.0)
+        {
+            return Ok(());
+        }
         state
             .document_statuses
             .insert(status.document_id.clone(), status);

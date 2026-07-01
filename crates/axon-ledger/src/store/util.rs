@@ -39,37 +39,20 @@ pub(super) fn cleanup_debt_natural_key(
 }
 
 pub(super) fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
-    match &debt.selector {
-        CleanupSelector::Source { source_id } if source_id != &debt.source_id => {
-            Err(cleanup_selector_mismatch_error(debt))
-        }
-        CleanupSelector::Generation {
-            source_id,
-            generation,
-        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
-            Err(cleanup_selector_mismatch_error(debt))
-        }
-        CleanupSelector::SourceItem {
-            source_id,
-            generation,
-            ..
-        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
-            Err(cleanup_selector_mismatch_error(debt))
-        }
-        _ => Ok(()),
-    }
+    crate::validation::validate_cleanup_debt(debt)
 }
 
 pub(super) fn apply_cleanup_debt_update(existing: &mut CleanupDebt, next: CleanupDebt) {
     let existing_terminal = existing.completed_at.is_some();
-    existing.attempts = existing.attempts.max(next.attempts);
-    if existing_terminal {
+    let stale_replay = next.created_at.0 < existing.created_at.0;
+    if existing_terminal || stale_replay {
         return;
     }
 
-    existing.debt_id = next.debt_id;
     existing.job_id = next.job_id;
     existing.status = next.status;
+    existing.created_at = next.created_at;
+    existing.attempts = existing.attempts.max(next.attempts);
     existing.last_error = next.last_error;
     existing.next_retry_at = next.next_retry_at;
     existing.completed_at = next.completed_at;
@@ -102,12 +85,17 @@ pub(super) fn timestamp() -> Timestamp {
     Timestamp(chrono::Utc::now().to_rfc3339())
 }
 
-pub(super) fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
+pub(super) fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Result<Timestamp> {
+    let seconds = i64::try_from(seconds).map_err(|_| lease_ttl_invalid_error())?;
+    let duration = chrono::TimeDelta::try_seconds(seconds).ok_or_else(lease_ttl_invalid_error)?;
     let parsed = chrono::DateTime::parse_from_rfc3339(&timestamp.0)
         .map(|value| value.with_timezone(&chrono::Utc));
     match parsed {
-        Ok(value) => Timestamp((value + chrono::Duration::seconds(seconds as i64)).to_rfc3339()),
-        Err(_) => timestamp.clone(),
+        Ok(value) => value
+            .checked_add_signed(duration)
+            .map(|value| Timestamp(value.to_rfc3339()))
+            .ok_or_else(lease_ttl_invalid_error),
+        Err(_) => Ok(timestamp.clone()),
     }
 }
 
@@ -158,11 +146,10 @@ pub(super) fn lease_missing_error(lease_id: &LeaseId) -> ApiError {
     )
 }
 
-fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {
+fn lease_ttl_invalid_error() -> ApiError {
     ApiError::new(
-        "source.ledger.cleanup_selector_mismatch",
-        ErrorStage::Cleaning,
-        "cleanup selector does not match cleanup debt source/generation",
+        "source.ledger.lease_ttl_invalid",
+        ErrorStage::Leasing,
+        "lease ttl is too large to represent as a timestamp",
     )
-    .with_source_id(debt.source_id.0.clone())
 }
