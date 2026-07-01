@@ -411,6 +411,42 @@ fn resolver_uses_authority_record_confidence() {
 }
 
 #[test]
+fn resolver_reports_authority_evidence() {
+    let resolver = SourceResolver::new(
+        InMemoryAuthorityRegistry::from_records(vec![
+            AuthorityRecord::new(
+                "auth_shadcn_docs",
+                "https://ui.shadcn.com/docs",
+                SourceKind::Web,
+                AuthorityLevel::Official,
+            )
+            .with_alias("shadcn")
+            .with_confidence(0.94)
+            .with_evidence("official_docs", "https://ui.shadcn.com/docs", 0.94),
+        ]),
+        AdapterRegistry::target_defaults(),
+    );
+
+    let resolved = resolver
+        .resolve(&SourceRequest::new("shadcn"))
+        .expect("authority resolves");
+    let hint = resolved
+        .authority_hint
+        .as_ref()
+        .expect("authority hint is reported");
+
+    assert_eq!(
+        hint.canonical_uri.as_deref(),
+        Some("https://ui.shadcn.com/docs")
+    );
+    assert_eq!(hint.authority, AuthorityLevel::Official);
+    assert_eq!(hint.evidence.len(), 1);
+    assert_eq!(hint.evidence[0].evidence_kind, "official_docs");
+    assert_eq!(hint.evidence[0].value, "https://ui.shadcn.com/docs");
+    assert_eq!(hint.evidence[0].confidence, 0.94);
+}
+
+#[test]
 fn resolver_rejects_inconsistent_authority_records() {
     let resolver = SourceResolver::new(
         InMemoryAuthorityRegistry::from_records(vec![

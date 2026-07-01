@@ -10,6 +10,7 @@ license.workspace = true
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-error = { path = "../axon-error" }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -21,4 +21,18 @@ pub mod testing;
 pub mod web;
 pub mod youtube;
 
+pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
+pub use adapter::SourceAdapter;
+pub use capability::{AdapterCapability, AdapterVersion};
+pub use registry::SourceAdapterRegistry;
+pub use testing::FakeSourceAdapter;
+
 pub const CRATE_NAME: &str = "axon-adapters";
+
+#[cfg(test)]
+#[path = "adapter_tests.rs"]
+mod adapter_tests;
+
+#[cfg(test)]
+#[path = "manifest_tests.rs"]
+mod manifest_tests;

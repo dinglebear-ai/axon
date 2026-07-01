@@ -172,6 +172,10 @@ impl AdapterRegistry {
             .iter()
             .find(|adapter| adapter.adapter.name == name)
     }
+
+    pub fn definitions(&self) -> &[AdapterDefinition] {
+        &self.adapters
+    }
 }
 
 fn minimum_safety_class(source_kind: SourceKind) -> Option<SafetyClass> {
