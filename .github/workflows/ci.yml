@@ -358,6 +358,10 @@ jobs:
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Enforce modern Rust module style (no mod.rs)
         run: cargo xtask check-no-mod-rs
+      - name: Check generated-doc relative links resolve
+        run: cargo xtask check-doc-links
+      - name: Check generated docs do not reference removed surfaces
+        run: cargo xtask check-doc-contracts
 
   sqlite-migrations:
     name: sqlite-migrations

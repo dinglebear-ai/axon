@@ -33,6 +33,10 @@ enum Command {
     CheckRepoStructure,
     /// Fail if any symlink in the worktree points to a non-existent target.
     CheckBrokenSymlinks,
+    /// Fail if any relative markdown link in docs/reference points to a missing file.
+    CheckDocLinks,
+    /// Fail if generated reference docs reference a removed public surface.
+    CheckDocContracts,
     /// Verify SQLite job migrations are append-only and checksum-pinned.
     CheckSqliteMigrations,
     /// Regenerate the SQLite job migration checksum manifest after adding a migration.
@@ -129,6 +133,8 @@ fn main() -> Result<()> {
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
         Command::CheckRepoStructure => checks::repo_structure::check(&root),
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
+        Command::CheckDocLinks => checks::doc_links::check(&root),
+        Command::CheckDocContracts => checks::doc_contracts::check(&root),
         Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
         Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
         Command::CheckSecrets => checks::secrets::check(&root),
@@ -198,4 +204,4 @@ fn main() -> Result<()> {
 mod bench_embed;
 mod checks;
 mod pre_push;
-mod schemas;
+pub mod schemas;
