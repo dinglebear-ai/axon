@@ -150,6 +150,8 @@ impl VectorStore for FakeVectorStore {
     }
 
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
+        let mut state = self.state.lock().await;
+        state.calls.push("search");
         if !request.filters.is_empty()
             || request.generation.is_some()
             || !request.graph_refs.is_empty()
@@ -160,8 +162,6 @@ impl VectorStore for FakeVectorStore {
                 "fake vector store does not implement filtered search",
             ));
         }
-        let mut state = self.state.lock().await;
-        state.calls.push("search");
         let query_vector = request.dense_vector.clone().unwrap_or_default();
         let mut results = state
             .points

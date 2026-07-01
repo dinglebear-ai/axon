@@ -57,12 +57,18 @@ impl FakeLlmProvider {
     }
 
     fn response(&self, request: &LlmCompletionRequest) -> LlmCompletionResponse {
-        let prompt = request
+        let prompt_parts = request
             .messages
             .iter()
             .map(|message| message.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+            .collect::<Vec<_>>();
+        let prompt = match request.system.as_deref() {
+            Some(system) => std::iter::once(system)
+                .chain(prompt_parts)
+                .collect::<Vec<_>>()
+                .join("\n"),
+            None => prompt_parts.join("\n"),
+        };
         let checksum = stable_checksum(&prompt);
         let text = format!("fake:{}:{checksum}", self.provider_id.0);
         let structured = match (self.mode, request.response_schema.as_ref()) {

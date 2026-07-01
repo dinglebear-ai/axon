@@ -139,7 +139,8 @@ pub struct NetworkCaptureEntry {
     pub method: String,
     pub status: Option<u16>,
     pub request_headers: RedactedHeaders,
-    pub response_headers: RedactedHeaders,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_headers: Option<RedactedHeaders>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_body: Option<ContentRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

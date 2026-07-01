@@ -133,7 +133,14 @@ fn provider_capability(
         vector_store: None,
         fetch: None,
         render: None,
-        credential: None,
+        credential: if provider_kind == ProviderKind::Credential {
+            Some(CredentialProviderCapability {
+                auth_schemes: vec!["api_key".to_string(), "bearer".to_string()],
+                redaction_policy: RedactionPolicy::Strict,
+            })
+        } else {
+            None
+        },
     }
 }
 
