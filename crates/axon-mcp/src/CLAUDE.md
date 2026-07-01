@@ -1,266 +1,53 @@
-# src/mcp — Axon MCP Server Guide
-Last Modified: 2026-05-16
+# axon-mcp — Agent Guide
 
-## Purpose
-`src/mcp` implements the Axon Model Context Protocol server (`axon mcp`) that exposes crawler/RAG capabilities through a single MCP tool.
+`axon-mcp` owns the **MCP transport surface**: it exposes the shared action model
+as a single `axon` tool, generates the tool schema from `axon-api`, extracts the
+caller via `axon-authz`, and maps every call into `axon-services`. Full contract
+(owns / API / deps / tests):
+[../../../docs/pipeline-unification/crates/axon-mcp/README.md](../../../docs/pipeline-unification/crates/axon-mcp/README.md)
+· surface spec:
+[../../../docs/pipeline-unification/surfaces/tool-contract.md](../../../docs/pipeline-unification/surfaces/tool-contract.md).
 
-- CLI entrypoint: `main.rs` subcommand `mcp`
-- Transport: RMCP stdio by default, streamable HTTP on `/mcp` when `--transport http|both` or `axon serve` is used
-- MCP tool: `axon`
-- Routing model: consolidated `action` + `subaction`
+## Status — live crate, cutover at Phase 10
+Today the single `axon` tool still advertises the older action set (`crawl`,
+`embed`, `ingest`, …) with the narrow `ok`/`action`/`subaction`/`warnings`/`data`
+envelope, and works. At the **Phase 10 surface cutover** it becomes the strict
+target model: source acquisition moves under `action=source`; removed actions are
+deleted from the schema and cannot dispatch; responses carry the full shared
+envelope (request/job/progress/warnings metadata). No compat action aliases.
 
-## Module Layout
+## Module map
+Current groups from `crates/axon-mcp/src/`:
+| Area | Owns |
+|---|---|
+| `lib.rs` | crate root + `run_mcp_server` bootstrap |
+| `server.rs` + `server/` | MCP server, transport handlers, action routing (target `handler.rs`/`progress.rs`) |
+| `schema.rs` | tool input/output schema generated from `axon-api` (target `tool_model.rs`) |
+| `auth.rs` | caller extraction / auth wiring via `axon-authz` |
+| `cors.rs` | HTTP-transport CORS/origin handling |
+| `assets` | static/schema assets |
 
-```
-src/mcp.rs           # Crate-root re-export shim (sibling to crates/axon-mcp/src/)
-mcp/
-├── auth.rs                     # AuthPolicy, lab-auth OAuth/JWT, static bearer, x-api-key normalization
-├── cors.rs                     # CORS middleware for the HTTP transport
-├── schema.rs                   # AxonRequest / AxonToolResponse types, action/subaction enums
-├── schema/
-│   └── tests.rs                # Schema parser + dispatch tests
-├── server.rs                   # AxonMcpServer: tool registration + action dispatch router
-├── server/
-│   ├── common.rs                   # Shared handler utilities
-│   ├── http.rs                     # HTTP transport plumbing
-│   ├── handlers_crawl_extract.rs   # crawl + extract action handlers
-│   ├── handlers_embed_ingest.rs    # embed + ingest action handlers
-│   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, summarize, research
-│   ├── handlers_elicit.rs          # elicitation prompts
-│   ├── handlers_system.rs          # doctor, domains, sources, stats, status, help
-│   ├── handlers_vertical_scrape.rs # vertical_scrape action — DISCOVERY ONLY (list/capabilities)
-│   ├── handlers_system/
-│   │   └── screenshot.rs           # screenshot handler split off from handlers_system
-│   ├── artifacts.rs                # Artifact-first response-shaping helpers (path/inline persistence)
-│   ├── artifacts/
-│   │   ├── path.rs                 # artifact path helpers — default `$AXON_DATA_DIR/artifacts/<context>` (`~/.axon/artifacts/<context>`)
-│   │   ├── respond.rs              # Inline-vs-path response shaping
-│   │   └── shape.rs                # Artifact response shape
-│   └── services_migration_tests.rs # Migration tests for the services-layer plumbing
-└── assets/
-    └── status_dashboard.html       # MCP App resource for `ui://axon/status-dashboard`
-```
+## Boundary — keep OUT of this crate
+- Source pipeline behavior, provider/store/domain internals — route through `axon-services`.
+- Duplicate action DTOs; CLI clap types or web router types.
+- Concrete Qdrant/TEI/LLM/SQLite clients.
 
-There is no `crates/axon-mcp/src/config.rs`. The `load_mcp_config()` helper that used to live here was removed when the MCP server adopted the unified `build_config()` path. MCP auth policy lives in `auth.rs`; OAuth state is created through `lab_auth::state::AuthState` when `AXON_MCP_AUTH_MODE=oauth`.
+## Dependencies
+- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-authz`, `axon-observe`, `axon-services`, rmcp/MCP transport crates.
+- **Forbidden:** domain crate internals bypassing services, provider clients, the CLI command parser or web router. Enforced by `cargo xtask check-layering`.
 
-## Source-of-Truth References
-- Wire contract schema doc: `docs/reference/mcp/tool-schema.md`
-- MCP runtime/design doc: `docs/reference/mcp/overview.md`
-- Tool request/response types: `crates/axon-mcp/src/schema.rs`
-- Tool router and dispatch: `crates/axon-mcp/src/server.rs`
-- Handler implementations: `crates/axon-mcp/src/server/handlers_*.rs`
-- Runtime config: threaded in via `build_config()` from `crates/axon-core/src/config/parse/build_config.rs` (no dedicated MCP config loader)
-- Auth policy: `crates/axon-mcp/src/auth.rs` + `crates/axon-mcp/src/server/http.rs`
+## Invariants (review checklist)
+- One action-dispatched `axon` tool (`action` + optional `subaction`) — never one tool per operation.
+- Every action routes to exactly one `axon-services` entrypoint; tool schema is generated from shared `axon-api` DTOs.
+- Error envelopes align with REST and CLI JSON output; every response returns a structured envelope.
+- Removed actions are absent from the schema and cannot dispatch after the clean break; destructive reset stays under `action=reset` with admin scope.
 
-If documentation and code diverge, update both in the same change.
+## DTO ownership
+Wire DTOs and the response envelope live in **`axon-api`** (`axon_api::mcp_schema`
+lineage); this crate generates its schema from them and returns them. Transports
+call `axon-services`/`axon-api`, never a domain crate's `::ops::*` or internals.
 
-## Auth Modes
-
-HTTP transport chooses one auth policy at startup:
-
-| Mode | Env | Behavior |
-|------|-----|----------|
-| OAuth | `AXON_MCP_AUTH_MODE=oauth` | Builds `lab_auth::AuthState`, validates JWT bearers, mounts OAuth routes, and keeps the static bearer token working if `AXON_MCP_HTTP_TOKEN` is set. |
-| Bearer-only | default mode + `AXON_MCP_HTTP_TOKEN` set | Validates `Authorization: Bearer <token>` or `x-api-key: <token>` through `lab_auth::AuthLayer::with_static_token`. |
-| Loopback dev | default mode + no token + loopback bind | No auth layer; loopback bind is the trust boundary. |
-
-OAuth env vars use the `AXON_MCP_*` prefix: `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL`, and `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`. Do not document the old `GOOGLE_OAUTH_*` names as current Axon config.
-
-Mounted auth inserts `AuthContext`; tool calls then enforce Axon access in `server.rs`. OAuth email allowlisting is the access boundary: newly issued OAuth tokens default to both `axon:read` and `axon:write`, and either Axon scope is accepted for all Axon read/write actions for compatibility with existing tokens. Unknown actions fail closed.
-
-## Consolidated Tool Pattern
-The single `axon` tool is the only public MCP tool. All operations route through:
-
-```json
-{
-  "action": "<domain>",
-  "subaction": "<operation>",
-  "...": "operation params"
-}
-```
-
-Domains (`action`):
-- `help`
-- `status`
-- `crawl`
-- `extract`
-- `embed`
-- `ingest`
-- `query`
-- `retrieve`
-- `search`
-- `map`
-- `scrape`
-- `ask`
-- `summarize`
-- `research`
-- `screenshot`
-- `doctor`
-- `domains`
-- `sources`
-- `stats`
-- `vertical_scrape`
-
-This pattern is mandatory. Do not add separate MCP tools for each operation.
-
-### `vertical_scrape` — Discovery Only
-
-`vertical_scrape` exposes the vertical extractor **catalog**. It does NOT run extraction.
-
-- `subaction=list` — returns every `ExtractorInfo` from `src/extract::list_extractors()`
-- `subaction=capabilities` — returns metadata for a single extractor (by `extractor` param)
-- `subaction=run` — **removed**. Returns `invalid_params` with a redirect message: use `action=scrape url=<url>` instead — `services::scrape::scrape` calls `dispatch_by_url()` before the generic HTTP path when `cfg.enable_verticals` is true (default), so extractors fire automatically.
-
-This split means clients that want to discover what URL patterns Axon supports query `vertical_scrape:list`, then call `scrape` against any URL. See `crates/axon-extract/src/CLAUDE.md` for the framework, and `crates/axon-mcp/src/server/handlers_vertical_scrape.rs:1-9` for the rationale.
-
-## Current Action Map
-
-### `crawl`
-- `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/axon-jobs/src/crawl.rs`
-
-### `extract`
-- `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/axon-jobs/src/extract.rs`
-
-### `embed`
-- `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/axon-jobs/src/embed.rs`
-
-### `ingest`
-- `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/axon-jobs/src/ingest.rs`
-- Supported `source_type` values: `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `rss`, `sessions`
-- MCP request validation and `IngestSource` construction factored into `crates/axon-services/src/ingest/request.rs` (`source_from_mcp_request`)
-
-### `ask`
-- Direct action (no subaction)
-- Integration: `crates/axon-vector/src/ops/commands/ask/`
-
-### `summarize`
-- Direct action (no subaction)
-- Integration: `crates/axon-services/src/summarize.rs` + configured LLM backend
-
-### `research`
-- Direct action (no subaction)
-- Integration: `spider_agent` Tavily AI search + LLM synthesis
-
-### `screenshot`
-- Direct action (no subaction)
-- Integration: `crates/axon-cli/src/commands/screenshot/`
-
-### `status`
-- Direct action (no subaction)
-- Integration: job queue status across all job types
-
-### `query` / `retrieve`
-- Integration: `crates/axon-vector/src/ops/tei.rs`, `crates/axon-vector/src/ops/qdrant/*`
-
-### `search` / `map` / `scrape`
-- Integration: `crates/axon-core/src/http.rs`, `crates/axon-core/src/content.rs`, `crates/axon-crawl/src/engine.rs`, `spider_agent`
-
-### `doctor` / `domains` / `sources` / `stats`
-- Integration: lightweight probes + qdrant endpoints
-
-### `help`
-- `run` (implicit direct action)
-- Returns all actions/subactions/resources
-
-## Error Contract
-Use MCP-native errors:
-- invalid request/params -> `ErrorData::invalid_params(...)`
-- runtime/system failure -> `ErrorData::internal_error(...)`
-
-Rules:
-- Validate required fields early.
-- Return deterministic error messages (action/subaction context).
-- Never leak secrets in errors.
-
-## Response Contract
-Success responses are normalized by `AxonToolResponse`:
-
-```json
-{
-  "ok": true,
-  "action": "...",
-  "subaction": "...",
-  "data": { ... }
-}
-```
-
-Keep payloads stable and additive. Avoid breaking field renames.
-
-Default response behavior is artifact-first:
-- `response_mode` defaults to `path`
-- Large outputs persist under `$AXON_MCP_ARTIFACT_DIR` (default: `~/.axon/artifacts/<context>`)
-- Inline responses are capped and include artifact pointers
-- The MCP server runs in-process, so the returned `path` is a real local filesystem path — read it directly. There is no `artifacts` MCP action (removed in 5.0.0); use `response_mode=inline` (or `auto_inline`) when you want the payload returned in the response.
-
-## Configuration Model
-
-MCP config is threaded in directly via `build_config()` from `crates/axon-core/src/config/parse/build_config.rs`. There is no `load_mcp_config()` function — it was removed when config was unified (commit `54244286`). The MCP server reads the standard `Config` struct like every other command.
-
-Expected runtime model:
-- `axon mcp` runs inside the same stack environment as workers.
-- Existing `.env`/container env is sufficient.
-
-## `ServiceContext` Wiring
-
-All MCP action handlers receive a `&ServiceContext` (from `crates/axon-services/src/context.rs`) constructed once at server startup:
-
-```rust
-// In handler dispatch
-let ctx = ServiceContext::new_with_workers(Arc::new(cfg)).await?;
-// ...
-self.handle_crawl(request).await
-```
-
-`ServiceContext` carries exactly two fields — `cfg: Arc<Config>` and `jobs: Arc<dyn ServiceJobRuntime>`. **There is no `capabilities` field and no `ServiceCapabilities` struct.** Any documentation referring to `ctx.capabilities.<cap>.supported` is stale; unsupported behavior is handled by the individual service or omitted from the MCP action schema. The legacy `graph`, `refresh`, and `export` MCP actions were removed entirely when full mode was retired.
-
-## Implementation Rules
-1. Keep one tool (`axon`) only.
-2. Add new capability by extending `action/subaction`, not adding new tool names.
-3. Update all three layers together:
-   - `schema.rs`
-   - `server.rs`
-   - `docs/reference/mcp/tool-schema.md`
-4. If behavior changes materially, also update `docs/reference/mcp/overview.md` and root docs references.
-5. Prefer direct calls into existing Axon job/vector APIs over shelling out.
-
-## Testing Workflow
-Build:
-
-```bash
-cargo run --bin axon -- mcp
-```
-
-Primary MCP smoke path:
-
-```bash
-bash ./scripts/test-mcp-tools-mcporter.sh
-```
-
-Schema/introspection:
-
-```bash
-mcporter --config config/mcporter.json list axon --schema
-```
-
-Smoke calls:
-
-```bash
-mcporter --config config/mcporter.json call axon.axon action:doctor --output json
-mcporter --config config/mcporter.json call axon.axon action:sources limit:5 --output json
-mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
-```
-
-The smoke harness uses SQLite/in-process jobs. When adding a new action or
-subaction, add at least one smoke case.
-
-## Change Checklist (Mandatory)
-- [ ] `schema.rs` updated
-- [ ] `server.rs` routing/handler updated
-- [ ] docs contract updated (`docs/reference/mcp/tool-schema.md`)
-- [ ] `cargo check --bin axon` still passes
-
-This is the way.
+## Keep in sync when shapes change
+`README.md` (crate contract) · `surfaces/tool-contract.md` ·
+`schemas/mcp-tool-schema.md` · the action/request/result and envelope DTOs in
+`axon-api`.
