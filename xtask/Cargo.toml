@@ -9,6 +9,7 @@ publish = false
 anyhow = "1"
 axon-api = { path = "../crates/axon-api" }
 axon-error = { path = "../crates/axon-error" }
+axon-route = { path = "../crates/axon-route" }
 axon-web = { path = "../crates/axon-web", optional = true }
 clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"

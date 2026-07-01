@@ -1043,6 +1043,16 @@
         "authority": {
           "$ref": "#/$defs/ResolvedSource_AuthorityLevel"
         },
+        "authority_hint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResolvedSource_AuthorityHint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "available_scopes": {
           "items": {
             "$ref": "#/$defs/ResolvedSource_SourceScope"
@@ -1145,6 +1155,52 @@
       "required": [
         "name",
         "version"
+      ],
+      "type": "object"
+    },
+    "ResolvedSource_AuthorityEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_kind",
+        "value",
+        "confidence"
+      ],
+      "type": "object"
+    },
+    "ResolvedSource_AuthorityHint": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "$ref": "#/$defs/ResolvedSource_AuthorityLevel"
+        },
+        "canonical_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ResolvedSource_AuthorityEvidence"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "authority",
+        "evidence"
       ],
       "type": "object"
     },
@@ -2769,7 +2825,7 @@
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:c3a302298345364949c6f63137656e507c3fb2d50f28a4e3945e10de47ec905e",
+        "checksum": "sha256:86c1ac8217c666752db182a47d98b06742f04a97cc4419e5af1011159c3728b0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },

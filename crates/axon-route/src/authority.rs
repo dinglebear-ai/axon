@@ -1,6 +1,6 @@
 //! Authority and alias records used during source resolution.
 
-use axon_api::{AuthorityLevel, SourceKind, SourceScope};
+use axon_api::{AuthorityEvidence, AuthorityLevel, SourceKind, SourceScope};
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,6 +13,7 @@ pub struct AuthorityRecord {
     pub entrypoints: Vec<(SourceScope, String)>,
     pub adapter_hint: Option<String>,
     pub confidence: f32,
+    pub evidence: Vec<AuthorityEvidence>,
 }
 
 impl AuthorityRecord {
@@ -32,6 +33,7 @@ impl AuthorityRecord {
             aliases: Vec::new(),
             entrypoints: Vec::new(),
             confidence: 1.0,
+            evidence: Vec::new(),
         }
     }
 
@@ -52,6 +54,20 @@ impl AuthorityRecord {
 
     pub fn with_confidence(mut self, confidence: f32) -> Self {
         self.confidence = confidence.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn with_evidence(
+        mut self,
+        evidence_kind: impl Into<String>,
+        value: impl Into<String>,
+        confidence: f32,
+    ) -> Self {
+        self.evidence.push(AuthorityEvidence {
+            evidence_kind: evidence_kind.into(),
+            value: value.into(),
+            confidence: confidence.clamp(0.0, 1.0),
+        });
         self
     }
 }

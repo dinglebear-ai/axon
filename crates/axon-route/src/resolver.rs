@@ -1,8 +1,8 @@
 //! Source resolver boundary.
 
 use axon_api::{
-    AdapterCandidate, AuthorityLevel, ResolvedSource, Severity, SourceKind, SourceRequest,
-    SourceScope, SourceWarning,
+    AdapterCandidate, AuthorityHint, AuthorityLevel, ResolvedSource, Severity, SourceKind,
+    SourceRequest, SourceScope, SourceWarning,
 };
 use axon_error::{ApiError, ErrorStage};
 
@@ -48,6 +48,11 @@ impl SourceResolver {
             .map(|record| record.confidence.clamp(0.0, 1.0))
             .unwrap_or(0.75);
         let requested_uri = public_requested_uri(request, &canonical);
+        let authority_hint = authority_record.map(|record| AuthorityHint {
+            canonical_uri: Some(canonical.canonical_uri.clone()),
+            authority: record.authority,
+            evidence: record.evidence.clone(),
+        });
 
         Ok(ResolvedSource {
             requested_uri,
@@ -61,6 +66,7 @@ impl SourceResolver {
             authority,
             confidence,
             reason: canonical.reason,
+            authority_hint,
             warnings,
         })
     }
