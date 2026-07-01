@@ -1,5 +1,35 @@
 [workspace]
-members = ["xtask", "crates/axon-authz", "crates/axon-api", "crates/axon-core", "crates/axon-crawl", "crates/axon-vector", "crates/axon-ingest", "crates/axon-extract", "crates/axon-jobs", "crates/axon-source-ledger", "crates/axon-code-index", "crates/axon-services", "crates/axon-mcp", "crates/axon-web", "crates/axon-cli"]
+members = [
+    "xtask",
+    "crates/axon-error",
+    "crates/axon-api",
+    "crates/axon-authz",
+    "crates/axon-core",
+    "crates/axon-observe",
+    "crates/axon-route",
+    "crates/axon-adapters",
+    "crates/axon-ledger",
+    "crates/axon-parse",
+    "crates/axon-graph",
+    "crates/axon-memory",
+    "crates/axon-document",
+    "crates/axon-embedding",
+    "crates/axon-vectors",
+    "crates/axon-retrieval",
+    "crates/axon-llm",
+    "crates/axon-prune",
+    "crates/axon-crawl",
+    "crates/axon-vector",
+    "crates/axon-ingest",
+    "crates/axon-extract",
+    "crates/axon-jobs",
+    "crates/axon-source-ledger",
+    "crates/axon-code-index",
+    "crates/axon-services",
+    "crates/axon-mcp",
+    "crates/axon-web",
+    "crates/axon-cli",
+]
 # apps/palette-tauri/src-tauri declares its own `[workspace]`, so it builds as a
 # standalone workspace and is not a member here.
 resolver = "2"
@@ -8,7 +38,11 @@ resolver = "2"
 # `axon` package keeps an explicit `version` too (the release checker reads it as
 # a string); `cargo xtask bump-version cli` moves both in lockstep.
 [workspace.package]
-version = "6.2.0"
+version = "6.2.1"
+edition = "2024"
+rust-version = "1.94.0"
+authors = ["jmagar"]
+license = "MIT"
 
 # Override lab-auth from the git source with a local vendored copy that uses
 # rusqlite 0.32 (libsqlite3-sys 0.30) instead of rusqlite 0.39 (libsqlite3-sys
@@ -22,7 +56,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "6.2.0"
+version = "6.2.1"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"

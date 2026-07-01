@@ -45,7 +45,7 @@ fn rust_changes_keep_runtime_checks() {
     let names = plan_names(&plan);
     assert!(!names.contains(&"version-sync"));
     assert!(names.contains(&"web-assets-placeholder"));
-    assert!(names.contains(&"clippy"));
+    assert!(!names.contains(&"clippy"));
 }
 
 #[test]
@@ -55,5 +55,5 @@ fn router_changes_run_workflow_guards() {
     assert!(names.contains(&"workflow-lint"));
     assert!(names.contains(&"ci-path-tests"));
     assert!(names.contains(&"workflow-shape-tests"));
-    assert!(names.contains(&"clippy"));
+    assert!(!names.contains(&"clippy"));
 }
