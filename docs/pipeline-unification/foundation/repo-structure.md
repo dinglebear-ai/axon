@@ -391,8 +391,17 @@ Required checks:
 ```bash
 cargo xtask check-repo-structure
 cargo xtask check-layering
+```
+
+Planned generated-doc freshness check:
+
+```bash
 cargo xtask docs generate --check
 ```
+
+This command is part of the desired end-state documentation toolchain. Until it
+exists, `cargo xtask check-repo-structure` and `cargo xtask check-layering` are
+the enforced repository-shape checks.
 
 Checks must prove:
 

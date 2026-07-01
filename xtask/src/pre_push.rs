@@ -391,6 +391,10 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
             command: "mkdir -p apps/web/out",
         });
         plan.push(PlanStep {
+            name: "repo-structure",
+            command: "cargo xtask check-repo-structure",
+        });
+        plan.push(PlanStep {
             name: "clippy",
             command: "AXON_ALLOW_FALLBACK_WEB_ASSETS=1 cargo clippy --workspace --all-targets --locked -- -D warnings",
         });

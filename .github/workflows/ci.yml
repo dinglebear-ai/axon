@@ -582,6 +582,8 @@ jobs:
         run: cargo check -p xtask --locked
       - name: cargo test -p xtask
         run: cargo test -p xtask --locked
+      - name: cargo xtask check-repo-structure
+        run: cargo xtask check-repo-structure
       - name: cargo xtask check-mcp-http
         run: cargo xtask check-mcp-http
 

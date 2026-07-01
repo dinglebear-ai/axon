@@ -285,8 +285,10 @@ fn check_target_crate(
 
     let crate_root = root.join("crates").join(krate.name);
     let crate_toml = read(crate_root.join("Cargo.toml"), errors);
-    require_target_manifest_metadata(krate.name, &crate_toml, errors);
-    require_empty_dependency_tables(krate.name, &crate_toml, errors);
+    if let Some(manifest) = parse_target_manifest(krate.name, &crate_toml, errors) {
+        require_target_manifest_metadata(krate.name, &manifest, errors);
+        require_empty_dependency_tables(krate.name, &manifest, errors);
+    }
 
     let src_dir = crate_root.join("src");
     let lib_rs = read(src_dir.join("lib.rs"), errors);
@@ -343,7 +345,16 @@ fn require_file(path: &Path, errors: &mut Vec<String>) {
 }
 
 fn require_modules(krate: &TargetCrate, src_dir: &Path, lib_rs: &str, errors: &mut Vec<String>) {
+    let expected_modules = krate.modules.iter().copied().collect::<BTreeSet<_>>();
     let declarations = lib_rs.lines().map(str::trim).collect::<BTreeSet<_>>();
+    let public_modules = lib_rs
+        .lines()
+        .map(str::trim)
+        .filter_map(|line| {
+            line.strip_prefix("pub mod ")
+                .and_then(|module| module.strip_suffix(';'))
+        })
+        .collect::<BTreeSet<_>>();
 
     for module in krate.modules {
         require_file(&src_dir.join(format!("{module}.rs")), errors);
@@ -356,6 +367,37 @@ fn require_modules(krate: &TargetCrate, src_dir: &Path, lib_rs: &str, errors: &m
             ));
         }
     }
+
+    for module in public_modules.difference(&expected_modules) {
+        errors.push(format!(
+            "{}/lib.rs declares unexpected PR0 public module: pub mod {module};",
+            display(src_dir)
+        ));
+    }
+
+    match fs::read_dir(src_dir) {
+        Ok(entries) => {
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if path.file_name().and_then(|name| name.to_str()) == Some("lib.rs") {
+                    continue;
+                }
+                if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
+                    continue;
+                }
+                let Some(module) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                    continue;
+                };
+                if !expected_modules.contains(module) {
+                    errors.push(format!(
+                        "{} is an unexpected PR0 module file",
+                        display(&path)
+                    ));
+                }
+            }
+        }
+        Err(err) => errors.push(format!("failed to read {}: {err}", display(src_dir))),
+    }
 }
 
 fn require_claude_symlink(path: &Path, errors: &mut Vec<String>) {
@@ -366,19 +408,32 @@ fn require_claude_symlink(path: &Path, errors: &mut Vec<String>) {
     }
 }
 
-fn require_target_manifest_metadata(krate: &str, cargo_toml: &str, errors: &mut Vec<String>) {
+fn parse_target_manifest(
+    krate: &str,
+    cargo_toml: &str,
+    errors: &mut Vec<String>,
+) -> Option<toml::Table> {
     let parsed = match toml::from_str::<toml::Table>(cargo_toml) {
         Ok(parsed) => parsed,
         Err(err) => {
             errors.push(format!("failed to parse crates/{krate}/Cargo.toml: {err}"));
-            return;
+            return None;
         }
     };
+    Some(parsed)
+}
 
+fn require_target_manifest_metadata(krate: &str, parsed: &toml::Table, errors: &mut Vec<String>) {
     let Some(package) = parsed.get("package").and_then(toml::Value::as_table) else {
         errors.push(format!("crates/{krate}/Cargo.toml is missing [package]"));
         return;
     };
+
+    if package.get("name").and_then(toml::Value::as_str) != Some(krate) {
+        errors.push(format!(
+            "PR0 target crate {krate} must set package.name = {krate:?}"
+        ));
+    }
 
     match package.get("rust-version") {
         Some(value)
@@ -393,15 +448,10 @@ fn require_target_manifest_metadata(krate: &str, cargo_toml: &str, errors: &mut 
     }
 }
 
-fn require_empty_dependency_tables(krate: &str, cargo_toml: &str, errors: &mut Vec<String>) {
-    let parsed = match toml::from_str::<toml::Table>(cargo_toml) {
-        Ok(parsed) => parsed,
-        Err(_) => return,
-    };
-
+fn require_empty_dependency_tables(krate: &str, parsed: &toml::Table, errors: &mut Vec<String>) {
     let mut dependency_tables = Vec::new();
     collect_non_empty_dependency_tables(
-        &toml::Value::Table(parsed),
+        &toml::Value::Table(parsed.clone()),
         &mut Vec::new(),
         &mut dependency_tables,
     );

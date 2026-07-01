@@ -126,25 +126,25 @@ fn ensure_palette_deps(root: &Path) -> Result<()> {
 }
 
 fn generated_artifact_drift(root: &Path) -> Result<Vec<String>> {
-    let mut args = vec!["diff", "--name-only", "HEAD", "--"];
+    let mut args = vec!["diff", "--name-only", "--"];
     args.extend(GENERATED_ARTIFACTS);
     let output = Command::new("git")
         .args(args)
         .current_dir(root)
         .output()
-        .context("failed to invoke `git diff --name-only HEAD -- <openapi artifacts>`")?;
+        .context("failed to invoke `git diff --name-only -- <openapi artifacts>`")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!(
-            "`git diff --name-only HEAD -- <openapi artifacts>` failed (exit {}): {}",
+            "`git diff --name-only -- <openapi artifacts>` failed (exit {}): {}",
             output.status.code().unwrap_or(-1),
             stderr.trim()
         );
     }
 
     let stdout = String::from_utf8(output.stdout)
-        .context("`git diff --name-only HEAD -- <openapi artifacts>` returned non-UTF-8 output")?;
+        .context("`git diff --name-only -- <openapi artifacts>` returned non-UTF-8 output")?;
     Ok(stdout
         .lines()
         .map(str::trim)
