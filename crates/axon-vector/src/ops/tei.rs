@@ -168,6 +168,11 @@ impl PreparedDoc {
         self.extra.as_ref()
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn ledger_payload(&self) -> Option<&crate::ops::source_doc::LedgerPayload> {
+        self.ledger_payload.as_ref()
+    }
+
     pub fn chunks(&self) -> &[String] {
         &self.chunks
     }

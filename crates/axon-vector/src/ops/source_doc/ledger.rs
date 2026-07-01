@@ -70,6 +70,26 @@ impl LedgerPayload {
         payload["source_committed"] = Value::Bool(false);
     }
 
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub fn source_kind(&self) -> &str {
+        &self.source_kind
+    }
+
+    pub fn generation(&self) -> i64 {
+        self.generation
+    }
+
+    pub fn item_key(&self) -> &str {
+        &self.item_key
+    }
+
+    pub fn index_version(&self) -> i64 {
+        self.index_version
+    }
+
     pub(in crate::ops) fn point_id_seed(&self, url: &str, chunk_index: usize) -> String {
         format!(
             "ledger:{}:{}:{}:{}",
