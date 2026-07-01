@@ -378,6 +378,7 @@ impl WatchStore for FakeJobWatchStore {
             .get(&request.watch_id)
             .into_iter()
             .flat_map(|ids| ids.iter())
+            .rev()
             .filter_map(|job_id| state.jobs.get(job_id))
             .map(|job| JobDescriptor {
                 job_id: job.job_id,
