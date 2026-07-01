@@ -1,11 +1,13 @@
 //! SQLite-backed ledger store.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use async_trait::async_trait;
 use axon_api::source::*;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Row, SqlitePool};
 
-use crate::migration::{migrate_ledger, sqlite_error};
+use crate::migration::{clear_ledger, migrate_ledger, sqlite_error};
 use crate::store::{LedgerStore, Result};
 
 #[derive(Debug, Clone)]
@@ -78,20 +80,214 @@ impl LedgerStore for SqliteLedgerStore {
         .transpose()
     }
 
-    async fn put_manifest(&self, _manifest: SourceManifest) -> Result<()> {
-        Err(unimplemented_error("put_manifest"))
+    async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
+        let mut tx = self.pool.begin().await.map_err(sqlite_error)?;
+        let manifest_json = serde_json::to_string(&manifest).map_err(json_error)?;
+        sqlx::query(
+            r#"
+            INSERT INTO axon_ledger_source_manifests (
+                source_id,
+                generation,
+                manifest_json,
+                created_at
+            ) VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(source_id, generation) DO UPDATE SET
+                manifest_json = excluded.manifest_json,
+                created_at = excluded.created_at
+            "#,
+        )
+        .bind(&manifest.source_id.0)
+        .bind(&manifest.generation.0)
+        .bind(manifest_json)
+        .bind(&manifest.created_at.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlite_error)?;
+
+        sqlx::query(
+            r#"
+            DELETE FROM axon_ledger_source_items
+            WHERE source_id = ?1 AND generation = ?2
+            "#,
+        )
+        .bind(&manifest.source_id.0)
+        .bind(&manifest.generation.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlite_error)?;
+
+        for item in &manifest.items {
+            let item_json = serde_json::to_string(item).map_err(json_error)?;
+            sqlx::query(
+                r#"
+                INSERT INTO axon_ledger_source_items (
+                    source_id,
+                    source_item_key,
+                    generation,
+                    item_canonical_uri,
+                    content_hash,
+                    version,
+                    mtime,
+                    item_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+            )
+            .bind(&item.source_id.0)
+            .bind(&item.source_item_key.0)
+            .bind(&manifest.generation.0)
+            .bind(&item.canonical_uri)
+            .bind(item.content_hash.as_deref())
+            .bind(item.version.as_deref())
+            .bind(item.mtime.as_ref().map(|value| value.0.as_str()))
+            .bind(item_json)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_error)?;
+        }
+
+        tx.commit().await.map_err(sqlite_error)?;
+        Ok(())
     }
 
-    async fn diff_manifest(&self, _manifest: SourceManifest) -> Result<SourceManifestDiff> {
-        Err(unimplemented_error("diff_manifest"))
+    async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
+        let previous_generation = self.committed_generation(&manifest.source_id).await?;
+        let previous = match &previous_generation {
+            Some(generation) => self
+                .manifest(&manifest.source_id, generation)
+                .await?
+                .map(|manifest| keyed_manifest_items(manifest.items))
+                .unwrap_or_default(),
+            None => BTreeMap::new(),
+        };
+        let SourceManifest {
+            source_id,
+            generation,
+            items,
+            ..
+        } = manifest;
+        let next = keyed_manifest_items(items);
+
+        let mut added = Vec::new();
+        let mut modified = Vec::new();
+        let mut unchanged = Vec::new();
+        for (key, item) in &next {
+            match previous.get(key) {
+                None => added.push(item.clone()),
+                Some(old) if manifest_item_changed(old, item) => modified.push(item.clone()),
+                Some(_) => unchanged.push(item.clone()),
+            }
+        }
+
+        let next_keys = next.keys().cloned().collect::<BTreeSet<_>>();
+        let removed = previous
+            .into_iter()
+            .filter_map(|(key, item)| (!next_keys.contains(&key)).then_some(item))
+            .collect::<Vec<_>>();
+
+        Ok(SourceManifestDiff {
+            header: stage_header(PipelinePhase::Diffing),
+            source_id,
+            previous_generation,
+            next_generation: generation,
+            counts: DiffCounts {
+                added: added.len() as u64,
+                modified: modified.len() as u64,
+                removed: removed.len() as u64,
+                unchanged: unchanged.len() as u64,
+                skipped: 0,
+                failed: 0,
+            },
+            added,
+            modified,
+            removed,
+            unchanged,
+            skipped: Vec::new(),
+            failed: Vec::new(),
+        })
     }
 
-    async fn create_generation(&self, _source_id: SourceId) -> Result<SourceGeneration> {
-        Err(unimplemented_error("create_generation"))
+    async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration> {
+        let previous_generation = self.committed_generation(&source_id).await?;
+        let next_sequence: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(MAX(sequence), 0) + 1
+            FROM axon_ledger_generations
+            WHERE source_id = ?1
+            "#,
+        )
+        .bind(&source_id.0)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+        let generation = SourceGeneration {
+            source_id: source_id.clone(),
+            generation: SourceGenerationId::new(format!("gen_{next_sequence}")),
+            status: LifecycleStatus::Running,
+            created_at: timestamp(),
+            published_at: None,
+            item_counts: ItemCounts {
+                added: 0,
+                modified: 0,
+                removed: 0,
+                unchanged: 0,
+                failed: 0,
+            },
+            document_counts: DocumentCounts {
+                discovered: 0,
+                prepared: 0,
+                embedded: 0,
+                published: 0,
+                failed: 0,
+            },
+            cleanup_debt: Vec::new(),
+            previous_generation,
+        };
+        self.upsert_generation(&generation, next_sequence).await?;
+        Ok(generation)
     }
 
-    async fn publish_generation(&self, _generation: SourceGeneration) -> Result<()> {
-        Err(unimplemented_error("publish_generation"))
+    async fn publish_generation(&self, generation: SourceGeneration) -> Result<()> {
+        if !matches!(
+            generation.status,
+            LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
+        ) {
+            return Err(ApiError::new(
+                "source.ledger.generation_not_publishable",
+                ErrorStage::Publishing,
+                format!(
+                    "generation {} has non-publishable status {:?}",
+                    generation.generation.0, generation.status
+                ),
+            )
+            .with_source_id(generation.source_id.0));
+        }
+
+        let mut tx = self.pool.begin().await.map_err(sqlite_error)?;
+        upsert_generation_in_tx(&mut tx, &generation, 0).await?;
+        let result = sqlx::query(
+            r#"
+            UPDATE axon_ledger_sources
+            SET committed_generation = ?1,
+                updated_at = ?2
+            WHERE source_id = ?3
+            "#,
+        )
+        .bind(&generation.generation.0)
+        .bind(timestamp().0)
+        .bind(&generation.source_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlite_error)?;
+        if result.rows_affected() != 1 {
+            return Err(ApiError::new(
+                "source.ledger.source_missing",
+                ErrorStage::Publishing,
+                format!("source {} does not exist", generation.source_id.0),
+            )
+            .with_source_id(generation.source_id.0));
+        }
+        tx.commit().await.map_err(sqlite_error)?;
+        Ok(())
     }
 
     async fn update_document_status(&self, _status: DocumentStatus) -> Result<()> {
@@ -103,11 +299,7 @@ impl LedgerStore for SqliteLedgerStore {
     }
 
     async fn reset(&self) -> Result<()> {
-        sqlx::query("DELETE FROM axon_ledger_sources")
-            .execute(&self.pool)
-            .await
-            .map_err(sqlite_error)?;
-        Ok(())
+        clear_ledger(&self.pool).await
     }
 
     async fn capabilities(&self) -> Result<LedgerStoreCapability> {
@@ -121,6 +313,138 @@ impl LedgerStore for SqliteLedgerStore {
         }
         .into())
     }
+}
+
+impl SqliteLedgerStore {
+    async fn committed_generation(
+        &self,
+        source_id: &SourceId,
+    ) -> Result<Option<SourceGenerationId>> {
+        let committed_generation: Option<String> = sqlx::query_scalar(
+            r#"
+            SELECT committed_generation
+            FROM axon_ledger_sources
+            WHERE source_id = ?1
+            "#,
+        )
+        .bind(&source_id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_error)?
+        .flatten();
+        Ok(committed_generation.map(SourceGenerationId::new))
+    }
+
+    async fn manifest(
+        &self,
+        source_id: &SourceId,
+        generation: &SourceGenerationId,
+    ) -> Result<Option<SourceManifest>> {
+        let row = sqlx::query(
+            r#"
+            SELECT manifest_json
+            FROM axon_ledger_source_manifests
+            WHERE source_id = ?1 AND generation = ?2
+            "#,
+        )
+        .bind(&source_id.0)
+        .bind(&generation.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_error)?;
+
+        row.map(|row| {
+            let manifest_json: String = row.get("manifest_json");
+            serde_json::from_str(&manifest_json).map_err(json_error)
+        })
+        .transpose()
+    }
+
+    async fn upsert_generation(&self, generation: &SourceGeneration, sequence: i64) -> Result<()> {
+        let mut tx = self.pool.begin().await.map_err(sqlite_error)?;
+        upsert_generation_in_tx(&mut tx, generation, sequence).await?;
+        tx.commit().await.map_err(sqlite_error)?;
+        Ok(())
+    }
+}
+
+async fn upsert_generation_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    generation: &SourceGeneration,
+    sequence: i64,
+) -> Result<()> {
+    let generation_json = serde_json::to_string(generation).map_err(json_error)?;
+    sqlx::query(
+        r#"
+        INSERT INTO axon_ledger_generations (
+            source_id,
+            generation,
+            sequence,
+            status,
+            generation_json,
+            created_at,
+            published_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        ON CONFLICT(source_id, generation) DO UPDATE SET
+            status = excluded.status,
+            generation_json = excluded.generation_json,
+            published_at = excluded.published_at
+        "#,
+    )
+    .bind(&generation.source_id.0)
+    .bind(&generation.generation.0)
+    .bind(sequence)
+    .bind(format!("{:?}", generation.status))
+    .bind(generation_json)
+    .bind(&generation.created_at.0)
+    .bind(
+        generation
+            .published_at
+            .as_ref()
+            .map(|value| value.0.as_str()),
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+fn keyed_manifest_items(items: Vec<ManifestItem>) -> BTreeMap<SourceItemKey, ManifestItem> {
+    items
+        .into_iter()
+        .map(|item| (item.source_item_key.clone(), item))
+        .collect()
+}
+
+fn manifest_item_changed(old: &ManifestItem, next: &ManifestItem) -> bool {
+    old.content_hash != next.content_hash || old.version != next.version || old.mtime != next.mtime
+}
+
+fn stage_header(phase: PipelinePhase) -> StageResultHeader {
+    StageResultHeader {
+        job_id: JobId::new(uuid::Uuid::from_u128(0)),
+        stage_id: StageId::new(uuid::Uuid::from_u128(0)),
+        phase,
+        status: LifecycleStatus::Completed,
+        started_at: timestamp(),
+        completed_at: Some(timestamp()),
+        counts: StageCounts {
+            items_total: None,
+            items_done: 0,
+            documents_total: None,
+            documents_done: 0,
+            chunks_total: None,
+            chunks_done: 0,
+            bytes_total: None,
+            bytes_done: 0,
+        },
+        warnings: Vec::new(),
+        error: None,
+    }
+}
+
+fn timestamp() -> Timestamp {
+    Timestamp("2026-07-01T00:00:00Z".to_string())
 }
 
 fn json_error(error: serde_json::Error) -> ApiError {
