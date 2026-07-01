@@ -7,7 +7,7 @@ use std::os::unix::fs::symlink as make_symlink;
 use std::os::windows::fs::symlink_file as make_symlink;
 use tempfile::{TempDir, tempdir};
 
-use super::repo_structure::{TARGET_CRATES, check_root};
+use super::repo_structure::{REQUIRED_WORKSPACE_MEMBERS, TARGET_CRATES, check_root};
 
 fn write(path: &Path, body: &str) {
     if let Some(parent) = path.parent() {
@@ -31,25 +31,29 @@ struct Fixture {
 fn complete_fixture() -> Fixture {
     let dir = tempdir().unwrap();
     let root = dir.path().to_path_buf();
-    let all_crates = TARGET_CRATES
+    let members = REQUIRED_WORKSPACE_MEMBERS
         .iter()
-        .map(|krate| krate.name)
-        .chain(["axon-api", "axon-crawl"])
+        .map(|member| (*member).to_string())
+        .chain(
+            TARGET_CRATES
+                .iter()
+                .map(|krate| format!("crates/{}", krate.name)),
+        )
         .collect::<Vec<_>>();
-    let members = all_crates
+    let members_toml = members
         .iter()
-        .map(|krate| format!("    \"crates/{krate}\","))
+        .map(|member| format!("    \"{member}\","))
         .collect::<Vec<_>>()
         .join("\n");
     write(
         &root.join("Cargo.toml"),
         &format!(
-            "[workspace]\nmembers = [\n{members}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
+            "[workspace]\nmembers = [\n{members_toml}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
         ),
     );
 
-    for krate in all_crates {
-        let crate_root = root.join("crates").join(krate);
+    for member in members {
+        let crate_root = root.join(member);
         write(
             &crate_root.join("Cargo.toml"),
             "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
@@ -161,6 +165,21 @@ fn target_dependency_fails() {
 }
 
 #[test]
+fn target_specific_dependency_fails() {
+    let fixture = complete_fixture();
+    write(
+        &fixture.root.join("crates/axon-error/Cargo.toml"),
+        "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("PR0 target crate axon-error must keep [target.cfg(unix).dependencies] empty"),
+        "{err}"
+    );
+}
+
+#[test]
 fn missing_target_rust_version_fails() {
     let fixture = complete_fixture();
     write(
@@ -171,6 +190,35 @@ fn missing_target_rust_version_fails() {
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
         err.contains("PR0 target crate axon-memory must set rust-version.workspace = true"),
+        "{err}"
+    );
+}
+
+#[test]
+fn missing_required_workspace_member_fails() {
+    let fixture = complete_fixture();
+    let members = REQUIRED_WORKSPACE_MEMBERS
+        .iter()
+        .map(|member| (*member).to_string())
+        .filter(|member| *member != "crates/axon-cli")
+        .chain(
+            TARGET_CRATES
+                .iter()
+                .map(|krate| format!("crates/{}", krate.name)),
+        )
+        .map(|member| format!("    \"{member}\","))
+        .collect::<Vec<_>>()
+        .join("\n");
+    write(
+        &fixture.root.join("Cargo.toml"),
+        &format!(
+            "[workspace]\nmembers = [\n{members}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
+        ),
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("root Cargo.toml is missing workspace member: crates/axon-cli"),
         "{err}"
     );
 }
