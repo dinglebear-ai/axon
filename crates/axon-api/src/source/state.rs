@@ -70,7 +70,6 @@ pub struct LeaseRequest {
     pub lease_key: String,
     pub owner_id: String,
     pub ttl_seconds: u64,
-    pub acquired_at: Timestamp,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job_id: Option<JobId>,
     pub metadata: MetadataMap,

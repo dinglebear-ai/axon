@@ -199,15 +199,6 @@ async fn embed_publish_and_cleanup_crawl_generation(
             .map(|item| item.item_key.clone())
             .collect();
         let cleanup_debt = crawl_cleanup_debt(&refresh.removed_items, source)?;
-        qdrant_publish_source_generation(
-            cfg,
-            &source.source_id,
-            refresh.generation,
-            source.index_version,
-            summary.chunks_embedded,
-        )
-        .await
-        .map_err(|err| -> Box<dyn Error> { err.into() })?;
         store
             .commit_generation_delta_for_owner(
                 &source.source_id,
@@ -218,6 +209,15 @@ async fn embed_publish_and_cleanup_crawl_generation(
                 &cleanup_debt,
             )
             .await?;
+        qdrant_publish_source_generation(
+            cfg,
+            &source.source_id,
+            refresh.generation,
+            source.index_version,
+            summary.chunks_embedded,
+        )
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.into() })?;
         drain_crawl_source_cleanup_debt(cfg, store, source).await?;
         Ok(())
     }

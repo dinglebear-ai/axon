@@ -23,10 +23,11 @@ pub trait LedgerStore: Send + Sync {
     async fn heartbeat_lease(
         &self,
         lease_id: LeaseId,
+        owner_id: String,
         heartbeat_at: Timestamp,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>>;
-    async fn release_lease(&self, lease_id: LeaseId) -> Result<()>;
+    async fn release_lease(&self, lease_id: LeaseId, owner_id: String) -> Result<()>;
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<LedgerStoreCapability>;
 }
@@ -247,25 +248,29 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
-        self.state
-            .lock()
-            .await
-            .cleanup_debt
-            .insert(debt.debt_id.clone(), debt);
+        let mut state = self.state.lock().await;
+        let key = cleanup_debt_natural_key(&debt)?;
+        for existing in state.cleanup_debt.values() {
+            if cleanup_debt_natural_key(existing)? == key {
+                return Ok(());
+            }
+        }
+        state.cleanup_debt.insert(debt.debt_id.clone(), debt);
         Ok(())
     }
 
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
+        let now = timestamp();
         let mut state = self.state.lock().await;
         if let Some(existing_id) = state.lease_ids_by_key.get(&request.lease_key).cloned() {
             let existing = state.leases.get(&existing_id).cloned();
             match existing {
-                Some(existing) if existing.expires_at.0 > request.acquired_at.0 => {
+                Some(existing) if timestamp_after(&existing.expires_at, &now)? => {
                     if existing.owner_id == request.owner_id {
                         let guard = LeaseGuard {
-                            expires_at: add_seconds(&request.acquired_at, request.ttl_seconds),
-                            heartbeat_at: request.acquired_at.clone(),
-                            acquired_at: request.acquired_at,
+                            expires_at: add_seconds(&now, request.ttl_seconds),
+                            heartbeat_at: now.clone(),
+                            acquired_at: existing.acquired_at,
                             job_id: request.job_id,
                             metadata: request.metadata,
                             ..existing
@@ -286,9 +291,9 @@ impl LedgerStore for FakeLedgerStore {
             lease_id: LeaseId::new(format!("lease_{}", uuid::Uuid::new_v4())),
             lease_key: request.lease_key,
             owner_id: request.owner_id,
-            expires_at: add_seconds(&request.acquired_at, request.ttl_seconds),
-            heartbeat_at: request.acquired_at.clone(),
-            acquired_at: request.acquired_at,
+            expires_at: add_seconds(&now, request.ttl_seconds),
+            heartbeat_at: now.clone(),
+            acquired_at: now,
             job_id: request.job_id,
             metadata: request.metadata,
         };
@@ -299,30 +304,41 @@ impl LedgerStore for FakeLedgerStore {
         Ok(Some(guard))
     }
 
-    async fn release_lease(&self, lease_id: LeaseId) -> Result<()> {
+    async fn release_lease(&self, lease_id: LeaseId, owner_id: String) -> Result<()> {
         let mut state = self.state.lock().await;
-        if let Some(guard) = state.leases.remove(&lease_id) {
-            state.lease_ids_by_key.remove(&guard.lease_key);
+        let Some(guard) = state.leases.get(&lease_id).cloned() else {
+            return Ok(());
+        };
+        if guard.owner_id != owner_id {
+            return Err(ApiError::new(
+                "source.ledger.lease_owner_mismatch",
+                ErrorStage::Leasing,
+                "lease owner does not match release owner",
+            ));
         }
+        state.leases.remove(&lease_id);
+        state.lease_ids_by_key.remove(&guard.lease_key);
         Ok(())
     }
 
     async fn heartbeat_lease(
         &self,
         lease_id: LeaseId,
-        heartbeat_at: Timestamp,
+        owner_id: String,
+        _heartbeat_at: Timestamp,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>> {
+        let now = timestamp();
         let mut state = self.state.lock().await;
         let Some(existing) = state.leases.get(&lease_id).cloned() else {
             return Ok(None);
         };
-        if existing.expires_at.0 <= heartbeat_at.0 {
+        if existing.owner_id != owner_id || !timestamp_after(&existing.expires_at, &now)? {
             return Ok(None);
         }
         let guard = LeaseGuard {
-            heartbeat_at: heartbeat_at.clone(),
-            expires_at: add_seconds(&heartbeat_at, ttl_seconds),
+            heartbeat_at: now.clone(),
+            expires_at: add_seconds(&now, ttl_seconds),
             ..existing
         };
         state.leases.insert(lease_id, guard.clone());
@@ -362,6 +378,27 @@ fn keyed_manifest_items(items: Vec<ManifestItem>) -> BTreeMap<SourceItemKey, Man
 
 fn manifest_item_changed(old: &ManifestItem, next: &ManifestItem) -> bool {
     old.content_hash != next.content_hash || old.version != next.version || old.mtime != next.mtime
+}
+
+fn cleanup_debt_natural_key(
+    debt: &CleanupDebt,
+) -> Result<(SourceId, String, CleanupDebtKind, String)> {
+    let selector_json = serde_json::to_string(&debt.selector).map_err(|error| {
+        ApiError::new(
+            "source.ledger.cleanup_selector_invalid",
+            ErrorStage::Cleaning,
+            format!("failed to serialize cleanup selector: {error}"),
+        )
+    })?;
+    Ok((
+        debt.source_id.clone(),
+        debt.generation
+            .as_ref()
+            .map(|value| value.0.clone())
+            .unwrap_or_default(),
+        debt.kind,
+        selector_json,
+    ))
 }
 
 fn record_removed_item_cleanup_debt(state: &mut FakeLedgerState, generation: &SourceGeneration) {
@@ -447,7 +484,7 @@ fn stage_header(phase: PipelinePhase) -> StageResultHeader {
 }
 
 fn timestamp() -> Timestamp {
-    Timestamp("2026-07-01T00:00:00Z".to_string())
+    Timestamp(chrono::Utc::now().to_rfc3339())
 }
 
 fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
@@ -457,4 +494,22 @@ fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
         Ok(value) => Timestamp((value + chrono::Duration::seconds(seconds as i64)).to_rfc3339()),
         Err(_) => timestamp.clone(),
     }
+}
+
+fn timestamp_after(left: &Timestamp, right: &Timestamp) -> Result<bool> {
+    let left = chrono::DateTime::parse_from_rfc3339(&left.0).map_err(|error| {
+        ApiError::new(
+            "source.ledger.invalid_timestamp",
+            ErrorStage::Leasing,
+            format!("invalid lease timestamp {}: {error}", left.0),
+        )
+    })?;
+    let right = chrono::DateTime::parse_from_rfc3339(&right.0).map_err(|error| {
+        ApiError::new(
+            "source.ledger.invalid_timestamp",
+            ErrorStage::Leasing,
+            format!("invalid lease timestamp {}: {error}", right.0),
+        )
+    })?;
+    Ok(left > right)
 }
