@@ -12,6 +12,7 @@ pub struct SourceGeneration {
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
     pub status: LifecycleStatus,
+    pub publish_state: PublishState,
     pub created_at: Timestamp,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub published_at: Option<Timestamp>,

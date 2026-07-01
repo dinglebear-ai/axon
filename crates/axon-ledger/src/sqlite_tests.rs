@@ -95,6 +95,7 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
         source_id: manifest.source_id.clone(),
         generation: manifest.generation.clone(),
         status: LifecycleStatus::Completed,
+        publish_state: PublishState::Committed,
         created_at: ts(),
         published_at: None,
         item_counts: ItemCounts {
@@ -114,6 +115,13 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
         cleanup_debt: Vec::new(),
         previous_generation: None,
     }
+}
+
+fn completed_generation_from(generation: &SourceGeneration) -> SourceGeneration {
+    let mut generation = generation.clone();
+    generation.status = LifecycleStatus::Completed;
+    generation.publish_state = PublishState::Committed;
+    generation
 }
 
 fn lease_request(key: &str, owner: &str, acquired_at: Timestamp) -> LeaseRequest {
@@ -277,6 +285,63 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
 }
 
 #[tokio::test]
+async fn sqlite_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let mut debt = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-a"),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::new("src_sqlite"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::Document {
+            document_id: DocumentId::new("doc-sqlite"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+
+    store
+        .record_cleanup_debt(debt.clone())
+        .await
+        .expect("record debt");
+
+    debt.debt_id = CleanupDebtId::new("debt-b");
+    store
+        .record_cleanup_debt(debt.clone())
+        .await
+        .expect("same selector is idempotent even with a new debt id");
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
+
+    debt.status = LifecycleStatus::Completed;
+    debt.completed_at = Some(ts_at(10));
+    store
+        .record_cleanup_debt(debt.clone())
+        .await
+        .expect("complete debt");
+
+    debt.status = LifecycleStatus::Pending;
+    debt.completed_at = None;
+    store
+        .record_cleanup_debt(debt)
+        .await
+        .expect("stale replay should not regress terminal debt");
+
+    let stored = store
+        .cleanup_debt(&CleanupDebtId::new("debt-b"))
+        .await
+        .expect("read debt")
+        .expect("stored debt");
+    assert_eq!(stored.status, LifecycleStatus::Completed);
+    assert_eq!(stored.completed_at, Some(ts_at(10)));
+}
+
+#[tokio::test]
 async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
 
@@ -327,6 +392,33 @@ async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
 }
 
 #[tokio::test]
+async fn sqlite_same_owner_can_renew_lease() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    let first = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            ts_at(0),
+        ))
+        .await
+        .expect("acquire")
+        .expect("lease");
+
+    let renewed = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            ts_at(10),
+        ))
+        .await
+        .expect("renew")
+        .expect("renewed lease");
+
+    assert_eq!(renewed.lease_id, first.lease_id);
+    assert!(renewed.expires_at.0 > first.expires_at.0);
+}
+
+#[tokio::test]
 async fn sqlite_migration_creates_required_ledger_tables() {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
@@ -339,7 +431,16 @@ async fn sqlite_migration_creates_required_ledger_tables() {
         r#"
         SELECT name
         FROM sqlite_master
-        WHERE type = 'table' AND name LIKE 'axon_ledger_%'
+        WHERE type = 'table'
+          AND name IN (
+            'sources',
+            'source_generations',
+            'source_items',
+            'source_manifests',
+            'document_status',
+            'cleanup_debt',
+            'leases'
+          )
         ORDER BY name
         "#,
     )
@@ -350,13 +451,13 @@ async fn sqlite_migration_creates_required_ledger_tables() {
     assert_eq!(
         tables,
         vec![
-            "axon_ledger_cleanup_debt",
-            "axon_ledger_document_status",
-            "axon_ledger_generations",
-            "axon_ledger_leases",
-            "axon_ledger_source_items",
-            "axon_ledger_source_manifests",
-            "axon_ledger_sources",
+            "cleanup_debt",
+            "document_status",
+            "leases",
+            "source_generations",
+            "source_items",
+            "source_manifests",
+            "sources",
         ]
     );
 }
@@ -388,6 +489,13 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
         error.code.to_string(),
         "source.ledger.generation_not_publishable"
     );
+
+    let missing_manifest = completed_generation_from(&running);
+    let error = store
+        .publish_generation(missing_manifest)
+        .await
+        .expect_err("completed generation without manifest is not publishable");
+    assert_eq!(error.code.to_string(), "source.ledger.manifest_missing");
 
     let committed_manifest = manifest_with_items(
         &running.generation.0,
@@ -431,4 +539,115 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
         .expect("diff against committed generation");
     assert_eq!(diff.counts.unchanged, 1);
     assert_eq!(diff.counts.added, 0);
+}
+
+#[tokio::test]
+async fn sqlite_publish_rejects_stale_generation_baseline() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    store
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![manifest_item("src/lib.rs", "gen1")],
+        ))
+        .await
+        .expect("put gen1");
+    store
+        .publish_generation(completed_generation_from(&gen1))
+        .await
+        .expect("publish gen1");
+
+    let stale = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create stale gen2");
+    let fresh = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create fresh gen3");
+    store
+        .put_manifest(manifest_with_items(
+            &fresh.generation.0,
+            vec![manifest_item("src/lib.rs", "gen3")],
+        ))
+        .await
+        .expect("put fresh");
+    store
+        .publish_generation(completed_generation_from(&fresh))
+        .await
+        .expect("publish fresh");
+
+    store
+        .put_manifest(manifest_with_items(
+            &stale.generation.0,
+            vec![manifest_item("src/lib.rs", "gen2")],
+        ))
+        .await
+        .expect("put stale");
+    let error = store
+        .publish_generation(completed_generation_from(&stale))
+        .await
+        .expect_err("stale generation cannot rewind committed baseline");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.generation_baseline_changed"
+    );
+
+    let diff = store
+        .diff_manifest(manifest_with_items(
+            "gen_next",
+            vec![manifest_item("src/lib.rs", "gen3")],
+        ))
+        .await
+        .expect("diff");
+    assert_eq!(diff.previous_generation, Some(fresh.generation));
+    assert_eq!(diff.counts.unchanged, 1);
+}
+
+#[tokio::test]
+async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    store
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![
+                manifest_item("README.md", "same"),
+                manifest_item("src/old.rs", "removed"),
+            ],
+        ))
+        .await
+        .expect("put gen1");
+    store
+        .publish_generation(completed_generation_from(&gen1))
+        .await
+        .expect("publish gen1");
+
+    let gen2 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen2");
+    store
+        .put_manifest(manifest_with_items(
+            &gen2.generation.0,
+            vec![manifest_item("README.md", "same")],
+        ))
+        .await
+        .expect("put gen2");
+    store
+        .publish_generation(completed_generation_from(&gen2))
+        .await
+        .expect("publish gen2");
+
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
 }

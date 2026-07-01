@@ -236,6 +236,20 @@ pub enum LifecycleStatus {
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
 #[serde(rename_all = "snake_case")]
+pub enum PublishState {
+    Planning,
+    Writing,
+    Publishing,
+    Committed,
+    CleanupPending,
+    Cleaning,
+    Cleaned,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum DocumentLifecycleStatus {
     Discovered,
     Fetched,
