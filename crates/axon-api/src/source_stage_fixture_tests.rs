@@ -250,6 +250,8 @@ fn parse_result_fixtures_round_trip() {
             graph_candidates: Vec::new(),
             parser_id: "markdown".to_string(),
             parser_version: "1.0.0".to_string(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
         };
         round_trip(&value);
     }

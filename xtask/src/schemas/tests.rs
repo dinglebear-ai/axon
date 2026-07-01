@@ -12,10 +12,12 @@ fn fixture_repo() -> TempDir {
         "crates/axon-api/src/source/document.rs",
         "crates/axon-api/src/source/lifecycle.rs",
         "crates/axon-api/src/source/enums.rs",
+        "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/stage.rs",
         "crates/axon-api/src/source/state.rs",
         "crates/axon-api/src/source/status.rs",
+        "crates/axon-api/src/source/vector.rs",
         "crates/axon-api/src/source/capability.rs",
         "crates/axon-error/src/lib.rs",
         "crates/axon-error/src/api_error.rs",
@@ -216,9 +218,11 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
     }));
     for path in [
         "crates/axon-api/src/source/document.rs",
+        "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/state.rs",
         "crates/axon-api/src/source/status.rs",
+        "crates/axon-api/src/source/vector.rs",
     ] {
         assert!(
             inputs.iter().any(|input| input["path"] == path),
@@ -233,6 +237,15 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
         "LeaseGuard",
         "CleanupSelector",
         "DocumentStatus",
+        "SourceDocument",
+        "PreparedDocument",
+        "PreparedChunk",
+        "ChunkLocator",
+        "SourceParseFacts",
+        "GraphCandidate",
+        "GraphEvidence",
+        "EmbeddingBatch",
+        "EmbeddingInput",
     ] {
         assert!(
             value["$defs"].get(def).is_some(),

@@ -75,10 +75,12 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-api/src/source/document.rs",
             "crates/axon-api/src/source/lifecycle.rs",
             "crates/axon-api/src/source/enums.rs",
+            "crates/axon-api/src/source/graph.rs",
             "crates/axon-api/src/source/ids.rs",
             "crates/axon-api/src/source/stage.rs",
             "crates/axon-api/src/source/state.rs",
             "crates/axon-api/src/source/status.rs",
+            "crates/axon-api/src/source/vector.rs",
             "crates/axon-error/src/api_error.rs",
         ],
     )?;
@@ -123,6 +125,42 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             (
                 "DocumentStatus",
                 schemars::schema_for!(axon_api::source::DocumentStatus).into(),
+            ),
+            (
+                "SourceDocument",
+                schemars::schema_for!(axon_api::source::SourceDocument).into(),
+            ),
+            (
+                "PreparedDocument",
+                schemars::schema_for!(axon_api::source::PreparedDocument).into(),
+            ),
+            (
+                "PreparedChunk",
+                schemars::schema_for!(axon_api::source::PreparedChunk).into(),
+            ),
+            (
+                "ChunkLocator",
+                schemars::schema_for!(axon_api::source::ChunkLocator).into(),
+            ),
+            (
+                "SourceParseFacts",
+                schemars::schema_for!(axon_api::source::SourceParseFacts).into(),
+            ),
+            (
+                "GraphCandidate",
+                schemars::schema_for!(axon_api::source::GraphCandidate).into(),
+            ),
+            (
+                "GraphEvidence",
+                schemars::schema_for!(axon_api::source::GraphEvidence).into(),
+            ),
+            (
+                "EmbeddingBatch",
+                schemars::schema_for!(axon_api::source::EmbeddingBatch).into(),
+            ),
+            (
+                "EmbeddingInput",
+                schemars::schema_for!(axon_api::source::EmbeddingInput).into(),
             ),
             (
                 "ApiError",

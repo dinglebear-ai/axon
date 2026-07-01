@@ -17,9 +17,11 @@ fn graph_query_and_resolve_dtos_round_trip() {
     };
     let evidence = GraphEvidence {
         evidence_id: "ev_1".to_string(),
+        evidence_kind: "manifest_dependency".to_string(),
         source_id: SourceId::from("src_1"),
         source_item_key: SourceItemKey::from("package.json"),
         document_id: Some(DocumentId::from("doc_1")),
+        chunk_id: None,
         range: None,
         quote: Some("\"@example/pkg\"".to_string()),
         confidence: 0.95,

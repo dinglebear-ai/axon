@@ -11,6 +11,8 @@ fn candidate() -> GraphCandidate {
         source_item_key: SourceItemKey::new("Cargo.toml"),
         item_canonical_uri: "file:///repo/Cargo.toml".to_string(),
         document_id: Some(DocumentId::new("doc-a")),
+        kind: "manifest_dependency".to_string(),
+        merge_key: Some("manifest:file:///repo/Cargo.toml".to_string()),
         producer: GraphCandidateProducer {
             adapter: "local".to_string(),
             parser: Some("manifest".to_string()),
@@ -38,9 +40,11 @@ fn candidate() -> GraphCandidate {
         }],
         evidence: vec![GraphEvidence {
             evidence_id: "ev-a".to_string(),
+            evidence_kind: "manifest_range".to_string(),
             source_id: SourceId::new("src_a"),
             source_item_key: SourceItemKey::new("Cargo.toml"),
             document_id: Some(DocumentId::new("doc-a")),
+            chunk_id: None,
             range: None,
             quote: Some("tokio = ...".to_string()),
             confidence: 0.9,
