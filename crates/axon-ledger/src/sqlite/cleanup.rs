@@ -5,6 +5,7 @@ use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::util::{cleanup_selector_hash, enum_wire_value, json_error};
 use crate::store::Result;
+use crate::validation::source_missing_error;
 
 pub(super) async fn record_cleanup_debt(
     store: &SqliteLedgerStore,
@@ -12,6 +13,7 @@ pub(super) async fn record_cleanup_debt(
 ) -> Result<()> {
     validate_cleanup_debt(&debt)?;
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    ensure_source_exists_in_tx(&mut tx, &debt.source_id).await?;
     insert_cleanup_debt_in_tx(&mut tx, debt).await?;
     tx.commit().await.map_err(sqlite_error)?;
     Ok(())
@@ -192,6 +194,21 @@ fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
         }
         _ => Ok(()),
     }
+}
+
+async fn ensure_source_exists_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+) -> Result<()> {
+    let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
+        .bind(&source_id.0)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(sqlite_error)?;
+    if exists.is_none() {
+        return Err(source_missing_error(source_id));
+    }
+    Ok(())
 }
 
 fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {

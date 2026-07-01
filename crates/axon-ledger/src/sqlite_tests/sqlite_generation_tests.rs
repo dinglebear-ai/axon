@@ -99,6 +99,24 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
     assert_eq!(stored_generation.publish_state, PublishState::Committed);
     assert!(stored_generation.published_at.is_some());
 
+    let error = store
+        .complete_generation(completed_generation_from(&running))
+        .await
+        .expect_err("published generation cannot be completed again");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.generation_already_published"
+    );
+    let generation_row: (String, Option<String>) = sqlx::query_as(
+        "SELECT publish_state, published_at FROM source_generations WHERE generation = ?1",
+    )
+    .bind(&running.generation.0)
+    .fetch_one(&store.pool)
+    .await
+    .expect("read stored generation after rejected duplicate completion");
+    assert_eq!(generation_row.0, "committed");
+    assert!(generation_row.1.is_some());
+
     let next = store
         .create_generation(SourceId::new("src_sqlite"))
         .await

@@ -5,11 +5,21 @@ use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::util::{enum_wire_value, json_error};
 use crate::store::Result;
+use crate::validation::source_missing_error;
 
 pub(super) async fn update_document_status(
     store: &SqliteLedgerStore,
     status: DocumentStatus,
 ) -> Result<()> {
+    let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
+        .bind(&status.source_id.0)
+        .fetch_optional(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
+    if exists.is_none() {
+        return Err(source_missing_error(&status.source_id));
+    }
+
     let status_json = serde_json::to_string(&status).map_err(json_error)?;
     sqlx::query(
         r#"

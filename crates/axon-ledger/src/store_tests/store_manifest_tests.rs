@@ -101,6 +101,27 @@ async fn fake_ledger_scopes_generation_ids_per_source() {
 }
 
 #[tokio::test]
+async fn fake_ledger_skips_manifest_created_generation_ids() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    ledger
+        .put_manifest(manifest_with_items(
+            "gen_1",
+            vec![manifest_item("src/lib.rs", "manifest-created")],
+        ))
+        .await
+        .unwrap();
+
+    let generated = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+
+    assert_eq!(generated.generation, SourceGenerationId::new("gen_2"));
+}
+
+#[tokio::test]
 async fn fake_ledger_diffs_version_and_mtime_changes() {
     let ledger = FakeLedgerStore::new();
     ledger.upsert_source(source()).await.unwrap();
@@ -154,6 +175,36 @@ async fn fake_ledger_rejects_non_publishable_generation_statuses() {
         .await
         .unwrap();
     complete_and_publish(&ledger, completed_generation(running.clone())).await;
+    assert_eq!(
+        ledger.committed_generation(&SourceId::new("src_a")).await,
+        Some(running.generation)
+    );
+}
+
+#[tokio::test]
+async fn fake_ledger_rejects_recompleting_published_generation() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    let running = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_for_generation(&running, "published"))
+        .await
+        .unwrap();
+    let published = complete_and_publish(&ledger, completed_generation(running.clone())).await;
+    assert_eq!(published.publish_state, PublishState::Committed);
+    assert!(published.published_at.is_some());
+
+    let error = ledger
+        .complete_generation(completed_generation(running.clone()))
+        .await
+        .expect_err("published generation cannot be completed again");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.generation_already_published"
+    );
     assert_eq!(
         ledger.committed_generation(&SourceId::new("src_a")).await,
         Some(running.generation)
