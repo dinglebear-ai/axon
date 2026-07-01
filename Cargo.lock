@@ -879,6 +879,13 @@ dependencies = [
 [[package]]
 name = "axon-vectors"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-web"
