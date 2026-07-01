@@ -16,6 +16,11 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-vectors",
     "crates/axon-llm",
     "crates/axon-adapters",
+    // Phase 4 / PR5 route crate graduated from PR0 skeleton status:
+    // it now owns source resolving, canonicalization, routing, adapter
+    // capability metadata, authority aliases, stable source IDs, and sidecar
+    // tests.
+    "crates/axon-route",
     "crates/axon-crawl",
     "crates/axon-vector",
     "crates/axon-ingest",
@@ -50,20 +55,6 @@ pub const TARGET_CRATES: &[TargetCrate] = &[
             "span",
             "log",
             "collector",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-route",
-        modules: &[
-            "resolver",
-            "router",
-            "canonical",
-            "source_id",
-            "scope",
-            "authority",
-            "alias",
-            "capability",
             "testing",
         ],
     },
