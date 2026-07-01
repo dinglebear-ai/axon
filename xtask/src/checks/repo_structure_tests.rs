@@ -1,6 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use std::os::unix::fs::symlink as make_symlink;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_file as make_symlink;
 use tempfile::{TempDir, tempdir};
 
 use super::repo_structure::{TARGET_CRATES, check_root};
@@ -12,21 +16,11 @@ fn write(path: &Path, body: &str) {
     fs::write(path, body).unwrap();
 }
 
-fn symlink(target: &str, link: &Path) {
+fn write_symlink(target: &str, link: &Path) {
     if let Some(parent) = link.parent() {
         fs::create_dir_all(parent).unwrap();
     }
-    symlink_file(target, link);
-}
-
-#[cfg(unix)]
-fn symlink_file(target: &str, link: &Path) {
-    std::os::unix::fs::symlink(target, link).unwrap();
-}
-
-#[cfg(windows)]
-fn symlink_file(target: &str, link: &Path) {
-    std::os::windows::fs::symlink_file(target, link).unwrap();
+    make_symlink(target, link).unwrap();
 }
 
 struct Fixture {
@@ -49,22 +43,24 @@ fn complete_fixture() -> Fixture {
         .join("\n");
     write(
         &root.join("Cargo.toml"),
-        &format!("[workspace]\nmembers = [\n{members}\n]\n"),
+        &format!(
+            "[workspace]\nmembers = [\n{members}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
+        ),
     );
 
     for krate in all_crates {
         let crate_root = root.join("crates").join(krate);
         write(
             &crate_root.join("Cargo.toml"),
-            "[package]\nname = \"fixture\"\n\n[dependencies]\n",
+            "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
         );
         write(
             &crate_root.join("src/lib.rs"),
             "pub const CRATE_NAME: &str = \"fixture\";\n",
         );
         write(&crate_root.join("src/CLAUDE.md"), "# Fixture\n");
-        symlink("CLAUDE.md", &crate_root.join("src/AGENTS.md"));
-        symlink("CLAUDE.md", &crate_root.join("src/GEMINI.md"));
+        write_symlink("CLAUDE.md", &crate_root.join("src/AGENTS.md"));
+        write_symlink("CLAUDE.md", &crate_root.join("src/GEMINI.md"));
     }
 
     for krate in TARGET_CRATES {
@@ -111,7 +107,7 @@ fn missing_target_crate_fails() {
 fn broken_agent_memory_symlink_fails() {
     let fixture = complete_fixture();
     fs::remove_file(fixture.root.join("crates/axon-route/src/AGENTS.md")).unwrap();
-    symlink(
+    write_symlink(
         "../CLAUDE.md",
         &fixture.root.join("crates/axon-route/src/AGENTS.md"),
     );
@@ -154,12 +150,48 @@ fn target_dependency_fails() {
     let fixture = complete_fixture();
     write(
         &fixture.root.join("crates/axon-error/Cargo.toml"),
-        "[package]\nname = \"fixture\"\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
         err.contains("PR0 target crate axon-error must keep [dependencies] empty"),
+        "{err}"
+    );
+}
+
+#[test]
+fn missing_target_rust_version_fails() {
+    let fixture = complete_fixture();
+    write(
+        &fixture.root.join("crates/axon-memory/Cargo.toml"),
+        "[package]\nname = \"fixture\"\n\n[dependencies]\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("PR0 target crate axon-memory must set rust-version.workspace = true"),
+        "{err}"
+    );
+}
+
+#[test]
+fn missing_workspace_rust_version_fails() {
+    let fixture = complete_fixture();
+    let members = TARGET_CRATES
+        .iter()
+        .map(|krate| format!("    \"crates/{}\",", krate.name))
+        .chain(["    \"crates/axon-api\",".to_string()])
+        .collect::<Vec<_>>()
+        .join("\n");
+    write(
+        &fixture.root.join("Cargo.toml"),
+        &format!("[workspace]\nmembers = [\n{members}\n]\n"),
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("root Cargo.toml must set workspace.package.rust-version = \"1.94.0\""),
         "{err}"
     );
 }

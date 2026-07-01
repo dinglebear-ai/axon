@@ -25,7 +25,7 @@ Exit criteria:
 
 - PR0 plan: `docs/pipeline-unification/plans/2026-07-01-target-workspace-skeleton.md`
 - [ ] add missing target crates
-- [ ] remove obsolete crates from workspace when their responsibilities move
+- [ ] keep transitional crates in the workspace until later responsibility-moving PRs
 - [ ] add crate-local `src/CLAUDE.md` files
 - [ ] enforce no `mod.rs`
 - [ ] add dependency layering check for target crates
