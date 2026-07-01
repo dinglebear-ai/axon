@@ -3,6 +3,25 @@ use std::fs;
 use std::path::Path;
 
 const TARGET_RUST_VERSION: &str = "1.94.0";
+const DEPENDENCY_TABLES: &[&str] = &["dependencies", "dev-dependencies", "build-dependencies"];
+
+pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
+    "xtask",
+    "crates/axon-api",
+    "crates/axon-authz",
+    "crates/axon-core",
+    "crates/axon-crawl",
+    "crates/axon-vector",
+    "crates/axon-ingest",
+    "crates/axon-extract",
+    "crates/axon-jobs",
+    "crates/axon-source-ledger",
+    "crates/axon-code-index",
+    "crates/axon-services",
+    "crates/axon-mcp",
+    "crates/axon-web",
+    "crates/axon-cli",
+];
 
 pub struct TargetCrate {
     pub name: &'static str,
@@ -235,6 +254,10 @@ pub fn check_root(root: &Path) -> Result<(), String> {
     require_workspace_rust_version(&cargo_toml, &mut errors);
     let workspace_members = workspace_members(&cargo_toml, &mut errors);
 
+    for member in REQUIRED_WORKSPACE_MEMBERS {
+        require_workspace_member_path(member, &workspace_members, &mut errors);
+    }
+
     for krate in TARGET_CRATES {
         check_target_crate(root, krate, &workspace_members, &mut errors);
     }
@@ -279,9 +302,17 @@ fn require_workspace_member(
     errors: &mut Vec<String>,
 ) {
     let crate_dir = format!("crates/{krate}");
-    if !workspace_members.contains(&crate_dir) {
+    require_workspace_member_path(&crate_dir, workspace_members, errors);
+}
+
+fn require_workspace_member_path(
+    member: &str,
+    workspace_members: &BTreeSet<String>,
+    errors: &mut Vec<String>,
+) {
+    if !workspace_members.contains(member) {
         errors.push(format!(
-            "root Cargo.toml is missing workspace member: {crate_dir}"
+            "root Cargo.toml is missing workspace member: {member}"
         ));
     }
 }
@@ -368,14 +399,39 @@ fn require_empty_dependency_tables(krate: &str, cargo_toml: &str, errors: &mut V
         Err(_) => return,
     };
 
-    for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
-        if let Some(table) = parsed.get(table_name).and_then(toml::Value::as_table)
-            && !table.is_empty()
+    let mut dependency_tables = Vec::new();
+    collect_non_empty_dependency_tables(
+        &toml::Value::Table(parsed),
+        &mut Vec::new(),
+        &mut dependency_tables,
+    );
+
+    for table_name in dependency_tables {
+        errors.push(format!(
+            "PR0 target crate {krate} must keep {table_name} empty"
+        ));
+    }
+}
+
+fn collect_non_empty_dependency_tables(
+    value: &toml::Value,
+    path: &mut Vec<String>,
+    found: &mut Vec<String>,
+) {
+    let Some(table) = value.as_table() else {
+        return;
+    };
+
+    for (key, value) in table {
+        path.push(key.clone());
+        if DEPENDENCY_TABLES.contains(&key.as_str())
+            && value.as_table().is_some_and(|table| !table.is_empty())
         {
-            errors.push(format!(
-                "PR0 target crate {krate} must keep [{table_name}] empty"
-            ));
+            found.push(format!("[{}]", path.join(".")));
+        } else {
+            collect_non_empty_dependency_tables(value, path, found);
         }
+        path.pop();
     }
 }
 
