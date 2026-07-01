@@ -160,6 +160,7 @@ impl LedgerStore for FakeLedgerStore {
             source_id: source_id.clone(),
             generation,
             status: LifecycleStatus::Running,
+            publish_state: PublishState::Writing,
             created_at: timestamp(),
             published_at: None,
             item_counts: ItemCounts {
@@ -196,9 +197,34 @@ impl LedgerStore for FakeLedgerStore {
             )
             .with_source_id(generation.source_id.0));
         }
-        self.state
-            .lock()
-            .await
+        let mut state = self.state.lock().await;
+        if !state
+            .manifests
+            .contains_key(&(generation.source_id.clone(), generation.generation.clone()))
+        {
+            return Err(ApiError::new(
+                "source.ledger.manifest_missing",
+                ErrorStage::Publishing,
+                format!(
+                    "generation {} cannot publish without a manifest",
+                    generation.generation.0
+                ),
+            )
+            .with_source_id(generation.source_id.0));
+        }
+        let committed = state.committed.get(&generation.source_id).cloned();
+        if committed != generation.previous_generation {
+            return Err(ApiError::new(
+                "source.ledger.generation_baseline_changed",
+                ErrorStage::Publishing,
+                format!(
+                    "generation {} was based on {:?}, but committed generation is {:?}",
+                    generation.generation.0, generation.previous_generation, committed
+                ),
+            )
+            .with_source_id(generation.source_id.0));
+        }
+        state
             .committed
             .insert(generation.source_id, generation.generation);
         Ok(())

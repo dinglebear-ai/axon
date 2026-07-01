@@ -73,8 +73,15 @@ fn manifest_with_freshness(hash: &str, version: Option<&str>, mtime: Timestamp) 
     }
 }
 
+fn manifest_for_generation(generation: &SourceGeneration, hash: &str) -> SourceManifest {
+    let mut manifest = manifest(hash);
+    manifest.generation = generation.generation.clone();
+    manifest
+}
+
 fn completed_generation(mut generation: SourceGeneration) -> SourceGeneration {
     generation.status = LifecycleStatus::Completed;
+    generation.publish_state = PublishState::Committed;
     generation
 }
 
@@ -83,6 +90,7 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
         source_id: manifest.source_id.clone(),
         generation: manifest.generation.clone(),
         status: LifecycleStatus::Completed,
+        publish_state: PublishState::Committed,
         created_at: ts(),
         published_at: None,
         item_counts: ItemCounts {
@@ -166,6 +174,10 @@ async fn fake_ledger_scopes_generation_ids_per_source() {
     assert_eq!(src_b_first.generation, SourceGenerationId::new("gen_1"));
 
     ledger
+        .put_manifest(manifest_for_generation(&src_a_first, "src-a-first"))
+        .await
+        .unwrap();
+    ledger
         .publish_generation(completed_generation(src_a_first.clone()))
         .await
         .unwrap();
@@ -230,6 +242,10 @@ async fn fake_ledger_rejects_non_publishable_generation_statuses() {
         None
     );
 
+    ledger
+        .put_manifest(manifest_for_generation(&running, "running"))
+        .await
+        .unwrap();
     ledger
         .publish_generation(completed_generation(running.clone()))
         .await

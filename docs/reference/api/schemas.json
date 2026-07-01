@@ -1765,7 +1765,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:8ceed92979bcbad780c592bf68e36f11dfcc27414fbff5e61d7264b959c3c53d",
+        "checksum": "sha256:6c2988098d122010597c0b092d91543eb7250313cab9c0a6cfb0c00da56f8fc0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },

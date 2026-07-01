@@ -320,6 +320,7 @@ fn source_generation_and_cleanup_debt_round_trip() {
         source_id: SourceId::from("src_local_workspace"),
         generation: SourceGenerationId::from("gen_0002"),
         status: LifecycleStatus::Running,
+        publish_state: PublishState::Writing,
         created_at: Timestamp::from(Utc::now()),
         published_at: None,
         item_counts: ItemCounts {
