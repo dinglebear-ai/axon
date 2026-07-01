@@ -156,9 +156,12 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
     }
     for def in [
         "SourceGeneration",
+        "PublishGenerationRequest",
+        "CleanupDebt",
         "LeaseRequest",
         "LeaseGuard",
         "CleanupSelector",
+        "DocumentStatus",
     ] {
         assert!(
             value["$defs"].get(def).is_some(),

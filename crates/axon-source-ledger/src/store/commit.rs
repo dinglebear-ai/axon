@@ -334,6 +334,10 @@ impl SourceLedgerStore {
                     "source ledger lease for {source_id} owned by {owner} expired before commit"
                 );
             }
+        } else if state.lease_owner.is_some() && state.lease_expires_at_ms > now_ms {
+            anyhow::bail!(
+                "source ledger source {source_id} has an active lease; ownerless commit rejected"
+            );
         }
 
         let allows_implicit_generation = state.max_generation == state.committed_generation
@@ -367,7 +371,10 @@ impl SourceLedgerStore {
                  updated_at_ms = ?
              WHERE source_id = ?
                AND (max_generation = ? OR (max_generation = committed_generation AND committed_generation = ?))
-               AND (? IS NULL OR (lease_owner = ? AND lease_expires_at_ms > ?))",
+               AND (
+                 (? IS NULL AND (lease_owner IS NULL OR lease_expires_at_ms <= ?))
+                 OR (? IS NOT NULL AND lease_owner = ? AND lease_expires_at_ms > ?)
+               )",
         )
         .bind(generation)
         .bind(generation)
@@ -376,6 +383,8 @@ impl SourceLedgerStore {
         .bind(source_id)
         .bind(generation)
         .bind(generation.saturating_sub(1))
+        .bind(owner)
+        .bind(now_ms)
         .bind(owner)
         .bind(owner)
         .bind(now_ms);

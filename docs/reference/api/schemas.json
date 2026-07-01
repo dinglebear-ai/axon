@@ -1002,6 +1002,40 @@
       "format": "uuid",
       "type": "string"
     },
+    "PublishGenerationRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "expected_previous_generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
+        },
+        "source_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceId"
+        }
+      },
+      "required": [
+        "source_id",
+        "generation"
+      ],
+      "title": "PublishGenerationRequest",
+      "type": "object"
+    },
+    "PublishGenerationRequest_SourceGenerationId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_SourceId": {
+      "type": "string"
+    },
     "ResolvedSource": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -2530,6 +2564,44 @@
       "type": "object"
     },
     "enums": {
+      "CleanupDebtKind": {
+        "enum": [
+          "vector_delete",
+          "artifact_delete",
+          "ledger_prune",
+          "graph_prune",
+          "memory_prune",
+          "job_retention",
+          "cache_prune"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "CleanupDebtKind"
+        }
+      },
+      "DocumentLifecycleStatus": {
+        "enum": [
+          "discovered",
+          "fetched",
+          "normalized",
+          "enriched",
+          "parsed",
+          "prepared",
+          "embedded",
+          "vectorized",
+          "published",
+          "cleaned",
+          "degraded",
+          "failed",
+          "skipped"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "DocumentLifecycleStatus"
+        }
+      },
       "JobKind": {
         "enum": [
           "source",
@@ -2707,7 +2779,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:2aa3fc905908f9f8820debed7b3c99eb7334e8bf9c2916f69a2245cb1660dd47",
+        "checksum": "sha256:9c7d65b7d3a4e163d2f3e8c60806713466909fef2822b79566eda77575faf63b",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },

@@ -25,6 +25,15 @@ pub struct SourceGeneration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct PublishGenerationRequest {
+    pub source_id: SourceId,
+    pub generation: SourceGenerationId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_previous_generation: Option<SourceGenerationId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ItemCounts {
     pub added: u64,
     pub modified: u64,

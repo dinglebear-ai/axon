@@ -188,11 +188,16 @@ impl SourceLedgerStore {
             "UPDATE axon_source_sources
              SET max_generation = ?, updated_at_ms = ?
              WHERE source_id = ?
-               AND (? IS NULL OR (lease_owner = ? AND lease_expires_at_ms > ?))",
+               AND (
+                 (? IS NULL AND (lease_owner IS NULL OR lease_expires_at_ms <= ?))
+                 OR (? IS NOT NULL AND lease_owner = ? AND lease_expires_at_ms > ?)
+               )",
         )
         .bind(next)
         .bind(now_ms)
         .bind(&source.source_id)
+        .bind(owner)
+        .bind(now_ms)
         .bind(owner)
         .bind(owner)
         .bind(now_ms)
@@ -363,6 +368,24 @@ impl SourceLedgerStore {
             .fetch_one(&self.pool)
             .await
             .context("failed to read source max generation")
+    }
+
+    pub async fn committed_generation_item_count(&self, source_id: &str) -> anyhow::Result<usize> {
+        let status = self.source_status(source_id).await?;
+        if status.committed_generation <= 0 {
+            return Ok(0);
+        }
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)
+             FROM axon_source_manifest_items
+             WHERE source_id = ? AND indexed_generation = ? AND pending = 0",
+        )
+        .bind(source_id)
+        .bind(status.committed_generation)
+        .fetch_one(&self.pool)
+        .await
+        .context("failed to count committed source generation items")?;
+        Ok(count.max(0) as usize)
     }
 
     async fn validate_owner_lease_active(

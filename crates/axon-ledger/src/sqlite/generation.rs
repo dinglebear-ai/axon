@@ -55,10 +55,77 @@ pub(super) async fn create_generation(
     Ok(generation)
 }
 
-pub(super) async fn publish_generation(
+pub(super) async fn complete_generation(
     store: &SqliteLedgerStore,
     generation: SourceGeneration,
-) -> Result<()> {
+) -> Result<SourceGeneration> {
+    if !matches!(
+        generation.status,
+        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
+    ) {
+        return Err(ApiError::new(
+            "source.ledger.generation_not_publishable",
+            ErrorStage::Publishing,
+            format!(
+                "generation {} has non-publishable status {:?}",
+                generation.generation.0, generation.status
+            ),
+        )
+        .with_source_id(generation.source_id.0));
+    }
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
+    let manifest_exists: Option<i64> = sqlx::query_scalar(
+        r#"
+        SELECT 1
+        FROM source_manifests
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&generation.source_id.0)
+    .bind(&generation.generation.0)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    if manifest_exists.is_none() {
+        return Err(ApiError::new(
+            "source.ledger.manifest_missing",
+            ErrorStage::Publishing,
+            format!(
+                "generation {} cannot publish without a manifest",
+                generation.generation.0
+            ),
+        )
+        .with_source_id(generation.source_id.0));
+    }
+    if stored.previous_generation != generation.previous_generation {
+        return Err(ApiError::new(
+            "source.ledger.generation_baseline_changed",
+            ErrorStage::Publishing,
+            format!(
+                "generation {} was based on {:?}, but stored generation is based on {:?}",
+                generation.generation.0, generation.previous_generation, stored.previous_generation
+            ),
+        )
+        .with_source_id(generation.source_id.0));
+    }
+
+    let mut completed = generation;
+    completed.created_at = stored.created_at;
+    completed.publish_state = PublishState::Writing;
+    completed.published_at = None;
+    completed.cleanup_debt = Vec::new();
+    upsert_generation_in_tx(&mut tx, &completed, None).await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(completed)
+}
+
+pub(super) async fn publish_generation(
+    store: &SqliteLedgerStore,
+    request: PublishGenerationRequest,
+) -> Result<SourceGeneration> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let generation = generation_in_tx(&mut tx, &request.source_id, &request.generation).await?;
     if !matches!(
         generation.status,
         LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
@@ -74,7 +141,6 @@ pub(super) async fn publish_generation(
         .with_source_id(generation.source_id.0));
     }
 
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
     let manifest_exists: Option<i64> = sqlx::query_scalar(
         r#"
         SELECT 1
@@ -100,7 +166,9 @@ pub(super) async fn publish_generation(
     }
 
     let previous = current_committed_generation_in_tx(&mut tx, &generation.source_id).await?;
-    if previous != generation.previous_generation {
+    if previous != request.expected_previous_generation
+        || generation.previous_generation != request.expected_previous_generation
+    {
         return Err(ApiError::new(
             "source.ledger.generation_baseline_changed",
             ErrorStage::Publishing,
@@ -113,10 +181,14 @@ pub(super) async fn publish_generation(
     }
 
     let mut committed_generation = generation.clone();
-    committed_generation.publish_state = PublishState::Committed;
     committed_generation.published_at = Some(timestamp());
     let cleanup_debt =
         stale_item_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?;
+    committed_generation.publish_state = if cleanup_debt.is_empty() {
+        PublishState::Committed
+    } else {
+        PublishState::CleanupPending
+    };
     committed_generation.cleanup_debt = cleanup_debt
         .iter()
         .map(|debt| debt.debt_id.clone())
@@ -157,7 +229,7 @@ pub(super) async fn publish_generation(
         .with_source_id(committed_generation.source_id.0));
     }
     tx.commit().await.map_err(sqlite_error)?;
-    Ok(())
+    Ok(committed_generation)
 }
 
 pub(super) async fn committed_generation(
@@ -237,6 +309,34 @@ pub(super) async fn upsert_generation_in_tx(
     .await
     .map_err(sqlite_error)?;
     Ok(())
+}
+
+async fn generation_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<SourceGeneration> {
+    let generation_json: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT generation_json
+        FROM source_generations
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&source_id.0)
+    .bind(&generation.0)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+    let Some(generation_json) = generation_json else {
+        return Err(ApiError::new(
+            "source.ledger.generation_missing",
+            ErrorStage::Publishing,
+            format!("generation {} does not exist", generation.0),
+        )
+        .with_source_id(source_id.0.clone()));
+    };
+    serde_json::from_str(&generation_json).map_err(json_error)
 }
 
 pub(super) async fn ensure_generation_for_manifest_in_tx(

@@ -99,6 +99,10 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
                 schemars::schema_for!(axon_api::source::SourceGeneration).into(),
             ),
             (
+                "PublishGenerationRequest",
+                schemars::schema_for!(axon_api::source::PublishGenerationRequest).into(),
+            ),
+            (
                 "CleanupDebt",
                 schemars::schema_for!(axon_api::source::CleanupDebt).into(),
             ),
