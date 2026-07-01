@@ -281,7 +281,8 @@ fn check_target_crate(
     workspace_members: &BTreeSet<String>,
     errors: &mut Vec<String>,
 ) {
-    require_workspace_member(krate.name, workspace_members, errors);
+    let crate_dir = format!("crates/{}", krate.name);
+    require_workspace_member_path(&crate_dir, workspace_members, errors);
 
     let crate_root = root.join("crates").join(krate.name);
     let crate_toml = read(crate_root.join("Cargo.toml"), errors);
@@ -296,15 +297,6 @@ fn check_target_crate(
     require_file(&src_dir.join("CLAUDE.md"), errors);
     require_claude_symlink(&src_dir.join("AGENTS.md"), errors);
     require_claude_symlink(&src_dir.join("GEMINI.md"), errors);
-}
-
-fn require_workspace_member(
-    krate: &str,
-    workspace_members: &BTreeSet<String>,
-    errors: &mut Vec<String>,
-) {
-    let crate_dir = format!("crates/{krate}");
-    require_workspace_member_path(&crate_dir, workspace_members, errors);
 }
 
 fn require_workspace_member_path(
@@ -474,7 +466,7 @@ fn collect_non_empty_dependency_tables(
 
     for (key, value) in table {
         path.push(key.clone());
-        if DEPENDENCY_TABLES.contains(&key.as_str())
+        if is_cargo_dependency_table(path)
             && value.as_table().is_some_and(|table| !table.is_empty())
         {
             found.push(format!("[{}]", path.join(".")));
@@ -483,6 +475,17 @@ fn collect_non_empty_dependency_tables(
         }
         path.pop();
     }
+}
+
+fn is_cargo_dependency_table(path: &[String]) -> bool {
+    let Some(last) = path.last() else {
+        return false;
+    };
+    if !DEPENDENCY_TABLES.contains(&last.as_str()) {
+        return false;
+    }
+
+    path.len() == 1 || path.first().is_some_and(|segment| segment == "target")
 }
 
 fn read(path: impl AsRef<Path>, errors: &mut Vec<String>) -> String {

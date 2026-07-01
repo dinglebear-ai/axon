@@ -218,6 +218,17 @@ fn target_specific_dependency_fails() {
 }
 
 #[test]
+fn package_metadata_dependencies_are_allowed() {
+    let fixture = complete_fixture();
+    write(
+        &fixture.root.join("crates/axon-error/Cargo.toml"),
+        "[package]\nname = \"axon-error\"\nrust-version.workspace = true\n\n[package.metadata.dependencies]\nnotes = \"not a Cargo dependency table\"\n\n[dependencies]\n",
+    );
+
+    check_root(&fixture.root).unwrap();
+}
+
+#[test]
 fn target_package_name_fails() {
     let fixture = complete_fixture();
     write(
