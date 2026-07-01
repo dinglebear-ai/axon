@@ -51,6 +51,54 @@ async fn fake_llm_reports_capabilities_health_and_failure_modes() {
 }
 
 #[tokio::test]
+async fn fake_llm_capabilities_reflect_failure_mode() {
+    let timeout = FakeLlmProvider::new("fake-llm").with_mode(FakeLlmMode::Timeout);
+    assert_eq!(
+        timeout.capabilities().await.unwrap().health,
+        HealthStatus::Degraded
+    );
+
+    let rate_limited = FakeLlmProvider::new("fake-llm").with_mode(FakeLlmMode::RateLimited);
+    let capability = rate_limited.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert!(capability.cooldown_until.is_some());
+    assert_eq!(
+        capability.last_error.unwrap().code.to_string(),
+        "provider.rate_limited"
+    );
+
+    let fatal = FakeLlmProvider::new("fake-llm").with_mode(FakeLlmMode::Fatal);
+    let capability = fatal.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Unavailable);
+    let error = capability.last_error.unwrap();
+    assert_eq!(error.code.to_string(), "provider.fatal");
+    assert_eq!(error.provider_id, Some("fake-llm".to_string()));
+    assert!(!error.retryable);
+
+    let err = fatal
+        .complete(LlmCompletionRequest::prompt("fatal"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "provider.fatal");
+    assert!(!err.retryable);
+}
+
+#[tokio::test]
+async fn fake_llm_health_override_cannot_hide_failure_mode() {
+    let provider = FakeLlmProvider::new("fake-llm")
+        .with_health(HealthStatus::Healthy)
+        .with_mode(FakeLlmMode::Fatal);
+
+    let capability = provider.capabilities().await.unwrap();
+
+    assert_eq!(capability.health, HealthStatus::Unavailable);
+    assert_eq!(
+        capability.last_error.unwrap().code.to_string(),
+        "provider.fatal"
+    );
+}
+
+#[tokio::test]
 async fn fake_llm_returns_structured_payload_for_schema_requests() {
     let provider = FakeLlmProvider::new("fake-llm");
     let mut request = LlmCompletionRequest::prompt("Return a JSON summary");

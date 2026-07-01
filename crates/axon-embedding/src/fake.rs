@@ -21,6 +21,7 @@ pub struct FakeEmbeddingProvider {
     provider_id: ProviderId,
     dimensions: u32,
     health: HealthStatus,
+    health_override: Option<HealthStatus>,
     mode: FakeEmbeddingMode,
     calls: Arc<Mutex<Vec<EmbeddingBatch>>>,
 }
@@ -31,6 +32,7 @@ impl FakeEmbeddingProvider {
             provider_id: ProviderId::new(provider_id),
             dimensions,
             health: HealthStatus::Healthy,
+            health_override: None,
             mode: FakeEmbeddingMode::Success,
             calls: Arc::new(Mutex::new(Vec::new())),
         }
@@ -38,6 +40,7 @@ impl FakeEmbeddingProvider {
 
     pub fn with_health(mut self, health: HealthStatus) -> Self {
         self.health = health;
+        self.health_override = Some(health);
         self
     }
 
@@ -50,9 +53,37 @@ impl FakeEmbeddingProvider {
         self.calls.lock().await.clone()
     }
 
+    fn mode_state(&self) -> FakeProviderModeState {
+        match self.mode {
+            FakeEmbeddingMode::Success => FakeProviderModeState::Success,
+            FakeEmbeddingMode::Timeout => FakeProviderModeState::Timeout,
+            FakeEmbeddingMode::RateLimited => FakeProviderModeState::RateLimited,
+            FakeEmbeddingMode::Fatal => FakeProviderModeState::Fatal,
+        }
+    }
+
     fn error(&self, code: &str, message: &str) -> ApiError {
-        ApiError::new(code, axon_error::ErrorStage::Embedding, message)
-            .with_provider_id(self.provider_id.0.clone())
+        let mut error = ApiError::new(code, axon_error::ErrorStage::Embedding, message)
+            .with_provider_id(self.provider_id.0.clone());
+        if self.mode == FakeEmbeddingMode::Fatal {
+            error.retryable = false;
+        }
+        error
+    }
+
+    fn capability_state(&self) -> FakeProviderCapabilityState {
+        let mut state = fake_provider_capability_state(
+            self.mode_state(),
+            &self.provider_id.0,
+            axon_error::ErrorStage::Embedding,
+            "embedding provider",
+        );
+        if let Some(health) = self.health_override.filter(|health| {
+            self.mode == FakeEmbeddingMode::Success || *health != HealthStatus::Healthy
+        }) {
+            state.health = health;
+        }
+        state
     }
 }
 
@@ -98,12 +129,13 @@ impl EmbeddingProvider for FakeEmbeddingProvider {
     }
 
     async fn capabilities(&self) -> Result<ProviderCapability> {
+        let state = self.capability_state();
         Ok(ProviderCapability {
             provider_id: self.provider_id.clone(),
             provider_kind: ProviderKind::Embedding,
             implementation: "fake".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            health: self.health,
+            health: state.health,
             limits: ProviderLimits {
                 max_concurrency: Some(2),
                 max_batch_size: Some(128),
@@ -112,8 +144,8 @@ impl EmbeddingProvider for FakeEmbeddingProvider {
                 ..ProviderLimits::default()
             },
             features: vec!["deterministic".to_string(), "call_recording".to_string()],
-            cooldown_until: None,
-            last_error: None,
+            cooldown_until: state.cooldown_until,
+            last_error: state.last_error,
             reservation_policy: ReservationPolicy {
                 supports_reservations: true,
                 queue_policy: QueuePolicy::Priority,

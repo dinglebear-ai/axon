@@ -7,6 +7,9 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-api",
     "crates/axon-authz",
     "crates/axon-core",
+    // Phase 3 / PR4 observability crate graduated from PR0 skeleton status:
+    // it now owns shared provider reservation/cooling state and sidecar tests.
+    "crates/axon-observe",
     // Phase 3 / PR4 boundary crates graduated from PR0 skeleton status:
     // they now own store/provider traits, fakes, and sidecar tests.
     "crates/axon-ledger",
@@ -39,25 +42,11 @@ pub struct TargetCrate {
     pub modules: &'static [&'static str],
 }
 
-// NOTE: `axon-error` is intentionally NOT listed here. It was filled in during
-// Phase 1 (issue #298) — real dependencies, sidecar tests, and public API — so
-// it is no longer an empty PR0 skeleton and is instead a required workspace
-// member (see `REQUIRED_WORKSPACE_MEMBERS`).
+// NOTE: crates filled in during issue #298 implementation PRs are intentionally
+// NOT listed here once they own real dependencies, sidecar tests, and public
+// API. They move to `REQUIRED_WORKSPACE_MEMBERS`; this list only contains
+// remaining PR0 skeleton crates.
 pub const TARGET_CRATES: &[TargetCrate] = &[
-    TargetCrate {
-        name: "axon-observe",
-        modules: &[
-            "event",
-            "phase",
-            "heartbeat",
-            "progress",
-            "metric",
-            "span",
-            "log",
-            "collector",
-            "testing",
-        ],
-    },
     TargetCrate {
         name: "axon-parse",
         modules: &[

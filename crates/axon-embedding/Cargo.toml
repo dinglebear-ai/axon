@@ -10,6 +10,7 @@ license.workspace = true
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-error = { path = "../axon-error" }
+axon-observe = { path = "../axon-observe" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 
 [dev-dependencies]

@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
+axon-error = { path = "../axon-error" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

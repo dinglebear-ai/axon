@@ -1,7 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::store::{FakeVectorStore, VectorStore};
+use crate::store::{FakeVectorMode, FakeVectorStore, VectorStore};
 
 fn collection() -> CollectionSpec {
     CollectionSpec {
@@ -136,4 +136,76 @@ async fn fake_vector_store_rejects_upsert_without_matching_collection() {
     store.ensure_collection(spec).await.unwrap();
     let err = store.upsert(batch()).await.unwrap_err();
     assert_eq!(err.code.to_string(), "vector.dimension_mismatch");
+}
+
+#[tokio::test]
+async fn fake_vector_store_reports_health_override() {
+    let store = FakeVectorStore::new("fake-vector").with_health(HealthStatus::Cooling);
+
+    let capability = store.capabilities().await.unwrap();
+
+    assert_eq!(capability.health, HealthStatus::Cooling);
+}
+
+#[tokio::test]
+async fn fake_vector_store_capabilities_reflect_failure_mode() {
+    let timeout = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::Timeout);
+    assert_eq!(
+        timeout.capabilities().await.unwrap().health,
+        HealthStatus::Degraded
+    );
+
+    let rate_limited = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::RateLimited);
+    let capability = rate_limited.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert!(capability.cooldown_until.is_some());
+    assert_eq!(
+        capability.last_error.unwrap().code.to_string(),
+        "provider.rate_limited"
+    );
+
+    let store = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::Fatal);
+
+    let capability = store.capabilities().await.unwrap();
+
+    assert_eq!(capability.health, HealthStatus::Unavailable);
+    let error = capability.last_error.unwrap();
+    assert_eq!(error.code.to_string(), "provider.fatal");
+    assert_eq!(error.provider_id, Some("fake-vector".to_string()));
+    assert!(!error.retryable);
+}
+
+#[tokio::test]
+async fn fake_vector_store_returns_deterministic_failure_modes_and_records_calls() {
+    let rate_limited = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::RateLimited);
+
+    let err = rate_limited
+        .ensure_collection(collection())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "provider.rate_limited");
+    assert!(err.retryable);
+    assert_eq!(rate_limited.calls().await, vec!["ensure_collection"]);
+
+    let fatal = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::Fatal);
+
+    let err = fatal
+        .search(VectorSearchRequest {
+            collection: "axon-test".to_string(),
+            query: "chunk".to_string(),
+            limit: 10,
+            dense_vector: Some(vec![1.0, 0.0, 0.0]),
+            sparse_vector: None,
+            filters: MetadataMap::new(),
+            hybrid: Some(false),
+            generation: None,
+            graph_refs: Vec::new(),
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code.to_string(), "provider.fatal");
+    assert!(!err.retryable);
+    assert_eq!(fatal.calls().await, vec!["search"]);
 }

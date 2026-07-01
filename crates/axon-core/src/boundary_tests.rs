@@ -125,3 +125,78 @@ async fn fake_core_boundaries_cover_artifact_config_cache_rate_and_health() {
         HealthStatus::Healthy
     );
 }
+
+#[tokio::test]
+async fn fake_core_boundaries_report_health_override() {
+    let fake = FakeCoreBoundaries::new().with_health(HealthStatus::Cooling);
+
+    let report = fake
+        .probe(HealthProbeRequest {
+            provider_id: ProviderId::new("fake"),
+            provider_kind: ProviderKind::HealthProbe,
+        })
+        .await
+        .unwrap();
+    let capability = HealthProbe::capabilities(&fake).await.unwrap();
+
+    assert_eq!(report.status, HealthStatus::Cooling);
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert_eq!(
+        ArtifactStore::capabilities(&fake).await.unwrap().0.health,
+        HealthStatus::Cooling
+    );
+    assert_eq!(
+        ConfigStore::capabilities(&fake).await.unwrap().0.health,
+        HealthStatus::Cooling
+    );
+    assert_eq!(
+        DocumentCache::capabilities(&fake).await.unwrap().0.health,
+        HealthStatus::Cooling
+    );
+}
+
+#[tokio::test]
+async fn fake_core_provider_capabilities_reflect_failure_mode() {
+    let timeout = FakeCoreBoundaries::new().with_mode(FakeCoreMode::Timeout);
+    assert_eq!(
+        RateLimiter::capabilities(&timeout).await.unwrap().health,
+        HealthStatus::Degraded
+    );
+
+    let rate_limited = FakeCoreBoundaries::new().with_mode(FakeCoreMode::RateLimited);
+    let capability = RateLimiter::capabilities(&rate_limited).await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert!(capability.cooldown_until.is_some());
+    assert_eq!(
+        capability.last_error.unwrap().code.to_string(),
+        "provider.rate_limited"
+    );
+
+    let fake = FakeCoreBoundaries::new().with_mode(FakeCoreMode::Fatal);
+
+    let capability = RateLimiter::capabilities(&fake).await.unwrap();
+
+    assert_eq!(capability.health, HealthStatus::Unavailable);
+    let error = capability.last_error.unwrap();
+    assert_eq!(error.code.to_string(), "provider.fatal");
+    assert_eq!(error.provider_id, Some("fake_ratelimiter".to_string()));
+    assert!(!error.retryable);
+}
+
+#[tokio::test]
+async fn fake_core_rate_limiter_returns_failure_modes_and_records_calls() {
+    let fake = FakeCoreBoundaries::new().with_mode(FakeCoreMode::RateLimited);
+
+    let err = fake
+        .acquire(RateLimitRequest {
+            provider_id: ProviderId::new("tei"),
+            units: 1,
+            priority: JobPriority::Background,
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code.to_string(), "provider.rate_limited");
+    assert!(err.retryable);
+    assert_eq!(fake.calls().await, vec!["rate_limit.acquire"]);
+}

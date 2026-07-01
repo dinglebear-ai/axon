@@ -22,7 +22,17 @@ pub trait VectorStore: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct FakeVectorStore {
     provider_id: ProviderId,
+    health: HealthStatus,
+    mode: FakeVectorMode,
     state: Arc<Mutex<FakeVectorState>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FakeVectorMode {
+    Success,
+    Timeout,
+    RateLimited,
+    Fatal,
 }
 
 #[derive(Debug, Default)]
@@ -36,12 +46,55 @@ impl FakeVectorStore {
     pub fn new(provider_id: impl Into<String>) -> Self {
         Self {
             provider_id: ProviderId::new(provider_id),
+            health: HealthStatus::Healthy,
+            mode: FakeVectorMode::Success,
             state: Arc::new(Mutex::new(FakeVectorState::default())),
         }
     }
 
+    pub fn with_health(mut self, health: HealthStatus) -> Self {
+        self.health = health;
+        self
+    }
+
+    pub fn with_mode(mut self, mode: FakeVectorMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
     pub async fn calls(&self) -> Vec<&'static str> {
         self.state.lock().await.calls.clone()
+    }
+
+    fn mode_error(&self) -> Option<ApiError> {
+        fake_provider_mode_error(
+            self.mode_state(),
+            &self.provider_id.0,
+            axon_error::ErrorStage::Upserting,
+            "vector store",
+        )
+    }
+
+    fn mode_state(&self) -> FakeProviderModeState {
+        match self.mode {
+            FakeVectorMode::Success => FakeProviderModeState::Success,
+            FakeVectorMode::Timeout => FakeProviderModeState::Timeout,
+            FakeVectorMode::RateLimited => FakeProviderModeState::RateLimited,
+            FakeVectorMode::Fatal => FakeProviderModeState::Fatal,
+        }
+    }
+
+    fn capability_state(&self) -> FakeProviderCapabilityState {
+        let mut state = fake_provider_capability_state(
+            self.mode_state(),
+            &self.provider_id.0,
+            axon_error::ErrorStage::Upserting,
+            "vector store",
+        );
+        if self.health != HealthStatus::Healthy {
+            state.health = self.health;
+        }
+        state
     }
 }
 
@@ -50,6 +103,9 @@ impl VectorStore for FakeVectorStore {
     async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()> {
         let mut state = self.state.lock().await;
         state.calls.push("ensure_collection");
+        if let Some(err) = self.mode_error() {
+            return Err(err);
+        }
         state.collections.insert(spec.collection.clone(), spec);
         Ok(())
     }
@@ -57,6 +113,9 @@ impl VectorStore for FakeVectorStore {
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         let mut state = self.state.lock().await;
         state.calls.push("upsert");
+        if let Some(err) = self.mode_error() {
+            return Err(err);
+        }
         let spec = state.collections.get(&batch.collection).ok_or_else(|| {
             ApiError::new(
                 "vector.collection_not_found",
@@ -111,6 +170,9 @@ impl VectorStore for FakeVectorStore {
     async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
         let mut state = self.state.lock().await;
         state.calls.push("delete");
+        if let Some(err) = self.mode_error() {
+            return Err(err);
+        }
         let (collection_name, deleted) = match selector {
             VectorDeleteSelector::Chunks {
                 collection,
@@ -152,6 +214,9 @@ impl VectorStore for FakeVectorStore {
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
         let mut state = self.state.lock().await;
         state.calls.push("search");
+        if let Some(err) = self.mode_error() {
+            return Err(err);
+        }
         if !request.filters.is_empty()
             || request.generation.is_some()
             || !request.graph_refs.is_empty()
@@ -196,12 +261,13 @@ impl VectorStore for FakeVectorStore {
     }
 
     async fn capabilities(&self) -> Result<ProviderCapability> {
+        let state = self.capability_state();
         Ok(ProviderCapability {
             provider_id: self.provider_id.clone(),
             provider_kind: ProviderKind::Vector,
             implementation: "fake".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            health: HealthStatus::Healthy,
+            health: state.health,
             limits: ProviderLimits {
                 max_concurrency: Some(2),
                 interactive_reserved_concurrency: Some(1),
@@ -209,8 +275,8 @@ impl VectorStore for FakeVectorStore {
                 ..ProviderLimits::default()
             },
             features: vec!["dense".to_string(), "delete_by_chunk".to_string()],
-            cooldown_until: None,
-            last_error: None,
+            cooldown_until: state.cooldown_until,
+            last_error: state.last_error,
             reservation_policy: ReservationPolicy {
                 supports_reservations: true,
                 queue_policy: QueuePolicy::Priority,
