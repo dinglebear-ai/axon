@@ -124,12 +124,15 @@ fn completed_generation_from(generation: &SourceGeneration) -> SourceGeneration 
     generation
 }
 
-fn lease_request(key: &str, owner: &str, acquired_at: Timestamp) -> LeaseRequest {
+fn lease_request(key: &str, owner: &str) -> LeaseRequest {
+    lease_request_ttl(key, owner, 30)
+}
+
+fn lease_request_ttl(key: &str, owner: &str, ttl_seconds: u64) -> LeaseRequest {
     LeaseRequest {
         lease_key: key.to_string(),
         owner_id: owner.to_string(),
-        ttl_seconds: 30,
-        acquired_at,
+        ttl_seconds,
         job_id: None,
         metadata: MetadataMap::new(),
     }
@@ -151,6 +154,111 @@ async fn sqlite_source_round_trips() {
         .expect("get source");
 
     assert_eq!(stored, Some(source));
+}
+
+#[tokio::test]
+async fn sqlite_generation_timestamps_are_runtime_values() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+
+    assert_ne!(generation.created_at, ts());
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(&generation.created_at.0).is_ok(),
+        "created_at should be RFC3339: {:?}",
+        generation.created_at
+    );
+}
+
+#[tokio::test]
+async fn sqlite_scalar_status_columns_use_schema_wire_values() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    store
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![manifest_item("src/lib.rs", "same")],
+        ))
+        .await
+        .expect("put manifest");
+    store
+        .publish_generation(completed_generation_from(&gen1))
+        .await
+        .expect("publish generation");
+
+    let generation_status: String =
+        sqlx::query_scalar("SELECT status FROM source_generations WHERE generation = ?1")
+            .bind(&gen1.generation.0)
+            .fetch_one(&store.pool)
+            .await
+            .expect("read generation status");
+    let publish_state: String =
+        sqlx::query_scalar("SELECT publish_state FROM source_generations WHERE generation = ?1")
+            .bind(&gen1.generation.0)
+            .fetch_one(&store.pool)
+            .await
+            .expect("read generation publish_state");
+    assert_eq!(generation_status, "completed");
+    assert_eq!(publish_state, "committed");
+
+    store
+        .update_document_status(DocumentStatus {
+            document_id: DocumentId::new("doc-sqlite"),
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new("src/lib.rs"),
+            generation: gen1.generation.clone(),
+            status: DocumentLifecycleStatus::Published,
+            updated_at: ts(),
+            chunk_count: 1,
+            vector_point_count: 1,
+            error: None,
+            cleanup_status: None,
+        })
+        .await
+        .expect("record document status");
+    let document_status: String =
+        sqlx::query_scalar("SELECT status FROM document_status WHERE document_id = ?1")
+            .bind("doc-sqlite")
+            .fetch_one(&store.pool)
+            .await
+            .expect("read document status");
+    assert_eq!(document_status, "published");
+
+    store
+        .record_cleanup_debt(CleanupDebt {
+            debt_id: CleanupDebtId::new("debt-sqlite"),
+            job_id: JobId::new(Uuid::from_u128(1)),
+            source_id: SourceId::new("src_sqlite"),
+            generation: Some(gen1.generation),
+            kind: CleanupDebtKind::VectorDelete,
+            selector: CleanupSelector::Document {
+                document_id: DocumentId::new("doc-sqlite"),
+            },
+            status: LifecycleStatus::Pending,
+            created_at: ts(),
+            attempts: 0,
+            last_error: None,
+            next_retry_at: None,
+            completed_at: None,
+        })
+        .await
+        .expect("record cleanup debt");
+    let cleanup_status: String =
+        sqlx::query_scalar("SELECT status FROM cleanup_debt WHERE debt_id = ?1")
+            .bind("debt-sqlite")
+            .fetch_one(&store.pool)
+            .await
+            .expect("read cleanup status");
+    assert_eq!(cleanup_status, "pending");
 }
 
 #[tokio::test]
@@ -346,46 +454,48 @@ async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
 
     let first = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-a",
-            ts_at(0),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
         .await
         .expect("acquire first")
         .expect("first lease");
     let conflict = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-b",
-            ts_at(10),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-b"))
         .await
         .expect("conflicting acquire");
     assert_eq!(conflict, None);
 
+    let wrong_owner_release = store
+        .release_lease(first.lease_id.clone(), "owner-b".to_string())
+        .await
+        .expect_err("wrong owner cannot release an active lease");
+    assert_eq!(
+        wrong_owner_release.code.to_string(),
+        "source.ledger.lease_owner_mismatch"
+    );
+
+    store
+        .release_lease(first.lease_id.clone(), "owner-a".to_string())
+        .await
+        .expect("release first lease");
+    let expired = store
+        .acquire_lease(lease_request_ttl("source:src_sqlite:refresh", "owner-a", 0))
+        .await
+        .expect("acquire expired lease")
+        .expect("zero ttl lease");
     let reclaimed = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-b",
-            ts_at(31),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-b"))
         .await
         .expect("reclaim expired")
         .expect("expired lease should be reclaimable");
-    assert_ne!(first.lease_id, reclaimed.lease_id);
+    assert_ne!(expired.lease_id, reclaimed.lease_id);
     assert_eq!(reclaimed.owner_id, "owner-b");
 
     store
-        .release_lease(reclaimed.lease_id.clone())
+        .release_lease(reclaimed.lease_id.clone(), "owner-b".to_string())
         .await
         .expect("release lease");
     let reacquired = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-a",
-            ts_at(32),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
         .await
         .expect("reacquire after release");
     assert!(reacquired.is_some());
@@ -395,68 +505,69 @@ async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
 async fn sqlite_same_owner_can_renew_lease() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     let first = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-a",
-            ts_at(0),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
         .await
         .expect("acquire")
         .expect("lease");
 
     let renewed = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-a",
-            ts_at(10),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
         .await
         .expect("renew")
         .expect("renewed lease");
 
     assert_eq!(renewed.lease_id, first.lease_id);
-    assert!(renewed.expires_at.0 > first.expires_at.0);
+    assert_eq!(renewed.acquired_at, first.acquired_at);
 }
 
 #[tokio::test]
 async fn sqlite_heartbeat_extends_lease_by_id() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     let first = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-a",
-            ts_at(0),
-        ))
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
         .await
         .expect("acquire")
         .expect("lease");
 
     let heartbeat = store
-        .heartbeat_lease(first.lease_id.clone(), ts_at(20), 30)
+        .heartbeat_lease(first.lease_id.clone(), "owner-a".to_string(), ts_at(20), 30)
         .await
         .expect("heartbeat")
         .expect("lease should still exist");
 
     assert_eq!(heartbeat.lease_id, first.lease_id);
-    assert_eq!(heartbeat.heartbeat_at, ts_at(20));
-    assert!(heartbeat.expires_at.0 > first.expires_at.0);
+    assert_eq!(heartbeat.owner_id, "owner-a");
+    assert!(chrono::DateTime::parse_from_rfc3339(&heartbeat.heartbeat_at.0).is_ok());
 }
 
 #[tokio::test]
 async fn sqlite_heartbeat_rejects_expired_lease() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     let first = store
-        .acquire_lease(lease_request(
-            "source:src_sqlite:refresh",
-            "owner-a",
-            ts_at(0),
-        ))
+        .acquire_lease(lease_request_ttl("source:src_sqlite:refresh", "owner-a", 0))
         .await
         .expect("acquire")
         .expect("lease");
 
     let heartbeat = store
-        .heartbeat_lease(first.lease_id, ts_at(31), 30)
+        .heartbeat_lease(first.lease_id, "owner-a".to_string(), ts_at(31), 30)
+        .await
+        .expect("heartbeat");
+
+    assert_eq!(heartbeat, None);
+}
+
+#[tokio::test]
+async fn sqlite_heartbeat_rejects_wrong_owner() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    let first = store
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
+        .await
+        .expect("acquire")
+        .expect("lease");
+
+    let heartbeat = store
+        .heartbeat_lease(first.lease_id, "owner-b".to_string(), ts_at(20), 30)
         .await
         .expect("heartbeat");
 
@@ -695,4 +806,19 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
         .expect("publish gen2");
 
     assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
+    let debt_json: String = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
+        .fetch_one(&store.pool)
+        .await
+        .expect("read cleanup debt");
+    let debt: CleanupDebt = serde_json::from_str(&debt_json).expect("parse cleanup debt");
+    assert_eq!(debt.kind, CleanupDebtKind::VectorDelete);
+    assert_eq!(debt.generation, Some(gen1.generation.clone()));
+    assert_eq!(
+        debt.selector,
+        CleanupSelector::SourceItem {
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new("src/old.rs"),
+            generation: gen1.generation,
+        }
+    );
 }

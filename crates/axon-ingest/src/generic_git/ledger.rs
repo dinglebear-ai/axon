@@ -164,6 +164,7 @@ pub(super) async fn finalize_git_ledger_refresh(
     expected_visible_points: usize,
 ) -> Result<()> {
     let result = async {
+        commit_git_ledger_refresh(prepared).await?;
         qdrant_publish_source_generation(
             cfg,
             &prepared.source.source_id,
@@ -172,7 +173,6 @@ pub(super) async fn finalize_git_ledger_refresh(
             expected_visible_points,
         )
         .await?;
-        commit_git_ledger_refresh(prepared).await?;
         drain_git_source_cleanup_debt(cfg, prepared).await
     }
     .await;

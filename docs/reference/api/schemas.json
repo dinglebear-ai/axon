@@ -955,9 +955,6 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "acquired_at": {
-          "type": "string"
-        },
         "job_id": {
           "anyOf": [
             {
@@ -988,7 +985,6 @@
         "lease_key",
         "owner_id",
         "ttl_seconds",
-        "acquired_at",
         "metadata"
       ],
       "title": "LeaseRequest",
@@ -2687,7 +2683,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:51c6bef98b3137ef54573202e03a9199cbd398b6a656272f0c42e6495ac5c01f",
+        "checksum": "sha256:2aa3fc905908f9f8820debed7b3c99eb7334e8bf9c2916f69a2245cb1660dd47",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },

@@ -146,12 +146,15 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
     }
 }
 
-fn lease_request(key: &str, owner: &str, acquired_at: Timestamp) -> LeaseRequest {
+fn lease_request(key: &str, owner: &str) -> LeaseRequest {
+    lease_request_ttl(key, owner, 30)
+}
+
+fn lease_request_ttl(key: &str, owner: &str, ttl_seconds: u64) -> LeaseRequest {
     LeaseRequest {
         lease_key: key.to_string(),
         owner_id: owner.to_string(),
-        ttl_seconds: 30,
-        acquired_at,
+        ttl_seconds,
         job_id: None,
         metadata: MetadataMap::new(),
     }
@@ -384,30 +387,48 @@ async fn fake_ledger_acquires_conflicts_reclaims_and_releases_leases() {
     let ledger = FakeLedgerStore::new();
 
     let first = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(0)))
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a"))
         .await
         .unwrap()
         .expect("first lease");
     let conflict = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-b", ts_at(10)))
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-b"))
         .await
         .unwrap();
     assert_eq!(conflict, None);
 
+    let wrong_owner_release = ledger
+        .release_lease(first.lease_id.clone(), "owner-b".to_string())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        wrong_owner_release.code.to_string(),
+        "source.ledger.lease_owner_mismatch"
+    );
+
+    ledger
+        .release_lease(first.lease_id.clone(), "owner-a".to_string())
+        .await
+        .unwrap();
+    let expired = ledger
+        .acquire_lease(lease_request_ttl("source:src_a:refresh", "owner-a", 0))
+        .await
+        .unwrap()
+        .expect("zero ttl lease");
     let reclaimed = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-b", ts_at(31)))
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-b"))
         .await
         .unwrap()
         .expect("expired lease should be reclaimable");
-    assert_ne!(first.lease_id, reclaimed.lease_id);
+    assert_ne!(expired.lease_id, reclaimed.lease_id);
     assert_eq!(reclaimed.owner_id, "owner-b");
 
     ledger
-        .release_lease(reclaimed.lease_id.clone())
+        .release_lease(reclaimed.lease_id.clone(), "owner-b".to_string())
         .await
         .unwrap();
     let reacquired = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(32)))
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a"))
         .await
         .unwrap();
     assert!(reacquired.is_some());
@@ -417,32 +438,49 @@ async fn fake_ledger_acquires_conflicts_reclaims_and_releases_leases() {
 async fn fake_ledger_same_owner_can_renew_lease() {
     let ledger = FakeLedgerStore::new();
     let first = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(0)))
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a"))
         .await
         .unwrap()
         .expect("first lease");
 
     let renewed = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(10)))
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a"))
         .await
         .unwrap()
         .expect("same owner renewal");
 
     assert_eq!(renewed.lease_id, first.lease_id);
-    assert!(renewed.expires_at.0 > first.expires_at.0);
+    assert_eq!(renewed.acquired_at, first.acquired_at);
 }
 
 #[tokio::test]
 async fn fake_ledger_heartbeat_rejects_expired_lease() {
     let ledger = FakeLedgerStore::new();
     let first = ledger
-        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(0)))
+        .acquire_lease(lease_request_ttl("source:src_a:refresh", "owner-a", 0))
         .await
         .unwrap()
         .expect("first lease");
 
     let heartbeat = ledger
-        .heartbeat_lease(first.lease_id, ts_at(31), 30)
+        .heartbeat_lease(first.lease_id, "owner-a".to_string(), ts_at(31), 30)
+        .await
+        .unwrap();
+
+    assert_eq!(heartbeat, None);
+}
+
+#[tokio::test]
+async fn fake_ledger_heartbeat_rejects_wrong_owner() {
+    let ledger = FakeLedgerStore::new();
+    let first = ledger
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a"))
+        .await
+        .unwrap()
+        .expect("first lease");
+
+    let heartbeat = ledger
+        .heartbeat_lease(first.lease_id, "owner-b".to_string(), ts_at(10), 30)
         .await
         .unwrap();
 
