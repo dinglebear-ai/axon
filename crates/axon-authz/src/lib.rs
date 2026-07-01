@@ -7,6 +7,7 @@
 //! literal values.
 
 pub mod http;
+pub mod policy;
 
 /// OAuth scope granting read access to Axon read/RAG routes.
 pub const AXON_READ_SCOPE: &str = "axon:read";
