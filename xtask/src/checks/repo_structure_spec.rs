@@ -28,6 +28,10 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // parser traits, parser registry selection, no-op degradation, API DTO
     // re-exports, and fake parser test implementations.
     "crates/axon-parse",
+    // Phase 8 / PR8 document crate graduated from PR0 skeleton status: it now
+    // owns document preparation DTO adapters, chunk routing profiles, fake
+    // preparers, and sidecar tests.
+    "crates/axon-document",
     "crates/axon-crawl",
     "crates/axon-vector",
     "crates/axon-ingest",
@@ -51,24 +55,6 @@ pub struct TargetCrate {
 // API. They move to `REQUIRED_WORKSPACE_MEMBERS`; this list only contains
 // remaining PR0 skeleton crates.
 pub const TARGET_CRATES: &[TargetCrate] = &[
-    TargetCrate {
-        name: "axon-document",
-        modules: &[
-            "preparer",
-            "chunk_router",
-            "profile",
-            "prepared",
-            "chunk",
-            "metadata",
-            "code",
-            "markdown",
-            "transcript",
-            "session",
-            "schema",
-            "text",
-            "testing",
-        ],
-    },
     TargetCrate {
         name: "axon-retrieval",
         modules: &[
