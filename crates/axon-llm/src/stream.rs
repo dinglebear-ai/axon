@@ -1,3 +1,5 @@
-//! Marker module for the target `axon-llm::stream` boundary.
+//! LLM streaming DTO re-exports.
 
-pub const MODULE_NAME: &str = "stream";
+pub use axon_api::source::LlmDelta;
+
+pub type LlmDeltaSink<'a> = &'a mut (dyn FnMut(LlmDelta) + Send);

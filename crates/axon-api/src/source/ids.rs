@@ -51,6 +51,8 @@ macro_rules! uuid_id {
             Copy,
             PartialEq,
             Eq,
+            PartialOrd,
+            Ord,
             Hash,
             Serialize,
             Deserialize,

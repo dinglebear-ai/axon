@@ -5,6 +5,7 @@
 
 pub mod acquisition;
 pub mod adapter;
+pub mod boundary;
 pub mod capability;
 pub mod cli_tool;
 pub mod feed;

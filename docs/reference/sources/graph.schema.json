@@ -47,7 +47,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:783d1aa6349c1bbaaae418c8dfb089e96910722795dbe61f924dc2c34b28d125",
+        "checksum": "sha256:65423f7783f2747c39df087743e2ed8295b86bf59baa19353fcd6cae6f7d6a66",
         "kind": "rust_module",
         "path": "crates/axon-graph/src/lib.rs"
       },
