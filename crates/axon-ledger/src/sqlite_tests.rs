@@ -1,6 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
+use crate::migration::migrate_ledger;
 use crate::sqlite::SqliteLedgerStore;
 use crate::store::LedgerStore;
 
@@ -323,4 +324,104 @@ async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
         .await
         .expect("reacquire after release");
     assert!(reacquired.is_some());
+}
+
+#[tokio::test]
+async fn sqlite_migration_creates_required_ledger_tables() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("pool");
+    migrate_ledger(&pool).await.expect("migrate ledger");
+
+    let tables = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name LIKE 'axon_ledger_%'
+        ORDER BY name
+        "#,
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("table names");
+
+    assert_eq!(
+        tables,
+        vec![
+            "axon_ledger_cleanup_debt",
+            "axon_ledger_document_status",
+            "axon_ledger_generations",
+            "axon_ledger_leases",
+            "axon_ledger_source_items",
+            "axon_ledger_source_manifests",
+            "axon_ledger_sources",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn sqlite_generation_publish_controls_committed_baseline() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let running = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    assert_eq!(running.generation, SourceGenerationId::new("gen_1"));
+    assert_eq!(running.previous_generation, None);
+
+    let error = store
+        .publish_generation(running.clone())
+        .await
+        .expect_err("running generation is not publishable");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.generation_not_publishable"
+    );
+
+    let committed_manifest = manifest_with_items(
+        &running.generation.0,
+        vec![manifest_item("src/lib.rs", "committed")],
+    );
+    store
+        .put_manifest(committed_manifest)
+        .await
+        .expect("put committed manifest");
+    store
+        .publish_generation(completed_generation_for_manifest(&manifest_with_items(
+            &running.generation.0,
+            vec![manifest_item("src/lib.rs", "committed")],
+        )))
+        .await
+        .expect("publish completed generation");
+
+    let next = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create next generation");
+    assert_eq!(next.generation, SourceGenerationId::new("gen_2"));
+    assert_eq!(
+        next.previous_generation,
+        Some(SourceGenerationId::new("gen_1"))
+    );
+
+    store
+        .put_manifest(manifest_with_items(
+            "gen_2",
+            vec![manifest_item("src/lib.rs", "interrupted")],
+        ))
+        .await
+        .expect("put interrupted manifest");
+    let diff = store
+        .diff_manifest(manifest_with_items(
+            "gen_3",
+            vec![manifest_item("src/lib.rs", "committed")],
+        ))
+        .await
+        .expect("diff against committed generation");
+    assert_eq!(diff.counts.unchanged, 1);
+    assert_eq!(diff.counts.added, 0);
 }
