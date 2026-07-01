@@ -58,7 +58,18 @@ pub fn source_fact(
         parser_version: "pr8-baseline".to_string(),
         parser_method: parser_method.to_string(),
         range: line.map(line_range),
-        confidence: 0.9,
+        confidence: confidence_for_method(parser_method),
         metadata: MetadataMap::new(),
+    }
+}
+
+fn confidence_for_method(parser_method: &str) -> f32 {
+    if parser_method.contains("heuristic")
+        || parser_method.contains("line_scan")
+        || parser_method.contains("fallback")
+    {
+        0.7
+    } else {
+        0.9
     }
 }
