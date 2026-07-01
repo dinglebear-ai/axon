@@ -79,6 +79,40 @@ fn manifest_for_generation(generation: &SourceGeneration, hash: &str) -> SourceM
     manifest
 }
 
+fn manifest_with_items(generation: &str, items: Vec<ManifestItem>) -> SourceManifest {
+    SourceManifest {
+        source_id: SourceId::new("src_a"),
+        generation: SourceGenerationId::new(generation),
+        adapter: AdapterRef {
+            name: "local".to_string(),
+            version: "test".to_string(),
+        },
+        scope: SourceScope::Directory,
+        items,
+        created_at: ts(),
+        metadata: MetadataMap::new(),
+    }
+}
+
+fn manifest_item(path: &str, hash: &str) -> ManifestItem {
+    ManifestItem {
+        source_id: SourceId::new("src_a"),
+        source_item_key: SourceItemKey::new(path),
+        canonical_uri: format!("file:///repo/{path}"),
+        item_kind: ItemKind::LocalFile,
+        content_kind: Some(ContentKind::Code),
+        display_path: Some(path.to_string()),
+        parent_key: None,
+        size_bytes: Some(12),
+        content_hash: Some(hash.to_string()),
+        mtime: Some(ts()),
+        version: None,
+        fetch_plan: None,
+        metadata: MetadataMap::new(),
+        graph_hints: Vec::new(),
+    }
+}
+
 fn completed_generation(mut generation: SourceGeneration) -> SourceGeneration {
     generation.status = LifecycleStatus::Completed;
     generation.publish_state = PublishState::Committed;
@@ -303,6 +337,49 @@ async fn fake_ledger_owns_document_status_and_cleanup_debt() {
 }
 
 #[tokio::test]
+async fn fake_publish_creates_cleanup_debt_for_removed_items() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let gen1 = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![
+                manifest_item("README.md", "same"),
+                manifest_item("src/old.rs", "removed"),
+            ],
+        ))
+        .await
+        .unwrap();
+    ledger
+        .publish_generation(completed_generation(gen1.clone()))
+        .await
+        .unwrap();
+
+    let gen2 = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_with_items(
+            &gen2.generation.0,
+            vec![manifest_item("README.md", "same")],
+        ))
+        .await
+        .unwrap();
+    ledger
+        .publish_generation(completed_generation(gen2))
+        .await
+        .unwrap();
+
+    assert_eq!(ledger.cleanup_debt_count().await, 1);
+}
+
+#[tokio::test]
 async fn fake_ledger_acquires_conflicts_reclaims_and_releases_leases() {
     let ledger = FakeLedgerStore::new();
 
@@ -353,4 +430,21 @@ async fn fake_ledger_same_owner_can_renew_lease() {
 
     assert_eq!(renewed.lease_id, first.lease_id);
     assert!(renewed.expires_at.0 > first.expires_at.0);
+}
+
+#[tokio::test]
+async fn fake_ledger_heartbeat_rejects_expired_lease() {
+    let ledger = FakeLedgerStore::new();
+    let first = ledger
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(0)))
+        .await
+        .unwrap()
+        .expect("first lease");
+
+    let heartbeat = ledger
+        .heartbeat_lease(first.lease_id, ts_at(31), 30)
+        .await
+        .unwrap();
+
+    assert_eq!(heartbeat, None);
 }
