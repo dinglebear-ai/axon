@@ -13,6 +13,9 @@ pub struct SourceParseFacts {
     pub fact_kind: String,
     pub name: String,
     pub value: serde_json::Value,
+    pub parser_id: String,
+    pub parser_version: String,
+    pub parser_method: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<SourceRange>,
     pub confidence: f32,
@@ -29,6 +32,9 @@ pub struct GraphCandidate {
     pub item_canonical_uri: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document_id: Option<DocumentId>,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_key: Option<String>,
     pub producer: GraphCandidateProducer,
     pub nodes: Vec<GraphNodeCandidate>,
     pub edges: Vec<GraphEdgeCandidate>,
@@ -68,10 +74,13 @@ pub struct GraphEdgeCandidate {
 #[serde(deny_unknown_fields)]
 pub struct GraphEvidence {
     pub evidence_id: String,
+    pub evidence_kind: String,
     pub source_id: SourceId,
     pub source_item_key: SourceItemKey,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document_id: Option<DocumentId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_id: Option<ChunkId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<SourceRange>,
     pub quote: Option<String>,

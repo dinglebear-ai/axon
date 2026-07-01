@@ -298,15 +298,185 @@ fn source_document_and_prepared_document_carry_generation_identity() {
         source_id: doc.source_id.clone(),
         source_item_key: doc.source_item_key.clone(),
         generation: SourceGenerationId::from("gen_0001"),
+        canonical_uri: doc.canonical_uri.clone(),
+        prepare_version: "axon-document@1".to_string(),
+        chunking_profile: "markdown_sections".to_string(),
+        chunking_method: "markdown_splitter".to_string(),
         chunks: Vec::new(),
         metadata: MetadataMap::new(),
         cleanup_keys: Vec::new(),
         graph_refs: Vec::new(),
+        parse_facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
     };
 
     assert_eq!(prepared.source_id, doc.source_id);
     assert_eq!(prepared.source_item_key, SourceItemKey::from("README.md"));
     assert_eq!(prepared.generation, SourceGenerationId::from("gen_0001"));
+}
+
+#[test]
+fn pr8_prepared_document_contract_accepts_parse_graph_and_chunk_metadata() {
+    let value: serde_json::Value = serde_json::from_str(
+        r##"{
+        "document_id": "doc_local_readme",
+        "source_id": "src_local_workspace",
+        "source_item_key": "README.md",
+        "generation": "gen_0001",
+        "canonical_uri": "file:///workspace/README.md",
+        "prepare_version": "axon-document@1",
+        "chunking_profile": "markdown_sections",
+        "chunking_method": "markdown_splitter",
+        "chunks": [{
+            "chunk_id": "chunk_readme_0001",
+            "chunk_key": "src_local_workspace/gen_0001/README.md/markdown_sections/0",
+            "document_id": "doc_local_readme",
+            "chunk_index": 0,
+            "content": "# Axon",
+            "embedding_text": "Axon",
+            "content_hash": "sha256:readmechunk",
+            "chunk_locator": {
+                "canonical_uri": "file:///workspace/README.md",
+                "path": "README.md",
+                "heading_path": ["Axon"],
+                "range": {
+                    "line_start": 1,
+                    "line_end": 1,
+                    "byte_start": 0,
+                    "byte_end": 6,
+                    "char_start": 0,
+                    "char_end": 6
+                }
+            },
+            "source_range": {
+                "line_start": 1,
+                "line_end": 1,
+                "byte_start": 0,
+                "byte_end": 6,
+                "char_start": 0,
+                "char_end": 6
+            },
+            "content_kind": "markdown",
+            "title": "Axon",
+            "graph_refs": [{ "candidate_id": "cand_heading_axon" }],
+            "metadata": {
+                "heading_level": 1
+            }
+        }],
+        "metadata": {},
+        "cleanup_keys": [],
+        "graph_refs": [{ "candidate_id": "cand_heading_axon" }],
+        "parse_facts": [{
+            "document_id": "doc_local_readme",
+            "source_item_key": "README.md",
+            "fact_kind": "heading",
+            "name": "Axon",
+            "value": { "level": 1 },
+            "parser_id": "markdown",
+            "parser_version": "1",
+            "parser_method": "markdown_ast",
+            "range": {
+                "line_start": 1,
+                "line_end": 1,
+                "byte_start": 0,
+                "byte_end": 6,
+                "char_start": 0,
+                "char_end": 6
+            },
+            "confidence": 1.0,
+            "metadata": {}
+        }],
+        "graph_candidates": [{
+            "candidate_id": "cand_heading_axon",
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "source_id": "src_local_workspace",
+            "source_item_key": "README.md",
+            "item_canonical_uri": "file:///workspace/README.md",
+            "document_id": "doc_local_readme",
+            "kind": "document_heading",
+            "merge_key": "heading:file:///workspace/README.md#Axon",
+            "producer": {
+                "adapter": "local",
+                "parser": "markdown",
+                "version": "1"
+            },
+            "nodes": [],
+            "edges": [],
+            "evidence": [{
+                "evidence_id": "ev_heading_axon",
+                "evidence_kind": "chunk_range",
+                "source_id": "src_local_workspace",
+                "source_item_key": "README.md",
+                "document_id": "doc_local_readme",
+                "chunk_id": "chunk_readme_0001",
+                "range": {
+                    "line_start": 1,
+                    "line_end": 1,
+                    "byte_start": 0,
+                    "byte_end": 6,
+                    "char_start": 0,
+                    "char_end": 6
+                },
+                "quote": "# Axon",
+                "confidence": 1.0,
+                "metadata": {}
+            }],
+            "confidence": 1.0,
+            "metadata": {}
+        }],
+        "warnings": [],
+        "errors": []
+    }"##,
+    )
+    .expect("prepared document fixture JSON");
+
+    let prepared: PreparedDocument =
+        serde_json::from_value(value).expect("PR8 prepared document contract should deserialize");
+
+    assert_eq!(prepared.document_id, DocumentId::from("doc_local_readme"));
+    assert_eq!(prepared.chunks.len(), 1);
+}
+
+#[test]
+fn pr8_parse_result_contract_carries_stage_local_warnings_and_errors() {
+    let value = json!({
+        "header": {
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "stage_id": "00000000-0000-0000-0000-000000000002",
+            "phase": "parsing",
+            "status": "completed_degraded",
+            "started_at": "2026-07-01T16:20:00Z",
+            "completed_at": "2026-07-01T16:20:01Z",
+            "counts": {
+                "items_done": 1,
+                "documents_done": 1,
+                "chunks_done": 0,
+                "bytes_done": 6
+            },
+            "warnings": [],
+            "error": null
+        },
+        "document_id": "doc_local_readme",
+        "facts": [],
+        "graph_candidates": [],
+        "parser_id": "markdown",
+        "parser_version": "1",
+        "warnings": [{
+            "code": "parse.markdown.frontmatter_ignored",
+            "severity": "warning",
+            "message": "frontmatter was preserved as content",
+            "source_item_key": "README.md",
+            "retryable": false
+        }],
+        "errors": []
+    });
+
+    let result: ParseResult =
+        serde_json::from_value(value).expect("PR8 parse result contract should deserialize");
+
+    assert_eq!(result.document_id, DocumentId::from("doc_local_readme"));
 }
 
 #[test]

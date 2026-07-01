@@ -173,6 +173,8 @@ pub struct ParseResult {
     pub graph_candidates: Vec<GraphCandidate>,
     pub parser_id: String,
     pub parser_version: String,
+    pub warnings: Vec<SourceWarning>,
+    pub errors: Vec<SourceError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

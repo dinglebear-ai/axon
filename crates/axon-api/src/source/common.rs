@@ -296,6 +296,10 @@ pub struct SourceRange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub byte_end: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub char_start: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub char_end: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_start_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_end_ms: Option<u64>,
@@ -311,6 +315,10 @@ pub struct SourceRange {
     pub csv_row: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_start: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_end: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
