@@ -888,6 +888,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-core",
+ "axon-source-ledger",
  "chrono",
  "futures-util",
  "httpmock",

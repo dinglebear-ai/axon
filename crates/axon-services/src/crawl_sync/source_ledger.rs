@@ -5,7 +5,7 @@ use axon_source_ledger::{
 };
 use axon_vector::ops::qdrant::{
     CleanupSelectorV1, qdrant_delete_source_cleanup_selectors, qdrant_publish_source_generation,
-    qdrant_source_generation_point_counts,
+    qdrant_republish_committed_source_generation,
 };
 use axon_vector::ops::{LedgerPayload, embed_prepared_docs, prepare_path_native_docs};
 use sha2::{Digest, Sha256};
@@ -83,7 +83,7 @@ pub(super) async fn embed_and_commit_sync_crawl_manifest_to_ledger(
     }
     let mut active_generation = None;
     let result: Result<(), Box<dyn Error>> = async {
-        republish_committed_crawl_generation(cfg, &store, &source)
+        qdrant_republish_committed_source_generation(cfg, &store, &source)
             .await
             .map_err(|err| -> Box<dyn Error> { err.into() })?;
         let manifest_items = crawl_manifest_to_ledger_items(manifest_path).await?;
@@ -234,42 +234,6 @@ async fn embed_publish_and_cleanup_crawl_generation(
         .into());
     }
     result
-}
-
-async fn republish_committed_crawl_generation(
-    cfg: &Config,
-    store: &SourceLedgerStore,
-    source: &SourceIdentity,
-) -> Result<(), anyhow::Error> {
-    let status = store.source_status(&source.source_id).await?;
-    if status.committed_generation > 0 {
-        let committed_items = store
-            .committed_generation_item_count(&source.source_id)
-            .await?;
-        let counts = qdrant_source_generation_point_counts(
-            cfg,
-            &source.source_id,
-            status.committed_generation,
-            source.index_version,
-        )
-        .await?;
-        if committed_items > 0 && counts.distinct_items < committed_items {
-            anyhow::bail!(
-                "committed source generation {} has {} distinct Qdrant source items, expected at least {committed_items}",
-                status.committed_generation,
-                counts.distinct_items,
-            );
-        }
-        qdrant_publish_source_generation(
-            cfg,
-            &source.source_id,
-            status.committed_generation,
-            source.index_version,
-            counts.points,
-        )
-        .await?;
-    }
-    Ok(())
 }
 
 fn crawl_cleanup_debt(

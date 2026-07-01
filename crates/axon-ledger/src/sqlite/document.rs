@@ -19,6 +19,30 @@ pub(super) async fn update_document_status(
     if exists.is_none() {
         return Err(source_missing_error(&status.source_id));
     }
+    let item_exists: Option<i64> = sqlx::query_scalar(
+        r#"
+        SELECT 1
+        FROM source_items
+        WHERE source_id = ?1 AND generation = ?2 AND source_item_key = ?3
+        "#,
+    )
+    .bind(&status.source_id.0)
+    .bind(&status.generation.0)
+    .bind(&status.source_item_key.0)
+    .fetch_optional(&store.pool)
+    .await
+    .map_err(sqlite_error)?;
+    if item_exists.is_none() {
+        return Err(ApiError::new(
+            "source.ledger.source_item_missing",
+            ErrorStage::Planning,
+            format!(
+                "source item {} does not exist in generation {}",
+                status.source_item_key.0, status.generation.0
+            ),
+        )
+        .with_source_id(status.source_id.0.clone()));
+    }
 
     let status_json = serde_json::to_string(&status).map_err(json_error)?;
     sqlx::query(

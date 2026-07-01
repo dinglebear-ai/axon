@@ -52,6 +52,11 @@
         "path": "crates/axon-jobs/src/migrations"
       },
       {
+        "checksum": "sha256:5c0c9f475a14a4a0af3eacbe6f3cf029612170b3ab5b91c5c1b1c5fe88d0b285",
+        "kind": "sql_migration_directory",
+        "path": "crates/axon-ledger/src/migrations"
+      },
+      {
         "checksum": "sha256:1c08e19fbaca7f87f0c252ed40a2678440952a8c3b70558c5f59ce9244b7fb35",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/runtime/schema-contract.md"

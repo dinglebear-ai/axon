@@ -64,6 +64,31 @@ pub(crate) fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
     }
 }
 
+pub(crate) fn ensure_generation_publishable(generation: &SourceGeneration) -> Result<()> {
+    if matches!(
+        generation.status,
+        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
+    ) {
+        return Ok(());
+    }
+    Err(ApiError::new(
+        "source.ledger.generation_not_publishable",
+        ErrorStage::Publishing,
+        format!(
+            "generation {} has non-publishable status {:?}",
+            generation.generation.0, generation.status
+        ),
+    )
+    .with_source_id(generation.source_id.0.clone()))
+}
+
+pub(crate) fn ensure_generation_writable(generation: &SourceGeneration) -> Result<()> {
+    if generation.publish_state == PublishState::Writing && generation.published_at.is_none() {
+        return Ok(());
+    }
+    Err(generation_already_published_error(generation))
+}
+
 fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {
     ApiError::new(
         "source.ledger.cleanup_selector_mismatch",
@@ -71,6 +96,18 @@ fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {
         "cleanup selector does not match cleanup debt source/generation",
     )
     .with_source_id(debt.source_id.0.clone())
+}
+
+pub(crate) fn manifest_missing_error(generation: &SourceGeneration) -> ApiError {
+    ApiError::new(
+        "source.ledger.manifest_missing",
+        ErrorStage::Publishing,
+        format!(
+            "generation {} cannot publish without a manifest",
+            generation.generation.0
+        ),
+    )
+    .with_source_id(generation.source_id.0.clone())
 }
 
 pub(crate) fn generation_already_published_error(generation: &SourceGeneration) -> ApiError {

@@ -8,7 +8,7 @@ use axon_source_ledger::{
 };
 use axon_vector::ops::qdrant::{
     CleanupSelectorV1, qdrant_delete_source_cleanup_selectors, qdrant_publish_source_generation,
-    qdrant_source_generation_point_counts,
+    qdrant_republish_committed_source_generation,
 };
 use axon_vector::ops::{LedgerPayload, PreparedDoc};
 use sqlx::SqlitePool;
@@ -89,7 +89,14 @@ pub(super) async fn prepare_git_ledger_refresh(
             source.source_id
         );
     }
-    republish_committed_git_generation(cfg, &store, &source).await?;
+    if let Err(err) = qdrant_republish_committed_source_generation(cfg, &store, &source).await {
+        return match store.release_lease(&source.source_id, &lease_owner).await {
+            Ok(()) => Err(err),
+            Err(release_err) => Err(anyhow!(
+                "{err}; additionally failed to release source ledger lease: {release_err}"
+            )),
+        };
+    }
     match prepare_git_manifest_with_store(&store, &source, &lease_owner, manifest).await {
         Ok(prepared) => Ok(PreparedGitLedgerRefresh {
             store,
@@ -212,42 +219,6 @@ pub(super) async fn finalize_git_ledger_refresh(
             )),
         },
     }
-}
-
-async fn republish_committed_git_generation(
-    cfg: &Config,
-    store: &SourceLedgerStore,
-    source: &SourceIdentity,
-) -> Result<()> {
-    let status = store.source_status(&source.source_id).await?;
-    if status.committed_generation > 0 {
-        let committed_items = store
-            .committed_generation_item_count(&source.source_id)
-            .await?;
-        let counts = qdrant_source_generation_point_counts(
-            cfg,
-            &source.source_id,
-            status.committed_generation,
-            source.index_version,
-        )
-        .await?;
-        if committed_items > 0 && counts.distinct_items < committed_items {
-            bail!(
-                "committed source generation {} has {} distinct Qdrant source items, expected at least {committed_items}",
-                status.committed_generation,
-                counts.distinct_items,
-            );
-        }
-        qdrant_publish_source_generation(
-            cfg,
-            &source.source_id,
-            status.committed_generation,
-            source.index_version,
-            counts.points,
-        )
-        .await?;
-    }
-    Ok(())
 }
 
 pub(crate) async fn commit_git_ledger_refresh(prepared: &PreparedGitLedgerRefresh) -> Result<()> {
