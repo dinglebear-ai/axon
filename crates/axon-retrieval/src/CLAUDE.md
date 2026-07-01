@@ -1,28 +1,20 @@
-# axon-retrieval
+# axon-retrieval Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-retrieval` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-retrieval/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep retrieval planning, filters, hybrid ranking, context bundles, citations,
+  graph/memory joins, and result explanation here.
+- Do not implement LLM final synthesis, vector store internals, embedding
+  providers, or transport rendering.
+- Update `../../../docs/pipeline-unification/crates/axon-retrieval/README.md`, `../../../docs/pipeline-unification/foundation/boundary-map.md`, and retrieval DTO
+  schema docs together.
+- Keep `ask`, `query`, `search`, and `retrieve` semantics aligned with surface
+  contracts.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `engine`
-- `plan`
-- `query`
-- `filter`
-- `rank`
-- `context`
-- `citation`
-- `memory`
-- `graph`
-- `testing`
+- Generation/source filters are preserved.
+- Citations map to stored chunks and source metadata.
+- Ranking is deterministic under fakes.

@@ -1,26 +1,19 @@
-# axon-embedding
+# axon-embedding Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-embedding` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-embedding/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep `EmbeddingProvider`, embedding batches, capabilities, reservations,
+  provider health, and embedding fakes here.
+- Do not add vector store writes or Qdrant point construction.
+- Update `../../../docs/pipeline-unification/crates/axon-embedding/README.md`, `../../../docs/pipeline-unification/runtime/provider-contract.md`, and
+  `../../../docs/pipeline-unification/schemas/provider-capability-schema.md` together.
+- Treat throughput, cooling, timeout, and saturation behavior as part of the
+  provider contract.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `provider`
-- `batch`
-- `capability`
-- `reservation`
-- `tei`
-- `openai_compat`
-- `fake`
-- `testing`
+- Batches preserve input ids and ordering.
+- Dimensions/model identity are explicit.
+- Fakes are deterministic.

@@ -1,27 +1,19 @@
-# axon-prune
+# axon-prune Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-prune` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-prune/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep cleanup debt execution, prune planning, old generation cleanup, orphan
+  cleanup, dedupe, dry-run plans, safety checks, and receipts here.
+- Do not add ledger ownership, source acquisition, embedding, or transport
+  rendering.
+- Update `../../../docs/pipeline-unification/crates/axon-prune/README.md`, `../../../docs/pipeline-unification/runtime/pruning-contract.md`, and storage/ledger
+  docs together.
+- Assume empty DB clean-break semantics unless told otherwise.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `plan`
-- `executor`
-- `debt`
-- `generation`
-- `orphan`
-- `dedupe`
-- `receipt`
-- `safety`
-- `testing`
+- Dry-run and execute plans target the same items.
+- Cleanup is idempotent.
+- Receipts include counts, skipped reasons, and source/generation ids.

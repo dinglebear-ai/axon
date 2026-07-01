@@ -1,27 +1,20 @@
-# axon-observe
+# axon-observe Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-observe` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-observe/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep observable events, heartbeats, progress updates, spans, metrics, and
+  structured log conventions here.
+- Do not add durable job storage, CLI rendering, REST SSE routing, or MCP
+  response formatting.
+- Update `../../../docs/pipeline-unification/crates/axon-observe/README.md`, `../../../docs/pipeline-unification/runtime/observability-contract.md`, and
+  `../../../docs/pipeline-unification/schemas/event-schema.md` together.
+- Preserve `job_id`, `source_id`, phase, status, counts, timings, degradation,
+  provider, and current-item fields across surfaces.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `event`
-- `phase`
-- `heartbeat`
-- `progress`
-- `metric`
-- `span`
-- `log`
-- `collector`
-- `testing`
+- Events are redaction-safe and schema-backed.
+- Metrics avoid high-cardinality labels.
+- Long-running operations have heartbeat/progress coverage.

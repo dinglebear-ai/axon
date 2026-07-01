@@ -1,28 +1,19 @@
-# axon-llm
+# axon-llm Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-llm` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-llm/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep `LlmProvider`, model capabilities, prompts, structured output,
+  streaming, and provider implementations here.
+- Do not add retrieval planning, vector storage, source acquisition, or
+  transport route ownership.
+- Update `../../../docs/pipeline-unification/crates/axon-llm/README.md`, `../../../docs/pipeline-unification/runtime/provider-contract.md`, configuration docs,
+  and capability schemas together.
+- Preserve provider fakes for synthesis, extraction, judging, and streaming.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `provider`
-- `capability`
-- `completion`
-- `stream`
-- `prompt`
-- `openai_compat`
-- `codex`
-- `gemini`
-- `fake`
-- `testing`
+- Provider capabilities are queryable before execution.
+- Prompt diagnostics are redaction-safe.
+- Structured output failure returns typed errors/degradation.

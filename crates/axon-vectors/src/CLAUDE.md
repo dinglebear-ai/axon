@@ -1,27 +1,19 @@
-# axon-vectors
+# axon-vectors Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-vectors` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-vectors/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep `VectorStore`, Qdrant implementation, collection specs, point batches,
+  payloads, filters, indexes, and vector query primitives here.
+- Do not add embedding generation, source acquisition, chunking, retrieval
+  synthesis, or transport rendering.
+- Update `../../../docs/pipeline-unification/crates/axon-vectors/README.md`, `../../../docs/pipeline-unification/runtime/storage-contract.md`, and
+  `../../../docs/pipeline-unification/schemas/vector-payload-schema.md` together.
+- Preserve replaceability of Qdrant behind `VectorStore`.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `store`
-- `qdrant`
-- `collection`
-- `point`
-- `payload`
-- `filter`
-- `query`
-- `health`
-- `testing`
+- Payloads include required metadata fields.
+- Collection specs validate dimensions and vector names.
+- Delete filters are source/generation-safe.

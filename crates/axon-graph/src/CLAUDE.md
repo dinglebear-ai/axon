@@ -1,29 +1,19 @@
-# axon-graph
+# axon-graph Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-graph` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-graph/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep SourceGraph storage, nodes, edges, evidence, authority, merge policy, and
+  graph query helpers here.
+- Do not parse source files directly; consume graph candidates from parsers,
+  adapters, resolver, sessions, and memory.
+- Update `../../../docs/pipeline-unification/crates/axon-graph/README.md`, `../../../docs/pipeline-unification/sources/source-graph.md`, and
+  `../../../docs/pipeline-unification/schemas/graph-schema.md` together.
+- Require evidence or explicit authority for every edge.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `store`
-- `sqlite`
-- `migration`
-- `node`
-- `edge`
-- `evidence`
-- `candidate`
-- `authority`
-- `merge`
-- `query`
-- `testing`
+- Node/edge kinds remain aligned with the graph contract.
+- Upserts are idempotent and preserve provenance.
+- Conflict handling is explicit.
