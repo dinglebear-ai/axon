@@ -223,8 +223,14 @@ async fn embed_publish_and_cleanup_crawl_generation(
     }
     .await;
     stop_source_lease_heartbeat(Some(heartbeat)).await;
-    if let Err(err) = &result {
-        set_source_backoff(store, &source.source_id, "qdrant", &err.to_string()).await;
+    if let Err(err) = &result
+        && let Err(backoff_err) =
+            set_source_backoff(store, &source.source_id, "qdrant", &err.to_string()).await
+    {
+        return Err(format!(
+            "{err}; additionally failed to set source ledger backoff: {backoff_err}"
+        )
+        .into());
     }
     result
 }
@@ -324,20 +330,14 @@ async fn set_source_backoff(
     source_id: &str,
     dependency: &str,
     message: &str,
-) {
+) -> Result<(), Box<dyn Error>> {
     let until_ms = chrono::Utc::now()
         .timestamp_millis()
         .saturating_add(SOURCE_LEDGER_BACKOFF_MS);
-    if let Err(err) = store
+    store
         .set_backoff(source_id, until_ms, dependency, message)
         .await
-    {
-        tracing::warn!(
-            source_id,
-            error = %err,
-            "failed to set crawl source ledger backoff"
-        );
-    }
+        .map_err(|err| -> Box<dyn Error> { err.into() })
 }
 
 pub(crate) fn crawl_source_identity(start_url: &str, collection: &str) -> SourceIdentity {

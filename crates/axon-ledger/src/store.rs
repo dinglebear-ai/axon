@@ -1,11 +1,14 @@
 //! Ledger store boundary and in-memory fake.
 
+mod util;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_api::source::*;
 use tokio::sync::Mutex;
+use util::*;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -24,7 +27,6 @@ pub trait LedgerStore: Send + Sync {
         &self,
         lease_id: LeaseId,
         owner_id: String,
-        heartbeat_at: Timestamp,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>>;
     async fn release_lease(&self, lease_id: LeaseId, owner_id: String) -> Result<()>;
@@ -67,6 +69,10 @@ impl FakeLedgerStore {
             .cloned()
     }
 
+    pub async fn cleanup_debt(&self, debt_id: &CleanupDebtId) -> Option<CleanupDebt> {
+        self.state.lock().await.cleanup_debt.get(debt_id).cloned()
+    }
+
     pub async fn cleanup_debt_count(&self) -> usize {
         self.state.lock().await.cleanup_debt.len()
     }
@@ -88,6 +94,15 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
+        if !self
+            .state
+            .lock()
+            .await
+            .sources
+            .contains_key(&manifest.source_id)
+        {
+            return Err(source_missing_error(&manifest.source_id));
+        }
         let key = (manifest.source_id.clone(), manifest.generation.clone());
         self.state.lock().await.manifests.insert(key, manifest);
         Ok(())
@@ -157,6 +172,9 @@ impl LedgerStore for FakeLedgerStore {
 
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration> {
         let mut state = self.state.lock().await;
+        if !state.sources.contains_key(&source_id) {
+            return Err(source_missing_error(&source_id));
+        }
         let counter = state
             .generation_counters
             .entry(source_id.clone())
@@ -248,12 +266,23 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
+        validate_cleanup_debt(&debt)?;
         let mut state = self.state.lock().await;
         let key = cleanup_debt_natural_key(&debt)?;
-        for existing in state.cleanup_debt.values() {
-            if cleanup_debt_natural_key(existing)? == key {
-                return Ok(());
+        let existing_id = state.cleanup_debt.iter().find_map(|(id, existing)| {
+            cleanup_debt_natural_key(existing)
+                .ok()
+                .filter(|existing_key| existing_key == &key)
+                .map(|_| id.clone())
+        });
+        if let Some(existing_id) = existing_id {
+            if let Some(mut existing) = state.cleanup_debt.remove(&existing_id) {
+                apply_cleanup_debt_update(&mut existing, debt);
+                state
+                    .cleanup_debt
+                    .insert(existing.debt_id.clone(), existing);
             }
+            return Ok(());
         }
         state.cleanup_debt.insert(debt.debt_id.clone(), debt);
         Ok(())
@@ -307,7 +336,7 @@ impl LedgerStore for FakeLedgerStore {
     async fn release_lease(&self, lease_id: LeaseId, owner_id: String) -> Result<()> {
         let mut state = self.state.lock().await;
         let Some(guard) = state.leases.get(&lease_id).cloned() else {
-            return Ok(());
+            return Err(lease_missing_error(&lease_id));
         };
         if guard.owner_id != owner_id {
             return Err(ApiError::new(
@@ -325,7 +354,6 @@ impl LedgerStore for FakeLedgerStore {
         &self,
         lease_id: LeaseId,
         owner_id: String,
-        _heartbeat_at: Timestamp,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>> {
         let now = timestamp();
@@ -367,149 +395,4 @@ impl LedgerStore for FakeLedgerStore {
         }
         .into())
     }
-}
-
-fn keyed_manifest_items(items: Vec<ManifestItem>) -> BTreeMap<SourceItemKey, ManifestItem> {
-    items
-        .into_iter()
-        .map(|item| (item.source_item_key.clone(), item))
-        .collect()
-}
-
-fn manifest_item_changed(old: &ManifestItem, next: &ManifestItem) -> bool {
-    old.content_hash != next.content_hash || old.version != next.version || old.mtime != next.mtime
-}
-
-fn cleanup_debt_natural_key(
-    debt: &CleanupDebt,
-) -> Result<(SourceId, String, CleanupDebtKind, String)> {
-    let selector_json = serde_json::to_string(&debt.selector).map_err(|error| {
-        ApiError::new(
-            "source.ledger.cleanup_selector_invalid",
-            ErrorStage::Cleaning,
-            format!("failed to serialize cleanup selector: {error}"),
-        )
-    })?;
-    Ok((
-        debt.source_id.clone(),
-        debt.generation
-            .as_ref()
-            .map(|value| value.0.clone())
-            .unwrap_or_default(),
-        debt.kind,
-        selector_json,
-    ))
-}
-
-fn record_removed_item_cleanup_debt(state: &mut FakeLedgerState, generation: &SourceGeneration) {
-    let Some(previous_generation) = generation.previous_generation.as_ref() else {
-        return;
-    };
-    let previous_items = state
-        .manifests
-        .get(&(generation.source_id.clone(), previous_generation.clone()))
-        .map(|manifest| manifest.items.clone())
-        .unwrap_or_default();
-    let next_keys = state
-        .manifests
-        .get(&(generation.source_id.clone(), generation.generation.clone()))
-        .map(|manifest| {
-            manifest
-                .items
-                .iter()
-                .map(|item| item.source_item_key.clone())
-                .collect::<BTreeSet<_>>()
-        })
-        .unwrap_or_default();
-    for item in previous_items {
-        if next_keys.contains(&item.source_item_key) {
-            continue;
-        }
-        let debt = CleanupDebt {
-            debt_id: CleanupDebtId::new(format!(
-                "debt_{}",
-                uuid::Uuid::new_v5(
-                    &uuid::Uuid::NAMESPACE_URL,
-                    format!(
-                        "{}:{}:{}",
-                        generation.source_id.0, previous_generation.0, item.source_item_key.0
-                    )
-                    .as_bytes(),
-                )
-            )),
-            job_id: JobId::new(uuid::Uuid::from_u128(0)),
-            source_id: generation.source_id.clone(),
-            generation: Some(previous_generation.clone()),
-            kind: CleanupDebtKind::VectorDelete,
-            selector: CleanupSelector::SourceItem {
-                source_id: generation.source_id.clone(),
-                source_item_key: item.source_item_key,
-                generation: previous_generation.clone(),
-            },
-            status: LifecycleStatus::Pending,
-            created_at: timestamp(),
-            attempts: 0,
-            last_error: None,
-            next_retry_at: None,
-            completed_at: None,
-        };
-        state
-            .cleanup_debt
-            .entry(debt.debt_id.clone())
-            .or_insert(debt);
-    }
-}
-
-fn stage_header(phase: PipelinePhase) -> StageResultHeader {
-    StageResultHeader {
-        job_id: JobId::new(uuid::Uuid::from_u128(0)),
-        stage_id: StageId::new(uuid::Uuid::from_u128(0)),
-        phase,
-        status: LifecycleStatus::Completed,
-        started_at: timestamp(),
-        completed_at: Some(timestamp()),
-        counts: StageCounts {
-            items_total: None,
-            items_done: 0,
-            documents_total: None,
-            documents_done: 0,
-            chunks_total: None,
-            chunks_done: 0,
-            bytes_total: None,
-            bytes_done: 0,
-        },
-        warnings: Vec::new(),
-        error: None,
-    }
-}
-
-fn timestamp() -> Timestamp {
-    Timestamp(chrono::Utc::now().to_rfc3339())
-}
-
-fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
-    let parsed = chrono::DateTime::parse_from_rfc3339(&timestamp.0)
-        .map(|value| value.with_timezone(&chrono::Utc));
-    match parsed {
-        Ok(value) => Timestamp((value + chrono::Duration::seconds(seconds as i64)).to_rfc3339()),
-        Err(_) => timestamp.clone(),
-    }
-}
-
-fn timestamp_after(left: &Timestamp, right: &Timestamp) -> Result<bool> {
-    let left = chrono::DateTime::parse_from_rfc3339(&left.0).map_err(|error| {
-        ApiError::new(
-            "source.ledger.invalid_timestamp",
-            ErrorStage::Leasing,
-            format!("invalid lease timestamp {}: {error}", left.0),
-        )
-    })?;
-    let right = chrono::DateTime::parse_from_rfc3339(&right.0).map_err(|error| {
-        ApiError::new(
-            "source.ledger.invalid_timestamp",
-            ErrorStage::Leasing,
-            format!("invalid lease timestamp {}: {error}", right.0),
-        )
-    })?;
-    Ok(left > right)
 }

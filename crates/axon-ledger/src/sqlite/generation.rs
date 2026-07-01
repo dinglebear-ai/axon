@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use axon_api::source::*;
 use sqlx::Row;
@@ -6,14 +6,15 @@ use sqlx::Row;
 use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::cleanup::insert_cleanup_debt_once_in_tx;
-use crate::sqlite::util::{enum_wire_value, json_error, timestamp};
+use crate::sqlite::util::{enum_wire_value, json_error, manifest_item_changed, timestamp};
 use crate::store::Result;
 
 pub(super) async fn create_generation(
     store: &SqliteLedgerStore,
     source_id: SourceId,
 ) -> Result<SourceGeneration> {
-    let previous_generation = committed_generation(store, &source_id).await?;
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let previous_generation = current_committed_generation_in_tx(&mut tx, &source_id).await?;
     let next_sequence: i64 = sqlx::query_scalar(
         r#"
         SELECT COALESCE(MAX(sequence), 0) + 1
@@ -22,7 +23,7 @@ pub(super) async fn create_generation(
         "#,
     )
     .bind(&source_id.0)
-    .fetch_one(&store.pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     let generation = SourceGeneration {
@@ -49,7 +50,8 @@ pub(super) async fn create_generation(
         cleanup_debt: Vec::new(),
         previous_generation,
     };
-    upsert_generation(store, &generation, next_sequence).await?;
+    upsert_generation_in_tx(&mut tx, &generation, Some(next_sequence)).await?;
+    tx.commit().await.map_err(sqlite_error)?;
     Ok(generation)
 }
 
@@ -113,9 +115,16 @@ pub(super) async fn publish_generation(
     let mut committed_generation = generation.clone();
     committed_generation.publish_state = PublishState::Committed;
     committed_generation.published_at = Some(timestamp());
+    let cleanup_debt =
+        stale_item_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?;
+    committed_generation.cleanup_debt = cleanup_debt
+        .iter()
+        .map(|debt| debt.debt_id.clone())
+        .collect();
     upsert_generation_in_tx(&mut tx, &committed_generation, None).await?;
-    record_removed_item_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref())
-        .await?;
+    for debt in cleanup_debt {
+        insert_cleanup_debt_once_in_tx(&mut tx, debt).await?;
+    }
 
     let result = sqlx::query(
         r#"
@@ -168,17 +177,6 @@ pub(super) async fn committed_generation(
     .map_err(sqlite_error)?
     .flatten();
     Ok(committed_generation.map(SourceGenerationId::new))
-}
-
-pub(super) async fn upsert_generation(
-    store: &SqliteLedgerStore,
-    generation: &SourceGeneration,
-    sequence: i64,
-) -> Result<()> {
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
-    upsert_generation_in_tx(&mut tx, generation, Some(sequence)).await?;
-    tx.commit().await.map_err(sqlite_error)?;
-    Ok(())
 }
 
 pub(super) async fn upsert_generation_in_tx(
@@ -318,25 +316,28 @@ pub(super) async fn current_committed_generation_in_tx(
     Ok(committed_generation.map(SourceGenerationId::new))
 }
 
-async fn record_removed_item_cleanup_debt_in_tx(
+async fn stale_item_cleanup_debt_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     generation: &SourceGeneration,
     previous_generation: Option<&SourceGenerationId>,
-) -> Result<()> {
+) -> Result<Vec<CleanupDebt>> {
     let Some(previous_generation) = previous_generation else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let previous_items =
         manifest_items_in_tx(tx, &generation.source_id, previous_generation).await?;
     let next_items =
         manifest_items_in_tx(tx, &generation.source_id, &generation.generation).await?;
-    let next_keys = next_items
-        .iter()
-        .map(|item| item.source_item_key.clone())
-        .collect::<BTreeSet<_>>();
+    let next_by_key = next_items
+        .into_iter()
+        .map(|item| (item.source_item_key.clone(), item))
+        .collect::<BTreeMap<_, _>>();
 
+    let mut cleanup_debt = Vec::new();
     for item in previous_items {
-        if next_keys.contains(&item.source_item_key) {
+        if let Some(next) = next_by_key.get(&item.source_item_key)
+            && !manifest_item_changed(&item, next)
+        {
             continue;
         }
         let debt = CleanupDebt {
@@ -367,9 +368,9 @@ async fn record_removed_item_cleanup_debt_in_tx(
             next_retry_at: None,
             completed_at: None,
         };
-        insert_cleanup_debt_once_in_tx(tx, debt).await?;
+        cleanup_debt.push(debt);
     }
-    Ok(())
+    Ok(cleanup_debt)
 }
 
 pub(super) async fn manifest_items_in_tx(

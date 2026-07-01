@@ -33,6 +33,7 @@ impl SqliteLedgerStore {
             .map_err(sqlite_error)?
             .foreign_keys(true);
         let pool = SqlitePoolOptions::new()
+            .max_connections(sqlite_max_connections(path))
             .connect_with(options)
             .await
             .map_err(sqlite_error)?;
@@ -42,6 +43,14 @@ impl SqliteLedgerStore {
 
     pub async fn in_memory() -> Result<Self> {
         Self::connect("sqlite::memory:").await
+    }
+}
+
+fn sqlite_max_connections(path: &str) -> u32 {
+    if path == "sqlite::memory:" || path.contains("mode=memory") {
+        1
+    } else {
+        5
     }
 }
 
@@ -91,7 +100,6 @@ impl LedgerStore for SqliteLedgerStore {
         &self,
         lease_id: LeaseId,
         owner_id: String,
-        _heartbeat_at: Timestamp,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>> {
         lease::heartbeat_lease(self, lease_id, owner_id, ttl_seconds).await

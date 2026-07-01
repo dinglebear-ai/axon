@@ -198,6 +198,10 @@ async fn fake_ledger_diffs_only_against_committed_generation() {
 #[tokio::test]
 async fn fake_ledger_scopes_generation_ids_per_source() {
     let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    let mut src_b = source();
+    src_b.source_id = SourceId::new("src_b");
+    ledger.upsert_source(src_b).await.unwrap();
 
     let src_a_first = ledger
         .create_generation(SourceId::new("src_a"))
@@ -232,6 +236,7 @@ async fn fake_ledger_scopes_generation_ids_per_source() {
 #[tokio::test]
 async fn fake_ledger_diffs_version_and_mtime_changes() {
     let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
     let previous = manifest_with_freshness("a", Some("v1"), ts());
     ledger.put_manifest(previous.clone()).await.unwrap();
     ledger
@@ -261,6 +266,7 @@ async fn fake_ledger_diffs_version_and_mtime_changes() {
 #[tokio::test]
 async fn fake_ledger_rejects_non_publishable_generation_statuses() {
     let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
     let running = ledger
         .create_generation(SourceId::new("src_a"))
         .await
@@ -296,6 +302,7 @@ async fn fake_ledger_rejects_non_publishable_generation_statuses() {
 #[tokio::test]
 async fn fake_ledger_owns_document_status_and_cleanup_debt() {
     let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
     let status = DocumentStatus {
         document_id: DocumentId::new("doc-a"),
         source_id: SourceId::new("src_a"),
@@ -337,6 +344,50 @@ async fn fake_ledger_owns_document_status_and_cleanup_debt() {
     assert_eq!(ledger.cleanup_debt_count().await, 1);
     ledger.reset().await.unwrap();
     assert_eq!(ledger.cleanup_debt_count().await, 0);
+}
+
+#[tokio::test]
+async fn fake_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let mut debt = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-a"),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::new("src_a"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::Document {
+            document_id: DocumentId::new("doc-a"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+
+    ledger.record_cleanup_debt(debt.clone()).await.unwrap();
+
+    debt.debt_id = CleanupDebtId::new("debt-b");
+    ledger.record_cleanup_debt(debt.clone()).await.unwrap();
+    assert_eq!(ledger.cleanup_debt_count().await, 1);
+
+    debt.status = LifecycleStatus::Completed;
+    debt.completed_at = Some(ts_at(10));
+    ledger.record_cleanup_debt(debt.clone()).await.unwrap();
+
+    debt.status = LifecycleStatus::Pending;
+    debt.completed_at = None;
+    ledger.record_cleanup_debt(debt).await.unwrap();
+
+    let stored = ledger
+        .cleanup_debt(&CleanupDebtId::new("debt-b"))
+        .await
+        .expect("stored debt");
+    assert_eq!(stored.status, LifecycleStatus::Completed);
+    assert_eq!(stored.completed_at, Some(ts_at(10)));
 }
 
 #[tokio::test]
@@ -423,6 +474,25 @@ async fn fake_ledger_acquires_conflicts_reclaims_and_releases_leases() {
     assert_ne!(expired.lease_id, reclaimed.lease_id);
     assert_eq!(reclaimed.owner_id, "owner-b");
 
+    let stale_heartbeat = ledger
+        .heartbeat_lease(expired.lease_id.clone(), "owner-a".to_string(), 30)
+        .await
+        .unwrap();
+    assert_eq!(stale_heartbeat, None);
+    let stale_release = ledger
+        .release_lease(expired.lease_id, "owner-a".to_string())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        stale_release.code.to_string(),
+        "source.ledger.lease_missing"
+    );
+    let owner_c_conflict = ledger
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-c"))
+        .await
+        .unwrap();
+    assert_eq!(owner_c_conflict, None);
+
     ledger
         .release_lease(reclaimed.lease_id.clone(), "owner-b".to_string())
         .await
@@ -463,7 +533,7 @@ async fn fake_ledger_heartbeat_rejects_expired_lease() {
         .expect("first lease");
 
     let heartbeat = ledger
-        .heartbeat_lease(first.lease_id, "owner-a".to_string(), ts_at(31), 30)
+        .heartbeat_lease(first.lease_id, "owner-a".to_string(), 30)
         .await
         .unwrap();
 
@@ -480,7 +550,7 @@ async fn fake_ledger_heartbeat_rejects_wrong_owner() {
         .expect("first lease");
 
     let heartbeat = ledger
-        .heartbeat_lease(first.lease_id, "owner-b".to_string(), ts_at(10), 30)
+        .heartbeat_lease(first.lease_id, "owner-b".to_string(), 30)
         .await
         .unwrap();
 

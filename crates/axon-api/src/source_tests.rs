@@ -76,6 +76,7 @@ fn nested_source_dtos_reject_unknown_fields() {
 
     let selector_err = serde_json::from_value::<CleanupSelector>(json!({
         "kind": "generation",
+        "source_id": "src_local_workspace",
         "generation": "gen_0001",
         "extra": true
     }))
@@ -99,6 +100,36 @@ fn enum_wire_values_are_snake_case_and_closed() {
     assert_eq!(
         serde_json::to_value(PipelinePhase::Vectorizing).unwrap(),
         json!("vectorizing")
+    );
+    assert_eq!(
+        serde_json::to_value(PublishState::CleanupPending).unwrap(),
+        json!("cleanup_pending")
+    );
+    assert_eq!(
+        serde_json::to_value(LifecycleStatus::CompletedDegraded).unwrap(),
+        json!("completed_degraded")
+    );
+    assert_eq!(
+        serde_json::to_value(CleanupDebtKind::VectorDelete).unwrap(),
+        json!("vector_delete")
+    );
+    assert_eq!(
+        serde_json::to_value(DocumentLifecycleStatus::Vectorized).unwrap(),
+        json!("vectorized")
+    );
+    assert_eq!(
+        serde_json::to_value(CleanupSelector::SourceItem {
+            source_id: SourceId::from("src_local_workspace"),
+            source_item_key: SourceItemKey::from("src/lib.rs"),
+            generation: SourceGenerationId::from("gen_0001"),
+        })
+        .unwrap(),
+        json!({
+            "kind": "source_item",
+            "source_id": "src_local_workspace",
+            "source_item_key": "src/lib.rs",
+            "generation": "gen_0001",
+        })
     );
 
     let err = serde_json::from_value::<SourceKind>(json!("mystery_source"))
@@ -347,6 +378,7 @@ fn source_generation_and_cleanup_debt_round_trip() {
         generation: Some(generation.generation.clone()),
         kind: CleanupDebtKind::VectorDelete,
         selector: CleanupSelector::Generation {
+            source_id: generation.source_id.clone(),
             generation: SourceGenerationId::from("gen_0001"),
         },
         status: LifecycleStatus::Pending,
