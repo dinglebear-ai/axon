@@ -411,6 +411,7 @@ version = "6.2.1"
 name = "axon-api"
 version = "6.2.1"
 dependencies = [
+ "axon-error",
  "chrono",
  "percent-encoding",
  "schemars",
@@ -582,6 +583,15 @@ version = "6.2.1"
 [[package]]
 name = "axon-error"
 version = "6.2.1"
+dependencies = [
+ "chrono",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "utoipa",
+ "uuid",
+]
 
 [[package]]
 name = "axon-extract"
