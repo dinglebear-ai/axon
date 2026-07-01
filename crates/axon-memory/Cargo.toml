@@ -10,4 +10,5 @@ license.workspace = true
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-error = { path = "../axon-error" }
+serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync"] }

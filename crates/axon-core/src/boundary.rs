@@ -35,36 +35,6 @@ pub trait DocumentCache: Send + Sync {
 }
 
 #[async_trait]
-pub trait SearchProvider: Send + Sync {
-    async fn search(&self, request: SearchRequest) -> Result<SearchResult>;
-    async fn capabilities(&self) -> Result<ProviderCapability>;
-}
-
-#[async_trait]
-pub trait FetchProvider: Send + Sync {
-    async fn fetch(&self, request: FetchRequest) -> Result<FetchedResource>;
-    async fn capabilities(&self) -> Result<ProviderCapability>;
-}
-
-#[async_trait]
-pub trait RenderProvider: Send + Sync {
-    async fn render(&self, request: RenderRequest) -> Result<RenderedResource>;
-    async fn capabilities(&self) -> Result<ProviderCapability>;
-}
-
-#[async_trait]
-pub trait NetworkCaptureProvider: Send + Sync {
-    async fn capture(&self, request: NetworkCaptureRequest) -> Result<NetworkCaptureResult>;
-    async fn capabilities(&self) -> Result<ProviderCapability>;
-}
-
-#[async_trait]
-pub trait CredentialProvider: Send + Sync {
-    async fn resolve(&self, request: CredentialRequest) -> Result<CredentialMaterial>;
-    async fn capabilities(&self) -> Result<ProviderCapability>;
-}
-
-#[async_trait]
 pub trait RateLimiter: Send + Sync {
     async fn acquire(&self, request: RateLimitRequest) -> Result<RateLimitPermit>;
     async fn capabilities(&self) -> Result<ProviderCapability>;
@@ -203,87 +173,6 @@ impl DocumentCache for FakeCoreBoundaries {
 
     async fn capabilities(&self) -> Result<DocumentCacheCapability> {
         Ok(capability("fake-document-cache", "axon-core").into())
-    }
-}
-
-#[async_trait]
-impl SearchProvider for FakeCoreBoundaries {
-    async fn search(&self, request: SearchRequest) -> Result<SearchResult> {
-        Ok(SearchResult {
-            query: request.query.clone(),
-            results: vec![SearchResultItem {
-                title: request.query,
-                url: "https://example.test/".to_string(),
-                snippet: "fake search result".to_string(),
-            }],
-        })
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(provider_capability(ProviderKind::Search))
-    }
-}
-
-#[async_trait]
-impl FetchProvider for FakeCoreBoundaries {
-    async fn fetch(&self, request: FetchRequest) -> Result<FetchedResource> {
-        Ok(FetchedResource {
-            uri: request.uri,
-            status: 200,
-            content: ContentRef::InlineText {
-                text: "fake fetch".to_string(),
-            },
-            headers: RedactedHeaders {
-                headers: Vec::new(),
-            },
-        })
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(provider_capability(ProviderKind::Fetch))
-    }
-}
-
-#[async_trait]
-impl RenderProvider for FakeCoreBoundaries {
-    async fn render(&self, request: RenderRequest) -> Result<RenderedResource> {
-        Ok(RenderedResource {
-            uri: request.uri,
-            markdown: "fake render".to_string(),
-            artifacts: Vec::new(),
-        })
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(provider_capability(ProviderKind::Render))
-    }
-}
-
-#[async_trait]
-impl NetworkCaptureProvider for FakeCoreBoundaries {
-    async fn capture(&self, request: NetworkCaptureRequest) -> Result<NetworkCaptureResult> {
-        Ok(NetworkCaptureResult {
-            uri: request.uri,
-            entries: Vec::new(),
-        })
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(provider_capability(ProviderKind::NetworkCapture))
-    }
-}
-
-#[async_trait]
-impl CredentialProvider for FakeCoreBoundaries {
-    async fn resolve(&self, request: CredentialRequest) -> Result<CredentialMaterial> {
-        Ok(CredentialMaterial {
-            secret_ref: request.secret_ref,
-            redacted_value: "redacted".to_string(),
-        })
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(provider_capability(ProviderKind::Credential))
     }
 }
 

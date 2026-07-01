@@ -119,6 +119,16 @@ impl VectorStore for FakeVectorStore {
     }
 
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
+        if !request.filters.is_empty()
+            || request.generation.is_some()
+            || !request.graph_refs.is_empty()
+        {
+            return Err(ApiError::new(
+                "vector.filter_unsupported",
+                axon_error::ErrorStage::Retrieving,
+                "fake vector store does not implement filtered search",
+            ));
+        }
         let mut state = self.state.lock().await;
         state.calls.push("search");
         let query_vector = request.dense_vector.clone().unwrap_or_default();
@@ -195,7 +205,7 @@ impl VectorStore for FakeVectorStore {
                 dense: true,
                 sparse: false,
                 hybrid: false,
-                payload_filters: true,
+                payload_filters: false,
                 payload_indexes: Vec::new(),
                 delete_by_filter: false,
                 collection_aliases: false,

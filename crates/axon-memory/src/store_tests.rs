@@ -56,12 +56,27 @@ async fn fake_memory_store_remembers_gets_searches_and_contextualizes() {
             source_id: None,
             graph_node_id: None,
             filters: MetadataMap::new(),
-            depth: Some(1),
+            depth: None,
             include_working: false,
         })
         .await
         .unwrap();
     assert!(context.context.contains("source ledger"));
+
+    let constrained = store
+        .context(MemoryContextRequest {
+            token_budget: 2,
+            query: Some("ledger".to_string()),
+            source_id: None,
+            graph_node_id: None,
+            filters: MetadataMap::new(),
+            depth: None,
+            include_working: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!(constrained.token_estimate, 2);
+    assert_eq!(constrained.exclusions, vec!["token_budget"]);
 }
 
 #[tokio::test]
@@ -103,4 +118,42 @@ async fn fake_memory_store_links_reinforces_and_reports_capabilities() {
 
     store.reset().await.unwrap();
     assert!(store.get(remembered.memory_id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn fake_memory_store_rejects_unsupported_search_and_context_options() {
+    let store = FakeMemoryStore::new();
+    store
+        .remember(request("Axon records graph facts"))
+        .await
+        .unwrap();
+
+    let mut filters = MetadataMap::new();
+    filters.insert("scope".to_string(), serde_json::json!("axon"));
+    let err = store
+        .search(MemorySearchRequest {
+            query: "graph".to_string(),
+            limit: 5,
+            filters,
+            include_graph: false,
+            include_archived: false,
+            reinforce: false,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "memory.unsupported_option");
+
+    let err = store
+        .context(MemoryContextRequest {
+            token_budget: 512,
+            query: Some("graph".to_string()),
+            source_id: Some(SourceId::new("src")),
+            graph_node_id: None,
+            filters: MetadataMap::new(),
+            depth: None,
+            include_working: false,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "memory.unsupported_option");
 }

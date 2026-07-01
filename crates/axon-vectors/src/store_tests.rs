@@ -96,3 +96,30 @@ async fn fake_vector_store_reports_capabilities_and_records_calls() {
     store.reset().await.unwrap();
     assert!(store.calls().await.is_empty());
 }
+
+#[tokio::test]
+async fn fake_vector_store_rejects_filters_it_does_not_implement() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    let mut filters = MetadataMap::new();
+    filters.insert("source_id".to_string(), serde_json::json!("src_a"));
+
+    let err = store
+        .search(VectorSearchRequest {
+            collection: "axon-test".to_string(),
+            query: "chunk".to_string(),
+            limit: 10,
+            dense_vector: Some(vec![1.0, 0.0, 0.0]),
+            sparse_vector: None,
+            filters,
+            hybrid: Some(false),
+            generation: None,
+            graph_refs: Vec::new(),
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "vector.filter_unsupported");
+}

@@ -92,19 +92,34 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn update_status(&self, status: JobStatusUpdate) -> Result<()> {
-        if let Some(job) = self.state.lock().await.jobs.get_mut(&status.job_id) {
-            job.status = status.status;
-            job.phase = status.phase;
-            job.last_error = status.error;
-            job.updated_at = timestamp();
+        let mut state = self.state.lock().await;
+        let job = state
+            .jobs
+            .get_mut(&status.job_id)
+            .ok_or_else(|| missing_job(status.job_id))?;
+        if terminal_status(job.status) && job.status != status.status {
+            return Err(ApiError::new(
+                "job.invalid_transition",
+                ErrorStage::Publishing,
+                format!(
+                    "cannot transition terminal job {} from {:?} to {:?}",
+                    status.job_id.0, job.status, status.status
+                ),
+            ));
         }
+        job.status = status.status;
+        job.phase = status.phase;
+        job.last_error = status.error;
+        job.updated_at = timestamp();
         Ok(())
     }
 
     async fn append_event(&self, event: SourceProgressEvent) -> Result<()> {
-        self.state
-            .lock()
-            .await
+        let mut state = self.state.lock().await;
+        if !state.jobs.contains_key(&event.job_id) {
+            return Err(missing_job(event.job_id));
+        }
+        state
             .events
             .entry(event.job_id)
             .or_default()
@@ -123,14 +138,24 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()> {
-        if let Some(job) = self.state.lock().await.jobs.get_mut(&heartbeat.job_id) {
-            job.phase = heartbeat.phase;
-            job.updated_at = heartbeat.timestamp;
-        }
+        let mut state = self.state.lock().await;
+        let job = state
+            .jobs
+            .get_mut(&heartbeat.job_id)
+            .ok_or_else(|| missing_job(heartbeat.job_id))?;
+        job.phase = heartbeat.phase;
+        job.updated_at = heartbeat.timestamp;
         Ok(())
     }
 
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
+        if request.cursor.is_some() {
+            return Err(ApiError::new(
+                "job.cursor_unsupported",
+                ErrorStage::Retrieving,
+                "fake job store does not implement cursor pagination",
+            ));
+        }
         let mut items = self
             .state
             .lock()
@@ -142,9 +167,21 @@ impl JobStore for FakeJobWatchStore {
         if let Some(status) = request.status {
             items.retain(|job| job.status == status);
         }
+        if let Some(kind) = request.kind {
+            items.retain(|job| job.kind == kind);
+        }
+        if let Some(source_id) = request.source_id {
+            items.retain(|job| job.source_id.as_ref() == Some(&source_id));
+        }
+        if let Some(watch_id) = request.watch_id {
+            items.retain(|job| job.watch_id.as_ref() == Some(&watch_id));
+        }
+        let total = items.len() as u64;
+        let limit = request.limit.unwrap_or(100);
+        items.truncate(limit as usize);
         Ok(Page {
-            total: Some(items.len() as u64),
-            limit: request.limit.unwrap_or(100),
+            total: Some(total),
+            limit,
             next_cursor: None,
             items,
         })
@@ -252,18 +289,30 @@ impl WatchStore for FakeJobWatchStore {
     }
 
     async fn record_run(&self, watch_id: WatchId, job_id: JobId) -> Result<()> {
-        self.state
-            .lock()
-            .await
-            .watch_runs
-            .entry(watch_id)
-            .or_default()
-            .push(job_id);
+        let mut state = self.state.lock().await;
+        if !state.watches.contains_key(&watch_id) {
+            return Err(missing_watch(&watch_id));
+        }
+        if !state.jobs.contains_key(&job_id) {
+            return Err(missing_job(job_id));
+        }
+        let source_id = state
+            .watches
+            .get(&watch_id)
+            .map(|watch| watch.source_id.clone());
+        if let Some(job) = state.jobs.get_mut(&job_id) {
+            job.watch_id = Some(watch_id.clone());
+            job.source_id = source_id;
+        }
+        state.watch_runs.entry(watch_id).or_default().push(job_id);
         Ok(())
     }
 
     async fn history(&self, request: WatchHistoryRequest) -> Result<WatchHistoryResult> {
         let state = self.state.lock().await;
+        if !state.watches.contains_key(&request.watch_id) {
+            return Err(missing_watch(&request.watch_id));
+        }
         let runs = state
             .watch_runs
             .get(&request.watch_id)
@@ -282,6 +331,7 @@ impl WatchStore for FakeJobWatchStore {
                 created_at: job.created_at.clone(),
                 updated_at: job.updated_at.clone(),
             })
+            .take(request.limit.unwrap_or(100) as usize)
             .collect();
         Ok(WatchHistoryResult {
             runs,
@@ -314,6 +364,34 @@ fn capability(name: &str) -> CapabilityBase {
 
 fn timestamp() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
+}
+
+fn terminal_status(status: LifecycleStatus) -> bool {
+    matches!(
+        status,
+        LifecycleStatus::Completed
+            | LifecycleStatus::CompletedDegraded
+            | LifecycleStatus::Failed
+            | LifecycleStatus::Canceled
+            | LifecycleStatus::Expired
+            | LifecycleStatus::Skipped
+    )
+}
+
+fn missing_job(job_id: JobId) -> ApiError {
+    ApiError::new(
+        "job.not_found",
+        ErrorStage::Retrieving,
+        format!("job {} not found", job_id.0),
+    )
+}
+
+fn missing_watch(watch_id: &WatchId) -> ApiError {
+    ApiError::new(
+        "watch.not_found",
+        ErrorStage::Retrieving,
+        format!("watch {} not found", watch_id.0),
+    )
 }
 
 #[cfg(test)]

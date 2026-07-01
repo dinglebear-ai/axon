@@ -57,17 +57,19 @@ impl FakeLlmProvider {
     }
 
     fn response(&self, request: &LlmCompletionRequest) -> LlmCompletionResponse {
-        let text = format!(
-            "fake:{}:{}",
-            self.provider_id.0,
-            stable_checksum(&request.prompt)
-        );
+        let prompt = request
+            .messages
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let text = format!("fake:{}:{}", self.provider_id.0, stable_checksum(&prompt));
         LlmCompletionResponse {
             text,
             model: self.provider_id.0.clone(),
             finish_reason: "stop".to_string(),
             usage: ProviderUsage {
-                input_tokens: Some(request.prompt.split_whitespace().count() as u64),
+                input_tokens: Some(prompt.split_whitespace().count() as u64),
                 output_tokens: Some(1),
                 requests: 1,
                 duration_ms: 0,
@@ -77,6 +79,8 @@ impl FakeLlmProvider {
             } else {
                 None
             },
+            tool_calls: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 }
@@ -106,6 +110,7 @@ impl LlmProvider for FakeLlmProvider {
         for piece in response.text.split_inclusive(':') {
             on_delta(LlmDelta {
                 text: piece.to_string(),
+                tool_call: None,
             });
         }
         Ok(response)
