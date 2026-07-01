@@ -47,7 +47,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:710f871228dd3c5dbbba3007dbcdecf551f2ad460eb77f0ce68c2f80e07213a3",
+        "checksum": "sha256:61f1dc856edfa1ca6899b0a5ba3d7e94265c3b242dcf8f3cbfbb071de709d845",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/lib.rs"
       },
