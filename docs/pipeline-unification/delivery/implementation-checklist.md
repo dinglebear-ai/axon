@@ -23,6 +23,7 @@ Exit criteria:
 
 ## Phase 1: Workspace Skeleton
 
+- PR0 plan: `docs/pipeline-unification/plans/2026-07-01-target-workspace-skeleton.md`
 - [ ] add missing target crates
 - [ ] remove obsolete crates from workspace when their responsibilities move
 - [ ] add crate-local `src/CLAUDE.md` files
