@@ -628,6 +628,12 @@ dependencies = [
 [[package]]
 name = "axon-graph"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-ingest"
