@@ -92,6 +92,38 @@ async fn sqlite_same_owner_can_renew_lease() {
 }
 
 #[tokio::test]
+async fn sqlite_rejects_oversized_lease_ttl() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+
+    let acquire_err = store
+        .acquire_lease(lease_request_ttl(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            u64::MAX,
+        ))
+        .await
+        .expect_err("oversized ttl is rejected");
+    assert_eq!(
+        acquire_err.code.to_string(),
+        "source.ledger.lease_ttl_invalid"
+    );
+
+    let first = store
+        .acquire_lease(lease_request("source:src_sqlite:refresh", "owner-a"))
+        .await
+        .expect("acquire")
+        .expect("lease");
+    let heartbeat_err = store
+        .heartbeat_lease(first.lease_id, "owner-a".to_string(), u64::MAX)
+        .await
+        .expect_err("oversized heartbeat ttl is rejected");
+    assert_eq!(
+        heartbeat_err.code.to_string(),
+        "source.ledger.lease_ttl_invalid"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_heartbeat_extends_lease_by_id() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     let first = store
@@ -108,7 +140,18 @@ async fn sqlite_heartbeat_extends_lease_by_id() {
 
     assert_eq!(heartbeat.lease_id, first.lease_id);
     assert_eq!(heartbeat.owner_id, "owner-a");
-    assert!(chrono::DateTime::parse_from_rfc3339(&heartbeat.heartbeat_at.0).is_ok());
+    let first_heartbeat_at =
+        chrono::DateTime::parse_from_rfc3339(&first.heartbeat_at.0).expect("first heartbeat");
+    let heartbeat_at =
+        chrono::DateTime::parse_from_rfc3339(&heartbeat.heartbeat_at.0).expect("heartbeat");
+    assert!(heartbeat_at >= first_heartbeat_at);
+    let stored_heartbeat_at: String =
+        sqlx::query_scalar("SELECT heartbeat_at FROM leases WHERE lease_id = ?1")
+            .bind(&heartbeat.lease_id.0)
+            .fetch_one(&store.pool)
+            .await
+            .expect("stored heartbeat_at");
+    assert_eq!(stored_heartbeat_at, heartbeat.heartbeat_at.0);
 }
 
 #[tokio::test]

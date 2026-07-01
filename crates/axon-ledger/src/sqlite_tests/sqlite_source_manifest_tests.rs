@@ -122,6 +122,48 @@ async fn sqlite_scalar_status_columns_use_schema_wire_values() {
 }
 
 #[tokio::test]
+async fn sqlite_source_manifest_requires_existing_generation() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let orphan = manifest("orphan");
+    let orphan_json = serde_json::to_string(&orphan).expect("manifest json");
+    let orphan_result = sqlx::query(
+        r#"
+        INSERT INTO source_manifests (
+            source_id,
+            generation,
+            manifest_json,
+            created_at
+        ) VALUES (?1, ?2, ?3, ?4)
+        "#,
+    )
+    .bind(&orphan.source_id.0)
+    .bind(&orphan.generation.0)
+    .bind(orphan_json)
+    .bind(&orphan.created_at.0)
+    .execute(&store.pool)
+    .await;
+    assert!(
+        orphan_result.is_err(),
+        "manifest without a source_generation row should fail"
+    );
+
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let valid = manifest_with_items(
+        &generation.generation.0,
+        vec![manifest_item("src/lib.rs", "valid")],
+    );
+    store
+        .put_manifest(valid)
+        .await
+        .expect("valid generation manifest");
+}
+
+#[tokio::test]
 async fn sqlite_diff_manifest_against_committed_generation() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");

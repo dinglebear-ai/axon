@@ -70,6 +70,107 @@ async fn payload_commit_atomically_commits_manifest_and_cleanup_debt() {
 }
 
 #[tokio::test]
+async fn repeated_owner_payload_commit_rejects_already_committed_generation() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+    store
+        .commit_generation_payload_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-a", 10)],
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let err = store
+        .commit_generation_payload_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-b", 11)],
+            &[],
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("stale"),
+        "already committed generation should fail clearly: {err}"
+    );
+    let diff = store
+        .diff_manifest("source-a", &[ManifestItem::new("src/lib.rs", "hash-a", 10)])
+        .await
+        .unwrap();
+    assert_eq!(diff, Default::default());
+}
+
+#[tokio::test]
+async fn repeated_owner_delta_commit_rejects_already_committed_generation() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+    store
+        .commit_generation_payload_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-a", 10)],
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let err = store
+        .commit_generation_delta_for_owner(
+            "source-a",
+            generation,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-b", 11)],
+            &BTreeSet::from(["src/lib.rs".to_string()]),
+            &[],
+        )
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("stale"),
+        "already committed generation should fail clearly: {err}"
+    );
+    let diff = store
+        .diff_manifest("source-a", &[ManifestItem::new("src/lib.rs", "hash-a", 10)])
+        .await
+        .unwrap();
+    assert_eq!(diff, Default::default());
+}
+
+#[tokio::test]
 async fn payload_commit_rejects_incomplete_cleanup_selector() {
     let pool = axon_jobs::store::open_sqlite_pool(":memory:")
         .await

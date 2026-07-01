@@ -39,6 +39,7 @@ pub(super) async fn update_document_status(
             status = excluded.status,
             status_json = excluded.status_json,
             updated_at = excluded.updated_at
+        WHERE excluded.updated_at >= document_status.updated_at
         "#,
     )
     .bind(&status.document_id.0)

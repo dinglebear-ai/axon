@@ -340,6 +340,13 @@ impl SourceLedgerStore {
             );
         }
 
+        if generation <= state.committed_generation {
+            anyhow::bail!(
+                "source ledger generation {generation} is stale for {source_id}; committed generation is {}",
+                state.committed_generation
+            );
+        }
+
         let allows_implicit_generation = state.max_generation == state.committed_generation
             && generation == state.committed_generation.saturating_add(1);
         if state.max_generation != generation && !allows_implicit_generation {

@@ -42,6 +42,37 @@ pub(crate) fn source_missing_error(source_id: &SourceId) -> ApiError {
     .with_source_id(source_id.0.clone())
 }
 
+pub(crate) fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
+    match &debt.selector {
+        CleanupSelector::Source { source_id } if source_id != &debt.source_id => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
+        CleanupSelector::Generation {
+            source_id,
+            generation,
+        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
+        CleanupSelector::SourceItem {
+            source_id,
+            generation,
+            ..
+        } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn cleanup_selector_mismatch_error(debt: &CleanupDebt) -> ApiError {
+    ApiError::new(
+        "source.ledger.cleanup_selector_mismatch",
+        ErrorStage::Cleaning,
+        "cleanup selector does not match cleanup debt source/generation",
+    )
+    .with_source_id(debt.source_id.0.clone())
+}
+
 pub(crate) fn generation_already_published_error(generation: &SourceGeneration) -> ApiError {
     ApiError::new(
         "source.ledger.generation_already_published",

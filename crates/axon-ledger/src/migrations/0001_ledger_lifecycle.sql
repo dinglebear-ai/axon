@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS source_manifests (
   manifest_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (source_id, generation),
-  FOREIGN KEY (source_id) REFERENCES sources(source_id) ON DELETE CASCADE
+  FOREIGN KEY (source_id, generation)
+    REFERENCES source_generations(source_id, generation)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS source_items (

@@ -12,6 +12,7 @@ pub(super) async fn acquire_lease(
     request: LeaseRequest,
 ) -> Result<Option<LeaseGuard>> {
     let now = timestamp();
+    let expires_at = add_seconds(&now, request.ttl_seconds)?;
     let mut state = state.lock().await;
     if let Some(existing_id) = state.lease_ids_by_key.get(&request.lease_key).cloned() {
         let existing = state.leases.get(&existing_id).cloned();
@@ -19,7 +20,7 @@ pub(super) async fn acquire_lease(
             Some(existing) if timestamp_after(&existing.expires_at, &now)? => {
                 if existing.owner_id == request.owner_id {
                     let guard = LeaseGuard {
-                        expires_at: add_seconds(&now, request.ttl_seconds),
+                        expires_at: expires_at.clone(),
                         heartbeat_at: now.clone(),
                         acquired_at: existing.acquired_at,
                         job_id: request.job_id,
@@ -42,7 +43,7 @@ pub(super) async fn acquire_lease(
         lease_id: LeaseId::new(format!("lease_{}", uuid::Uuid::new_v4())),
         lease_key: request.lease_key,
         owner_id: request.owner_id,
-        expires_at: add_seconds(&now, request.ttl_seconds),
+        expires_at,
         heartbeat_at: now.clone(),
         acquired_at: now,
         job_id: request.job_id,
@@ -83,6 +84,7 @@ pub(super) async fn heartbeat_lease(
     ttl_seconds: u64,
 ) -> Result<Option<LeaseGuard>> {
     let now = timestamp();
+    let expires_at = add_seconds(&now, ttl_seconds)?;
     let mut state = state.lock().await;
     let Some(existing) = state.leases.get(&lease_id).cloned() else {
         return Ok(None);
@@ -92,7 +94,7 @@ pub(super) async fn heartbeat_lease(
     }
     let guard = LeaseGuard {
         heartbeat_at: now.clone(),
-        expires_at: add_seconds(&now, ttl_seconds),
+        expires_at,
         ..existing
     };
     state.leases.insert(lease_id, guard.clone());

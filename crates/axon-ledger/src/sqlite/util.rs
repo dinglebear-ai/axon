@@ -49,12 +49,17 @@ pub(super) fn timestamp() -> Timestamp {
     Timestamp(chrono::Utc::now().to_rfc3339())
 }
 
-pub(super) fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
+pub(super) fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Result<Timestamp> {
+    let seconds = i64::try_from(seconds).map_err(|_| lease_ttl_invalid_error())?;
+    let duration = chrono::TimeDelta::try_seconds(seconds).ok_or_else(lease_ttl_invalid_error)?;
     let parsed = chrono::DateTime::parse_from_rfc3339(&timestamp.0)
         .map(|value| value.with_timezone(&chrono::Utc));
     match parsed {
-        Ok(value) => Timestamp((value + chrono::Duration::seconds(seconds as i64)).to_rfc3339()),
-        Err(_) => timestamp.clone(),
+        Ok(value) => value
+            .checked_add_signed(duration)
+            .map(|value| Timestamp(value.to_rfc3339()))
+            .ok_or_else(lease_ttl_invalid_error),
+        Err(_) => Ok(timestamp.clone()),
     }
 }
 
@@ -99,5 +104,13 @@ pub(super) fn json_error(error: serde_json::Error) -> ApiError {
         "source.ledger.json",
         ErrorStage::Upserting,
         format!("ledger JSON operation failed: {error}"),
+    )
+}
+
+fn lease_ttl_invalid_error() -> ApiError {
+    ApiError::new(
+        "source.ledger.lease_ttl_invalid",
+        ErrorStage::Leasing,
+        "lease ttl is too large to represent as a timestamp",
     )
 }

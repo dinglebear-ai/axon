@@ -13,6 +13,7 @@ pub(super) async fn acquire_lease(
     request: LeaseRequest,
 ) -> Result<Option<LeaseGuard>> {
     let now = timestamp();
+    let requested_expires_at = add_seconds(&now, request.ttl_seconds)?;
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
     let existing = sqlx::query(
         r#"
@@ -27,11 +28,11 @@ pub(super) async fn acquire_lease(
     .map_err(sqlite_error)?;
 
     if let Some(row) = existing {
-        let expires_at: String = row.get("expires_at");
+        let existing_expires_at: String = row.get("expires_at");
         let owner_id: String = row.get("owner_id");
         let lease_id: String = row.get("lease_id");
         let acquired_at: String = row.get("acquired_at");
-        if timestamp_str_after(&expires_at, &now.0)? {
+        if timestamp_str_after(&existing_expires_at, &now.0)? {
             if owner_id != request.owner_id {
                 tx.rollback().await.map_err(sqlite_error)?;
                 return Ok(None);
@@ -41,7 +42,7 @@ pub(super) async fn acquire_lease(
                 lease_id: LeaseId::new(lease_id),
                 lease_key: request.lease_key,
                 owner_id: request.owner_id,
-                expires_at: add_seconds(&now, request.ttl_seconds),
+                expires_at: requested_expires_at.clone(),
                 heartbeat_at: now.clone(),
                 acquired_at: Timestamp(acquired_at),
                 job_id: request.job_id,
@@ -76,16 +77,7 @@ pub(super) async fn acquire_lease(
             .map_err(sqlite_error)?;
     }
 
-    let guard = LeaseGuard {
-        lease_id: LeaseId::new(format!("lease_{}", uuid::Uuid::new_v4())),
-        lease_key: request.lease_key,
-        owner_id: request.owner_id,
-        expires_at: add_seconds(&now, request.ttl_seconds),
-        heartbeat_at: now.clone(),
-        acquired_at: now,
-        job_id: request.job_id,
-        metadata: request.metadata,
-    };
+    let guard = new_lease_guard(request, now, requested_expires_at);
     let lease_json = serde_json::to_string(&guard).map_err(json_error)?;
     sqlx::query(
         r#"
@@ -132,6 +124,23 @@ pub(super) async fn acquire_lease(
     Ok(Some(guard))
 }
 
+fn new_lease_guard(
+    request: LeaseRequest,
+    now: Timestamp,
+    requested_expires_at: Timestamp,
+) -> LeaseGuard {
+    LeaseGuard {
+        lease_id: LeaseId::new(format!("lease_{}", uuid::Uuid::new_v4())),
+        lease_key: request.lease_key,
+        owner_id: request.owner_id,
+        expires_at: requested_expires_at,
+        heartbeat_at: now.clone(),
+        acquired_at: now,
+        job_id: request.job_id,
+        metadata: request.metadata,
+    }
+}
+
 pub(super) async fn release_lease(
     store: &SqliteLedgerStore,
     lease_id: LeaseId,
@@ -174,6 +183,7 @@ pub(super) async fn heartbeat_lease(
     ttl_seconds: u64,
 ) -> Result<Option<LeaseGuard>> {
     let now = timestamp();
+    let expires_at = add_seconds(&now, ttl_seconds)?;
     let row = sqlx::query(
         r#"
         SELECT lease_json
@@ -196,7 +206,7 @@ pub(super) async fn heartbeat_lease(
     }
     let guard = LeaseGuard {
         heartbeat_at: now.clone(),
-        expires_at: add_seconds(&now, ttl_seconds),
+        expires_at,
         ..existing
     };
     let lease_json = serde_json::to_string(&guard).map_err(json_error)?;
