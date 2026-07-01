@@ -897,6 +897,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-core",
+ "axon-document",
  "axon-source-ledger",
  "chrono",
  "futures-util",
