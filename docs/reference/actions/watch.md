@@ -20,6 +20,10 @@ URL **change detector**: each scheduler tick it diffs every watched URL against 
 stored snapshot, summarizes meaningful changes with the LLM, records a change
 artifact, and enqueues a crawl for the changed subtrees.
 
+> Current runtime only. The #298 target makes watch source-request backed, with
+> shared source jobs, ledger leases, progress, and provider backoff rather than
+> URL-payload-only scheduler rows.
+
 ## Synopsis
 
 ```bash

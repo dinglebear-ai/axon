@@ -3,7 +3,11 @@ Last Modified: 2026-03-10
 
 > CLI reference (flags, subcommands, examples): [`docs/reference/actions/ingest.md`](../../reference/actions/ingest.md)
 
-The `axon ingest` command ingests external sources — GitHub repositories, GitLab projects, Gitea/Forgejo repositories, generic HTTPS Git repositories, Reddit subreddits/threads, and YouTube videos/playlists/channels — into Qdrant. Source type is auto-detected from the target argument where possible.
+The `axon ingest` command ingests external sources — GitHub repositories, GitLab projects, Gitea/Forgejo repositories, generic HTTPS Git repositories, RSS/Atom/JSON feeds, Reddit subreddits/threads, YouTube videos/playlists/channels, and AI session exports — into Qdrant. Source type is auto-detected from the target argument where possible.
+
+> Current runtime guide. The #298 clean-break target moves source ingestion to
+> the unified source pipeline under `axon <source>`; these `ingest` details are
+> not compatibility promises after that cutover.
 
 ## Ingest Docs Index
 
@@ -12,7 +16,7 @@ The `axon ingest` command ingests external sources — GitHub repositories, GitL
 | [`docs/guides/ingest/ingest.md`](ingest.md) | Shared ingest job schema, dependencies, and environment variables. |
 | [`docs/guides/ingest/github.md`](github.md) | GitHub repository ingestion. |
 | [`docs/guides/ingest/gitlab.md`](gitlab.md) | GitLab project ingestion. |
-| Gitea/Forgejo and generic Git | See `docs/reference/actions/ingest.md` for target forms and shared flags. |
+| Gitea/Forgejo, generic Git, RSS/Atom/JSON feeds | See `docs/reference/actions/ingest.md` for target forms and shared flags. |
 | [`docs/guides/ingest/reddit.md`](reddit.md) | Reddit subreddit and thread ingestion. |
 | [`docs/guides/ingest/youtube.md`](youtube.md) | YouTube video, playlist, and channel ingestion. |
 | [`docs/guides/ingest/sessions.md`](sessions.md) | AI session export ingestion. |
@@ -21,12 +25,14 @@ Command-only operational notes live in `docs/reference/actions/*.md`; do not add
 
 ## Storage Schema
 
-Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is created by migrations under `src/jobs/migrations/` and used through the SQLite job runtime.
+Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is
+created by migrations under `crates/axon-jobs/src/migrations/` and used through
+the SQLite job runtime.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `TEXT` | Job identifier |
-| `source_type` | `TEXT` | One of `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `sessions` |
+| `source_type` | `TEXT` | One of `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `rss`, `sessions` |
 | `target` | `TEXT` | The original target string (slug, URL, handle, etc.) |
 | `status` | `TEXT` | `pending`, `running`, `completed`, `failed`, or `canceled` |
 | `config_json` | `TEXT` | Serialized job configuration (flags at submission time) |

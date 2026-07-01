@@ -17,6 +17,11 @@ Parity notes: Single direct REST endpoint accepts the memory subaction envelope 
 
 Persistent agent memory. Content and embeddings are stored in the dedicated Qdrant memory collection (`axon_memory` by default, or `AXON_MEMORY_COLLECTION`), while SQLite stores the metadata/graph mirror. New memories are normalized through `SourceDocument::new_memory(...)` before embedding, so the Qdrant point uses the same deterministic UUID as SQLite and carries the shared planner fields (`chunk_content_kind`, `chunk_locator`, `source_range`).
 
+> Current runtime memory is CLI/REST/MCP subactions backed by Qdrant + SQLite.
+> The #298 target promotes memory into a first-class `axon-memory` lifecycle
+> with decay, reinforcement, review, graph/vector integration, and shared
+> source-pipeline preparation where useful. Memory is not a source adapter.
+
 ## Commands
 
 ```bash

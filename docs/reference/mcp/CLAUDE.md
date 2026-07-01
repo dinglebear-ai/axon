@@ -2,6 +2,10 @@
 
 Documentation for the Axon MCP server (`axon mcp`).
 
+These docs describe the current pre-#298 MCP runtime. The future clean-break
+tool contract is `docs/pipeline-unification/surfaces/tool-contract.md`; the
+current generated `tool-schema.md` is no longer the future source of truth.
+
 ## Files
 
 | File | Description |
@@ -33,4 +37,4 @@ Documentation for the Axon MCP server (`axon mcp`).
 - [../stack/ARCH.md](../../architecture/stack/arch.md) -- trimodal architecture overview
 - [../repo/REPO.md](../../contributing/repo/repo.md) -- repository structure
 - [../MCP.md](overview.md) -- MCP runtime internals
-- [../MCP-TOOL-SCHEMA.md](tool-schema.md) -- wire contract (source of truth)
+- [../MCP-TOOL-SCHEMA.md](tool-schema.md) -- current generated runtime snapshot
