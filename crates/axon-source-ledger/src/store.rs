@@ -378,13 +378,12 @@ impl SourceLedgerStore {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*)
              FROM axon_source_manifest_items
-             WHERE source_id = ? AND indexed_generation = ? AND pending = 0",
+             WHERE source_id = ? AND pending = 0",
         )
         .bind(source_id)
-        .bind(status.committed_generation)
         .fetch_one(&self.pool)
         .await
-        .context("failed to count committed source generation items")?;
+        .context("failed to count committed source items")?;
         Ok(count.max(0) as usize)
     }
 

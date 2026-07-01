@@ -110,6 +110,7 @@ fn database_spec() -> FamilySpec {
         owner_crates: &["axon-jobs", "axon-ledger"],
         source_paths: &[
             "crates/axon-jobs/src/migrations",
+            "crates/axon-ledger/src/migrations",
             "docs/pipeline-unification/runtime/schema-contract.md",
         ],
         json_path: "docs/reference/runtime/database-schema.json",

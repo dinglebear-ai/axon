@@ -1,16 +1,33 @@
 use super::*;
 use uuid::Uuid;
 
+async fn seed_item_generation(store: &SqliteLedgerStore, item_key: &str) -> SourceGenerationId {
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    store
+        .put_manifest(manifest_with_items(
+            &generation.generation.0,
+            vec![manifest_item(item_key, "hash")],
+        ))
+        .await
+        .expect("put manifest");
+    generation.generation
+}
+
 #[tokio::test]
 async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
+    let gen1 = seed_item_generation(&store, "src/lib.rs").await;
+    let gen2 = seed_item_generation(&store, "src/lib.rs").await;
 
     let status = DocumentStatus {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: SourceGenerationId::new("gen_1"),
+        generation: gen1.clone(),
         status: DocumentLifecycleStatus::Published,
         updated_at: ts(),
         chunk_count: 2,
@@ -33,7 +50,7 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: SourceGenerationId::new("gen_2"),
+        generation: gen2,
         status: DocumentLifecycleStatus::Failed,
         updated_at: ts_at(9),
         chunk_count: 0,
@@ -65,7 +82,7 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
         debt_id: CleanupDebtId::new("debt-sqlite"),
         job_id: JobId::new(Uuid::from_u128(1)),
         source_id: SourceId::new("src_sqlite"),
-        generation: Some(SourceGenerationId::new("gen_1")),
+        generation: Some(gen1),
         kind: CleanupDebtKind::VectorDelete,
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-sqlite"),
@@ -99,12 +116,14 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
 async fn sqlite_document_status_ignores_stale_updates() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
+    let gen1 = seed_item_generation(&store, "src/lib.rs").await;
+    let gen2 = seed_item_generation(&store, "src/lib.rs").await;
 
     let newer = DocumentStatus {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: SourceGenerationId::new("gen_2"),
+        generation: gen2,
         status: DocumentLifecycleStatus::Published,
         updated_at: ts_at(9),
         chunk_count: 2,
@@ -121,7 +140,7 @@ async fn sqlite_document_status_ignores_stale_updates() {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: SourceGenerationId::new("gen_1"),
+        generation: gen1,
         status: DocumentLifecycleStatus::Failed,
         updated_at: ts(),
         chunk_count: 0,
@@ -155,12 +174,13 @@ async fn sqlite_document_status_ignores_stale_updates() {
 async fn sqlite_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
+    let gen1 = seed_item_generation(&store, "src/lib.rs").await;
 
     let mut debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
         source_id: SourceId::new("src_sqlite"),
-        generation: Some(SourceGenerationId::new("gen_1")),
+        generation: Some(gen1),
         kind: CleanupDebtKind::VectorDelete,
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-sqlite"),
@@ -212,12 +232,13 @@ async fn sqlite_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() 
 async fn sqlite_cleanup_debt_ignores_stale_replay() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
+    let gen1 = seed_item_generation(&store, "src/lib.rs").await;
 
     let mut debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
         source_id: SourceId::new("src_sqlite"),
-        generation: Some(SourceGenerationId::new("gen_1")),
+        generation: Some(gen1),
         kind: CleanupDebtKind::VectorDelete,
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-sqlite"),

@@ -46,6 +46,11 @@ fn fixture_repo() -> TempDir {
         "crates/axon-jobs/src/migrations/0001.sql",
         "create table jobs(id text);",
     );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-ledger/src/migrations/0001.sql",
+        "create table sources(source_id text);",
+    );
     tmp
 }
 

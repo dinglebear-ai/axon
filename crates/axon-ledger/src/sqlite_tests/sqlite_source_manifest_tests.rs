@@ -38,6 +38,75 @@ async fn sqlite_generation_timestamps_are_runtime_values() {
 }
 
 #[tokio::test]
+async fn sqlite_create_generation_rejects_missing_source_with_domain_error() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+
+    let err = store
+        .create_generation(SourceId::new("missing-source"))
+        .await
+        .expect_err("missing source should fail");
+
+    assert_eq!(err.code.to_string(), "source.ledger.source_missing");
+}
+
+#[tokio::test]
+async fn sqlite_document_status_requires_existing_source_item() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+
+    let err = store
+        .update_document_status(DocumentStatus {
+            document_id: DocumentId::new("doc-missing-item"),
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new("src/missing.rs"),
+            generation: gen1.generation,
+            status: DocumentLifecycleStatus::Published,
+            updated_at: ts(),
+            chunk_count: 1,
+            vector_point_count: 1,
+            error: None,
+            cleanup_status: None,
+        })
+        .await
+        .expect_err("missing source item should fail");
+
+    assert_eq!(err.code.to_string(), "source.ledger.source_item_missing");
+}
+
+#[tokio::test]
+async fn sqlite_cleanup_debt_requires_existing_generation() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let err = store
+        .record_cleanup_debt(CleanupDebt {
+            debt_id: CleanupDebtId::new("debt-missing-generation"),
+            job_id: JobId::new(Uuid::from_u128(1)),
+            source_id: SourceId::new("src_sqlite"),
+            generation: Some(SourceGenerationId::new("gen_missing")),
+            kind: CleanupDebtKind::VectorDelete,
+            selector: CleanupSelector::Generation {
+                source_id: SourceId::new("src_sqlite"),
+                generation: SourceGenerationId::new("gen_missing"),
+            },
+            status: LifecycleStatus::Pending,
+            created_at: ts(),
+            attempts: 0,
+            last_error: None,
+            next_retry_at: None,
+            completed_at: None,
+        })
+        .await
+        .expect_err("missing generation should fail");
+
+    assert_eq!(err.code.to_string(), "source.ledger.generation_missing");
+}
+
+#[tokio::test]
 async fn sqlite_scalar_status_columns_use_schema_wire_values() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");

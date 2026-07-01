@@ -4,6 +4,7 @@ use std::time::Instant;
 use anyhow::{Result, anyhow};
 use axon_core::config::Config;
 use axon_core::http::internal_service_http_client;
+use axon_source_ledger::{SourceIdentity, SourceLedgerStore};
 use serde_json::Value;
 
 use super::super::utils::{qdrant_collection_endpoint, qdrant_post_json_with_retry};
@@ -12,6 +13,43 @@ use super::super::utils::{qdrant_collection_endpoint, qdrant_post_json_with_retr
 pub struct SourceGenerationPointCounts {
     pub points: usize,
     pub distinct_items: usize,
+}
+
+pub async fn qdrant_republish_committed_source_generation(
+    cfg: &Config,
+    store: &SourceLedgerStore,
+    source: &SourceIdentity,
+) -> Result<()> {
+    let status = store.source_status(&source.source_id).await?;
+    if status.committed_generation <= 0 {
+        return Ok(());
+    }
+
+    let committed_items = store
+        .committed_generation_item_count(&source.source_id)
+        .await?;
+    let counts = qdrant_source_generation_point_counts(
+        cfg,
+        &source.source_id,
+        status.committed_generation,
+        source.index_version,
+    )
+    .await?;
+    if committed_items > 0 && counts.distinct_items < committed_items {
+        return Err(anyhow!(
+            "committed source generation {} has {} distinct Qdrant source items, expected at least {committed_items}",
+            status.committed_generation,
+            counts.distinct_items,
+        ));
+    }
+    qdrant_publish_source_generation(
+        cfg,
+        &source.source_id,
+        status.committed_generation,
+        source.index_version,
+        counts.points,
+    )
+    .await
 }
 
 pub async fn qdrant_publish_source_generation(

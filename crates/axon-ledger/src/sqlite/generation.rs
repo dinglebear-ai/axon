@@ -5,7 +5,10 @@ use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::cleanup::insert_cleanup_debt_once_in_tx;
 use crate::sqlite::util::{enum_wire_value, json_error, timestamp};
 use crate::store::Result;
-use crate::validation::generation_already_published_error;
+use crate::validation::{
+    ensure_generation_publishable, ensure_generation_writable, manifest_missing_error,
+    source_missing_error,
+};
 
 mod stale_cleanup;
 
@@ -16,6 +19,7 @@ pub(super) async fn create_generation(
     source_id: SourceId,
 ) -> Result<SourceGeneration> {
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    ensure_source_exists_in_tx(&mut tx, &source_id).await?;
     let previous_generation = current_committed_generation_in_tx(&mut tx, &source_id).await?;
     let next_sequence: i64 = sqlx::query_scalar(
         r#"
@@ -57,29 +61,29 @@ pub(super) async fn create_generation(
     Ok(generation)
 }
 
+pub(super) async fn ensure_source_exists_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+) -> Result<()> {
+    let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
+        .bind(&source_id.0)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(sqlite_error)?;
+    if exists.is_none() {
+        return Err(source_missing_error(source_id));
+    }
+    Ok(())
+}
+
 pub(super) async fn complete_generation(
     store: &SqliteLedgerStore,
     generation: SourceGeneration,
 ) -> Result<SourceGeneration> {
-    if !matches!(
-        generation.status,
-        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
-    ) {
-        return Err(ApiError::new(
-            "source.ledger.generation_not_publishable",
-            ErrorStage::Publishing,
-            format!(
-                "generation {} has non-publishable status {:?}",
-                generation.generation.0, generation.status
-            ),
-        )
-        .with_source_id(generation.source_id.0));
-    }
+    ensure_generation_publishable(&generation)?;
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
     let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
-    if stored.publish_state != PublishState::Writing || stored.published_at.is_some() {
-        return Err(generation_already_published_error(&stored));
-    }
+    ensure_generation_writable(&stored)?;
     let manifest_exists: Option<i64> = sqlx::query_scalar(
         r#"
         SELECT 1
@@ -93,15 +97,7 @@ pub(super) async fn complete_generation(
     .await
     .map_err(sqlite_error)?;
     if manifest_exists.is_none() {
-        return Err(ApiError::new(
-            "source.ledger.manifest_missing",
-            ErrorStage::Publishing,
-            format!(
-                "generation {} cannot publish without a manifest",
-                generation.generation.0
-            ),
-        )
-        .with_source_id(generation.source_id.0));
+        return Err(manifest_missing_error(&generation));
     }
     if stored.previous_generation != generation.previous_generation {
         return Err(ApiError::new(
@@ -131,20 +127,7 @@ pub(super) async fn publish_generation(
 ) -> Result<SourceGeneration> {
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
     let generation = generation_in_tx(&mut tx, &request.source_id, &request.generation).await?;
-    if !matches!(
-        generation.status,
-        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
-    ) {
-        return Err(ApiError::new(
-            "source.ledger.generation_not_publishable",
-            ErrorStage::Publishing,
-            format!(
-                "generation {} has non-publishable status {:?}",
-                generation.generation.0, generation.status
-            ),
-        )
-        .with_source_id(generation.source_id.0));
-    }
+    ensure_generation_publishable(&generation)?;
 
     let manifest_exists: Option<i64> = sqlx::query_scalar(
         r#"
@@ -159,15 +142,7 @@ pub(super) async fn publish_generation(
     .await
     .map_err(sqlite_error)?;
     if manifest_exists.is_none() {
-        return Err(ApiError::new(
-            "source.ledger.manifest_missing",
-            ErrorStage::Publishing,
-            format!(
-                "generation {} cannot publish without a manifest",
-                generation.generation.0
-            ),
-        )
-        .with_source_id(generation.source_id.0));
+        return Err(manifest_missing_error(&generation));
     }
 
     let previous = current_committed_generation_in_tx(&mut tx, &generation.source_id).await?;

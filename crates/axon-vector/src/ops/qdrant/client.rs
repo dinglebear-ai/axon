@@ -29,7 +29,10 @@ pub use scroll::{
     qdrant_domain_has_indexed_url, qdrant_indexed_urls, qdrant_scroll_pages_selective,
     qdrant_urls_for_domain, qdrant_urls_for_domain_limited, qdrant_urls_for_domain_page,
 };
-pub use source_publish::{qdrant_publish_source_generation, qdrant_source_generation_point_counts};
+pub use source_publish::{
+    qdrant_publish_source_generation, qdrant_republish_committed_source_generation,
+    qdrant_source_generation_point_counts,
+};
 
 #[cfg(any(test, feature = "test-util"))]
 pub use delete::local_code_batch_delete_body_for_test;

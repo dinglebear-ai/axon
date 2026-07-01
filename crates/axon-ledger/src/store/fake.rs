@@ -10,7 +10,10 @@ mod lease;
 
 use super::util::*;
 use super::{LedgerStore, Result};
-use crate::validation::{generation_already_published_error, validate_manifest};
+use crate::validation::{
+    ensure_generation_publishable, ensure_generation_writable, manifest_missing_error,
+    validate_manifest,
+};
 use cleanup::record_removed_item_cleanup_debt;
 
 #[derive(Debug, Clone, Default)]
@@ -227,20 +230,7 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
-        if !matches!(
-            generation.status,
-            LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
-        ) {
-            return Err(ApiError::new(
-                "source.ledger.generation_not_publishable",
-                ErrorStage::Publishing,
-                format!(
-                    "generation {} has non-publishable status {:?}",
-                    generation.generation.0, generation.status
-                ),
-            )
-            .with_source_id(generation.source_id.0));
-        }
+        ensure_generation_publishable(&generation)?;
         let mut state = self.state.lock().await;
         if !state.sources.contains_key(&generation.source_id) {
             return Err(source_missing_error(&generation.source_id));
@@ -252,22 +242,12 @@ impl LedgerStore for FakeLedgerStore {
                 &generation.generation,
             ));
         };
-        if stored.publish_state != PublishState::Writing || stored.published_at.is_some() {
-            return Err(generation_already_published_error(&stored));
-        }
+        ensure_generation_writable(&stored)?;
         if !state
             .manifests
             .contains_key(&(generation.source_id.clone(), generation.generation.clone()))
         {
-            return Err(ApiError::new(
-                "source.ledger.manifest_missing",
-                ErrorStage::Publishing,
-                format!(
-                    "generation {} cannot publish without a manifest",
-                    generation.generation.0
-                ),
-            )
-            .with_source_id(generation.source_id.0));
+            return Err(manifest_missing_error(&generation));
         }
         if stored.previous_generation != generation.previous_generation {
             return Err(ApiError::new(
@@ -307,33 +287,12 @@ impl LedgerStore for FakeLedgerStore {
                 &request.generation,
             ));
         };
-        if !matches!(
-            generation.status,
-            LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
-        ) {
-            return Err(ApiError::new(
-                "source.ledger.generation_not_publishable",
-                ErrorStage::Publishing,
-                format!(
-                    "generation {} has non-publishable status {:?}",
-                    generation.generation.0, generation.status
-                ),
-            )
-            .with_source_id(generation.source_id.0));
-        }
+        ensure_generation_publishable(&generation)?;
         if !state
             .manifests
             .contains_key(&(generation.source_id.clone(), generation.generation.clone()))
         {
-            return Err(ApiError::new(
-                "source.ledger.manifest_missing",
-                ErrorStage::Publishing,
-                format!(
-                    "generation {} cannot publish without a manifest",
-                    generation.generation.0
-                ),
-            )
-            .with_source_id(generation.source_id.0));
+            return Err(manifest_missing_error(&generation));
         }
         let committed = state.committed.get(&generation.source_id).cloned();
         if committed != request.expected_previous_generation

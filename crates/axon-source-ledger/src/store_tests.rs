@@ -141,6 +141,37 @@ async fn committed_generation_item_count_tracks_current_committed_rows() {
             .unwrap(),
         2
     );
+
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+    let generation_2 = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
+    store
+        .commit_generation_delta_for_owner(
+            "source-a",
+            generation_2,
+            "owner-a",
+            &[ManifestItem::new("src/lib.rs", "hash-c", 11)],
+            &BTreeSet::from(["src/lib.rs".to_string(), "README.md".to_string()]),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store
+            .committed_generation_item_count("source-a")
+            .await
+            .unwrap(),
+        2,
+        "live committed count must include unchanged rows from older generations"
+    );
 }
 
 #[tokio::test]
