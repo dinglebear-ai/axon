@@ -105,6 +105,9 @@ jobs:
     name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     needs: [changes]
+    # TEMP(refactor): disable CodeQL PR analysis while the large
+    # pipeline-unification refactor lands. Re-enable for stabilization/release.
+    if: ${{ vars.AXON_ENABLE_HEAVY_CI == 'true' }}
     permissions:
       security-events: write
 

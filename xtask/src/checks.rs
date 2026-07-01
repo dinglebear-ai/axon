@@ -12,6 +12,7 @@ pub mod no_mod_rs;
 pub mod openapi_drift;
 pub mod release_versions;
 pub mod repo_structure;
+pub mod repo_structure_spec;
 pub mod secrets;
 pub mod sqlite_migrations;
 pub mod unwraps;

@@ -2,247 +2,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+pub use super::repo_structure_spec::{REQUIRED_WORKSPACE_MEMBERS, TARGET_CRATES, TargetCrate};
+
 const TARGET_RUST_VERSION: &str = "1.94.0";
 const DEPENDENCY_TABLES: &[&str] = &["dependencies", "dev-dependencies", "build-dependencies"];
-
-pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
-    "xtask",
-    "crates/axon-api",
-    "crates/axon-authz",
-    "crates/axon-core",
-    "crates/axon-crawl",
-    "crates/axon-vector",
-    "crates/axon-ingest",
-    "crates/axon-extract",
-    "crates/axon-jobs",
-    "crates/axon-source-ledger",
-    "crates/axon-code-index",
-    "crates/axon-services",
-    "crates/axon-mcp",
-    "crates/axon-web",
-    "crates/axon-cli",
-];
-
-pub struct TargetCrate {
-    pub name: &'static str,
-    pub modules: &'static [&'static str],
-}
-
-pub const TARGET_CRATES: &[TargetCrate] = &[
-    TargetCrate {
-        name: "axon-error",
-        modules: &[
-            "api_error",
-            "code",
-            "stage",
-            "severity",
-            "retry",
-            "degradation",
-            "cooling",
-            "context",
-            "conversion",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-observe",
-        modules: &[
-            "event",
-            "phase",
-            "heartbeat",
-            "progress",
-            "metric",
-            "span",
-            "log",
-            "collector",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-route",
-        modules: &[
-            "resolver",
-            "router",
-            "canonical",
-            "source_id",
-            "scope",
-            "authority",
-            "alias",
-            "capability",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-adapters",
-        modules: &[
-            "adapter",
-            "registry",
-            "capability",
-            "acquisition",
-            "manifest",
-            "web",
-            "local",
-            "git",
-            "registry_sources",
-            "feed",
-            "youtube",
-            "reddit",
-            "sessions",
-            "cli_tool",
-            "mcp_tool",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-ledger",
-        modules: &[
-            "store",
-            "sqlite",
-            "migration",
-            "source",
-            "item",
-            "manifest",
-            "diff",
-            "generation",
-            "document_status",
-            "lease",
-            "cleanup_debt",
-            "transaction",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-parse",
-        modules: &[
-            "parser",
-            "registry",
-            "facts",
-            "graph_candidate",
-            "code",
-            "manifest",
-            "schema",
-            "session",
-            "tool",
-            "env",
-            "docker",
-            "config",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-graph",
-        modules: &[
-            "store",
-            "sqlite",
-            "migration",
-            "node",
-            "edge",
-            "evidence",
-            "candidate",
-            "authority",
-            "merge",
-            "query",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-memory",
-        modules: &[
-            "store",
-            "sqlite",
-            "migration",
-            "record",
-            "link",
-            "decay",
-            "review",
-            "recall",
-            "context",
-            "graph",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-document",
-        modules: &[
-            "preparer",
-            "chunk_router",
-            "profile",
-            "prepared",
-            "chunk",
-            "metadata",
-            "code",
-            "markdown",
-            "transcript",
-            "session",
-            "schema",
-            "text",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-embedding",
-        modules: &[
-            "provider",
-            "batch",
-            "capability",
-            "reservation",
-            "tei",
-            "openai_compat",
-            "fake",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-vectors",
-        modules: &[
-            "store",
-            "qdrant",
-            "collection",
-            "point",
-            "payload",
-            "filter",
-            "query",
-            "health",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-retrieval",
-        modules: &[
-            "engine", "plan", "query", "filter", "rank", "context", "citation", "memory", "graph",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-llm",
-        modules: &[
-            "provider",
-            "capability",
-            "completion",
-            "stream",
-            "prompt",
-            "openai_compat",
-            "codex",
-            "gemini",
-            "fake",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-prune",
-        modules: &[
-            "plan",
-            "executor",
-            "debt",
-            "generation",
-            "orphan",
-            "dedupe",
-            "receipt",
-            "safety",
-            "testing",
-        ],
-    },
-];
 
 pub fn check(root: &Path) -> anyhow::Result<()> {
     check_root(root).map_err(anyhow::Error::msg)
@@ -263,6 +26,9 @@ pub fn check_root(root: &Path) -> Result<(), String> {
     }
 
     for member in &workspace_members {
+        if !allowed_workspace_members().contains(member) {
+            errors.push(format!("unexpected PR0 workspace member: {member}"));
+        }
         if !root.join(member).is_dir() {
             errors.push(format!("workspace member path does not exist: {member}"));
         }
@@ -273,6 +39,18 @@ pub fn check_root(root: &Path) -> Result<(), String> {
     } else {
         Err(errors.join("\n"))
     }
+}
+
+fn allowed_workspace_members() -> BTreeSet<String> {
+    REQUIRED_WORKSPACE_MEMBERS
+        .iter()
+        .map(|member| (*member).to_owned())
+        .chain(
+            TARGET_CRATES
+                .iter()
+                .map(|krate| format!("crates/{}", krate.name)),
+        )
+        .collect()
 }
 
 fn check_target_crate(
@@ -442,50 +220,35 @@ fn require_target_manifest_metadata(krate: &str, parsed: &toml::Table, errors: &
 
 fn require_empty_dependency_tables(krate: &str, parsed: &toml::Table, errors: &mut Vec<String>) {
     let mut dependency_tables = Vec::new();
-    collect_non_empty_dependency_tables(
-        &toml::Value::Table(parsed.clone()),
-        &mut Vec::new(),
-        &mut dependency_tables,
-    );
+    for table in DEPENDENCY_TABLES {
+        if parsed
+            .get(*table)
+            .and_then(toml::Value::as_table)
+            .is_some_and(|table| !table.is_empty())
+        {
+            dependency_tables.push(format!("[{table}]"));
+        }
+    }
+    if let Some(targets) = parsed.get("target").and_then(toml::Value::as_table) {
+        for (target, cfg) in targets {
+            let Some(cfg) = cfg.as_table() else { continue };
+            for table in DEPENDENCY_TABLES {
+                if cfg
+                    .get(*table)
+                    .and_then(toml::Value::as_table)
+                    .is_some_and(|table| !table.is_empty())
+                {
+                    dependency_tables.push(format!("[target.{target}.{table}]"));
+                }
+            }
+        }
+    }
 
     for table_name in dependency_tables {
         errors.push(format!(
             "PR0 target crate {krate} must keep {table_name} empty"
         ));
     }
-}
-
-fn collect_non_empty_dependency_tables(
-    value: &toml::Value,
-    path: &mut Vec<String>,
-    found: &mut Vec<String>,
-) {
-    let Some(table) = value.as_table() else {
-        return;
-    };
-
-    for (key, value) in table {
-        path.push(key.clone());
-        if is_cargo_dependency_table(path)
-            && value.as_table().is_some_and(|table| !table.is_empty())
-        {
-            found.push(format!("[{}]", path.join(".")));
-        } else {
-            collect_non_empty_dependency_tables(value, path, found);
-        }
-        path.pop();
-    }
-}
-
-fn is_cargo_dependency_table(path: &[String]) -> bool {
-    let Some(last) = path.last() else {
-        return false;
-    };
-    if !DEPENDENCY_TABLES.contains(&last.as_str()) {
-        return false;
-    }
-
-    path.len() == 1 || path.first().is_some_and(|segment| segment == "target")
 }
 
 fn read(path: impl AsRef<Path>, errors: &mut Vec<String>) -> String {
