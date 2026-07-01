@@ -123,3 +123,17 @@ async fn fake_vector_store_rejects_filters_it_does_not_implement() {
         .unwrap_err();
     assert_eq!(err.code.to_string(), "vector.filter_unsupported");
 }
+
+#[tokio::test]
+async fn fake_vector_store_rejects_upsert_without_matching_collection() {
+    let store = FakeVectorStore::new("fake-vector");
+
+    let err = store.upsert(batch()).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "vector.collection_not_found");
+
+    let mut spec = collection();
+    spec.dense.dimensions = 4;
+    store.ensure_collection(spec).await.unwrap();
+    let err = store.upsert(batch()).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "vector.dimension_mismatch");
+}

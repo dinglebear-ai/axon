@@ -63,7 +63,18 @@ impl FakeLlmProvider {
             .map(|message| message.content.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        let text = format!("fake:{}:{}", self.provider_id.0, stable_checksum(&prompt));
+        let checksum = stable_checksum(&prompt);
+        let text = format!("fake:{}:{checksum}", self.provider_id.0);
+        let structured = match (self.mode, request.response_schema.as_ref()) {
+            (FakeLlmMode::MalformedStructuredOutput, Some(_)) => {
+                Some(serde_json::json!({"malformed": true}))
+            }
+            (_, Some(_)) => Some(serde_json::json!({
+                "provider": self.provider_id.0,
+                "checksum": checksum,
+            })),
+            _ => None,
+        };
         LlmCompletionResponse {
             text,
             model: self.provider_id.0.clone(),
@@ -74,11 +85,7 @@ impl FakeLlmProvider {
                 requests: 1,
                 duration_ms: 0,
             },
-            structured: if self.mode == FakeLlmMode::MalformedStructuredOutput {
-                Some(serde_json::json!({"malformed": true}))
-            } else {
-                None
-            },
+            structured,
             tool_calls: Vec::new(),
             warnings: Vec::new(),
         }

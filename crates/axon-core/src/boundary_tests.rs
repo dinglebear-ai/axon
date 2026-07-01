@@ -21,12 +21,28 @@ async fn fake_core_boundaries_cover_artifact_config_cache_rate_and_health() {
     .await
     .unwrap();
     assert_eq!(
-        ArtifactStore::get(&fake, handle)
+        ArtifactStore::get(&fake, handle.clone())
             .await
             .unwrap()
             .content_type,
         "text/plain"
     );
+    let second_handle = ArtifactStore::put(
+        &fake,
+        ArtifactWriteRequest {
+            kind: ArtifactKind::Report,
+            content_type: "text/plain".to_string(),
+            content: ContentRef::InlineText {
+                text: "world".to_string(),
+            },
+            source_id: None,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_ne!(handle.artifact_id, second_handle.artifact_id);
     assert!(fake.validate().await.unwrap().valid);
     assert_eq!(
         fake.snapshot().await.unwrap(),

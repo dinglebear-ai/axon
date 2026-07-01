@@ -35,7 +35,7 @@ struct FakeLedgerState {
     committed: BTreeMap<SourceId, SourceGenerationId>,
     document_statuses: BTreeMap<DocumentId, DocumentStatus>,
     cleanup_debt: BTreeMap<CleanupDebtId, CleanupDebt>,
-    generation_counter: u64,
+    generation_counters: BTreeMap<SourceId, u64>,
 }
 
 impl FakeLedgerStore {
@@ -97,7 +97,13 @@ impl LedgerStore for FakeLedgerStore {
         let previous_items = previous
             .map(|old| keyed_manifest_items(old.items))
             .unwrap_or_default();
-        let next_items = keyed_manifest_items(manifest.items.clone());
+        let SourceManifest {
+            source_id,
+            generation,
+            items,
+            ..
+        } = manifest;
+        let next_items = keyed_manifest_items(items);
 
         let mut added = Vec::new();
         let mut modified = Vec::new();
@@ -105,7 +111,7 @@ impl LedgerStore for FakeLedgerStore {
         for (key, item) in &next_items {
             match previous_items.get(key) {
                 None => added.push(item.clone()),
-                Some(old) if old.content_hash != item.content_hash => modified.push(item.clone()),
+                Some(old) if manifest_item_changed(old, item) => modified.push(item.clone()),
                 Some(_) => unchanged.push(item.clone()),
             }
         }
@@ -118,9 +124,9 @@ impl LedgerStore for FakeLedgerStore {
 
         Ok(SourceManifestDiff {
             header: stage_header(PipelinePhase::Diffing),
-            source_id: manifest.source_id,
+            source_id,
             previous_generation,
-            next_generation: manifest.generation,
+            next_generation: generation,
             counts: DiffCounts {
                 added: added.len() as u64,
                 modified: modified.len() as u64,
@@ -140,10 +146,15 @@ impl LedgerStore for FakeLedgerStore {
 
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration> {
         let mut state = self.state.lock().await;
-        state.generation_counter += 1;
+        let counter = state
+            .generation_counters
+            .entry(source_id.clone())
+            .and_modify(|counter| *counter += 1)
+            .or_insert(1);
+        let generation = SourceGenerationId::new(format!("gen_{counter}"));
         Ok(SourceGeneration {
             source_id: source_id.clone(),
-            generation: SourceGenerationId::new(format!("gen_{}", state.generation_counter)),
+            generation,
             status: LifecycleStatus::Running,
             created_at: timestamp(),
             published_at: None,
@@ -167,6 +178,20 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn publish_generation(&self, generation: SourceGeneration) -> Result<()> {
+        if !matches!(
+            generation.status,
+            LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
+        ) {
+            return Err(ApiError::new(
+                "source.ledger.generation_not_publishable",
+                ErrorStage::Publishing,
+                format!(
+                    "generation {} has non-publishable status {:?}",
+                    generation.generation.0, generation.status
+                ),
+            )
+            .with_source_id(generation.source_id.0));
+        }
         self.state
             .lock()
             .await
@@ -221,6 +246,10 @@ fn keyed_manifest_items(items: Vec<ManifestItem>) -> BTreeMap<SourceItemKey, Man
         .into_iter()
         .map(|item| (item.source_item_key.clone(), item))
         .collect()
+}
+
+fn manifest_item_changed(old: &ManifestItem, next: &ManifestItem) -> bool {
+    old.content_hash != next.content_hash || old.version != next.version || old.mtime != next.mtime
 }
 
 fn stage_header(phase: PipelinePhase) -> StageResultHeader {

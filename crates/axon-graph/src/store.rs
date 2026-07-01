@@ -1,6 +1,6 @@
 //! Graph store boundary and in-memory fake.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -42,11 +42,17 @@ impl FakeGraphStore {
 impl GraphStore for FakeGraphStore {
     async fn upsert_candidates(&self, candidates: Vec<GraphCandidate>) -> Result<GraphWriteResult> {
         let mut state = self.state.lock().await;
+        let candidates_seen = candidates.len() as u64;
+        let source_id = candidates
+            .first()
+            .map(|candidate| candidate.source_id.clone())
+            .unwrap_or_else(|| SourceId::new("fake"));
         let mut nodes_upserted = 0;
         let mut edges_upserted = 0;
         let mut evidence_records = 0;
 
         for candidate in candidates {
+            evidence_records += candidate.evidence.len() as u64;
             for node in candidate.nodes {
                 let node_id = GraphNodeId::new(node.stable_key.clone());
                 state
@@ -83,7 +89,6 @@ impl GraphStore for FakeGraphStore {
                     "{}:{}:{}",
                     edge.edge_kind, from_node_id.0, to_node_id.0
                 ));
-                evidence_records += candidate.evidence.len() as u64;
                 state.edges_by_id.insert(
                     edge_id.clone(),
                     GraphEdge {
@@ -103,8 +108,8 @@ impl GraphStore for FakeGraphStore {
 
         Ok(GraphWriteResult {
             header: stage_header(),
-            source_id: SourceId::new("fake"),
-            candidates_seen: nodes_upserted,
+            source_id,
+            candidates_seen,
             nodes_upserted,
             edges_upserted,
             evidence_records,
@@ -135,16 +140,40 @@ impl GraphStore for FakeGraphStore {
         if let Some(start) = state.nodes_by_id.get(&start_node_id) {
             nodes.push(start.clone());
         }
-        let edges = state
-            .edges_by_id
-            .values()
-            .filter(|edge| edge.from_node_id == start_node_id)
-            .filter(|edge| request.edges.is_empty() || request.edges.contains(&edge.kind))
-            .cloned()
-            .collect::<Vec<_>>();
-        for edge in &edges {
-            if let Some(node) = state.nodes_by_id.get(&edge.to_node_id) {
-                nodes.push(node.clone());
+        let mut seen_nodes = BTreeSet::from([start_node_id.clone()]);
+        let mut seen_edges = BTreeSet::new();
+        let mut frontier = VecDeque::from([(start_node_id, 0)]);
+        let mut edges = Vec::new();
+        let max_depth = request.depth;
+        let limit = usize::try_from(request.limit)
+            .ok()
+            .filter(|limit| *limit > 0)
+            .unwrap_or(usize::MAX);
+
+        while let Some((node_id, depth)) = frontier.pop_front() {
+            if depth >= max_depth || edges.len() >= limit {
+                continue;
+            }
+
+            for edge in state.edges_by_id.values() {
+                if !request.edges.is_empty() && !request.edges.contains(&edge.kind) {
+                    continue;
+                }
+                let Some(next_node_id) = edge_next_node(edge, &node_id, request.direction) else {
+                    continue;
+                };
+                if seen_edges.insert(edge.edge_id.clone()) {
+                    edges.push(edge.clone());
+                    if edges.len() >= limit {
+                        break;
+                    }
+                }
+                if seen_nodes.insert(next_node_id.clone()) {
+                    if let Some(node) = state.nodes_by_id.get(&next_node_id) {
+                        nodes.push(node.clone());
+                    }
+                    frontier.push_back((next_node_id, depth + 1));
+                }
             }
         }
         let evidence = edges
@@ -220,6 +249,26 @@ impl GraphStore for FakeGraphStore {
     }
 }
 
+fn edge_next_node(
+    edge: &GraphEdge,
+    node_id: &GraphNodeId,
+    direction: GraphDirection,
+) -> Option<GraphNodeId> {
+    match direction {
+        GraphDirection::In if edge.to_node_id == *node_id => Some(edge.from_node_id.clone()),
+        GraphDirection::Out if edge.from_node_id == *node_id => Some(edge.to_node_id.clone()),
+        GraphDirection::Both if edge.from_node_id == *node_id => Some(edge.to_node_id.clone()),
+        GraphDirection::Both if edge.to_node_id == *node_id => Some(edge.from_node_id.clone()),
+        _ => None,
+    }
+}
+
+/// Resolve identifiers in the fake's limited index.
+///
+/// This fake intentionally supports only direct `node_id` lookup and
+/// value-based lookup through `node_id_by_key`, where the value is the node
+/// candidate's stable key. It does not resolve `canonical_uri`, `kind`,
+/// `source_id`, or `source_item_key` addressing.
 fn resolve_identifier(state: &FakeGraphState, identifier: &GraphIdentifier) -> Option<GraphNodeId> {
     identifier.node_id.clone().or_else(|| {
         identifier

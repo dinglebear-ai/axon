@@ -1,7 +1,7 @@
+use super::*;
 use axon_api::source::{HealthStatus, LlmCompletionRequest, ProviderKind};
 
 use crate::fake::{FakeLlmMode, FakeLlmProvider};
-use crate::provider::LlmProvider;
 
 #[tokio::test]
 async fn fake_llm_returns_deterministic_completion_and_records_calls() {
@@ -48,4 +48,24 @@ async fn fake_llm_reports_capabilities_health_and_failure_modes() {
         .unwrap_err();
     assert_eq!(err.code.to_string(), "provider.timeout");
     assert!(err.retryable);
+}
+
+#[tokio::test]
+async fn fake_llm_returns_structured_payload_for_schema_requests() {
+    let provider = FakeLlmProvider::new("fake-llm");
+    let mut request = LlmCompletionRequest::prompt("Return a JSON summary");
+    request.response_schema = Some(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "provider": { "type": "string" },
+            "checksum": { "type": "number" }
+        },
+        "required": ["provider", "checksum"]
+    }));
+
+    let response = provider.complete(request).await.unwrap();
+    let structured = response.structured.unwrap();
+
+    assert_eq!(structured["provider"], "fake-llm");
+    assert!(structured["checksum"].is_number());
 }

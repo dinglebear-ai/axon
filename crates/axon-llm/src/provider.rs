@@ -20,3 +20,7 @@ pub trait LlmProvider: Send + Sync {
 
     async fn capabilities(&self) -> Result<ProviderCapability>;
 }
+
+#[cfg(test)]
+#[path = "provider_tests.rs"]
+mod provider_tests;

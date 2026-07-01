@@ -1,9 +1,10 @@
+use super::*;
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::fake::{FakeEmbeddingMode, FakeEmbeddingProvider};
-use crate::provider::EmbeddingProvider;
-use crate::reservation::ProviderReservations;
+use fake::{FakeEmbeddingMode, FakeEmbeddingProvider};
+use provider::EmbeddingProvider;
+use reservation::ProviderReservations;
 
 fn batch(priority: JobPriority) -> EmbeddingBatch {
     EmbeddingBatch {
