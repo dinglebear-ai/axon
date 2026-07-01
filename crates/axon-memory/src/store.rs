@@ -21,6 +21,7 @@ pub trait MemoryStore: Send + Sync {
         memory_id: MemoryId,
         signal: MemoryReinforcement,
     ) -> Result<MemoryResult>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<MemoryStoreCapability>;
 }
 
@@ -176,6 +177,11 @@ impl MemoryStore for FakeMemoryStore {
             limits: MetadataMap::new(),
         }
         .into())
+    }
+
+    async fn reset(&self) -> Result<()> {
+        *self.state.lock().await = FakeMemoryState::default();
+        Ok(())
     }
 }
 

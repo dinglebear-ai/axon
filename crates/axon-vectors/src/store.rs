@@ -15,6 +15,7 @@ pub trait VectorStore: Send + Sync {
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult>;
     async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult>;
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<ProviderCapability>;
 }
 
@@ -204,6 +205,11 @@ impl VectorStore for FakeVectorStore {
             render: None,
             credential: None,
         })
+    }
+
+    async fn reset(&self) -> Result<()> {
+        *self.state.lock().await = FakeVectorState::default();
+        Ok(())
     }
 }
 

@@ -130,4 +130,6 @@ async fn fake_ledger_owns_document_status_and_cleanup_debt() {
         .await
         .unwrap();
     assert_eq!(ledger.cleanup_debt_count().await, 1);
+    ledger.reset().await.unwrap();
+    assert_eq!(ledger.cleanup_debt_count().await, 0);
 }

@@ -108,4 +108,27 @@ async fn fake_graph_store_queries_and_reports_capabilities() {
 
     let capability = graph.capabilities().await.unwrap();
     assert_eq!(capability.0.owner_crate, "axon-graph");
+
+    graph.reset().await.unwrap();
+    let empty = graph
+        .query(GraphQueryRequest {
+            start: GraphIdentifier {
+                kind: "package".to_string(),
+                canonical_uri: None,
+                value: Some("pkg:axon".to_string()),
+                node_id: None,
+                source_id: None,
+                source_item_key: None,
+                metadata: MetadataMap::new(),
+            },
+            edges: Vec::new(),
+            direction: GraphDirection::Out,
+            depth: 1,
+            filters: None,
+            limit: 10,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+    assert!(empty.nodes.is_empty());
 }

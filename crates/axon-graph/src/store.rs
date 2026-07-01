@@ -16,6 +16,7 @@ pub trait GraphStore: Send + Sync {
     async fn get_edge(&self, edge_id: GraphEdgeId) -> Result<Option<GraphEdge>>;
     async fn query(&self, request: GraphQueryRequest) -> Result<GraphQueryResult>;
     async fn resolve(&self, request: GraphResolveRequest) -> Result<GraphResolveResult>;
+    async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<GraphStoreCapability>;
 }
 
@@ -211,6 +212,11 @@ impl GraphStore for FakeGraphStore {
             limits: MetadataMap::new(),
         }
         .into())
+    }
+
+    async fn reset(&self) -> Result<()> {
+        *self.state.lock().await = FakeGraphState::default();
+        Ok(())
     }
 }
 

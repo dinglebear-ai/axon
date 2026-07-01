@@ -92,4 +92,7 @@ async fn fake_vector_store_reports_capabilities_and_records_calls() {
     store.ensure_collection(collection()).await.unwrap();
     store.upsert(batch()).await.unwrap();
     assert_eq!(store.calls().await, vec!["ensure_collection", "upsert"]);
+
+    store.reset().await.unwrap();
+    assert!(store.calls().await.is_empty());
 }

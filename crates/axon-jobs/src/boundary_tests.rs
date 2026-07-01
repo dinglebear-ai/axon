@@ -41,6 +41,8 @@ async fn fake_job_store_tracks_status_events_and_heartbeats() {
         JobStore::capabilities(&store).await.unwrap().0.owner_crate,
         "axon-jobs"
     );
+    JobStore::reset(&store).await.unwrap();
+    assert!(JobStore::get(&store, job.job_id).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -93,4 +95,18 @@ async fn fake_watch_store_creates_updates_lists_and_records_history() {
     .await
     .unwrap();
     assert_eq!(listed.items.len(), 1);
+    WatchStore::reset(&store).await.unwrap();
+    let empty = WatchStore::list(
+        &store,
+        WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: None,
+            cursor: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(empty.items.is_empty());
 }

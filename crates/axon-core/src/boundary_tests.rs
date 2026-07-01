@@ -72,6 +72,20 @@ async fn fake_core_boundaries_cover_artifact_config_cache_rate_and_health() {
             .unwrap()
             .is_some()
     );
+    DocumentCache::reset(&fake).await.unwrap();
+    assert!(
+        DocumentCache::get(
+            &fake,
+            DocumentCacheKey {
+                source_id: SourceId::new("src"),
+                source_item_key: SourceItemKey::new("item"),
+                generation: None,
+            },
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
 
     assert_eq!(
         fake.acquire(RateLimitRequest {
