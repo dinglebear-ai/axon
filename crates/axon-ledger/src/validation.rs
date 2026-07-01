@@ -32,3 +32,24 @@ pub(crate) fn validate_manifest(manifest: &SourceManifest) -> Result<()> {
     }
     Ok(())
 }
+
+pub(crate) fn source_missing_error(source_id: &SourceId) -> ApiError {
+    ApiError::new(
+        "source.ledger.source_missing",
+        ErrorStage::Planning,
+        format!("source {} does not exist", source_id.0),
+    )
+    .with_source_id(source_id.0.clone())
+}
+
+pub(crate) fn generation_already_published_error(generation: &SourceGeneration) -> ApiError {
+    ApiError::new(
+        "source.ledger.generation_already_published",
+        ErrorStage::Publishing,
+        format!(
+            "generation {} has already been published",
+            generation.generation.0
+        ),
+    )
+    .with_source_id(generation.source_id.0.clone())
+}

@@ -10,7 +10,7 @@ mod lease;
 
 use super::util::*;
 use super::{LedgerStore, Result};
-use crate::validation::validate_manifest;
+use crate::validation::{generation_already_published_error, validate_manifest};
 use cleanup::record_removed_item_cleanup_debt;
 
 #[derive(Debug, Clone, Default)]
@@ -179,12 +179,22 @@ impl LedgerStore for FakeLedgerStore {
         if !state.sources.contains_key(&source_id) {
             return Err(source_missing_error(&source_id));
         }
-        let counter = state
+        let mut sequence = state
             .generation_counters
-            .entry(source_id.clone())
-            .and_modify(|counter| *counter += 1)
-            .or_insert(1);
-        let generation = SourceGenerationId::new(format!("gen_{counter}"));
+            .get(&source_id)
+            .copied()
+            .unwrap_or(0)
+            + 1;
+        while state.generations.contains_key(&(
+            source_id.clone(),
+            SourceGenerationId::new(format!("gen_{sequence}")),
+        )) {
+            sequence += 1;
+        }
+        state
+            .generation_counters
+            .insert(source_id.clone(), sequence);
+        let generation = SourceGenerationId::new(format!("gen_{sequence}"));
         let generation = SourceGeneration {
             source_id: source_id.clone(),
             generation: generation.clone(),
@@ -242,6 +252,9 @@ impl LedgerStore for FakeLedgerStore {
                 &generation.generation,
             ));
         };
+        if stored.publish_state != PublishState::Writing || stored.published_at.is_some() {
+            return Err(generation_already_published_error(&stored));
+        }
         if !state
             .manifests
             .contains_key(&(generation.source_id.clone(), generation.generation.clone()))

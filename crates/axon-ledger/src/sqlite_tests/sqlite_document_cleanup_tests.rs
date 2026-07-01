@@ -171,7 +171,7 @@ async fn sqlite_rejects_document_status_and_cleanup_debt_for_missing_sources() {
         })
         .await
         .expect_err("missing source should reject document status");
-    assert_eq!(status_err.code.to_string(), "source.ledger.sqlite");
+    assert_eq!(status_err.code.to_string(), "source.ledger.source_missing");
 
     let debt_err = store
         .record_cleanup_debt(CleanupDebt {
@@ -192,7 +192,7 @@ async fn sqlite_rejects_document_status_and_cleanup_debt_for_missing_sources() {
         })
         .await
         .expect_err("missing source should reject cleanup debt");
-    assert_eq!(debt_err.code.to_string(), "source.ledger.sqlite");
+    assert_eq!(debt_err.code.to_string(), "source.ledger.source_missing");
 }
 
 #[tokio::test]

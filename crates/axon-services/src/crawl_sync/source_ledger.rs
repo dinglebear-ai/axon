@@ -5,6 +5,7 @@ use axon_source_ledger::{
 };
 use axon_vector::ops::qdrant::{
     CleanupSelectorV1, qdrant_delete_source_cleanup_selectors, qdrant_publish_source_generation,
+    qdrant_source_generation_point_counts,
 };
 use axon_vector::ops::{LedgerPayload, embed_prepared_docs, prepare_path_native_docs};
 use sha2::{Digest, Sha256};
@@ -242,15 +243,29 @@ async fn republish_committed_crawl_generation(
 ) -> Result<(), anyhow::Error> {
     let status = store.source_status(&source.source_id).await?;
     if status.committed_generation > 0 {
-        let expected_visible_points = store
+        let committed_items = store
             .committed_generation_item_count(&source.source_id)
             .await?;
+        let counts = qdrant_source_generation_point_counts(
+            cfg,
+            &source.source_id,
+            status.committed_generation,
+            source.index_version,
+        )
+        .await?;
+        if committed_items > 0 && counts.distinct_items < committed_items {
+            anyhow::bail!(
+                "committed source generation {} has {} distinct Qdrant source items, expected at least {committed_items}",
+                status.committed_generation,
+                counts.distinct_items,
+            );
+        }
         qdrant_publish_source_generation(
             cfg,
             &source.source_id,
             status.committed_generation,
             source.index_version,
-            expected_visible_points,
+            counts.points,
         )
         .await?;
     }
