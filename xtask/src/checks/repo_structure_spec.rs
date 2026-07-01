@@ -17,6 +17,10 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-memory",
     "crates/axon-embedding",
     "crates/axon-vectors",
+    // Phase 9 / PR9 retrieval crate graduated from PR0 skeleton status: it now
+    // owns retrieval boundary DTOs, fakes, ranking/context/citation helpers, and
+    // sidecar tests.
+    "crates/axon-retrieval",
     "crates/axon-llm",
     "crates/axon-adapters",
     // Phase 4 / PR5 route crate graduated from PR0 skeleton status:
@@ -54,26 +58,17 @@ pub struct TargetCrate {
 // NOT listed here once they own real dependencies, sidecar tests, and public
 // API. They move to `REQUIRED_WORKSPACE_MEMBERS`; this list only contains
 // remaining PR0 skeleton crates.
-pub const TARGET_CRATES: &[TargetCrate] = &[
-    TargetCrate {
-        name: "axon-retrieval",
-        modules: &[
-            "engine", "plan", "query", "filter", "rank", "context", "citation", "memory", "graph",
-            "testing",
-        ],
-    },
-    TargetCrate {
-        name: "axon-prune",
-        modules: &[
-            "plan",
-            "executor",
-            "debt",
-            "generation",
-            "orphan",
-            "dedupe",
-            "receipt",
-            "safety",
-            "testing",
-        ],
-    },
-];
+pub const TARGET_CRATES: &[TargetCrate] = &[TargetCrate {
+    name: "axon-prune",
+    modules: &[
+        "plan",
+        "executor",
+        "debt",
+        "generation",
+        "orphan",
+        "dedupe",
+        "receipt",
+        "safety",
+        "testing",
+    ],
+}];

@@ -24,6 +24,9 @@ pub mod version_sync;
 #[cfg(test)]
 mod repo_structure_tests;
 
+#[cfg(test)]
+mod layering_tests;
+
 pub fn check(root: &Path) -> Result<()> {
     no_mod_rs::check(root)?;
     layering::check(root)?;

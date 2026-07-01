@@ -883,6 +883,146 @@
     "CleanupSelector_SourceItemKey": {
       "type": "string"
     },
+    "CollectionSpec": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "dense": {
+          "$ref": "#/$defs/CollectionSpec_VectorConfig"
+        },
+        "distance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CollectionSpec_VectorDistance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "payload_indexes": {
+          "items": {
+            "$ref": "#/$defs/CollectionSpec_PayloadIndexSpec"
+          },
+          "type": "array"
+        },
+        "sparse": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CollectionSpec_SparseVectorConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "collection",
+        "dense",
+        "payload_indexes"
+      ],
+      "title": "CollectionSpec",
+      "type": "object"
+    },
+    "CollectionSpec_PayloadFieldSchema": {
+      "enum": [
+        "keyword",
+        "integer",
+        "float",
+        "boolean",
+        "datetime",
+        "text"
+      ],
+      "type": "string"
+    },
+    "CollectionSpec_PayloadIndexSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "field_name": {
+          "type": "string"
+        },
+        "field_schema": {
+          "$ref": "#/$defs/CollectionSpec_PayloadFieldSchema"
+        },
+        "required_for_filters": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "field_name",
+        "field_schema",
+        "required_for_filters"
+      ],
+      "type": "object"
+    },
+    "CollectionSpec_SparseVectorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "modifier": {
+          "$ref": "#/$defs/CollectionSpec_SparseVectorModifier"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "modifier"
+      ],
+      "type": "object"
+    },
+    "CollectionSpec_SparseVectorModifier": {
+      "enum": [
+        "none",
+        "idf"
+      ],
+      "type": "string"
+    },
+    "CollectionSpec_VectorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "distance": {
+          "$ref": "#/$defs/CollectionSpec_VectorDistance"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "dimensions",
+        "distance"
+      ],
+      "type": "object"
+    },
+    "CollectionSpec_VectorDistance": {
+      "enum": [
+        "cosine",
+        "dot",
+        "euclid",
+        "manhattan"
+      ],
+      "type": "string"
+    },
     "DocumentStatus": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1217,6 +1357,199 @@
         "xml",
         "binary_metadata"
       ],
+      "type": "string"
+    },
+    "EmbeddingResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "$ref": "#/$defs/EmbeddingResult_BatchId"
+        },
+        "dimensions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "job_id": {
+          "$ref": "#/$defs/EmbeddingResult_JobId"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider_id": {
+          "$ref": "#/$defs/EmbeddingResult_ProviderId"
+        },
+        "usage": {
+          "$ref": "#/$defs/EmbeddingResult_ProviderUsage"
+        },
+        "vectors": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingResult_EmbeddingVector"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "batch_id",
+        "job_id",
+        "provider_id",
+        "model",
+        "dimensions",
+        "vectors",
+        "usage",
+        "warnings"
+      ],
+      "title": "EmbeddingResult",
+      "type": "object"
+    },
+    "EmbeddingResult_BatchId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "EmbeddingResult_ChunkId": {
+      "type": "string"
+    },
+    "EmbeddingResult_EmbeddingVector": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/EmbeddingResult_ChunkId"
+        },
+        "values": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "values"
+      ],
+      "type": "object"
+    },
+    "EmbeddingResult_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "EmbeddingResult_ProviderId": {
+      "type": "string"
+    },
+    "EmbeddingResult_ProviderUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "output_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requests",
+        "duration_ms"
+      ],
+      "type": "object"
+    },
+    "EmbeddingResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "EmbeddingResult_SourceItemKey": {
+      "type": "string"
+    },
+    "EmbeddingResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/EmbeddingResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbeddingResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "EmbeddingVector": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/EmbeddingVector_ChunkId"
+        },
+        "values": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "values"
+      ],
+      "title": "EmbeddingVector",
+      "type": "object"
+    },
+    "EmbeddingVector_ChunkId": {
       "type": "string"
     },
     "GraphCandidate": {
@@ -1883,6 +2216,52 @@
     },
     "LeaseRequest_JobId": {
       "format": "uuid",
+      "type": "string"
+    },
+    "PayloadFieldSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "keyword",
+        "integer",
+        "float",
+        "boolean",
+        "datetime",
+        "text"
+      ],
+      "title": "PayloadFieldSchema",
+      "type": "string"
+    },
+    "PayloadIndexSpec": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "field_name": {
+          "type": "string"
+        },
+        "field_schema": {
+          "$ref": "#/$defs/PayloadIndexSpec_PayloadFieldSchema"
+        },
+        "required_for_filters": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "field_name",
+        "field_schema",
+        "required_for_filters"
+      ],
+      "title": "PayloadIndexSpec",
+      "type": "object"
+    },
+    "PayloadIndexSpec_PayloadFieldSchema": {
+      "enum": [
+        "keyword",
+        "integer",
+        "float",
+        "boolean",
+        "datetime",
+        "text"
+      ],
       "type": "string"
     },
     "PreparedChunk": {
@@ -3154,6 +3533,44 @@
         "message",
         "retryable"
       ],
+      "type": "object"
+    },
+    "ProviderUsage": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "output_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requests",
+        "duration_ms"
+      ],
+      "title": "ProviderUsage",
       "type": "object"
     },
     "PublishGenerationRequest": {
@@ -5215,6 +5632,1008 @@
       ],
       "type": "object"
     },
+    "SparseVector": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/SparseVector_ChunkId"
+        },
+        "indices": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "values": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "indices",
+        "values"
+      ],
+      "title": "SparseVector",
+      "type": "object"
+    },
+    "SparseVectorConfig": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "modifier": {
+          "$ref": "#/$defs/SparseVectorConfig_SparseVectorModifier"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "modifier"
+      ],
+      "title": "SparseVectorConfig",
+      "type": "object"
+    },
+    "SparseVectorConfig_SparseVectorModifier": {
+      "enum": [
+        "none",
+        "idf"
+      ],
+      "type": "string"
+    },
+    "SparseVectorModifier": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "none",
+        "idf"
+      ],
+      "title": "SparseVectorModifier",
+      "type": "string"
+    },
+    "SparseVector_ChunkId": {
+      "type": "string"
+    },
+    "VectorConfig": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "distance": {
+          "$ref": "#/$defs/VectorConfig_VectorDistance"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "dimensions",
+        "distance"
+      ],
+      "title": "VectorConfig",
+      "type": "object"
+    },
+    "VectorConfig_VectorDistance": {
+      "enum": [
+        "cosine",
+        "dot",
+        "euclid",
+        "manhattan"
+      ],
+      "type": "string"
+    },
+    "VectorDeleteSelector": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorDeleteSelector_SourceGenerationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/VectorDeleteSelector_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "generation": {
+              "$ref": "#/$defs/VectorDeleteSelector_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/VectorDeleteSelector_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "document_id": {
+              "$ref": "#/$defs/VectorDeleteSelector_DocumentId"
+            },
+            "generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorDeleteSelector_SourceGenerationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_ids": {
+              "items": {
+                "$ref": "#/$defs/VectorDeleteSelector_ChunkId"
+              },
+              "type": "array"
+            },
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "chunks",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "chunk_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "points",
+              "type": "string"
+            },
+            "point_ids": {
+              "items": {
+                "$ref": "#/$defs/VectorDeleteSelector_VectorPointId"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "point_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "canonical_uri": {
+              "type": "string"
+            },
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "canonical_uri",
+              "type": "string"
+            },
+            "match_prefix": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "canonical_uri",
+            "match_prefix"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "filter": true,
+            "kind": {
+              "const": "filter",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "filter"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "VectorDeleteSelector"
+    },
+    "VectorDeleteSelector_ChunkId": {
+      "type": "string"
+    },
+    "VectorDeleteSelector_DocumentId": {
+      "type": "string"
+    },
+    "VectorDeleteSelector_SourceGenerationId": {
+      "type": "string"
+    },
+    "VectorDeleteSelector_SourceId": {
+      "type": "string"
+    },
+    "VectorDeleteSelector_VectorPointId": {
+      "type": "string"
+    },
+    "VectorDistance": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "cosine",
+        "dot",
+        "euclid",
+        "manhattan"
+      ],
+      "title": "VectorDistance",
+      "type": "string"
+    },
+    "VectorPoint": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/VectorPoint_ChunkId"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "point_id": {
+          "$ref": "#/$defs/VectorPoint_VectorPointId"
+        },
+        "sparse_vector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorPoint_SparseVector"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vector": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "point_id",
+        "chunk_id",
+        "vector",
+        "payload"
+      ],
+      "title": "VectorPoint",
+      "type": "object"
+    },
+    "VectorPointBatch": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "$ref": "#/$defs/VectorPointBatch_BatchId"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "dimensions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "payload_indexes": {
+          "items": {
+            "$ref": "#/$defs/VectorPointBatch_PayloadIndexSpec"
+          },
+          "type": "array"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/VectorPointBatch_VectorPoint"
+          },
+          "type": "array"
+        },
+        "sparse_vectors": {
+          "items": {
+            "$ref": "#/$defs/VectorPointBatch_SparseVector"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "batch_id",
+        "collection",
+        "points",
+        "model",
+        "dimensions",
+        "payload_indexes"
+      ],
+      "title": "VectorPointBatch",
+      "type": "object"
+    },
+    "VectorPointBatch_BatchId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "VectorPointBatch_ChunkId": {
+      "type": "string"
+    },
+    "VectorPointBatch_PayloadFieldSchema": {
+      "enum": [
+        "keyword",
+        "integer",
+        "float",
+        "boolean",
+        "datetime",
+        "text"
+      ],
+      "type": "string"
+    },
+    "VectorPointBatch_PayloadIndexSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "field_name": {
+          "type": "string"
+        },
+        "field_schema": {
+          "$ref": "#/$defs/VectorPointBatch_PayloadFieldSchema"
+        },
+        "required_for_filters": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "field_name",
+        "field_schema",
+        "required_for_filters"
+      ],
+      "type": "object"
+    },
+    "VectorPointBatch_SparseVector": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/VectorPointBatch_ChunkId"
+        },
+        "indices": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "values": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "indices",
+        "values"
+      ],
+      "type": "object"
+    },
+    "VectorPointBatch_VectorPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/VectorPointBatch_ChunkId"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "point_id": {
+          "$ref": "#/$defs/VectorPointBatch_VectorPointId"
+        },
+        "sparse_vector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorPointBatch_SparseVector"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vector": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "point_id",
+        "chunk_id",
+        "vector",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "VectorPointBatch_VectorPointId": {
+      "type": "string"
+    },
+    "VectorPoint_ChunkId": {
+      "type": "string"
+    },
+    "VectorPoint_SparseVector": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/VectorPoint_ChunkId"
+        },
+        "indices": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "values": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "indices",
+        "values"
+      ],
+      "type": "object"
+    },
+    "VectorPoint_VectorPointId": {
+      "type": "string"
+    },
+    "VectorSearchMatch": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchMatch_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchMatch_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "point_id": {
+          "$ref": "#/$defs/VectorSearchMatch_VectorPointId"
+        },
+        "score": {
+          "format": "double",
+          "type": "number"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchMatch_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchMatch_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "point_id",
+        "score"
+      ],
+      "title": "VectorSearchMatch",
+      "type": "object"
+    },
+    "VectorSearchMatch_ChunkId": {
+      "type": "string"
+    },
+    "VectorSearchMatch_DocumentId": {
+      "type": "string"
+    },
+    "VectorSearchMatch_SourceId": {
+      "type": "string"
+    },
+    "VectorSearchMatch_SourceItemKey": {
+      "type": "string"
+    },
+    "VectorSearchMatch_VectorPointId": {
+      "type": "string"
+    },
+    "VectorSearchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string"
+        },
+        "dense_vector": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "filters": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchRequest_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/VectorSearchRequest_GraphNodeId"
+          },
+          "type": "array"
+        },
+        "hybrid": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "query": {
+          "type": "string"
+        },
+        "sparse_vector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchRequest_SparseVector"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "collection",
+        "query",
+        "limit"
+      ],
+      "title": "VectorSearchRequest",
+      "type": "object"
+    },
+    "VectorSearchRequest_ChunkId": {
+      "type": "string"
+    },
+    "VectorSearchRequest_GraphNodeId": {
+      "type": "string"
+    },
+    "VectorSearchRequest_SourceGenerationId": {
+      "type": "string"
+    },
+    "VectorSearchRequest_SparseVector": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/VectorSearchRequest_ChunkId"
+        },
+        "indices": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "values": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "indices",
+        "values"
+      ],
+      "type": "object"
+    },
+    "VectorSearchResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string"
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/VectorSearchResult_VectorSearchMatch"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/VectorSearchResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "collection",
+        "results",
+        "limit"
+      ],
+      "title": "VectorSearchResult",
+      "type": "object"
+    },
+    "VectorSearchResult_ChunkId": {
+      "type": "string"
+    },
+    "VectorSearchResult_DocumentId": {
+      "type": "string"
+    },
+    "VectorSearchResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "VectorSearchResult_SourceId": {
+      "type": "string"
+    },
+    "VectorSearchResult_SourceItemKey": {
+      "type": "string"
+    },
+    "VectorSearchResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/VectorSearchResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "VectorSearchResult_VectorPointId": {
+      "type": "string"
+    },
+    "VectorSearchResult_VectorSearchMatch": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchResult_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchResult_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "point_id": {
+          "$ref": "#/$defs/VectorSearchResult_VectorPointId"
+        },
+        "score": {
+          "format": "double",
+          "type": "number"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchResult_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorSearchResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "point_id",
+        "score"
+      ],
+      "type": "object"
+    },
+    "VectorStoreDeleteResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string"
+        },
+        "dry_run": {
+          "default": false,
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "points_deleted": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "points_matched": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/VectorStoreDeleteResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "collection",
+        "points_matched",
+        "points_deleted"
+      ],
+      "title": "VectorStoreDeleteResult",
+      "type": "object"
+    },
+    "VectorStoreDeleteResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "VectorStoreDeleteResult_SourceItemKey": {
+      "type": "string"
+    },
+    "VectorStoreDeleteResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/VectorStoreDeleteResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VectorStoreDeleteResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
     "enums": {
       "CleanupDebtKind": {
         "enum": [
@@ -5446,7 +6865,7 @@
         "path": "crates/axon-api/src/source/status.rs"
       },
       {
-        "checksum": "sha256:a11af79bc5e6e71efef79e4ead255fe3f265e09ace9d0c26df269aeaa97b8645",
+        "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/vector.rs"
       },

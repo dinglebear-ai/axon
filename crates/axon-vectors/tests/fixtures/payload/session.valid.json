@@ -1,0 +1,39 @@
+{
+  "payload_contract_version": "2026-07-01",
+  "collection": "axon",
+  "source_family": "session",
+  "source_id": "src-session",
+  "source_generation": "gen_11",
+  "committed_generation": "gen_11",
+  "document_id": "doc-session",
+  "chunk_id": "chunk-session-1",
+  "chunk_text": "fixture chunk text",
+  "chunk_locator": {
+    "canonical_uri": "session://codex/turn/4",
+    "path": "session://codex/turn/4",
+    "heading_path": [],
+    "symbol": null,
+    "range": {
+      "line_start": 1,
+      "line_end": 2
+    }
+  },
+  "source_range": {
+    "line_start": 1,
+    "line_end": 2
+  },
+  "visibility": "sensitive",
+  "redaction_status": "redacted",
+  "job_id": "00000000-0000-0000-0000-000000000003",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000042",
+  "document_status": "ready",
+  "embedding_model": "text-embedding-test",
+  "embedding_dimensions": 1024,
+  "embedding_provider": "tei",
+  "embedding_profile": "document",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "session_id": "session-a",
+  "session_turn_index": 4,
+  "session_tool_name": "exec_command",
+  "session_skill_name": "test-driven-development"
+}

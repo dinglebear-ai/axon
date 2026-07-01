@@ -32,6 +32,16 @@ const TRANSPORT_SRC: &[&str] = &[
     "crates/axon-mcp/src",
 ];
 
+/// PR9 provider crates are implementation targets only until the source pipeline
+/// cutover PR explicitly wires them through services.
+const SURFACE_MANIFESTS: &[&str] = &[
+    "crates/axon-cli/Cargo.toml",
+    "crates/axon-web/Cargo.toml",
+    "crates/axon-mcp/Cargo.toml",
+];
+
+const PR9_PRIVATE_CRATES: &[&str] = &["axon-embedding", "axon-vectors", "axon-retrieval"];
+
 /// Specific reaches that existed when the rule was introduced. Grandfathered
 /// debt — do not add to this list without a deliberate decision. Matching by
 /// `(file, prefix)` prevents a whole allowed file from hiding new reaches.
@@ -81,8 +91,34 @@ fn is_test_file(rel: &str) -> bool {
         || name.ends_with("_test.rs")
 }
 
+fn check_surface_manifests(root: &Path, violations: &mut Vec<String>) {
+    for manifest in SURFACE_MANIFESTS {
+        let path = root.join(manifest);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(parsed) = toml::from_str::<toml::Table>(&text) else {
+            continue;
+        };
+        for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
+            let Some(table) = parsed.get(table_name).and_then(toml::Value::as_table) else {
+                continue;
+            };
+            for krate in PR9_PRIVATE_CRATES {
+                if table.contains_key(*krate) {
+                    violations.push(format!(
+                        "{manifest} declares [{table_name}] dependency on `{krate}` before the public cutover"
+                    ));
+                }
+            }
+        }
+    }
+}
+
 pub fn check(root: &Path) -> Result<()> {
     let mut violations: Vec<String> = Vec::new();
+
+    check_surface_manifests(root, &mut violations);
 
     for src in TRANSPORT_SRC {
         let dir = root.join(src);
@@ -138,5 +174,9 @@ pub fn check(root: &Path) -> Result<()> {
          exception, add the exact (file, prefix) reach to ALLOWLIST in\n\
          xtask/src/checks/layering.rs."
     );
-    bail!("layering violation: {} reach(es)", violations.len());
+    bail!(
+        "layering violation: {} reach(es)\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
 }

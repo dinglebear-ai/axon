@@ -1,0 +1,38 @@
+{
+  "payload_contract_version": "2026-07-01",
+  "collection": "axon",
+  "source_family": "package",
+  "source_id": "src-package",
+  "source_generation": "gen_5",
+  "committed_generation": "gen_5",
+  "document_id": "doc-package",
+  "chunk_id": "chunk-package-1",
+  "chunk_text": "fixture chunk text",
+  "chunk_locator": {
+    "canonical_uri": "package://crates/axon-vectors/0.1.0",
+    "path": "package://crates/axon-vectors/0.1.0",
+    "heading_path": [],
+    "symbol": null,
+    "range": {
+      "line_start": 1,
+      "line_end": 2
+    }
+  },
+  "source_range": {
+    "line_start": 1,
+    "line_end": 2
+  },
+  "visibility": "public",
+  "redaction_status": "clean",
+  "job_id": "00000000-0000-0000-0000-000000000005",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000042",
+  "document_status": "ready",
+  "embedding_model": "text-embedding-test",
+  "embedding_dimensions": 1024,
+  "embedding_provider": "tei",
+  "embedding_profile": "document",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "package_ecosystem": "cargo",
+  "package_name": "axon-vectors",
+  "package_version": "0.1.0"
+}

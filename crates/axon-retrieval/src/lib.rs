@@ -1,7 +1,9 @@
-//! Target pipeline crate skeleton for `axon-retrieval`.
+//! Target pipeline retrieval boundary for PR9 vector/embedding scaffolding.
 //!
-//! This crate is intentionally marker-only in PR0. Runtime behavior moves here
-//! in issue #298 implementation PRs after contract tests exist.
+//! Runtime RAG cutover stays in later issue #298 phases; this crate keeps the
+//! retrieval fake private until shared wire DTOs move through `axon-api`.
+
+#![allow(dead_code)]
 
 pub mod citation;
 pub mod context;
@@ -12,6 +14,10 @@ pub mod memory;
 pub mod plan;
 pub mod query;
 pub mod rank;
-pub mod testing;
+pub(crate) mod testing;
 
 pub const CRATE_NAME: &str = "axon-retrieval";
+
+#[cfg(test)]
+#[path = "engine_tests.rs"]
+mod engine_tests;
