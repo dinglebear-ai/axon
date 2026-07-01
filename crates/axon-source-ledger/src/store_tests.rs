@@ -68,6 +68,84 @@ async fn failed_pending_generation_preserves_committed_baseline() {
 }
 
 #[tokio::test]
+async fn ownerless_generation_paths_reject_active_lease() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    assert!(
+        store
+            .acquire_lease(&source, "owner-a", 60_000)
+            .await
+            .unwrap()
+    );
+
+    let begin_err = store.begin_generation(&source).await.unwrap_err();
+    assert!(
+        begin_err.to_string().contains("lease"),
+        "ownerless begin should fail while active lease exists: {begin_err}"
+    );
+
+    store
+        .record_manifest_item("source-a", 1, ManifestItem::new("src/lib.rs", "hash-a", 10))
+        .await
+        .unwrap();
+    let commit_err = store.commit_generation("source-a", 1).await.unwrap_err();
+    assert!(
+        commit_err.to_string().contains("active lease"),
+        "ownerless commit should fail while active lease exists: {commit_err}"
+    );
+}
+
+#[tokio::test]
+async fn committed_generation_item_count_tracks_current_committed_rows() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::Git, "axon", 1);
+    store.ensure_source(&source).await.unwrap();
+    assert_eq!(
+        store
+            .committed_generation_item_count("source-a")
+            .await
+            .unwrap(),
+        0
+    );
+
+    let generation = store.begin_generation(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            generation,
+            ManifestItem::new("src/lib.rs", "hash-a", 10),
+        )
+        .await
+        .unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            generation,
+            ManifestItem::new("README.md", "hash-b", 10),
+        )
+        .await
+        .unwrap();
+    store
+        .commit_generation("source-a", generation)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store
+            .committed_generation_item_count("source-a")
+            .await
+            .unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
 async fn stale_generation_commit_cannot_publish_after_newer_generation_exists() {
     let pool = axon_jobs::store::open_sqlite_pool(":memory:")
         .await
@@ -305,7 +383,10 @@ async fn owner_guarded_commit_fails_after_lease_is_lost() {
             .await
             .unwrap()
     );
-    let generation = store.begin_generation(&source).await.unwrap();
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-b")
+        .await
+        .unwrap();
     store
         .record_manifest_item(
             "source-a",
@@ -419,7 +500,10 @@ async fn payload_commit_atomically_commits_manifest_and_cleanup_debt() {
             .await
             .unwrap()
     );
-    let generation = store.begin_generation(&source).await.unwrap();
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
 
     store
         .commit_generation_payload_for_owner(
@@ -572,7 +656,10 @@ async fn abort_generation_removes_pending_rows_and_restores_max_generation() {
             .await
             .unwrap()
     );
-    let generation = store.begin_generation(&source).await.unwrap();
+    let generation = store
+        .begin_generation_for_owner(&source, "owner-a")
+        .await
+        .unwrap();
     store
         .record_manifest_item(
             "source-a",

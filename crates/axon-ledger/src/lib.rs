@@ -16,6 +16,7 @@ pub mod sqlite;
 pub mod store;
 pub mod testing;
 pub mod transaction;
+pub mod validation;
 
 pub const CRATE_NAME: &str = "axon-ledger";
 

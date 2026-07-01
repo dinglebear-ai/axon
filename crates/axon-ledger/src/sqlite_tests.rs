@@ -95,7 +95,7 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
         source_id: manifest.source_id.clone(),
         generation: manifest.generation.clone(),
         status: LifecycleStatus::Completed,
-        publish_state: PublishState::Committed,
+        publish_state: PublishState::Writing,
         created_at: ts(),
         published_at: None,
         item_counts: ItemCounts {
@@ -120,8 +120,30 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
 fn completed_generation_from(generation: &SourceGeneration) -> SourceGeneration {
     let mut generation = generation.clone();
     generation.status = LifecycleStatus::Completed;
-    generation.publish_state = PublishState::Committed;
+    generation.publish_state = PublishState::Writing;
     generation
+}
+
+fn publish_request(generation: &SourceGeneration) -> PublishGenerationRequest {
+    PublishGenerationRequest {
+        source_id: generation.source_id.clone(),
+        generation: generation.generation.clone(),
+        expected_previous_generation: generation.previous_generation.clone(),
+    }
+}
+
+async fn complete_and_publish(
+    store: &SqliteLedgerStore,
+    generation: SourceGeneration,
+) -> SourceGeneration {
+    let completed = store
+        .complete_generation(generation)
+        .await
+        .expect("complete generation");
+    store
+        .publish_generation(publish_request(&completed))
+        .await
+        .expect("publish generation")
 }
 
 fn lease_request(key: &str, owner: &str) -> LeaseRequest {
@@ -190,10 +212,7 @@ async fn sqlite_scalar_status_columns_use_schema_wire_values() {
         ))
         .await
         .expect("put manifest");
-    store
-        .publish_generation(completed_generation_from(&gen1))
-        .await
-        .expect("publish generation");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
 
     let generation_status: String =
         sqlx::query_scalar("SELECT status FROM source_generations WHERE generation = ?1")
@@ -288,10 +307,7 @@ async fn sqlite_diff_manifest_against_committed_generation() {
         .put_manifest(committed.clone())
         .await
         .expect("put committed manifest");
-    store
-        .publish_generation(completed_generation_for_manifest(&committed))
-        .await
-        .expect("publish committed manifest");
+    complete_and_publish(&store, completed_generation_for_manifest(&committed)).await;
 
     let next = manifest_with_items(
         "gen_next",
@@ -330,6 +346,40 @@ async fn sqlite_diff_manifest_against_committed_generation() {
 }
 
 #[tokio::test]
+async fn sqlite_rejects_invalid_manifest_item_ownership_and_duplicates() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let mut wrong_source = manifest("wrong-source");
+    wrong_source.items[0].source_id = SourceId::new("other");
+    let error = store
+        .put_manifest(wrong_source)
+        .await
+        .expect_err("wrong source");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.manifest_item_source_mismatch"
+    );
+
+    let mut duplicate = manifest_with_items(
+        "gen_duplicate",
+        vec![
+            manifest_item("src/lib.rs", "a"),
+            manifest_item("src/lib.rs", "b"),
+        ],
+    );
+    duplicate.items[1].canonical_uri = "file:///repo/src/lib-copy.rs".to_string();
+    let error = store
+        .put_manifest(duplicate)
+        .await
+        .expect_err("duplicate item key");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.manifest_duplicate_item"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
@@ -356,6 +406,37 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
             .await
             .expect("read document status"),
         Some(status)
+    );
+    let updated = DocumentStatus {
+        document_id: DocumentId::new("doc-sqlite"),
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: SourceGenerationId::new("gen_2"),
+        status: DocumentLifecycleStatus::Failed,
+        updated_at: ts_at(9),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: Some(SourceError {
+            code: "embed.failed".to_string(),
+            severity: Severity::Failed,
+            message: "embedding failed".to_string(),
+            source_item_key: Some(SourceItemKey::new("src/lib.rs")),
+            retryable: true,
+            provider_id: None,
+            cause: None,
+        }),
+        cleanup_status: Some(LifecycleStatus::Pending),
+    };
+    store
+        .update_document_status(updated.clone())
+        .await
+        .expect("overwrite document status");
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-sqlite"))
+            .await
+            .expect("read overwritten document status"),
+        Some(updated)
     );
 
     let debt = CleanupDebt {
@@ -447,6 +528,97 @@ async fn sqlite_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() 
         .expect("stored debt");
     assert_eq!(stored.status, LifecycleStatus::Completed);
     assert_eq!(stored.completed_at, Some(ts_at(10)));
+}
+
+#[tokio::test]
+async fn sqlite_rejects_document_status_and_cleanup_debt_for_missing_sources() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+
+    let status_err = store
+        .update_document_status(DocumentStatus {
+            document_id: DocumentId::new("doc-missing"),
+            source_id: SourceId::new("missing"),
+            source_item_key: SourceItemKey::new("src/lib.rs"),
+            generation: SourceGenerationId::new("gen_1"),
+            status: DocumentLifecycleStatus::Published,
+            updated_at: ts(),
+            chunk_count: 1,
+            vector_point_count: 1,
+            error: None,
+            cleanup_status: None,
+        })
+        .await
+        .expect_err("missing source should reject document status");
+    assert_eq!(status_err.code.to_string(), "source.ledger.sqlite");
+
+    let debt_err = store
+        .record_cleanup_debt(CleanupDebt {
+            debt_id: CleanupDebtId::new("debt-missing"),
+            job_id: JobId::new(Uuid::from_u128(1)),
+            source_id: SourceId::new("missing"),
+            generation: None,
+            kind: CleanupDebtKind::VectorDelete,
+            selector: CleanupSelector::Document {
+                document_id: DocumentId::new("doc-missing"),
+            },
+            status: LifecycleStatus::Pending,
+            created_at: ts(),
+            attempts: 0,
+            last_error: None,
+            next_retry_at: None,
+            completed_at: None,
+        })
+        .await
+        .expect_err("missing source should reject cleanup debt");
+    assert_eq!(debt_err.code.to_string(), "source.ledger.sqlite");
+}
+
+#[tokio::test]
+async fn sqlite_rejects_cleanup_selector_source_or_generation_mismatch() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let base = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-mismatch"),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::new("src_sqlite"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::SourceItem {
+            source_id: SourceId::new("other"),
+            source_item_key: SourceItemKey::new("src/lib.rs"),
+            generation: SourceGenerationId::new("gen_1"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+    let source_err = store
+        .record_cleanup_debt(base.clone())
+        .await
+        .expect_err("selector source mismatch should fail");
+    assert_eq!(
+        source_err.code.to_string(),
+        "source.ledger.cleanup_selector_mismatch"
+    );
+
+    let mut generation_mismatch = base;
+    generation_mismatch.selector = CleanupSelector::SourceItem {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: SourceGenerationId::new("gen_2"),
+    };
+    let generation_err = store
+        .record_cleanup_debt(generation_mismatch)
+        .await
+        .expect_err("selector generation mismatch should fail");
+    assert_eq!(
+        generation_err.code.to_string(),
+        "source.ledger.cleanup_selector_mismatch"
+    );
 }
 
 #[tokio::test]
@@ -696,7 +868,7 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
     assert_eq!(running.previous_generation, None);
 
     let error = store
-        .publish_generation(running.clone())
+        .publish_generation(publish_request(&running))
         .await
         .expect_err("running generation is not publishable");
     assert_eq!(
@@ -706,7 +878,7 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
 
     let missing_manifest = completed_generation_from(&running);
     let error = store
-        .publish_generation(missing_manifest)
+        .complete_generation(missing_manifest)
         .await
         .expect_err("completed generation without manifest is not publishable");
     assert_eq!(error.code.to_string(), "source.ledger.manifest_missing");
@@ -719,13 +891,29 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
         .put_manifest(committed_manifest)
         .await
         .expect("put committed manifest");
-    store
-        .publish_generation(completed_generation_for_manifest(&manifest_with_items(
+    let published = complete_and_publish(
+        &store,
+        completed_generation_for_manifest(&manifest_with_items(
             &running.generation.0,
             vec![manifest_item("src/lib.rs", "committed")],
-        )))
-        .await
-        .expect("publish completed generation");
+        )),
+    )
+    .await;
+    assert_eq!(published.publish_state, PublishState::Committed);
+    assert!(published.published_at.is_some());
+
+    let generation_row: (String, String) = sqlx::query_as(
+        "SELECT publish_state, generation_json FROM source_generations WHERE generation = ?1",
+    )
+    .bind(&running.generation.0)
+    .fetch_one(&store.pool)
+    .await
+    .expect("read stored published generation");
+    assert_eq!(generation_row.0, "committed");
+    let stored_generation: SourceGeneration =
+        serde_json::from_str(&generation_row.1).expect("parse generation json");
+    assert_eq!(stored_generation.publish_state, PublishState::Committed);
+    assert!(stored_generation.published_at.is_some());
 
     let next = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -771,10 +959,7 @@ async fn sqlite_publish_rejects_stale_generation_baseline() {
         ))
         .await
         .expect("put gen1");
-    store
-        .publish_generation(completed_generation_from(&gen1))
-        .await
-        .expect("publish gen1");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
 
     let stale = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -791,10 +976,7 @@ async fn sqlite_publish_rejects_stale_generation_baseline() {
         ))
         .await
         .expect("put fresh");
-    store
-        .publish_generation(completed_generation_from(&fresh))
-        .await
-        .expect("publish fresh");
+    complete_and_publish(&store, completed_generation_from(&fresh)).await;
 
     store
         .put_manifest(manifest_with_items(
@@ -803,8 +985,12 @@ async fn sqlite_publish_rejects_stale_generation_baseline() {
         ))
         .await
         .expect("put stale");
+    let completed_stale = store
+        .complete_generation(completed_generation_from(&stale))
+        .await
+        .expect("complete stale generation");
     let error = store
-        .publish_generation(completed_generation_from(&stale))
+        .publish_generation(publish_request(&completed_stale))
         .await
         .expect_err("stale generation cannot rewind committed baseline");
     assert_eq!(
@@ -842,10 +1028,7 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
         ))
         .await
         .expect("put gen1");
-    store
-        .publish_generation(completed_generation_from(&gen1))
-        .await
-        .expect("publish gen1");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
 
     let gen2 = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -858,10 +1041,7 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
         ))
         .await
         .expect("put gen2");
-    store
-        .publish_generation(completed_generation_from(&gen2))
-        .await
-        .expect("publish gen2");
+    let published = complete_and_publish(&store, completed_generation_from(&gen2)).await;
 
     assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
     let debt_json: String = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
@@ -888,6 +1068,11 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
     let stored_generation: SourceGeneration =
         serde_json::from_str(&generation_json).expect("parse generation json");
     assert_eq!(stored_generation.cleanup_debt, vec![debt.debt_id]);
+    assert_eq!(
+        stored_generation.publish_state,
+        PublishState::CleanupPending
+    );
+    assert_eq!(published.publish_state, PublishState::CleanupPending);
 }
 
 #[tokio::test]
@@ -906,10 +1091,7 @@ async fn sqlite_publish_creates_cleanup_debt_for_modified_items() {
         ))
         .await
         .expect("put gen1");
-    store
-        .publish_generation(completed_generation_from(&gen1))
-        .await
-        .expect("publish gen1");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
 
     let gen2 = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -922,10 +1104,7 @@ async fn sqlite_publish_creates_cleanup_debt_for_modified_items() {
         ))
         .await
         .expect("put gen2");
-    store
-        .publish_generation(completed_generation_from(&gen2))
-        .await
-        .expect("publish gen2");
+    complete_and_publish(&store, completed_generation_from(&gen2)).await;
 
     assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
     let debt_json: String = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
@@ -959,10 +1138,7 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         ))
         .await
         .expect("put gen1");
-    store
-        .publish_generation(completed_generation_from(&gen1))
-        .await
-        .expect("publish gen1");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
 
     let gen2 = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -972,10 +1148,7 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         .put_manifest(manifest_with_items(&gen2.generation.0, vec![]))
         .await
         .expect("put gen2");
-    store
-        .publish_generation(completed_generation_from(&gen2))
-        .await
-        .expect("publish gen2");
+    complete_and_publish(&store, completed_generation_from(&gen2)).await;
 
     let gen3 = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -988,10 +1161,7 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         ))
         .await
         .expect("put gen3");
-    store
-        .publish_generation(completed_generation_from(&gen3))
-        .await
-        .expect("publish gen3");
+    complete_and_publish(&store, completed_generation_from(&gen3)).await;
 
     let gen4 = store
         .create_generation(SourceId::new("src_sqlite"))
@@ -1001,10 +1171,7 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         .put_manifest(manifest_with_items(&gen4.generation.0, vec![]))
         .await
         .expect("put gen4");
-    store
-        .publish_generation(completed_generation_from(&gen4))
-        .await
-        .expect("publish gen4");
+    complete_and_publish(&store, completed_generation_from(&gen4)).await;
 
     assert_eq!(store.cleanup_debt_count().await.expect("count"), 2);
     let rows = sqlx::query_scalar::<_, String>("SELECT debt_json FROM cleanup_debt")

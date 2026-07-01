@@ -8,11 +8,13 @@ use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::generation::{committed_generation, ensure_generation_for_manifest_in_tx};
 use crate::sqlite::util::{json_error, keyed_manifest_items, manifest_item_changed, stage_header};
 use crate::store::Result;
+use crate::validation::validate_manifest;
 
 pub(super) async fn put_manifest(
     store: &SqliteLedgerStore,
     manifest: SourceManifest,
 ) -> Result<()> {
+    validate_manifest(&manifest)?;
     let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
     ensure_generation_for_manifest_in_tx(&mut tx, &manifest).await?;
     let manifest_json = serde_json::to_string(&manifest).map_err(json_error)?;

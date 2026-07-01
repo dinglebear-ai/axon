@@ -200,6 +200,36 @@ pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
             "cleaned",
         ],
     ),
+    (
+        "DocumentLifecycleStatus",
+        &[
+            "discovered",
+            "fetched",
+            "normalized",
+            "enriched",
+            "parsed",
+            "prepared",
+            "embedded",
+            "vectorized",
+            "published",
+            "cleaned",
+            "degraded",
+            "failed",
+            "skipped",
+        ],
+    ),
+    (
+        "CleanupDebtKind",
+        &[
+            "vector_delete",
+            "artifact_delete",
+            "ledger_prune",
+            "graph_prune",
+            "memory_prune",
+            "job_retention",
+            "cache_prune",
+        ],
+    ),
 ];
 
 pub fn check_removed_surface_drift(artifacts: &[SchemaArtifact]) -> Result<()> {

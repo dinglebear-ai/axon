@@ -220,12 +220,15 @@ async fn republish_committed_git_generation(
 ) -> Result<()> {
     let status = store.source_status(&source.source_id).await?;
     if status.committed_generation > 0 {
+        let expected_visible_points = store
+            .committed_generation_item_count(&source.source_id)
+            .await?;
         qdrant_publish_source_generation(
             cfg,
             &source.source_id,
             status.committed_generation,
             source.index_version,
-            0,
+            expected_visible_points,
         )
         .await?;
     }
