@@ -1,0 +1,213 @@
+use axon_api::source::*;
+use uuid::Uuid;
+
+use crate::parser::{ParseInput, ParserCapability};
+use crate::registry::ParserRegistry;
+use crate::testing::FakeParser;
+
+fn source_doc(
+    content_kind: ContentKind,
+    path: Option<&str>,
+    mime_type: Option<&str>,
+    text: &str,
+) -> SourceDocument {
+    SourceDocument {
+        document_id: DocumentId::from("doc_1"),
+        source_id: SourceId::from("src_1"),
+        source_item_key: SourceItemKey::from(path.unwrap_or("item")),
+        canonical_uri: format!("file:///repo/{}", path.unwrap_or("item")),
+        content_kind,
+        content: ContentRef::InlineText {
+            text: text.to_string(),
+        },
+        metadata: MetadataMap::new(),
+        title: None,
+        language: None,
+        path: path.map(ToOwned::to_owned),
+        mime_type: mime_type.map(ToOwned::to_owned),
+        structured_payload: None,
+        artifact_id: None,
+        chunk_hints: Vec::new(),
+        parser_hints: Vec::new(),
+    }
+}
+
+fn input(doc: SourceDocument) -> ParseInput {
+    ParseInput {
+        job_id: JobId::new(Uuid::from_u128(1)),
+        stage_id: StageId::new(Uuid::from_u128(2)),
+        document: doc,
+        requested_parser: None,
+    }
+}
+
+fn parser(id: &str) -> FakeParser {
+    FakeParser::new(ParserCapability {
+        parser_id: id.to_string(),
+        parser_version: "test".to_string(),
+        content_kinds: Vec::new(),
+        mime_types: Vec::new(),
+        file_extensions: Vec::new(),
+        path_suffixes: Vec::new(),
+        sniff_prefixes: Vec::new(),
+        priority: 0,
+    })
+}
+
+#[test]
+fn registry_selects_by_hint_content_kind_mime_path_and_sniffing() {
+    let explicit = parser("explicit");
+    let markdown = parser("markdown").with_content_kind(ContentKind::Markdown);
+    let mime = parser("mime_markdown").with_mime_type("text/markdown");
+    let manifest = parser("cargo_manifest").with_file_extension("toml");
+    let openapi = parser("openapi").with_sniff_prefix("{\"openapi\"");
+
+    let registry = ParserRegistry::new()
+        .with_parser(markdown)
+        .with_parser(mime)
+        .with_parser(manifest)
+        .with_parser(openapi)
+        .with_parser(explicit);
+
+    let mut explicit_input = input(source_doc(ContentKind::PlainText, None, None, "plain"));
+    explicit_input.requested_parser = Some("explicit".to_string());
+    assert_eq!(
+        registry
+            .select(&explicit_input)
+            .expect("explicit parser")
+            .capability()
+            .parser_id,
+        "explicit"
+    );
+
+    assert_eq!(
+        registry
+            .select(&input(source_doc(
+                ContentKind::Markdown,
+                Some("README.md"),
+                None,
+                "# Readme",
+            )))
+            .expect("content-kind parser")
+            .capability()
+            .parser_id,
+        "markdown"
+    );
+
+    assert_eq!(
+        registry
+            .select(&input(source_doc(
+                ContentKind::PlainText,
+                Some("README"),
+                Some("text/markdown"),
+                "# Readme",
+            )))
+            .expect("mime parser")
+            .capability()
+            .parser_id,
+        "mime_markdown"
+    );
+
+    assert_eq!(
+        registry
+            .select(&input(source_doc(
+                ContentKind::Toml,
+                Some("Cargo.toml"),
+                None,
+                "[dependencies]",
+            )))
+            .expect("extension parser")
+            .capability()
+            .parser_id,
+        "cargo_manifest"
+    );
+
+    assert_eq!(
+        registry
+            .select(&input(source_doc(
+                ContentKind::Json,
+                Some("openapi.json"),
+                None,
+                "{\"openapi\":\"3.1.0\"}",
+            )))
+            .expect("sniff parser")
+            .capability()
+            .parser_id,
+        "openapi"
+    );
+}
+
+#[test]
+fn unsupported_input_degrades_to_warning_result() {
+    let registry = ParserRegistry::new();
+    let result = registry.parse(&input(source_doc(
+        ContentKind::BinaryMetadata,
+        Some("logo.png"),
+        Some("image/png"),
+        "",
+    )));
+
+    assert_eq!(result.parser_id, "none");
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(result.warnings[0].code, "parse.unsupported");
+    assert!(result.facts.is_empty());
+    assert!(result.graph_candidates.is_empty());
+}
+
+#[test]
+fn fake_parser_emits_api_facts_and_deterministic_graph_candidate() {
+    let fact = SourceParseFacts {
+        document_id: DocumentId::from("doc_1"),
+        source_item_key: SourceItemKey::from("Cargo.toml"),
+        fact_kind: "dependency".to_string(),
+        name: "tokio".to_string(),
+        value: serde_json::json!({ "version": "1" }),
+        parser_id: "cargo_manifest".to_string(),
+        parser_version: "test".to_string(),
+        parser_method: "toml_parser".to_string(),
+        range: None,
+        confidence: 1.0,
+        metadata: MetadataMap::new(),
+    };
+    let candidate = GraphCandidate {
+        candidate_id: "cand_src_1_Cargo_toml_tokio".to_string(),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::from("src_1"),
+        source_item_key: SourceItemKey::from("Cargo.toml"),
+        item_canonical_uri: "file:///repo/Cargo.toml".to_string(),
+        document_id: Some(DocumentId::from("doc_1")),
+        kind: "manifest_dependency".to_string(),
+        merge_key: Some("cargo:file:///repo/Cargo.toml:tokio".to_string()),
+        producer: GraphCandidateProducer {
+            adapter: "local".to_string(),
+            parser: Some("cargo_manifest".to_string()),
+            version: "test".to_string(),
+        },
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        evidence: Vec::new(),
+        confidence: 1.0,
+        metadata: MetadataMap::new(),
+    };
+    let registry = ParserRegistry::new().with_parser(
+        parser("cargo_manifest")
+            .with_file_extension("toml")
+            .with_fact(fact.clone())
+            .with_graph_candidate(candidate.clone()),
+    );
+
+    let result = registry.parse(&input(source_doc(
+        ContentKind::Toml,
+        Some("Cargo.toml"),
+        None,
+        "[dependencies]\ntokio = \"1\"",
+    )));
+    let round_trip: ParseResult =
+        serde_json::from_value(serde_json::to_value(&result).unwrap()).unwrap();
+
+    assert_eq!(round_trip.facts, vec![fact]);
+    assert_eq!(round_trip.graph_candidates, vec![candidate]);
+    assert_eq!(round_trip.parser_id, "cargo_manifest");
+    assert_eq!(round_trip.header.status, LifecycleStatus::Completed);
+}
