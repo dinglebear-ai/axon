@@ -27,6 +27,7 @@ pub fn all_families() -> Vec<SchemaFamily> {
         SchemaFamily::Graph,
         SchemaFamily::VectorPayload,
         SchemaFamily::Providers,
+        SchemaFamily::Adapters,
     ]
 }
 
@@ -43,6 +44,7 @@ impl FamilyGenerator for Generator {
         match self.family {
             SchemaFamily::Api => api_artifacts(root),
             SchemaFamily::Errors => error_artifacts(root),
+            SchemaFamily::Adapters => super::adapters::adapter_artifacts(root),
             family => skeleton_artifacts(root, family_specs::spec_for(family)),
         }
     }
@@ -378,7 +380,7 @@ fn schema_id(family: SchemaFamily) -> &'static str {
         SchemaFamily::Providers => {
             "https://axon.local/schemas/runtime/provider-capabilities.schema.json"
         }
-        SchemaFamily::Api | SchemaFamily::Errors => {
+        SchemaFamily::Api | SchemaFamily::Errors | SchemaFamily::Adapters => {
             unreachable!("real generators use explicit ids")
         }
     }

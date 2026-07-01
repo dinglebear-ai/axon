@@ -37,6 +37,10 @@ enum Command {
     CheckDocLinks,
     /// Fail if generated reference docs reference a removed public surface.
     CheckDocContracts,
+    /// Verify the crate dependency-graph snapshot is in sync and acyclic.
+    CheckDepGraph,
+    /// Regenerate docs/reference/crate-dependency-graph.md.
+    GenDepGraph,
     /// Verify SQLite job migrations are append-only and checksum-pinned.
     CheckSqliteMigrations,
     /// Regenerate the SQLite job migration checksum manifest after adding a migration.
@@ -135,6 +139,8 @@ fn main() -> Result<()> {
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
         Command::CheckDocLinks => checks::doc_links::check(&root),
         Command::CheckDocContracts => checks::doc_contracts::check(&root),
+        Command::CheckDepGraph => checks::dep_graph::check(&root),
+        Command::GenDepGraph => checks::dep_graph::write(&root),
         Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
         Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
         Command::CheckSecrets => checks::secrets::check(&root),

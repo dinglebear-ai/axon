@@ -1,3 +1,7 @@
-//! Marker module for the target `axon-adapters::acquisition` boundary.
+//! Adapter-owned acquisition DTO aliases.
 
-pub const MODULE_NAME: &str = "acquisition";
+use axon_api::source::*;
+
+pub type AcquisitionManifest = SourceManifest;
+pub type AcquiredItem = AcquiredSourceItem;
+pub type FetchStatus = LifecycleStatus;

@@ -411,6 +411,7 @@ dependencies = [
  "axon-api",
  "axon-error",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -9005,6 +9006,7 @@ dependencies = [
  "anyhow",
  "axon-api",
  "axon-error",
+ "axon-route",
  "axon-web",
  "clap",
  "dotenvy",
