@@ -15,3 +15,7 @@ pub mod stream;
 pub mod testing;
 
 pub const CRATE_NAME: &str = "axon-llm";
+
+#[cfg(test)]
+#[path = "provider_tests.rs"]
+mod provider_tests;
