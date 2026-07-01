@@ -1,7 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::parser::{ParseInput, ParserCapability};
+use crate::parser::{ParseInput, ParserCapability, stage_header};
 use crate::registry::ParserRegistry;
 use crate::testing::FakeParser;
 
@@ -153,6 +153,25 @@ fn unsupported_input_degrades_to_warning_result() {
     assert_eq!(result.warnings[0].code, "parse.unsupported");
     assert!(result.facts.is_empty());
     assert!(result.graph_candidates.is_empty());
+}
+
+#[test]
+fn stage_header_uses_runtime_timestamps() {
+    let header = stage_header(
+        &input(source_doc(
+            ContentKind::PlainText,
+            Some("notes.txt"),
+            None,
+            "hi",
+        )),
+        LifecycleStatus::Completed,
+        Vec::new(),
+        None,
+    );
+
+    assert_ne!(header.started_at.0, "2026-07-01T00:00:00Z");
+    assert_eq!(header.completed_at.as_ref(), Some(&header.started_at));
+    assert!(header.started_at.0.ends_with("+00:00") || header.started_at.0.ends_with('Z'));
 }
 
 #[test]

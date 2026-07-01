@@ -2,7 +2,7 @@ use axon_api::source::*;
 use uuid::Uuid;
 
 use crate::parser::ParseInput;
-use crate::session::session_facts;
+use crate::session::{session_facts, session_items};
 
 fn input(text: &str) -> ParseInput {
     ParseInput {
@@ -44,5 +44,44 @@ fn extracts_jsonl_session_turn_facts() {
     assert_eq!(
         facts[0].range.as_ref().unwrap().session_turn_id,
         Some("1".to_string())
+    );
+}
+
+#[test]
+fn extracts_session_tool_skill_and_agent_invocations() {
+    let (facts, candidates) = session_items(&input(
+        r#"{"type":"message","role":"assistant","tool_calls":[{"id":"call_1","name":"axon.search"}],"skills":["axon:using-axon"],"agents_invoked":[{"name":"researcher"}]}"#,
+    ));
+
+    let kinds: Vec<_> = facts.iter().map(|fact| fact.fact_kind.as_str()).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "session_turn",
+            "session_tool_call",
+            "session_skill_invocation",
+            "session_agent_invocation"
+        ]
+    );
+    assert_eq!(facts[1].name, "axon.search");
+    assert_eq!(facts[1].value["call_id"], "call_1");
+    assert_eq!(facts[2].name, "axon:using-axon");
+    assert_eq!(facts[3].name, "researcher");
+    assert_eq!(
+        facts[1].range.as_ref().unwrap().session_turn_id,
+        Some("1".to_string())
+    );
+
+    let candidate_kinds: Vec<_> = candidates
+        .iter()
+        .map(|candidate| candidate.kind.as_str())
+        .collect();
+    assert_eq!(
+        candidate_kinds,
+        vec![
+            "session_tool_call",
+            "session_skill_invocation",
+            "session_agent_invocation"
+        ]
     );
 }

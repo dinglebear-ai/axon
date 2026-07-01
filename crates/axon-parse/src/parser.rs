@@ -72,13 +72,14 @@ pub fn stage_header(
     warnings: Vec<SourceWarning>,
     error: Option<SourceError>,
 ) -> StageResultHeader {
+    let now = Timestamp(chrono::Utc::now().to_rfc3339());
     StageResultHeader {
         job_id: input.job_id,
         stage_id: input.stage_id,
         phase: PipelinePhase::Parsing,
         status,
-        started_at: Timestamp("2026-07-01T00:00:00Z".to_string()),
-        completed_at: Some(Timestamp("2026-07-01T00:00:00Z".to_string())),
+        started_at: now.clone(),
+        completed_at: Some(now),
         counts: StageCounts {
             items_total: Some(1),
             items_done: 1,

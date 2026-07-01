@@ -4,10 +4,14 @@ use axon_api::source::SourceRange;
 
 use crate::chunk::DocumentChunk;
 
+pub(crate) const MAX_PLAIN_TEXT_CHUNK_BYTES: usize = 4096;
+pub(crate) const MAX_PLAIN_TEXT_CHUNK_CHARS: usize = 2000;
+
 pub fn plain_text_windows(text: &str) -> Vec<DocumentChunk> {
     let normalized = text.replace("\r\n", "\n");
     paragraphs(&normalized)
         .into_iter()
+        .flat_map(|(start, end)| bounded_windows(&normalized, start, end))
         .map(|(start, end)| {
             DocumentChunk::new(
                 normalized[start..end].trim().to_string(),
@@ -72,7 +76,57 @@ fn paragraphs(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
+fn bounded_windows(text: &str, start: usize, end: usize) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut chunk_start = start;
+    let mut chars = 0usize;
+
+    for (relative, ch) in text[start..end].char_indices() {
+        let pos = start + relative;
+        let next = pos + ch.len_utf8();
+        if pos > chunk_start
+            && (next - chunk_start > MAX_PLAIN_TEXT_CHUNK_BYTES
+                || chars + 1 > MAX_PLAIN_TEXT_CHUNK_CHARS)
+        {
+            spans.push((chunk_start, pos));
+            chunk_start = pos;
+            chars = 0;
+        }
+        chars += 1;
+    }
+
+    if chunk_start < end {
+        spans.push((chunk_start, end));
+    }
+    spans
+}
+
 fn line_number_at(text: &str, byte: usize) -> u32 {
     let capped = byte.min(text.len());
     1 + text[..capped].bytes().filter(|b| *b == b'\n').count() as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_PLAIN_TEXT_CHUNK_BYTES, MAX_PLAIN_TEXT_CHUNK_CHARS, plain_text_windows};
+
+    #[test]
+    fn plain_text_windows_splits_single_long_paragraph_into_bounded_chunks() {
+        let text = "a".repeat(MAX_PLAIN_TEXT_CHUNK_BYTES * 2 + 17);
+
+        let chunks = plain_text_windows(&text);
+
+        assert!(chunks.len() > 2);
+        assert_eq!(
+            chunks
+                .iter()
+                .map(|chunk| chunk.content.as_str())
+                .collect::<String>(),
+            text
+        );
+        for chunk in chunks {
+            assert!(chunk.content.len() <= MAX_PLAIN_TEXT_CHUNK_BYTES);
+            assert!(chunk.content.chars().count() <= MAX_PLAIN_TEXT_CHUNK_CHARS);
+        }
+    }
 }

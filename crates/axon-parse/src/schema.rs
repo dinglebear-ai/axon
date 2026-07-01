@@ -10,9 +10,9 @@ pub const MODULE_NAME: &str = "schema";
 pub fn api_schema_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let path = input.document.path.as_deref().unwrap_or_default();
     if path.ends_with(".graphql") || inline_text(input).contains("type Query") {
-        (graphql_facts(input), Vec::new())
+        graphql_facts(input)
     } else if path.ends_with(".proto") || inline_text(input).contains("service ") {
-        (proto_facts(input), Vec::new())
+        proto_facts(input)
     } else {
         openapi_facts(input)
     }
@@ -58,11 +58,13 @@ fn openapi_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandida
     (facts, candidates)
 }
 
-fn graphql_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
+fn graphql_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let mut facts = Vec::new();
+    let mut candidates = Vec::new();
     let mut current_type: Option<String> = None;
     for (idx, line) in inline_text(input).lines().enumerate() {
         let trimmed = line.trim();
+        let line_number = idx as u32 + 1;
         if let Some(rest) = trimmed.strip_prefix("type ") {
             let name = rest
                 .split(|ch: char| ch.is_whitespace() || ch == '{')
@@ -77,7 +79,15 @@ fn graphql_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
                     "graphql_type",
                     name,
                     json!({ "type_kind": "type" }),
-                    Some(idx as u32 + 1),
+                    Some(line_number),
+                ));
+                candidates.push(graph_candidate(
+                    input,
+                    "graphql_schema",
+                    "graphql_type",
+                    name,
+                    Some(line_number),
+                    Some(trimmed.to_string()),
                 ));
             }
         } else if let Some(parent) = current_type.as_deref() {
@@ -87,33 +97,52 @@ fn graphql_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
             }
             if let Some((field, _)) = trimmed.split_once(':') {
                 let field_name = field.split('(').next().unwrap_or(field).trim();
+                let name = format!("{parent}.{field_name}");
                 facts.push(source_fact(
                     input,
                     "graphql_schema",
                     "line_heuristic",
                     "graphql_field",
-                    format!("{parent}.{field_name}"),
+                    name.clone(),
                     json!({ "parent_type": parent, "field": field_name }),
-                    Some(idx as u32 + 1),
+                    Some(line_number),
+                ));
+                candidates.push(graph_candidate(
+                    input,
+                    "graphql_schema",
+                    "graphql_field",
+                    &name,
+                    Some(line_number),
+                    Some(trimmed.to_string()),
                 ));
             }
         }
     }
-    facts
+    (facts, candidates)
 }
 
-fn proto_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
+fn proto_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let mut facts = Vec::new();
+    let mut candidates = Vec::new();
     for (idx, line) in inline_text(input).lines().enumerate() {
+        let line_number = idx as u32 + 1;
         for service in names_after(line, "service ") {
             facts.push(source_fact(
                 input,
                 "proto_schema",
                 "line_heuristic",
                 "proto_service",
-                service,
+                service.clone(),
                 json!({ "schema": "proto" }),
-                Some(idx as u32 + 1),
+                Some(line_number),
+            ));
+            candidates.push(graph_candidate(
+                input,
+                "proto_schema",
+                "proto_service",
+                &service,
+                Some(line_number),
+                Some(line.trim().to_string()),
             ));
         }
         for rpc in rpc_specs(line) {
@@ -122,9 +151,17 @@ fn proto_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
                 "proto_schema",
                 "line_heuristic",
                 "proto_rpc",
-                rpc.name,
+                rpc.name.clone(),
                 json!({ "request": rpc.request, "response": rpc.response }),
-                Some(idx as u32 + 1),
+                Some(line_number),
+            ));
+            candidates.push(graph_candidate(
+                input,
+                "proto_schema",
+                "proto_rpc",
+                &rpc.name,
+                Some(line_number),
+                Some(line.trim().to_string()),
             ));
         }
         for message in names_after(line, "message ") {
@@ -133,13 +170,21 @@ fn proto_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
                 "proto_schema",
                 "line_heuristic",
                 "proto_message",
-                message,
+                message.clone(),
                 json!({ "schema": "proto" }),
-                Some(idx as u32 + 1),
+                Some(line_number),
+            ));
+            candidates.push(graph_candidate(
+                input,
+                "proto_schema",
+                "proto_message",
+                &message,
+                Some(line_number),
+                Some(line.trim().to_string()),
             ));
         }
     }
-    facts
+    (facts, candidates)
 }
 
 struct RpcSpec {
