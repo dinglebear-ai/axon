@@ -31,7 +31,7 @@ pub struct FakeLedgerStore {
 #[derive(Debug, Default)]
 struct FakeLedgerState {
     sources: BTreeMap<SourceId, SourceSummary>,
-    manifests: BTreeMap<SourceId, SourceManifest>,
+    manifests: BTreeMap<(SourceId, SourceGenerationId), SourceManifest>,
     committed: BTreeMap<SourceId, SourceGenerationId>,
     document_statuses: BTreeMap<DocumentId, DocumentStatus>,
     cleanup_debt: BTreeMap<CleanupDebtId, CleanupDebt>,
@@ -77,23 +77,23 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
-        self.state
-            .lock()
-            .await
-            .manifests
-            .insert(manifest.source_id.clone(), manifest);
+        let key = (manifest.source_id.clone(), manifest.generation.clone());
+        self.state.lock().await.manifests.insert(key, manifest);
         Ok(())
     }
 
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
-        let previous = self
-            .state
-            .lock()
-            .await
-            .manifests
-            .get(&manifest.source_id)
+        let state = self.state.lock().await;
+        let previous_generation = state.committed.get(&manifest.source_id).cloned();
+        let previous = previous_generation
+            .as_ref()
+            .and_then(|generation| {
+                state
+                    .manifests
+                    .get(&(manifest.source_id.clone(), generation.clone()))
+            })
             .cloned();
-        let previous_generation = previous.as_ref().map(|value| value.generation.clone());
+        drop(state);
         let previous_items = previous
             .map(|old| keyed_manifest_items(old.items))
             .unwrap_or_default();

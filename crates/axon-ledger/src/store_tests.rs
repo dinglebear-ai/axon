@@ -74,6 +74,32 @@ fn completed_generation(mut generation: SourceGeneration) -> SourceGeneration {
     generation
 }
 
+fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGeneration {
+    SourceGeneration {
+        source_id: manifest.source_id.clone(),
+        generation: manifest.generation.clone(),
+        status: LifecycleStatus::Completed,
+        created_at: ts(),
+        published_at: None,
+        item_counts: ItemCounts {
+            added: manifest.items.len() as u64,
+            modified: 0,
+            removed: 0,
+            unchanged: 0,
+            failed: 0,
+        },
+        document_counts: DocumentCounts {
+            discovered: manifest.items.len() as u64,
+            prepared: 0,
+            embedded: 0,
+            published: 0,
+            failed: 0,
+        },
+        cleanup_debt: Vec::new(),
+        previous_generation: None,
+    }
+}
+
 #[tokio::test]
 async fn fake_ledger_diffs_manifests_and_tracks_committed_generation() {
     let ledger = FakeLedgerStore::new();
@@ -81,13 +107,10 @@ async fn fake_ledger_diffs_manifests_and_tracks_committed_generation() {
 
     let first = ledger.diff_manifest(manifest("a")).await.unwrap();
     assert_eq!(first.counts.added, 1);
-    ledger.put_manifest(manifest("a")).await.unwrap();
+    let first_manifest = manifest("a");
+    ledger.put_manifest(first_manifest.clone()).await.unwrap();
 
-    let generation = ledger
-        .create_generation(SourceId::new("src_a"))
-        .await
-        .unwrap();
-    let generation = completed_generation(generation);
+    let generation = completed_generation_for_manifest(&first_manifest);
     ledger.publish_generation(generation.clone()).await.unwrap();
 
     let refreshed = ledger.diff_manifest(manifest("b")).await.unwrap();
@@ -96,6 +119,20 @@ async fn fake_ledger_diffs_manifests_and_tracks_committed_generation() {
         ledger.committed_generation(&SourceId::new("src_a")).await,
         Some(generation.generation)
     );
+}
+
+#[tokio::test]
+async fn fake_ledger_diffs_only_against_committed_generation() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    ledger.put_manifest(manifest("uncommitted")).await.unwrap();
+
+    let diff = ledger.diff_manifest(manifest("next")).await.unwrap();
+    assert_eq!(diff.previous_generation, None);
+    assert_eq!(diff.counts.added, 1);
+    assert_eq!(diff.counts.modified, 0);
+    assert_eq!(diff.counts.unchanged, 0);
 }
 
 #[tokio::test]
@@ -131,8 +168,10 @@ async fn fake_ledger_scopes_generation_ids_per_source() {
 #[tokio::test]
 async fn fake_ledger_diffs_version_and_mtime_changes() {
     let ledger = FakeLedgerStore::new();
+    let previous = manifest_with_freshness("a", Some("v1"), ts());
+    ledger.put_manifest(previous.clone()).await.unwrap();
     ledger
-        .put_manifest(manifest_with_freshness("a", Some("v1"), ts()))
+        .publish_generation(completed_generation_for_manifest(&previous))
         .await
         .unwrap();
 
