@@ -1,19 +1,52 @@
-# axon-vectors Agent Instructions
+# axon-vectors — Agent Guide
 
-This file is the agent-facing contract for the `axon-vectors` crate docs.
+`axon-vectors` owns **vector storage**: the `VectorStore` trait, the Qdrant
+implementation, point-batch construction, collection/index management, and
+payload writes/search/delete. It stores vectors; it never generates them. Full
+contract (owns / API / deps / tests):
+[../../../docs/pipeline-unification/crates/axon-vectors/README.md](../../../docs/pipeline-unification/crates/axon-vectors/README.md)
+· behavior spec:
+[../../../docs/pipeline-unification/runtime/storage-contract.md](../../../docs/pipeline-unification/runtime/storage-contract.md).
 
-## When Editing
+## Status — PR0 skeleton
+Modules below are **markers only**. Real implementation lands in **Phase 7**,
+decomposed out of `axon-vector`'s Qdrant/persistence logic. Do not add embedding
+generation, chunking, ledger commits, or RAG synthesis here.
 
-- Keep `VectorStore`, Qdrant implementation, collection specs, point batches,
-  payloads, filters, indexes, and vector query primitives here.
-- Do not add embedding generation, source acquisition, chunking, retrieval
-  synthesis, or transport rendering.
-- Update `../../../docs/pipeline-unification/crates/axon-vectors/README.md`, `../../../docs/pipeline-unification/runtime/storage-contract.md`, and
-  `../../../docs/pipeline-unification/schemas/vector-payload-schema.md` together.
-- Preserve replaceability of Qdrant behind `VectorStore`.
+## Module map
+| File | Owns |
+|---|---|
+| `store.rs` | `VectorStore` trait — the durable boundary retrieval depends on |
+| `qdrant.rs` | `QdrantVectorStore` — the only concrete implementation |
+| `collection.rs` | `CollectionSpec` — named/sparse vectors, dimensions, payload indexes |
+| `point.rs` | `VectorPointBatch`, `VectorPoint` construction from prepared chunks + embeddings |
+| `payload.rs` | `VectorPayload` — validation + schema snapshots |
+| `filter.rs` | `VectorFilter` — source/generation-scoped filters |
+| `query.rs` | `VectorQuery`, `VectorSearchResult` — search primitives (upsert/delete/scroll/retrieve-by-source) |
+| `health.rs` | store health + backpressure errors |
+| `testing.rs` | `FakeVectorStore` — deterministic search ordering + outage/partial/slow fixtures |
 
-## Review Checklist
+## Boundary — keep OUT of this crate
+- Embedding generation, source acquisition, chunking, ledger generation commits, RAG synthesis, transport rendering.
+- Provider throughput decisions beyond store-side backpressure errors.
 
-- Payloads include required metadata fields.
-- Collection specs validate dimensions and vector names.
-- Delete filters are source/generation-safe.
+## Dependencies
+- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-observe`, `axon-embedding` **types**, Qdrant client + serde/schema crates.
+- **Forbidden:** embedding provider implementations, source adapters, parser impls, job runtime, transport crates, LLM providers, and `axon-ledger` (the `axon-vectors -> axon-ledger` edge is forbidden — cleanup is driven from cleanup debt). Enforced by `cargo xtask check-layering`.
+
+## Invariants (review checklist)
+- Vector payload contains the **required shared metadata** fields.
+- Collection creation is **idempotent** and validates dimensions/vector names.
+- **All vector writes go through validated point batches.**
+- Delete filters match source id, generation, and cleanup debt **safely** (no over-broad deletes).
+- Qdrant is **replaceable behind `VectorStore`** — retrieval depends on the trait, not Qdrant internals.
+
+## DTO ownership
+Serializable wire shapes (`VectorPayload`, `VectorSearchResult`, `CollectionSpec`
+components) are defined in **`axon-api`**; this crate validates, stores, and
+returns them — it does not redefine transport-facing shapes.
+
+## Keep in sync when shapes change
+`README.md` (crate contract) · `runtime/storage-contract.md` ·
+`schemas/vector-payload-schema.md` · the vector payload/collection DTO
+components in `axon-api`.
