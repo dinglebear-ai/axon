@@ -1,7 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::code::symbol_facts;
+use crate::code::{symbol_facts, symbol_facts_with_graph};
 use crate::parser::ParseInput;
 
 fn input(path: &str, text: &str) -> ParseInput {
@@ -45,4 +45,27 @@ fn extracts_simple_rust_and_python_symbol_facts() {
     assert_eq!(facts[1].value["language"], "rust");
     assert_eq!(facts[2].value["language"], "python");
     assert_eq!(facts[3].range.as_ref().unwrap().line_start, Some(4));
+}
+
+#[test]
+fn emits_graph_candidates_for_code_symbols_without_breaking_fact_api() {
+    let input = input("src/lib.rs", "pub enum Mode {}\nasync fn run() {}\n");
+    let fact_only = symbol_facts(&input);
+    let (facts, candidates) = symbol_facts_with_graph(&input);
+
+    assert_eq!(facts, fact_only);
+    assert_eq!(candidates.len(), facts.len());
+    assert!(candidates.iter().all(|candidate| {
+        candidate.kind == "code_symbol"
+            && !candidate.nodes.is_empty()
+            && !candidate.evidence.is_empty()
+    }));
+    assert_eq!(
+        candidates[0].producer.parser.as_deref(),
+        Some("code_symbols")
+    );
+    assert_eq!(
+        candidates[0].evidence[0].quote.as_deref(),
+        Some("pub enum Mode {}")
+    );
 }

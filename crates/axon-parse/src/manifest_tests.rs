@@ -58,6 +58,18 @@ fn extracts_manifest_dependencies_and_graph_candidates() {
             "[project]\ndependencies = [\"httpx>=0.27\", \"pydantic\"]\n",
             vec!["httpx", "pydantic"],
         ),
+        (
+            "go.mod",
+            ContentKind::PlainText,
+            "module example.com/axon\n\nrequire (\n  github.com/spf13/cobra v1.8.1\n  golang.org/x/sync v0.7.0\n)\n",
+            vec!["github.com/spf13/cobra", "golang.org/x/sync"],
+        ),
+        (
+            "pom.xml",
+            ContentKind::Xml,
+            "<project><dependencies><dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>2.0.13</version></dependency></dependencies></project>",
+            vec!["org.slf4j:slf4j-api"],
+        ),
     ];
 
     for (path, kind, text, expected_names) in samples {
@@ -70,4 +82,24 @@ fn extracts_manifest_dependencies_and_graph_candidates() {
             candidate.kind == "manifest_dependency" && !candidate.evidence.is_empty()
         }));
     }
+}
+
+#[test]
+fn extracts_heuristic_yaml_iac_resources_and_graph_candidates() {
+    let (facts, candidates) = dependency_facts(&input(
+        "deploy.yaml",
+        ContentKind::Yaml,
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: axon-web\n---\napiVersion: v2\nkind: Chart\nname: axon\n",
+    ));
+
+    let names: Vec<_> = facts.iter().map(|fact| fact.name.as_str()).collect();
+    assert_eq!(names, vec!["Deployment/axon-web", "Chart/axon"]);
+    assert!(facts.iter().all(|fact| {
+        fact.fact_kind == "iac_resource" && fact.parser_method == "yaml_iac_heuristic"
+    }));
+    assert!(
+        candidates.iter().all(|candidate| {
+            candidate.kind == "iac_resource" && !candidate.evidence.is_empty()
+        })
+    );
 }

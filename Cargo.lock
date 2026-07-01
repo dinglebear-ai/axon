@@ -804,6 +804,7 @@ name = "axon-parse"
 version = "6.2.1"
 dependencies = [
  "axon-api",
+ "chrono",
  "serde_json",
  "uuid",
 ]
