@@ -49,6 +49,7 @@ pub trait HealthProbe: Send + Sync {
 #[derive(Debug, Clone, Default)]
 pub struct FakeCoreBoundaries {
     artifacts: Arc<Mutex<BTreeMap<ArtifactId, ArtifactReadResult>>>,
+    artifact_counter: Arc<Mutex<u64>>,
     cache: Arc<Mutex<BTreeMap<DocumentCacheKey, CachedDocument>>>,
 }
 
@@ -61,7 +62,14 @@ impl FakeCoreBoundaries {
 #[async_trait]
 impl ArtifactStore for FakeCoreBoundaries {
     async fn put(&self, artifact: ArtifactWriteRequest) -> Result<ArtifactHandle> {
-        let artifact_id = ArtifactId::new(format!("artifact_{}", artifact.content_type));
+        let mut counter = self.artifact_counter.lock().await;
+        *counter += 1;
+        let artifact_id = ArtifactId::new(format!(
+            "artifact_{}_{}",
+            artifact.content_type.replace('/', "_"),
+            *counter
+        ));
+        drop(counter);
         let handle = ArtifactHandle {
             artifact_id: artifact_id.clone(),
             artifact_kind: artifact.kind,

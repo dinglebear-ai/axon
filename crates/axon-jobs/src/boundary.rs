@@ -46,6 +46,7 @@ struct FakeJobWatchState {
     watch_runs: BTreeMap<WatchId, Vec<JobId>>,
     next_job: u128,
     next_watch: u64,
+    next_tick: u64,
 }
 
 impl FakeJobWatchStore {
@@ -60,13 +61,14 @@ impl JobStore for FakeJobWatchStore {
         let mut state = self.state.lock().await;
         state.next_job += 1;
         let job_id = JobId::new(Uuid::from_u128(state.next_job));
+        let created_at = state.timestamp();
         let summary = JobSummary {
             job_id,
             kind: request.kind,
             status: LifecycleStatus::Queued,
             phase: PipelinePhase::Queued,
-            created_at: timestamp(),
-            updated_at: timestamp(),
+            created_at: created_at.clone(),
+            updated_at: created_at.clone(),
             source_id: None,
             watch_id: None,
             counts: None,
@@ -82,8 +84,8 @@ impl JobStore for FakeJobWatchStore {
                 events_url: Some(format!("/v1/jobs/{job_id}/events", job_id = job_id.0)),
                 suggested_interval_ms: 1000,
             },
-            created_at: timestamp(),
-            updated_at: timestamp(),
+            created_at: created_at.clone(),
+            updated_at: created_at,
         })
     }
 
@@ -93,6 +95,7 @@ impl JobStore for FakeJobWatchStore {
 
     async fn update_status(&self, status: JobStatusUpdate) -> Result<()> {
         let mut state = self.state.lock().await;
+        let updated_at = state.timestamp();
         let job = state
             .jobs
             .get_mut(&status.job_id)
@@ -110,7 +113,7 @@ impl JobStore for FakeJobWatchStore {
         job.status = status.status;
         job.phase = status.phase;
         job.last_error = status.error;
-        job.updated_at = timestamp();
+        job.updated_at = updated_at;
         Ok(())
     }
 
@@ -188,7 +191,14 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn events(&self, request: JobEventListRequest) -> Result<JobEventPage> {
-        let items = self
+        if request.cursor.is_some() {
+            return Err(ApiError::new(
+                "job_event.cursor_unsupported",
+                ErrorStage::Retrieving,
+                "fake job store does not implement event cursor pagination",
+            ));
+        }
+        let mut items = self
             .state
             .lock()
             .await
@@ -196,9 +206,21 @@ impl JobStore for FakeJobWatchStore {
             .get(&request.job_id)
             .cloned()
             .unwrap_or_default();
+        if let Some(phase) = request.phase {
+            items.retain(|event| event.phase == phase);
+        }
+        if let Some(severity) = request.severity {
+            items.retain(|event| event.severity == severity);
+        }
+        if let Some(since_sequence) = request.since_sequence {
+            items.retain(|event| event.sequence > since_sequence);
+        }
+        let total = items.len() as u64;
+        let limit = request.limit.unwrap_or(100);
+        items.truncate(limit as usize);
         Ok(Page {
-            total: Some(items.len() as u64),
-            limit: request.limit.unwrap_or(100),
+            total: Some(total),
+            limit,
             next_cursor: None,
             items,
         })
@@ -208,7 +230,7 @@ impl JobStore for FakeJobWatchStore {
         let mut state = self.state.lock().await;
         state.jobs.clear();
         state.events.clear();
-        state.watch_runs.clear();
+        state.next_job = 0;
         Ok(())
     }
 
@@ -253,6 +275,9 @@ impl WatchStore for FakeJobWatchStore {
         if let Some(enabled) = request.enabled {
             watch.enabled = enabled;
         }
+        if let Some(scope) = request.scope {
+            watch.scope = scope;
+        }
         Ok(watch.clone())
     }
 
@@ -261,10 +286,15 @@ impl WatchStore for FakeJobWatchStore {
     }
 
     async fn list(&self, request: WatchListRequest) -> Result<Page<WatchSummary>> {
-        let mut items = self
-            .state
-            .lock()
-            .await
+        if request.cursor.is_some() {
+            return Err(ApiError::new(
+                "watch.cursor_unsupported",
+                ErrorStage::Retrieving,
+                "fake watch store does not implement cursor pagination",
+            ));
+        }
+        let state = self.state.lock().await;
+        let mut items = state
             .watches
             .values()
             .map(|watch| WatchSummary {
@@ -272,17 +302,32 @@ impl WatchStore for FakeJobWatchStore {
                 source_id: watch.source_id.clone(),
                 enabled: watch.enabled,
                 schedule: watch.schedule.clone(),
-                next_run_at: timestamp(),
-                last_job_id: None,
-                last_status: None,
+                next_run_at: state.peek_timestamp(),
+                last_job_id: watch.latest_job.as_ref().map(|job| job.job_id),
+                last_status: watch.latest_job.as_ref().map(|job| job.status),
             })
             .collect::<Vec<_>>();
         if let Some(enabled) = request.enabled {
             items.retain(|watch| watch.enabled == enabled);
         }
+        if let Some(source_id) = request.source_id {
+            items.retain(|watch| watch.source_id == source_id);
+        }
+        if let Some(adapter) = request.adapter {
+            items.retain(|watch| {
+                state
+                    .watches
+                    .get(&watch.watch_id)
+                    .map(|detail| detail.adapter.name == adapter)
+                    .unwrap_or(false)
+            });
+        }
+        let total = items.len() as u64;
+        let limit = request.limit.unwrap_or(100);
+        items.truncate(limit as usize);
         Ok(Page {
-            total: Some(items.len() as u64),
-            limit: request.limit.unwrap_or(100),
+            total: Some(total),
+            limit,
             next_cursor: None,
             items,
         })
@@ -303,6 +348,21 @@ impl WatchStore for FakeJobWatchStore {
         if let Some(job) = state.jobs.get_mut(&job_id) {
             job.watch_id = Some(watch_id.clone());
             job.source_id = source_id;
+        }
+        let latest_job = state.jobs.get(&job_id).map(|job| JobDescriptor {
+            job_id: job.job_id,
+            kind: job.kind,
+            status: job.status,
+            poll: PollDescriptor {
+                status_url: format!("/v1/jobs/{job_id}", job_id = job.job_id.0),
+                events_url: None,
+                suggested_interval_ms: 1000,
+            },
+            created_at: job.created_at.clone(),
+            updated_at: job.updated_at.clone(),
+        });
+        if let Some(watch) = state.watches.get_mut(&watch_id) {
+            watch.latest_job = latest_job;
         }
         state.watch_runs.entry(watch_id).or_default().push(job_id);
         Ok(())
@@ -343,6 +403,7 @@ impl WatchStore for FakeJobWatchStore {
         let mut state = self.state.lock().await;
         state.watches.clear();
         state.watch_runs.clear();
+        state.next_watch = 0;
         Ok(())
     }
 
@@ -362,10 +423,6 @@ fn capability(name: &str) -> CapabilityBase {
     }
 }
 
-fn timestamp() -> Timestamp {
-    Timestamp("2026-07-01T00:00:00Z".to_string())
-}
-
 fn terminal_status(status: LifecycleStatus) -> bool {
     matches!(
         status,
@@ -376,6 +433,17 @@ fn terminal_status(status: LifecycleStatus) -> bool {
             | LifecycleStatus::Expired
             | LifecycleStatus::Skipped
     )
+}
+
+impl FakeJobWatchState {
+    fn timestamp(&mut self) -> Timestamp {
+        self.next_tick += 1;
+        Timestamp(format!("2026-07-01T00:00:{:02}Z", self.next_tick))
+    }
+
+    fn peek_timestamp(&self) -> Timestamp {
+        Timestamp(format!("2026-07-01T00:00:{:02}Z", self.next_tick + 1))
+    }
 }
 
 fn missing_job(job_id: JobId) -> ApiError {

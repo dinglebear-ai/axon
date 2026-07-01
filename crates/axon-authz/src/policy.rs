@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use axon_api::source::*;
 
 use crate::scope_satisfies;
+#[cfg(test)]
+use crate::{AXON_FULL_ACCESS_SCOPE, AXON_READ_SCOPE};
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -70,9 +72,9 @@ impl SecurityPolicy for ScopeSecurityPolicy {
             allowed,
             scope: self.required_scope.clone(),
             reason: if allowed {
-                "scope satisfied".to_string()
+                "authorized.scope_satisfied".to_string()
             } else {
-                "scope missing".to_string()
+                "denied.scope_missing".to_string()
             },
             redactions: Vec::new(),
             warnings: Vec::new(),

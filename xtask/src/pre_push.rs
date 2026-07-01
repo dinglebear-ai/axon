@@ -418,6 +418,7 @@ fn is_repo_structure_path(path: &str) -> bool {
     path == "Cargo.toml"
         || path == "Cargo.lock"
         || path == "xtask/src/checks/repo_structure.rs"
+        || path == "xtask/src/checks/repo_structure_spec.rs"
         || path == "xtask/src/checks/repo_structure_tests.rs"
         || path.starts_with("docs/pipeline-unification/")
         || path.starts_with("crates/")

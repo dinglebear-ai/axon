@@ -106,12 +106,26 @@ async fn fake_memory_store_links_reinforces_and_reports_capabilities() {
             MemoryReinforcement {
                 amount: 0.2,
                 reason: "used in context".to_string(),
-                timestamp: Timestamp("2026-07-01T00:00:00Z".to_string()),
+                timestamp: Timestamp("2026-07-01T00:00:09Z".to_string()),
             },
         )
         .await
         .unwrap();
     assert!(reinforced.memory_score > remembered.memory_score);
+    assert!(reinforced.updated_at.0 > reinforced.created_at.0);
+
+    let reduced = store
+        .reinforce(
+            remembered.memory_id.clone(),
+            MemoryReinforcement {
+                amount: -10.0,
+                reason: "decayed".to_string(),
+                timestamp: Timestamp("2026-07-01T00:00:10Z".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(reduced.salience, 0.0);
 
     let capability = store.capabilities().await.unwrap();
     assert_eq!(capability.0.owner_crate, "axon-memory");

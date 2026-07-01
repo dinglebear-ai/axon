@@ -57,6 +57,37 @@ impl VectorStore for FakeVectorStore {
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         let mut state = self.state.lock().await;
         state.calls.push("upsert");
+        let spec = state.collections.get(&batch.collection).ok_or_else(|| {
+            ApiError::new(
+                "vector.collection_not_found",
+                axon_error::ErrorStage::Upserting,
+                format!("collection {} has not been ensured", batch.collection),
+            )
+        })?;
+        if batch.dimensions != spec.dense.dimensions {
+            return Err(ApiError::new(
+                "vector.dimension_mismatch",
+                axon_error::ErrorStage::Upserting,
+                format!(
+                    "batch dimensions {} do not match collection dimensions {}",
+                    batch.dimensions, spec.dense.dimensions
+                ),
+            ));
+        }
+        for point in &batch.points {
+            if point.vector.len() as u32 != spec.dense.dimensions {
+                return Err(ApiError::new(
+                    "vector.dimension_mismatch",
+                    axon_error::ErrorStage::Upserting,
+                    format!(
+                        "point {} dimensions {} do not match collection dimensions {}",
+                        point.point_id.0,
+                        point.vector.len(),
+                        spec.dense.dimensions
+                    ),
+                ));
+            }
+        }
         let collection = state.points.entry(batch.collection.clone()).or_default();
         let points_attempted = batch.points.len() as u64;
         for point in batch.points {
@@ -110,7 +141,7 @@ impl VectorStore for FakeVectorStore {
             other => {
                 return Err(ApiError::new(
                     "vector.selector_unsupported",
-                    axon_error::ErrorStage::Upserting,
+                    axon_error::ErrorStage::Cleaning,
                     format!("fake vector store does not support selector {other:?}"),
                 ));
             }

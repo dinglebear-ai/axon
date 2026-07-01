@@ -734,7 +734,6 @@ dependencies = [
  "axon-error",
  "serde_json",
  "tokio",
- "uuid",
 ]
 
 [[package]]

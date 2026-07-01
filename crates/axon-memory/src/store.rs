@@ -33,6 +33,7 @@ pub struct FakeMemoryStore {
 #[derive(Debug, Default)]
 struct FakeMemoryState {
     next_id: u64,
+    next_tick: u64,
     records: BTreeMap<MemoryId, MemoryRecord>,
 }
 
@@ -48,6 +49,7 @@ impl MemoryStore for FakeMemoryStore {
         let mut state = self.state.lock().await;
         state.next_id += 1;
         let memory_id = MemoryId::new(format!("mem_{}", state.next_id));
+        let created_at = state.timestamp();
         let record = MemoryRecord {
             memory_id: memory_id.clone(),
             memory_type: request.memory_type,
@@ -59,7 +61,7 @@ impl MemoryStore for FakeMemoryStore {
             history: vec![MemoryHistoryEvent {
                 status: MemoryStatus::Active,
                 message: "created".to_string(),
-                timestamp: timestamp(),
+                timestamp: created_at,
             }],
             title: request.title,
             links: request.links,
@@ -169,11 +171,17 @@ impl MemoryStore for FakeMemoryStore {
 
     async fn link(&self, request: MemoryLinkRequest) -> Result<MemoryResult> {
         let mut state = self.state.lock().await;
+        let timestamp = state.timestamp();
         let record = state
             .records
             .get_mut(&request.memory_id)
             .ok_or_else(|| missing_memory(&request.memory_id))?;
         record.links.push(request.link);
+        record.history.push(MemoryHistoryEvent {
+            status: record.status,
+            message: "linked".to_string(),
+            timestamp,
+        });
         Ok(result_from_record(record, memory_score(record)))
     }
 
@@ -187,7 +195,7 @@ impl MemoryStore for FakeMemoryStore {
             .records
             .get_mut(&memory_id)
             .ok_or_else(|| missing_memory(&memory_id))?;
-        record.salience = (record.salience + signal.amount).min(1.0);
+        record.salience = (record.salience + signal.amount).clamp(0.0, 1.0);
         record.history.push(MemoryHistoryEvent {
             status: record.status,
             message: signal.reason,
@@ -220,6 +228,16 @@ impl MemoryStore for FakeMemoryStore {
 }
 
 fn result_from_record(record: &MemoryRecord, memory_score: f32) -> MemoryResult {
+    let created_at = record
+        .history
+        .first()
+        .map(|event| event.timestamp.clone())
+        .unwrap_or_else(timestamp);
+    let updated_at = record
+        .history
+        .last()
+        .map(|event| event.timestamp.clone())
+        .unwrap_or_else(|| created_at.clone());
     MemoryResult {
         memory_id: record.memory_id.clone(),
         memory_type: record.memory_type,
@@ -227,8 +245,8 @@ fn result_from_record(record: &MemoryRecord, memory_score: f32) -> MemoryResult 
         memory_score,
         confidence: record.confidence,
         salience: record.salience,
-        created_at: timestamp(),
-        updated_at: timestamp(),
+        created_at,
+        updated_at,
         graph_node_id: None,
         document_id: None,
         vector_point_ids: record.embedding_refs.clone(),
@@ -264,4 +282,11 @@ fn unsupported_option(option: &str) -> ApiError {
 
 fn timestamp() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
+}
+
+impl FakeMemoryState {
+    fn timestamp(&mut self) -> Timestamp {
+        self.next_tick += 1;
+        Timestamp(format!("2026-07-01T00:00:{:02}Z", self.next_tick))
+    }
 }
