@@ -441,6 +441,50 @@ fn docs_only_change_does_not_require_component_bump() {
 }
 
 #[test]
+fn documentation_inside_shipping_paths_does_not_require_component_bump() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fixture.git(&["tag", "palette-v1.0.0"]);
+    fixture.git(&["tag", "android-v1.0.0"]);
+    fixture.git(&["tag", "chrome-ext-v1.0.0"]);
+    fs::create_dir_all(fixture.path("crates/axon-ingest/src")).unwrap();
+    fs::write(
+        fixture.path("crates/axon-ingest/src/README.md"),
+        "crate docs\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("crates/axon-ingest/src/CLAUDE.md"),
+        "agent notes\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/README.md"),
+        "palette docs\n",
+    )
+    .unwrap();
+    fs::write(fixture.path("apps/android/README.md"), "android docs\n").unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/README.md"),
+        "chrome docs\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "crates/axon-ingest/src/README.md",
+        "crates/axon-ingest/src/CLAUDE.md",
+        "apps/palette-tauri/README.md",
+        "apps/android/README.md",
+        "apps/chrome-extension/README.md",
+    ]);
+    fixture.git(&["commit", "-m", "docs in shipping paths"]);
+
+    check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect("documentation inside shipping paths is allowed");
+}
+
+#[test]
 fn pr_mode_ignores_shipping_changes_that_only_exist_on_base_branch() {
     let fixture = Fixture::new();
     fixture.init_repo();

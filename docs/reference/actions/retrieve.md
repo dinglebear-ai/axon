@@ -17,6 +17,15 @@ Parity notes: Supports collection, max_points, cursor, and token_budget.
 
 Retrieve stored document content from Qdrant by URL. The command resolves URL variants, fetches matching chunks, orders by `chunk_index`, and prints reconstructed text.
 
+## Related Retrieval Commands
+
+| Command | Meaning |
+|---|---|
+| `search` | External web discovery; current runtime also auto-queues bounded crawl/index jobs for results. |
+| `query` | Ranked semantic search over content already indexed in Qdrant. |
+| `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
+| `ask` | RAG synthesis over indexed context with an LLM answer. |
+
 ## Synopsis
 
 ```bash

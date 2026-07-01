@@ -2,6 +2,11 @@
 
 Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query indexed content via the MCP `axon` tool or the `axon` CLI.
 
+> Current pre-#298 plugin docs. The future source-pipeline contract lives in
+> `docs/pipeline-unification/`; after that cutover source acquisition should
+> route through the shared source action/model rather than legacy crawl/embed/
+> ingest action families.
+
 Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and a configurable LLM backend for `ask`, `research`, and extract fallback. Gemini headless is the default; OpenAI-compatible endpoints such as llama.cpp are supported with `AXON_LLM_BACKEND=openai-compat`.
 
 ## Installation

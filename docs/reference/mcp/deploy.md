@@ -10,9 +10,10 @@ Deployment patterns for the Axon MCP server. Choose the method that fits your en
 just dev
 ```
 
-This starts infrastructure services, builds the binary, and launches `axon serve`
-with the unified HTTP API, MCP HTTP endpoint, web panel, and in-process workers
-on port 8001.
+Current repository `just dev` starts TEI + Chrome, builds the debug binary, and
+launches `axon mcp` as the local worker daemon. Use `axon serve` explicitly
+when you need the unified HTTP API, MCP HTTP endpoint, web panel, and
+in-process workers on port 8001.
 
 ### MCP server only
 
@@ -41,9 +42,11 @@ embedding/search paths.
 ### Infrastructure + app containers
 
 ```bash
-# Start infrastructure (Qdrant, TEI, Chrome)
+# Start local infrastructure (TEI + Chrome; Qdrant is remote by default)
 just services-up
 ```
+
+Use `just qdrant-up` only for an intentional local Qdrant fallback.
 
 ### Docker Compose split
 

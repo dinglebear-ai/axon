@@ -4,6 +4,16 @@ Version: 6.2.0
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
+## Current Runtime vs Future Source Pipeline
+
+This README documents the current production runtime. The clean-break pipeline
+unification target is tracked in
+[`docs/pipeline-unification/`](docs/pipeline-unification/README.md) and
+[GitHub issue #298](https://github.com/jmagar/axon/issues/298). That target
+moves source acquisition/indexing to `axon <source>`, routes CLI/MCP/REST
+through shared `SourceRequest` DTOs, and removes legacy public aliases rather
+than preserving backwards compatibility.
+
 ## Production Contract
 
 Supported production runtime:

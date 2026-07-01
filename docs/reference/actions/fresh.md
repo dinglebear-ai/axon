@@ -17,6 +17,10 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 
 Manage CLI-created freshness schedules for embedding-producing commands.
 
+> Current runtime only. The #298 target replaces this old `--fresh` schedule
+> model with source-backed freshness via `axon <source> --watch`,
+> `axon watch <source>`, and `axon watch exec <source>` where applicable.
+
 ## Surfaces
 
 | Surface | Entry point |

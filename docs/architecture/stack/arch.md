@@ -1,5 +1,9 @@
 # Architecture Overview -- Axon
 
+> Current pre-#298 runtime architecture. The target source-pipeline crate and
+> surface model is documented in
+> [`../../pipeline-unification/`](../../pipeline-unification/README.md).
+
 ## Dual-mode design
 
 Axon is a single Rust binary that operates in two modes:
@@ -38,7 +42,8 @@ Axon is a single Rust binary that operates in two modes:
                    +-----------+
 ```
 
-All modes share the same services layer (`src/services/`), ensuring consistent behavior across CLI and MCP interfaces.
+All modes share the same services facade (`crates/axon-services/`), ensuring
+consistent behavior across CLI, MCP, and web interfaces.
 
 ## Services layer
 
@@ -46,13 +51,14 @@ The services layer is the API boundary between all consumers (CLI, MCP, web) and
 
 ```
 CLI handlers  ─┐
-MCP handlers  ─┼── services::{query, ask, sources, ...} ── vector/ops, jobs, ...
+MCP handlers  ─┼── axon-services::{query, ask, sources, ...} ── domain crates, jobs, ...
 Web routes    ─┘
 ```
 
 Each service function:
 - Takes typed input parameters
-- Returns a typed result struct from a domain module under `src/services/types/service/`, re-exported through `src/services/types/service.rs`
+- Returns typed result structs from `axon-api` or service/domain result types
+  re-exported by `crates/axon-services`
 - Has no stdout side-effects
 - Can be called from any entry point
 
@@ -65,7 +71,7 @@ Worker types run in-process, processing SQLite-backed jobs:
 | Crawl | Spider-based site crawling with render mode switching |
 | Extract | LLM-powered structured data extraction |
 | Embed | TEI embedding + Qdrant upsert |
-| Ingest | Source ingestion (GitHub, Reddit, YouTube) |
+| Ingest | Source ingestion (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, RSS/Atom/JSON feeds, sessions) |
 
 ### Worker deployment
 

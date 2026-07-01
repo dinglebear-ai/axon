@@ -87,11 +87,12 @@ Because the Claude CLI encodes path separators and literal hyphens identically (
 
 ## Adding a New Session Format
 
-1. Create `src/ingest/sessions/<provider>.rs` (or add provider parser logic under `src/ingest/sessions.rs` if keeping a single module)
+1. Create `crates/axon-ingest/src/sessions/<provider>.rs` (or add provider parser logic under `crates/axon-ingest/src/sessions.rs` if keeping a single module)
 2. Implement `ingest_<provider>_sessions(cfg, state, multi)` following the pattern in `claude.rs`
-3. Register it in sessions dispatch (`src/ingest/sessions.rs`) with a `cfg.sessions_<provider>` flag check
-4. Add the `--<provider>` flag (e.g. `--claude`, `--codex`, `--gemini`) to `SessionsArgs` in `src/core/config/cli.rs` and wire it through `src/core/config/parse/build_config/`
-5. Add a unit test with a minimal sample file in `#[cfg(test)]`
+3. Register it in sessions dispatch (`crates/axon-ingest/src/sessions.rs`) with a `cfg.sessions_<provider>` flag check
+4. Add the `--<provider>` flag (e.g. `--claude`, `--codex`, `--gemini`) to `SessionsArgs` in `crates/axon-core/src/config/cli.rs` and wire it through `crates/axon-core/src/config/parse/build_config/`
+5. Update service/API schema surfaces and prepared-session REST/MCP docs when the format is exposed beyond CLI.
+6. Add a unit test with a minimal sample file in `#[cfg(test)]`
 
 ## Troubleshooting
 
@@ -104,7 +105,7 @@ Session export files don't exist at the scanned paths. Export conversations from
 
 **Parse errors on a `.jsonl` / `.json` file**
 
-The export schema may have changed. Open the file and verify the structure matches what the parser expects, or check `src/ingest/sessions/<provider>.rs` for the expected fields.
+The export schema may have changed. Open the file and verify the structure matches what the parser expects, or check `crates/axon-ingest/src/sessions/<provider>.rs` for the expected fields.
 
 **`gh_repo` missing**
 

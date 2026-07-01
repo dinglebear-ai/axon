@@ -1,5 +1,10 @@
 # Axon Palette Tauri
 
+> Current pre-#298 desktop client docs. The future Palette contract is
+> `docs/pipeline-unification/surfaces/palette-contract.md`; after the
+> source-pipeline cutover, generated DTOs/OpenAPI should drive source/job/graph
+> and memory surfaces.
+
 Tauri v2 palette for the Axon HTTP API. The frontend uses React, Aurora registry components installed through the shadcn CLI, and an OpenAPI-generated TypeScript type layer.
 
 > **Note (M1):** OpenAPI types are generated into `src/lib/axon-api.d.ts` via `pnpm generate:api`.  Request execution is currently hand-coded in `src/lib/axonClient.ts`; a full migration to the generated request helpers is tracked in issue #177 (finding M1).  Known state: the generated `axon-api.d.ts` is **not yet imported anywhere** — it serves only as a reference for the wire shapes hand-coded in `axonClient.ts`, and responses are read by **key-probing** untyped payloads rather than against the generated types. Closing #177 is what wires the generated types in.

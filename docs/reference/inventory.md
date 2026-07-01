@@ -2,6 +2,11 @@
 
 Complete listing of all Axon components.
 
+> Current runtime inventory. The future source-pipeline surface is tracked in
+> [`../pipeline-unification/`](../pipeline-unification/README.md) and GitHub
+> issue #298. This inventory should not be read as a compatibility promise for
+> removed commands/actions/routes.
+
 ## MCP tools
 
 | Tool | Description |
@@ -10,7 +15,9 @@ Complete listing of all Axon components.
 
 Axon exposes one MCP tool with the full operation space routed via the `action` parameter.
 
-The full action set is defined by the `AxonRequest` enum in `src/mcp/schema.rs`; see `docs/reference/mcp/tool-schema.md` for the authoritative wire contract.
+The full current action set is defined by the generated MCP schema in
+`crates/axon-api/src/mcp_schema.rs`; see `docs/reference/mcp/tool-schema.md`
+for the current generated runtime snapshot.
 
 ### Direct actions (no subaction required)
 

@@ -1,5 +1,10 @@
 # Axon Chrome Extension
 
+> Current pre-#298 client docs. The future extension contract is
+> `docs/pipeline-unification/surfaces/chrome-extension-contract.md`; after the
+> source-pipeline cutover this extension should consume shared REST/API
+> contracts rather than owning ingestion semantics.
+
 An unpacked **Manifest V3** Chrome extension that brings Axon to the page you're
 on. The **side panel** is an Aurora-styled launcher: browse the full Axon action
 surface (scrape, crawl, extract, search, query, ask, …), run an action against the
@@ -108,7 +113,7 @@ background handlers that the context menu dispatches.
 
 The popup chat still supports inline Axon commands and auto-scrape:
 
-- **Scrape + crawl**: `POST /v1/scrape`, then `POST /v1/crawl`, polling
+- **Scrape + crawl** (current pre-cutover routes): `POST /v1/scrape`, then `POST /v1/crawl`, polling
   `GET /v1/crawl/{job_id}`.
 - **Auto-scrape visited pages**: optional background mode (Options). Sends
   completed `http(s)` navigations to `POST /v1/scrape`, at most once per URL
