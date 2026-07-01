@@ -225,6 +225,60 @@ async fn git_branch_modify_creates_cleanup_debt_for_previous_generation() {
 }
 
 #[tokio::test]
+async fn git_republish_failure_releases_source_lease() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let sqlite_path = tmp.path().join("jobs.db");
+    let cfg = Config {
+        sqlite_path: sqlite_path.clone(),
+        qdrant_url: "http://127.0.0.1:1".to_string(),
+        ..Config::default()
+    };
+    let pool = open_source_ledger_pool(&sqlite_path.to_string_lossy())
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let target = GenericGitTarget {
+        host: "example.com".into(),
+        name: "repo".into(),
+        clone_url: "https://example.com/org/repo.git".into(),
+        web_url: "https://example.com/org/repo".into(),
+    };
+    let source = git_source_identity(&cfg, &target, "main");
+    store.ensure_source(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            &source.source_id,
+            1,
+            ManifestItem::new("src/lib.rs", "old-hash", 20),
+        )
+        .await
+        .unwrap();
+    store.commit_generation(&source.source_id, 1).await.unwrap();
+
+    let err = prepare_git_ledger_refresh(
+        &cfg,
+        &target,
+        "main",
+        &[ManifestItem::new("src/lib.rs", "new-hash", 30)],
+    )
+    .await
+    .expect_err("unreachable Qdrant should fail republish");
+
+    assert!(
+        err.to_string().contains("error sending request")
+            || err.to_string().contains("Connection refused"),
+        "unexpected republish error: {err}"
+    );
+    assert!(
+        store
+            .acquire_lease(&source, "owner-after-failure", 60_000)
+            .await
+            .unwrap(),
+        "republish failure should release the source lease immediately"
+    );
+}
+
+#[tokio::test]
 async fn git_cleanup_debt_selector_redacts_clone_url_credentials() {
     let pool = open_source_ledger_pool(":memory:").await.unwrap();
     let store = SourceLedgerStore::new(pool.clone());

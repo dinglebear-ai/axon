@@ -8,6 +8,7 @@ use axon_source_ledger::{
 };
 use axon_vector::ops::qdrant::{
     CleanupSelectorV1, qdrant_delete_source_cleanup_selectors, qdrant_publish_source_generation,
+    qdrant_republish_committed_source_generation,
 };
 use axon_vector::ops::{LedgerPayload, PreparedDoc};
 use sqlx::SqlitePool;
@@ -88,7 +89,14 @@ pub(super) async fn prepare_git_ledger_refresh(
             source.source_id
         );
     }
-    republish_committed_git_generation(cfg, &store, &source).await?;
+    if let Err(err) = qdrant_republish_committed_source_generation(cfg, &store, &source).await {
+        return match store.release_lease(&source.source_id, &lease_owner).await {
+            Ok(()) => Err(err),
+            Err(release_err) => Err(anyhow!(
+                "{err}; additionally failed to release source ledger lease: {release_err}"
+            )),
+        };
+    }
     match prepare_git_manifest_with_store(&store, &source, &lease_owner, manifest).await {
         Ok(prepared) => Ok(PreparedGitLedgerRefresh {
             store,
@@ -180,42 +188,37 @@ pub(super) async fn finalize_git_ledger_refresh(
         .store
         .release_lease(&prepared.source.source_id, &prepared.lease_owner)
         .await;
-    if let Err(err) = &result {
-        set_source_backoff(
-            &prepared.store,
-            &prepared.source.source_id,
-            "qdrant",
-            &err.to_string(),
+    let backoff_result = if let Err(err) = &result {
+        Some(
+            set_source_backoff(
+                &prepared.store,
+                &prepared.source.source_id,
+                "qdrant",
+                &err.to_string(),
+            )
+            .await,
         )
-        .await;
-    }
+    } else {
+        None
+    };
     match (result, release_result) {
         (Ok(()), Ok(())) => Ok(()),
-        (Err(err), Ok(())) => Err(err),
+        (Err(err), Ok(())) => match backoff_result {
+            Some(Err(backoff_err)) => Err(anyhow!(
+                "{err}; additionally failed to set source ledger backoff: {backoff_err}"
+            )),
+            _ => Err(err),
+        },
         (Ok(()), Err(release_err)) => Err(release_err),
-        (Err(err), Err(release_err)) => Err(anyhow!(
-            "{err}; additionally failed to release source ledger lease: {release_err}"
-        )),
+        (Err(err), Err(release_err)) => match backoff_result {
+            Some(Err(backoff_err)) => Err(anyhow!(
+                "{err}; additionally failed to set source ledger backoff: {backoff_err}; additionally failed to release source ledger lease: {release_err}"
+            )),
+            _ => Err(anyhow!(
+                "{err}; additionally failed to release source ledger lease: {release_err}"
+            )),
+        },
     }
-}
-
-async fn republish_committed_git_generation(
-    cfg: &Config,
-    store: &SourceLedgerStore,
-    source: &SourceIdentity,
-) -> Result<()> {
-    let status = store.source_status(&source.source_id).await?;
-    if status.committed_generation > 0 {
-        qdrant_publish_source_generation(
-            cfg,
-            &source.source_id,
-            status.committed_generation,
-            source.index_version,
-            0,
-        )
-        .await?;
-    }
-    Ok(())
 }
 
 pub(crate) async fn commit_git_ledger_refresh(prepared: &PreparedGitLedgerRefresh) -> Result<()> {
@@ -306,18 +309,13 @@ async fn set_source_backoff(
     source_id: &str,
     dependency: &str,
     message: &str,
-) {
+) -> Result<()> {
     let until_ms = chrono::Utc::now()
         .timestamp_millis()
         .saturating_add(SOURCE_LEDGER_BACKOFF_MS);
-    if let Err(err) = store
+    store
         .set_backoff(source_id, until_ms, dependency, message)
         .await
-    {
-        log_warn(&format!(
-            "command=ingest_git source_ledger_backoff_failed source_id={source_id} err={err}"
-        ));
-    }
 }
 
 pub(super) async fn release_git_ledger_after_error<T>(

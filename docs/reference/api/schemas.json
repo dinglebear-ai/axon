@@ -276,6 +276,766 @@
         }
       ]
     },
+    "CleanupDebt": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "debt_id": {
+          "$ref": "#/$defs/CleanupDebt_CleanupDebtId"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/CleanupDebt_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/CleanupDebt_CleanupDebtKind"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CleanupDebt_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_retry_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selector": {
+          "$ref": "#/$defs/CleanupDebt_CleanupSelector"
+        },
+        "source_id": {
+          "$ref": "#/$defs/CleanupDebt_SourceId"
+        },
+        "status": {
+          "$ref": "#/$defs/CleanupDebt_LifecycleStatus"
+        }
+      },
+      "required": [
+        "debt_id",
+        "job_id",
+        "source_id",
+        "kind",
+        "selector",
+        "status",
+        "created_at",
+        "attempts"
+      ],
+      "title": "CleanupDebt",
+      "type": "object"
+    },
+    "CleanupDebt_ArtifactId": {
+      "type": "string"
+    },
+    "CleanupDebt_ChunkId": {
+      "type": "string"
+    },
+    "CleanupDebt_CleanupDebtId": {
+      "type": "string"
+    },
+    "CleanupDebt_CleanupDebtKind": {
+      "enum": [
+        "vector_delete",
+        "artifact_delete",
+        "ledger_prune",
+        "graph_prune",
+        "memory_prune",
+        "job_retention",
+        "cache_prune"
+      ],
+      "type": "string"
+    },
+    "CleanupDebt_CleanupSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            },
+            "kind": {
+              "const": "source_item",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/CleanupDebt_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "document_id": {
+              "$ref": "#/$defs/CleanupDebt_DocumentId"
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_id": {
+              "$ref": "#/$defs/CleanupDebt_ChunkId"
+            },
+            "kind": {
+              "const": "chunk",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "chunk_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/CleanupDebt_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CleanupDebt_DocumentId": {
+      "type": "string"
+    },
+    "CleanupDebt_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "CleanupDebt_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "CleanupDebt_ProviderId": {
+      "type": "string"
+    },
+    "CleanupDebt_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "CleanupDebt_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CleanupDebt_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/CleanupDebt_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CleanupDebt_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "CleanupDebt_SourceGenerationId": {
+      "type": "string"
+    },
+    "CleanupDebt_SourceId": {
+      "type": "string"
+    },
+    "CleanupDebt_SourceItemKey": {
+      "type": "string"
+    },
+    "CleanupSelector": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/CleanupSelector_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/CleanupSelector_SourceGenerationId"
+            },
+            "kind": {
+              "const": "source_item",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/CleanupSelector_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "document_id": {
+              "$ref": "#/$defs/CleanupSelector_DocumentId"
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_id": {
+              "$ref": "#/$defs/CleanupSelector_ChunkId"
+            },
+            "kind": {
+              "const": "chunk",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "chunk_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/CleanupSelector_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "CleanupSelector"
+    },
+    "CleanupSelector_ArtifactId": {
+      "type": "string"
+    },
+    "CleanupSelector_ChunkId": {
+      "type": "string"
+    },
+    "CleanupSelector_DocumentId": {
+      "type": "string"
+    },
+    "CleanupSelector_SourceGenerationId": {
+      "type": "string"
+    },
+    "CleanupSelector_SourceId": {
+      "type": "string"
+    },
+    "CleanupSelector_SourceItemKey": {
+      "type": "string"
+    },
+    "DocumentStatus": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cleanup_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentStatus_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/DocumentStatus_DocumentId"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentStatus_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation": {
+          "$ref": "#/$defs/DocumentStatus_SourceGenerationId"
+        },
+        "source_id": {
+          "$ref": "#/$defs/DocumentStatus_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/DocumentStatus_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/DocumentStatus_DocumentLifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "vector_point_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "generation",
+        "status",
+        "updated_at",
+        "chunk_count",
+        "vector_point_count"
+      ],
+      "title": "DocumentStatus",
+      "type": "object"
+    },
+    "DocumentStatus_DocumentId": {
+      "type": "string"
+    },
+    "DocumentStatus_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DocumentStatus_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DocumentStatus_ProviderId": {
+      "type": "string"
+    },
+    "DocumentStatus_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "DocumentStatus_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentStatus_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/DocumentStatus_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentStatus_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "DocumentStatus_SourceGenerationId": {
+      "type": "string"
+    },
+    "DocumentStatus_SourceId": {
+      "type": "string"
+    },
+    "DocumentStatus_SourceItemKey": {
+      "type": "string"
+    },
+    "LeaseGuard": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "acquired_at": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "heartbeat_at": {
+          "type": "string"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LeaseGuard_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease_id": {
+          "$ref": "#/$defs/LeaseGuard_LeaseId"
+        },
+        "lease_key": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "owner_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "lease_id",
+        "lease_key",
+        "owner_id",
+        "acquired_at",
+        "expires_at",
+        "heartbeat_at",
+        "metadata"
+      ],
+      "title": "LeaseGuard",
+      "type": "object"
+    },
+    "LeaseGuard_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "LeaseGuard_LeaseId": {
+      "type": "string"
+    },
+    "LeaseRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LeaseRequest_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease_key": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "owner_id": {
+          "type": "string"
+        },
+        "ttl_seconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lease_key",
+        "owner_id",
+        "ttl_seconds",
+        "metadata"
+      ],
+      "title": "LeaseRequest",
+      "type": "object"
+    },
+    "LeaseRequest_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "PublishGenerationRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "expected_previous_generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
+        },
+        "source_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceId"
+        }
+      },
+      "required": [
+        "source_id",
+        "generation"
+      ],
+      "title": "PublishGenerationRequest",
+      "type": "object"
+    },
+    "PublishGenerationRequest_SourceGenerationId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_SourceId": {
+      "type": "string"
+    },
     "ResolvedSource": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -500,6 +1260,181 @@
         "retryable"
       ],
       "type": "object"
+    },
+    "SourceGeneration": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cleanup_debt": {
+          "items": {
+            "$ref": "#/$defs/SourceGeneration_CleanupDebtId"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "document_counts": {
+          "$ref": "#/$defs/SourceGeneration_DocumentCounts"
+        },
+        "generation": {
+          "$ref": "#/$defs/SourceGeneration_SourceGenerationId"
+        },
+        "item_counts": {
+          "$ref": "#/$defs/SourceGeneration_ItemCounts"
+        },
+        "previous_generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGeneration_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publish_state": {
+          "$ref": "#/$defs/SourceGeneration_PublishState"
+        },
+        "published_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceGeneration_SourceId"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceGeneration_LifecycleStatus"
+        }
+      },
+      "required": [
+        "source_id",
+        "generation",
+        "status",
+        "publish_state",
+        "created_at",
+        "item_counts",
+        "document_counts",
+        "cleanup_debt"
+      ],
+      "title": "SourceGeneration",
+      "type": "object"
+    },
+    "SourceGeneration_CleanupDebtId": {
+      "type": "string"
+    },
+    "SourceGeneration_DocumentCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "discovered": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "embedded": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prepared": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "published": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "discovered",
+        "prepared",
+        "embedded",
+        "published",
+        "failed"
+      ],
+      "type": "object"
+    },
+    "SourceGeneration_ItemCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modified": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "removed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unchanged": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "added",
+        "modified",
+        "removed",
+        "unchanged",
+        "failed"
+      ],
+      "type": "object"
+    },
+    "SourceGeneration_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceGeneration_PublishState": {
+      "enum": [
+        "planning",
+        "writing",
+        "publishing",
+        "committed",
+        "cleanup_pending",
+        "cleaning",
+        "cleaned"
+      ],
+      "type": "string"
+    },
+    "SourceGeneration_SourceGenerationId": {
+      "type": "string"
+    },
+    "SourceGeneration_SourceId": {
+      "type": "string"
     },
     "SourceRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1629,6 +2564,44 @@
       "type": "object"
     },
     "enums": {
+      "CleanupDebtKind": {
+        "enum": [
+          "vector_delete",
+          "artifact_delete",
+          "ledger_prune",
+          "graph_prune",
+          "memory_prune",
+          "job_retention",
+          "cache_prune"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "CleanupDebtKind"
+        }
+      },
+      "DocumentLifecycleStatus": {
+        "enum": [
+          "discovered",
+          "fetched",
+          "normalized",
+          "enriched",
+          "parsed",
+          "prepared",
+          "embedded",
+          "vectorized",
+          "published",
+          "cleaned",
+          "degraded",
+          "failed",
+          "skipped"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "DocumentLifecycleStatus"
+        }
+      },
       "JobKind": {
         "enum": [
           "source",
@@ -1708,6 +2681,22 @@
           "rust_enum": "PipelinePhase"
         }
       },
+      "PublishState": {
+        "enum": [
+          "planning",
+          "writing",
+          "publishing",
+          "committed",
+          "cleanup_pending",
+          "cleaning",
+          "cleaned"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "PublishState"
+        }
+      },
       "SourceIntent": {
         "enum": [
           "acquire",
@@ -1765,9 +2754,19 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:8ceed92979bcbad780c592bf68e36f11dfcc27414fbff5e61d7264b959c3c53d",
+        "checksum": "sha256:440df35a4770496537f5653b2db00303d4289aece42a0aa393b7a50a5f6dd985",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/document.rs"
+      },
+      {
+        "checksum": "sha256:6c2988098d122010597c0b092d91543eb7250313cab9c0a6cfb0c00da56f8fc0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
+      },
+      {
+        "checksum": "sha256:7021f1ca8e0f68587f4496bb8a0a79d50e0765dbf44ede057e897708d073a004",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/ids.rs"
       },
       {
         "checksum": "sha256:c3a302298345364949c6f63137656e507c3fb2d50f28a4e3945e10de47ec905e",
@@ -1778,6 +2777,16 @@
         "checksum": "sha256:118e99fc369f22426f522c1add2f2a1ff1115311eb9472439bd751a3045eb4a7",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/stage.rs"
+      },
+      {
+        "checksum": "sha256:9c7d65b7d3a4e163d2f3e8c60806713466909fef2822b79566eda77575faf63b",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/state.rs"
+      },
+      {
+        "checksum": "sha256:3313680c7f0c4dfa5ffc3ebb33939c4659bf0b7465de5cdb83e858ee086da6b3",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/status.rs"
       },
       {
         "checksum": "sha256:3f04b3919509ee296cd5badafac5a9dcbc653215827e70f0d8bf98bbb0eb5f7e",

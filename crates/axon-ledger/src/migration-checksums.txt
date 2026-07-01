@@ -1,0 +1,5 @@
+# SHA-384 checksums for SQLite ledger migrations.
+#
+# Migrations are append-only once merged because SQLx stores checksums in
+# live SQLite databases. To change an applied migration, add a new migration instead.
+0001_ledger_lifecycle.sql 35bba474025d7b4f0609a90d8e8fdbab1a9fbff27e602e5d3a86d77f7337adec2dac887c44dae88551690988d5e26682

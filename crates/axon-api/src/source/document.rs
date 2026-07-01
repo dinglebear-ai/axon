@@ -81,11 +81,27 @@ pub struct CleanupKey {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CleanupSelector {
-    Source { source_id: SourceId },
-    Generation { generation: SourceGenerationId },
-    Document { document_id: DocumentId },
-    Chunk { chunk_id: ChunkId },
-    Artifact { artifact_id: ArtifactId },
+    Source {
+        source_id: SourceId,
+    },
+    Generation {
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    },
+    SourceItem {
+        source_id: SourceId,
+        source_item_key: SourceItemKey,
+        generation: SourceGenerationId,
+    },
+    Document {
+        document_id: DocumentId,
+    },
+    Chunk {
+        chunk_id: ChunkId,
+    },
+    Artifact {
+        artifact_id: ArtifactId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

@@ -1,9 +1,56 @@
+use std::collections::BTreeSet;
+use std::time::Instant;
+
 use anyhow::{Result, anyhow};
 use axon_core::config::Config;
 use axon_core::http::internal_service_http_client;
-use std::time::Instant;
+use axon_source_ledger::{SourceIdentity, SourceLedgerStore};
+use serde_json::Value;
 
 use super::super::utils::{qdrant_collection_endpoint, qdrant_post_json_with_retry};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceGenerationPointCounts {
+    pub points: usize,
+    pub distinct_items: usize,
+}
+
+pub async fn qdrant_republish_committed_source_generation(
+    cfg: &Config,
+    store: &SourceLedgerStore,
+    source: &SourceIdentity,
+) -> Result<()> {
+    let status = store.source_status(&source.source_id).await?;
+    if status.committed_generation <= 0 {
+        return Ok(());
+    }
+
+    let committed_items = store
+        .committed_generation_item_count(&source.source_id)
+        .await?;
+    let counts = qdrant_source_generation_point_counts(
+        cfg,
+        &source.source_id,
+        status.committed_generation,
+        source.index_version,
+    )
+    .await?;
+    if committed_items > 0 && counts.distinct_items < committed_items {
+        return Err(anyhow!(
+            "committed source generation {} has {} distinct Qdrant source items, expected at least {committed_items}",
+            status.committed_generation,
+            counts.distinct_items,
+        ));
+    }
+    qdrant_publish_source_generation(
+        cfg,
+        &source.source_id,
+        status.committed_generation,
+        source.index_version,
+        counts.points,
+    )
+    .await
+}
 
 pub async fn qdrant_publish_source_generation(
     cfg: &Config,
@@ -35,7 +82,7 @@ pub async fn qdrant_publish_source_generation(
             ]
         }
     });
-    let _: serde_json::Value = qdrant_post_json_with_retry(
+    let _: Value = qdrant_post_json_with_retry(
         client,
         &endpoint,
         &body,
@@ -61,6 +108,88 @@ pub async fn qdrant_publish_source_generation(
     Ok(())
 }
 
+pub async fn qdrant_source_generation_point_counts(
+    cfg: &Config,
+    source_id: &str,
+    source_generation: i64,
+    source_index_version: i64,
+) -> Result<SourceGenerationPointCounts> {
+    if source_id.trim().is_empty() {
+        return Err(anyhow!("source generation count source_id cannot be empty"));
+    }
+    if source_generation <= 0 {
+        return Err(anyhow!(
+            "source generation count generation must be positive"
+        ));
+    }
+    if source_index_version <= 0 {
+        return Err(anyhow!(
+            "source generation count index_version must be positive"
+        ));
+    }
+
+    let client = internal_service_http_client()?;
+    let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
+    let mut offset = None;
+    let mut points = 0_usize;
+    let mut item_keys = BTreeSet::new();
+
+    loop {
+        let mut body = serde_json::json!({
+            "limit": 1024,
+            "with_payload": ["source_item_key"],
+            "with_vector": false,
+            "filter": {
+                "must": [
+                    {"key": "source_id", "match": {"value": source_id}},
+                    {"key": "source_generation", "match": {"value": source_generation}},
+                    {"key": "source_index_version", "match": {"value": source_index_version}}
+                ]
+            }
+        });
+        if let Some(next_offset) = offset.take() {
+            body["offset"] = next_offset;
+        }
+
+        let response: Value = qdrant_post_json_with_retry(
+            &client,
+            &endpoint,
+            &body,
+            "qdrant_source_generation_point_counts",
+            &cfg.collection,
+            Instant::now(),
+        )
+        .await?;
+        let page = response
+            .pointer("/result/points")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("qdrant scroll response missing result.points"))?;
+        points += page.len();
+        for point in page {
+            if let Some(item_key) = point
+                .pointer("/payload/source_item_key")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+            {
+                item_keys.insert(item_key.to_string());
+            }
+        }
+
+        offset = response
+            .pointer("/result/next_page_offset")
+            .filter(|value| !value.is_null())
+            .cloned();
+        if offset.is_none() {
+            break;
+        }
+    }
+
+    Ok(SourceGenerationPointCounts {
+        points,
+        distinct_items: item_keys.len(),
+    })
+}
+
 async fn qdrant_count_published_source_generation(
     cfg: &Config,
     source_id: &str,
@@ -80,7 +209,7 @@ async fn qdrant_count_published_source_generation(
             ]
         }
     });
-    let response: serde_json::Value = qdrant_post_json_with_retry(
+    let response: Value = qdrant_post_json_with_retry(
         client,
         &endpoint,
         &body,
@@ -162,5 +291,60 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("expected at least 3"));
+    }
+
+    #[tokio::test]
+    async fn source_generation_point_counts_scrolls_and_counts_distinct_items() -> Result<()> {
+        let server = MockServer::start_async().await;
+        let first = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/scroll")
+                    .body_includes("source_generation")
+                    .body_excludes("offset");
+                then.status(200).json_body(serde_json::json!({
+                    "result": {
+                        "points": [
+                            {"id": "1", "payload": {"source_item_key": "src/lib.rs"}},
+                            {"id": "2", "payload": {"source_item_key": "src/lib.rs"}}
+                        ],
+                        "next_page_offset": "next"
+                    }
+                }));
+            })
+            .await;
+        let second = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/scroll")
+                    .body_includes("\"offset\":\"next\"");
+                then.status(200).json_body(serde_json::json!({
+                    "result": {
+                        "points": [
+                            {"id": "3", "payload": {"source_item_key": "README.md"}}
+                        ],
+                        "next_page_offset": null
+                    }
+                }));
+            })
+            .await;
+        let mut cfg = Config::test_default();
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let counts = qdrant_source_generation_point_counts(&cfg, "source-a", 7, 1)
+            .await
+            .map_err(|err| anyhow!("count failed: {err}"))?;
+
+        assert_eq!(
+            counts,
+            SourceGenerationPointCounts {
+                points: 3,
+                distinct_items: 2,
+            }
+        );
+        first.assert_async().await;
+        second.assert_async().await;
+        Ok(())
     }
 }

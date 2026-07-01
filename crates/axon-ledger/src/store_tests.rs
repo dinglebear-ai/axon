@@ -1,10 +1,13 @@
 use axon_api::source::*;
-use uuid::Uuid;
 
 use crate::store::{FakeLedgerStore, LedgerStore};
 
 fn ts() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
+}
+
+fn ts_at(second: u32) -> Timestamp {
+    Timestamp(format!("2026-07-01T00:00:{second:02}Z"))
 }
 
 fn source() -> SourceSummary {
@@ -69,165 +72,118 @@ fn manifest_with_freshness(hash: &str, version: Option<&str>, mtime: Timestamp) 
     }
 }
 
+fn manifest_for_generation(generation: &SourceGeneration, hash: &str) -> SourceManifest {
+    let mut manifest = manifest(hash);
+    manifest.generation = generation.generation.clone();
+    manifest
+}
+
+fn manifest_with_items(generation: &str, items: Vec<ManifestItem>) -> SourceManifest {
+    SourceManifest {
+        source_id: SourceId::new("src_a"),
+        generation: SourceGenerationId::new(generation),
+        adapter: AdapterRef {
+            name: "local".to_string(),
+            version: "test".to_string(),
+        },
+        scope: SourceScope::Directory,
+        items,
+        created_at: ts(),
+        metadata: MetadataMap::new(),
+    }
+}
+
+fn manifest_item(path: &str, hash: &str) -> ManifestItem {
+    ManifestItem {
+        source_id: SourceId::new("src_a"),
+        source_item_key: SourceItemKey::new(path),
+        canonical_uri: format!("file:///repo/{path}"),
+        item_kind: ItemKind::LocalFile,
+        content_kind: Some(ContentKind::Code),
+        display_path: Some(path.to_string()),
+        parent_key: None,
+        size_bytes: Some(12),
+        content_hash: Some(hash.to_string()),
+        mtime: Some(ts()),
+        version: None,
+        fetch_plan: None,
+        metadata: MetadataMap::new(),
+        graph_hints: Vec::new(),
+    }
+}
+
 fn completed_generation(mut generation: SourceGeneration) -> SourceGeneration {
     generation.status = LifecycleStatus::Completed;
+    generation.publish_state = PublishState::Writing;
     generation
 }
 
-#[tokio::test]
-async fn fake_ledger_diffs_manifests_and_tracks_committed_generation() {
-    let ledger = FakeLedgerStore::new();
-    ledger.upsert_source(source()).await.unwrap();
-
-    let first = ledger.diff_manifest(manifest("a")).await.unwrap();
-    assert_eq!(first.counts.added, 1);
-    ledger.put_manifest(manifest("a")).await.unwrap();
-
-    let generation = ledger
-        .create_generation(SourceId::new("src_a"))
-        .await
-        .unwrap();
-    let generation = completed_generation(generation);
-    ledger.publish_generation(generation.clone()).await.unwrap();
-
-    let refreshed = ledger.diff_manifest(manifest("b")).await.unwrap();
-    assert_eq!(refreshed.counts.modified, 1);
-    assert_eq!(
-        ledger.committed_generation(&SourceId::new("src_a")).await,
-        Some(generation.generation)
-    );
+fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGeneration {
+    SourceGeneration {
+        source_id: manifest.source_id.clone(),
+        generation: manifest.generation.clone(),
+        status: LifecycleStatus::Completed,
+        publish_state: PublishState::Writing,
+        created_at: ts(),
+        published_at: None,
+        item_counts: ItemCounts {
+            added: manifest.items.len() as u64,
+            modified: 0,
+            removed: 0,
+            unchanged: 0,
+            failed: 0,
+        },
+        document_counts: DocumentCounts {
+            discovered: manifest.items.len() as u64,
+            prepared: 0,
+            embedded: 0,
+            published: 0,
+            failed: 0,
+        },
+        cleanup_debt: Vec::new(),
+        previous_generation: None,
+    }
 }
 
-#[tokio::test]
-async fn fake_ledger_scopes_generation_ids_per_source() {
-    let ledger = FakeLedgerStore::new();
+fn publish_request(generation: &SourceGeneration) -> PublishGenerationRequest {
+    PublishGenerationRequest {
+        source_id: generation.source_id.clone(),
+        generation: generation.generation.clone(),
+        expected_previous_generation: generation.previous_generation.clone(),
+    }
+}
 
-    let src_a_first = ledger
-        .create_generation(SourceId::new("src_a"))
+async fn complete_and_publish(
+    ledger: &FakeLedgerStore,
+    generation: SourceGeneration,
+) -> SourceGeneration {
+    let completed = ledger
+        .complete_generation(generation)
         .await
-        .unwrap();
-    let src_b_first = ledger
-        .create_generation(SourceId::new("src_b"))
-        .await
-        .unwrap();
-    assert_eq!(src_a_first.generation, SourceGenerationId::new("gen_1"));
-    assert_eq!(src_b_first.generation, SourceGenerationId::new("gen_1"));
-
+        .expect("complete generation");
     ledger
-        .publish_generation(completed_generation(src_a_first.clone()))
+        .publish_generation(publish_request(&completed))
         .await
-        .unwrap();
-    let src_a_second = ledger
-        .create_generation(SourceId::new("src_a"))
-        .await
-        .unwrap();
-    assert_eq!(src_a_second.generation, SourceGenerationId::new("gen_2"));
-    assert_eq!(
-        src_a_second.previous_generation,
-        Some(src_a_first.generation)
-    );
+        .expect("publish generation")
 }
 
-#[tokio::test]
-async fn fake_ledger_diffs_version_and_mtime_changes() {
-    let ledger = FakeLedgerStore::new();
-    ledger
-        .put_manifest(manifest_with_freshness("a", Some("v1"), ts()))
-        .await
-        .unwrap();
-
-    let version_changed = ledger
-        .diff_manifest(manifest_with_freshness("a", Some("v2"), ts()))
-        .await
-        .unwrap();
-    assert_eq!(version_changed.counts.modified, 1);
-    assert_eq!(version_changed.counts.unchanged, 0);
-
-    let mtime_changed = ledger
-        .diff_manifest(manifest_with_freshness(
-            "a",
-            Some("v1"),
-            Timestamp("2026-07-02T00:00:00Z".to_string()),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(mtime_changed.counts.modified, 1);
-    assert_eq!(mtime_changed.counts.unchanged, 0);
+fn lease_request(key: &str, owner: &str) -> LeaseRequest {
+    lease_request_ttl(key, owner, 30)
 }
 
-#[tokio::test]
-async fn fake_ledger_rejects_non_publishable_generation_statuses() {
-    let ledger = FakeLedgerStore::new();
-    let running = ledger
-        .create_generation(SourceId::new("src_a"))
-        .await
-        .unwrap();
-
-    let error = ledger
-        .publish_generation(running.clone())
-        .await
-        .unwrap_err();
-    assert_eq!(
-        error.code.to_string(),
-        "source.ledger.generation_not_publishable"
-    );
-    assert_eq!(
-        ledger.committed_generation(&SourceId::new("src_a")).await,
-        None
-    );
-
-    ledger
-        .publish_generation(completed_generation(running.clone()))
-        .await
-        .unwrap();
-    assert_eq!(
-        ledger.committed_generation(&SourceId::new("src_a")).await,
-        Some(running.generation)
-    );
+fn lease_request_ttl(key: &str, owner: &str, ttl_seconds: u64) -> LeaseRequest {
+    LeaseRequest {
+        lease_key: key.to_string(),
+        owner_id: owner.to_string(),
+        ttl_seconds,
+        job_id: None,
+        metadata: MetadataMap::new(),
+    }
 }
 
-#[tokio::test]
-async fn fake_ledger_owns_document_status_and_cleanup_debt() {
-    let ledger = FakeLedgerStore::new();
-    let status = DocumentStatus {
-        document_id: DocumentId::new("doc-a"),
-        source_id: SourceId::new("src_a"),
-        source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: SourceGenerationId::new("gen_1"),
-        status: DocumentLifecycleStatus::Published,
-        updated_at: ts(),
-        chunk_count: 1,
-        vector_point_count: 1,
-        error: None,
-        cleanup_status: None,
-    };
-
-    ledger.update_document_status(status.clone()).await.unwrap();
-    assert_eq!(
-        ledger.document_status(&DocumentId::new("doc-a")).await,
-        Some(status)
-    );
-
-    ledger
-        .record_cleanup_debt(CleanupDebt {
-            debt_id: CleanupDebtId::new("debt-a"),
-            job_id: JobId::new(Uuid::from_u128(1)),
-            source_id: SourceId::new("src_a"),
-            generation: Some(SourceGenerationId::new("gen_1")),
-            kind: CleanupDebtKind::VectorDelete,
-            selector: CleanupSelector::Document {
-                document_id: DocumentId::new("doc-a"),
-            },
-            status: LifecycleStatus::Pending,
-            created_at: ts(),
-            attempts: 0,
-            last_error: None,
-            next_retry_at: None,
-            completed_at: None,
-        })
-        .await
-        .unwrap();
-    assert_eq!(ledger.cleanup_debt_count().await, 1);
-    ledger.reset().await.unwrap();
-    assert_eq!(ledger.cleanup_debt_count().await, 0);
-}
+#[path = "store_tests/store_document_cleanup_tests.rs"]
+mod store_document_cleanup_tests;
+#[path = "store_tests/store_lease_tests.rs"]
+mod store_lease_tests;
+#[path = "store_tests/store_manifest_tests.rs"]
+mod store_manifest_tests;

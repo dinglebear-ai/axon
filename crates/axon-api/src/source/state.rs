@@ -12,6 +12,7 @@ pub struct SourceGeneration {
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
     pub status: LifecycleStatus,
+    pub publish_state: PublishState,
     pub created_at: Timestamp,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub published_at: Option<Timestamp>,
@@ -20,6 +21,15 @@ pub struct SourceGeneration {
     pub cleanup_debt: Vec<CleanupDebtId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_generation: Option<SourceGenerationId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PublishGenerationRequest {
+    pub source_id: SourceId,
+    pub generation: SourceGenerationId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_previous_generation: Option<SourceGenerationId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -61,4 +71,29 @@ pub struct CleanupDebt {
     pub next_retry_at: Option<Timestamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<Timestamp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseRequest {
+    pub lease_key: String,
+    pub owner_id: String,
+    pub ttl_seconds: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<JobId>,
+    pub metadata: MetadataMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseGuard {
+    pub lease_id: LeaseId,
+    pub lease_key: String,
+    pub owner_id: String,
+    pub acquired_at: Timestamp,
+    pub expires_at: Timestamp,
+    pub heartbeat_at: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<JobId>,
+    pub metadata: MetadataMap,
 }

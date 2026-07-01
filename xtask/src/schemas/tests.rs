@@ -9,9 +9,13 @@ fn fixture_repo() -> TempDir {
     let tmp = TempDir::new().unwrap();
     for path in [
         "crates/axon-api/src/source.rs",
+        "crates/axon-api/src/source/document.rs",
         "crates/axon-api/src/source/lifecycle.rs",
         "crates/axon-api/src/source/enums.rs",
+        "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/stage.rs",
+        "crates/axon-api/src/source/state.rs",
+        "crates/axon-api/src/source/status.rs",
         "crates/axon-api/src/source/capability.rs",
         "crates/axon-error/src/lib.rs",
         "crates/axon-error/src/api_error.rs",
@@ -41,6 +45,11 @@ fn fixture_repo() -> TempDir {
         tmp.path(),
         "crates/axon-jobs/src/migrations/0001.sql",
         "create table jobs(id text);",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-ledger/src/migrations/0001.sql",
+        "create table sources(source_id text);",
     );
     tmp
 }
@@ -139,6 +148,31 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
                 .len()
                 == 64
     }));
+    for path in [
+        "crates/axon-api/src/source/document.rs",
+        "crates/axon-api/src/source/ids.rs",
+        "crates/axon-api/src/source/state.rs",
+        "crates/axon-api/src/source/status.rs",
+    ] {
+        assert!(
+            inputs.iter().any(|input| input["path"] == path),
+            "{path} should be tracked as an API source input"
+        );
+    }
+    for def in [
+        "SourceGeneration",
+        "PublishGenerationRequest",
+        "CleanupDebt",
+        "LeaseRequest",
+        "LeaseGuard",
+        "CleanupSelector",
+        "DocumentStatus",
+    ] {
+        assert!(
+            value["$defs"].get(def).is_some(),
+            "{def} should be emitted in the API schema bundle"
+        );
+    }
     assert_eq!(
         value["$defs"]["enums"]["SourceKind"]["enum"][0],
         serde_json::json!("web")
