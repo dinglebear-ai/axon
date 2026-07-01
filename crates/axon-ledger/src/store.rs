@@ -260,6 +260,18 @@ impl LedgerStore for FakeLedgerStore {
             let existing = state.leases.get(&existing_id).cloned();
             match existing {
                 Some(existing) if existing.expires_at.0 > request.acquired_at.0 => {
+                    if existing.owner_id == request.owner_id {
+                        let guard = LeaseGuard {
+                            expires_at: add_seconds(&request.acquired_at, request.ttl_seconds),
+                            heartbeat_at: request.acquired_at.clone(),
+                            acquired_at: request.acquired_at,
+                            job_id: request.job_id,
+                            metadata: request.metadata,
+                            ..existing
+                        };
+                        state.leases.insert(existing_id, guard.clone());
+                        return Ok(Some(guard));
+                    }
                     return Ok(None);
                 }
                 Some(_) | None => {
