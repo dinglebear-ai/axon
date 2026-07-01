@@ -54,9 +54,15 @@ fn complete_fixture() -> Fixture {
 
     for member in members {
         let crate_root = root.join(member);
+        let package_name = crate_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap();
         write(
             &crate_root.join("Cargo.toml"),
-            "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
+            &format!(
+                "[package]\nname = \"{package_name}\"\nrust-version.workspace = true\n\n[dependencies]\n"
+            ),
         );
         write(
             &crate_root.join("src/lib.rs"),
@@ -150,11 +156,43 @@ fn missing_target_module_declaration_fails() {
 }
 
 #[test]
+fn unexpected_target_module_declaration_fails() {
+    let fixture = complete_fixture();
+    write(
+        &fixture.root.join("crates/axon-route/src/lib.rs"),
+        "pub mod resolver;\npub mod surprise;\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains(
+            "crates/axon-route/src/lib.rs declares unexpected PR0 public module: pub mod surprise;"
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn unexpected_target_module_file_fails() {
+    let fixture = complete_fixture();
+    write(
+        &fixture.root.join("crates/axon-route/src/surprise.rs"),
+        "pub const MODULE_NAME: &str = \"surprise\";\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("crates/axon-route/src/surprise.rs is an unexpected PR0 module file"),
+        "{err}"
+    );
+}
+
+#[test]
 fn target_dependency_fails() {
     let fixture = complete_fixture();
     write(
         &fixture.root.join("crates/axon-error/Cargo.toml"),
-        "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        "[package]\nname = \"axon-error\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -169,7 +207,7 @@ fn target_specific_dependency_fails() {
     let fixture = complete_fixture();
     write(
         &fixture.root.join("crates/axon-error/Cargo.toml"),
-        "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        "[package]\nname = \"axon-error\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -180,11 +218,26 @@ fn target_specific_dependency_fails() {
 }
 
 #[test]
+fn target_package_name_fails() {
+    let fixture = complete_fixture();
+    write(
+        &fixture.root.join("crates/axon-memory/Cargo.toml"),
+        "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains("PR0 target crate axon-memory must set package.name = \"axon-memory\""),
+        "{err}"
+    );
+}
+
+#[test]
 fn missing_target_rust_version_fails() {
     let fixture = complete_fixture();
     write(
         &fixture.root.join("crates/axon-memory/Cargo.toml"),
-        "[package]\nname = \"fixture\"\n\n[dependencies]\n",
+        "[package]\nname = \"axon-memory\"\n\n[dependencies]\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();

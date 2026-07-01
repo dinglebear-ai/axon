@@ -403,6 +403,7 @@ Use this exact manifest shape, changing only the `name` field to the crate name:
 name = "axon-error"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
