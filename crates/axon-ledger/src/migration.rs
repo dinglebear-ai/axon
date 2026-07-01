@@ -106,6 +106,22 @@ pub async fn migrate_ledger(pool: &SqlitePool) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_axon_ledger_cleanup_debt_status_retry
             ON axon_ledger_cleanup_debt(status, next_retry_at)
             "#,
+        r#"
+            CREATE TABLE IF NOT EXISTS axon_ledger_leases (
+                lease_id TEXT PRIMARY KEY NOT NULL,
+                lease_key TEXT NOT NULL UNIQUE,
+                owner_id TEXT NOT NULL,
+                acquired_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                heartbeat_at TEXT NOT NULL,
+                job_id TEXT,
+                lease_json TEXT NOT NULL
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_axon_ledger_leases_key_expires
+            ON axon_ledger_leases(lease_key, expires_at)
+            "#,
     ] {
         pool.execute(statement).await.map_err(sqlite_error)?;
     }
@@ -118,6 +134,7 @@ pub(crate) async fn clear_ledger(pool: &SqlitePool) -> Result<()> {
         "DELETE FROM axon_ledger_source_items",
         "DELETE FROM axon_ledger_document_status",
         "DELETE FROM axon_ledger_cleanup_debt",
+        "DELETE FROM axon_ledger_leases",
         "DELETE FROM axon_ledger_source_manifests",
         "DELETE FROM axon_ledger_generations",
         "DELETE FROM axon_ledger_sources",
