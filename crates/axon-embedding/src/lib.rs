@@ -13,3 +13,7 @@ pub mod tei;
 pub mod testing;
 
 pub const CRATE_NAME: &str = "axon-embedding";
+
+#[cfg(test)]
+#[path = "provider_tests.rs"]
+mod provider_tests;

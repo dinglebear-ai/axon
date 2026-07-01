@@ -7,6 +7,7 @@
 //! literal values.
 
 pub mod http;
+pub mod policy;
 
 /// OAuth scope granting read access to Axon read/RAG routes.
 pub const AXON_READ_SCOPE: &str = "axon:read";
@@ -28,7 +29,9 @@ pub fn scope_satisfies(scopes: &[String], required_scope: &str) -> bool {
 }
 
 fn is_axon_scope(scope: &str) -> bool {
-    matches!(scope, AXON_READ_SCOPE | AXON_WRITE_SCOPE)
+    scope
+        .split_whitespace()
+        .any(|scope| matches!(scope, AXON_READ_SCOPE | AXON_WRITE_SCOPE))
 }
 
 #[path = "lib_tests.rs"]

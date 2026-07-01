@@ -14,3 +14,7 @@ pub mod store;
 pub mod testing;
 
 pub const CRATE_NAME: &str = "axon-vectors";
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod store_tests;

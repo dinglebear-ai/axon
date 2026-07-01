@@ -406,6 +406,11 @@ dependencies = [
 [[package]]
 name = "axon-adapters"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "tokio",
+]
 
 [[package]]
 name = "axon-api"
@@ -427,8 +432,11 @@ dependencies = [
 name = "axon-authz"
 version = "6.2.1"
 dependencies = [
+ "async-trait",
+ "axon-api",
  "axum",
  "lab-auth",
+ "tokio",
  "tracing",
 ]
 
@@ -579,6 +587,13 @@ version = "6.2.1"
 [[package]]
 name = "axon-embedding"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-error"
@@ -621,6 +636,12 @@ dependencies = [
 [[package]]
 name = "axon-graph"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-ingest"
@@ -696,10 +717,24 @@ dependencies = [
 [[package]]
 name = "axon-ledger"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-llm"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "axon-mcp"
@@ -735,6 +770,13 @@ dependencies = [
 [[package]]
 name = "axon-memory"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "axon-observe"
@@ -864,6 +906,14 @@ dependencies = [
 [[package]]
 name = "axon-vectors"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "axon-error",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-web"

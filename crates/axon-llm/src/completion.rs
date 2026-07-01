@@ -1,3 +1,3 @@
-//! Marker module for the target `axon-llm::completion` boundary.
+//! LLM completion DTO re-exports.
 
-pub const MODULE_NAME: &str = "completion";
+pub use axon_api::source::{LlmCompletionRequest, LlmCompletionResponse};
