@@ -22,3 +22,7 @@ pub const CRATE_NAME: &str = "axon-ledger";
 #[cfg(test)]
 #[path = "store_tests.rs"]
 mod store_tests;
+
+#[cfg(test)]
+#[path = "sqlite_tests.rs"]
+mod sqlite_tests;
