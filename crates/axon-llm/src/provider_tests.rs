@@ -1,13 +1,12 @@
-use axon_api::source::{HealthStatus, ProviderKind};
+use axon_api::source::{HealthStatus, LlmCompletionRequest, ProviderKind};
 
-use crate::completion::LlmCompletionRequest;
 use crate::fake::{FakeLlmMode, FakeLlmProvider};
 use crate::provider::LlmProvider;
 
 #[tokio::test]
 async fn fake_llm_returns_deterministic_completion_and_records_calls() {
     let provider = FakeLlmProvider::new("fake-llm");
-    let request = LlmCompletionRequest::new("Summarize Axon");
+    let request = LlmCompletionRequest::prompt("Summarize Axon");
 
     let first = provider.complete(request.clone()).await.unwrap();
     let second = provider.complete(request).await.unwrap();
@@ -23,7 +22,7 @@ async fn fake_llm_streaming_emits_deltas_and_final_response() {
     let mut deltas = Vec::new();
 
     let response = provider
-        .complete_streaming(LlmCompletionRequest::new("stream it"), &mut |delta| {
+        .complete_streaming(LlmCompletionRequest::prompt("stream it"), &mut |delta| {
             deltas.push(delta.text);
         })
         .await
@@ -44,7 +43,7 @@ async fn fake_llm_reports_capabilities_health_and_failure_modes() {
     assert_eq!(capability.health, HealthStatus::Unavailable);
 
     let err = provider
-        .complete(LlmCompletionRequest::new("timeout"))
+        .complete(LlmCompletionRequest::prompt("timeout"))
         .await
         .unwrap_err();
     assert_eq!(err.code.to_string(), "provider.timeout");

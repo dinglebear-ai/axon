@@ -93,3 +93,46 @@ async fn reservations_preserve_interactive_capacity_under_background_load() {
         .unwrap_err();
     assert_eq!(denied.code.to_string(), "provider.capacity_exhausted");
 }
+
+#[tokio::test]
+async fn background_reservations_account_for_requested_units_before_using_reserve() {
+    let reservations = ProviderReservations::new(4, 2);
+
+    let denied = reservations
+        .reserve(
+            ProviderId::new("fake-embedding"),
+            JobPriority::Background,
+            3,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(denied.code.to_string(), "provider.capacity_exhausted");
+    assert_eq!(reservations.snapshot().await.active, 0);
+}
+
+#[tokio::test]
+async fn reservation_drop_releases_capacity_synchronously() {
+    let reservations = ProviderReservations::new(1, 0);
+    {
+        let _held = reservations
+            .reserve(
+                ProviderId::new("fake-embedding"),
+                JobPriority::Interactive,
+                1,
+            )
+            .await
+            .unwrap();
+        assert_eq!(reservations.snapshot().await.active, 1);
+    }
+
+    assert_eq!(reservations.snapshot().await.active, 0);
+    reservations
+        .reserve(
+            ProviderId::new("fake-embedding"),
+            JobPriority::Interactive,
+            1,
+        )
+        .await
+        .unwrap();
+}

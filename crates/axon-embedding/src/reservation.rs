@@ -1,9 +1,9 @@
 //! In-memory provider reservation model used by tests and local orchestration.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use axon_api::source::*;
-use tokio::sync::Mutex;
 
 use crate::provider::Result;
 
@@ -47,7 +47,7 @@ impl ProviderReservations {
         priority: JobPriority,
         units: u32,
     ) -> Result<ProviderReservation> {
-        let mut state = self.state.lock().await;
+        let mut state = self.state.lock().expect("reservation state mutex poisoned");
         let background_like =
             matches!(priority, JobPriority::Background | JobPriority::Maintenance);
         let reserved_for_interactive = if background_like {
@@ -56,10 +56,9 @@ impl ProviderReservations {
             0
         };
         let available = state.capacity.saturating_sub(state.active);
-        if units == 0
-            || available < units
-            || (background_like && available <= reserved_for_interactive)
-        {
+        let would_preserve_interactive =
+            available.saturating_sub(units) >= reserved_for_interactive;
+        if units == 0 || available < units || (background_like && !would_preserve_interactive) {
             return Err(ApiError::new(
                 "provider.capacity_exhausted",
                 axon_error::ErrorStage::Embedding,
@@ -83,7 +82,7 @@ impl ProviderReservations {
     }
 
     pub async fn snapshot(&self) -> ReservationStateSnapshot {
-        let state = self.state.lock().await;
+        let state = self.state.lock().expect("reservation state mutex poisoned");
         ReservationStateSnapshot {
             queued: 0,
             active: state.active,
@@ -110,15 +109,14 @@ impl Drop for ProviderReservation {
         if self.released {
             return;
         }
-        if let Ok(mut state) = self.state.try_lock() {
-            state.active = state.active.saturating_sub(self.units);
-            if matches!(
-                self.priority,
-                JobPriority::Background | JobPriority::Maintenance
-            ) {
-                state.background_active = state.background_active.saturating_sub(self.units);
-            }
-            self.released = true;
+        let mut state = self.state.lock().expect("reservation state mutex poisoned");
+        state.active = state.active.saturating_sub(self.units);
+        if matches!(
+            self.priority,
+            JobPriority::Background | JobPriority::Maintenance
+        ) {
+            state.background_active = state.background_active.saturating_sub(self.units);
         }
+        self.released = true;
     }
 }

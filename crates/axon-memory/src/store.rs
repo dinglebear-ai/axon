@@ -76,6 +76,15 @@ impl MemoryStore for FakeMemoryStore {
     }
 
     async fn search(&self, request: MemorySearchRequest) -> Result<MemorySearchResult> {
+        if !request.filters.is_empty() {
+            return Err(unsupported_option("filters"));
+        }
+        if request.include_graph {
+            return Err(unsupported_option("include_graph"));
+        }
+        if request.reinforce {
+            return Err(unsupported_option("reinforce"));
+        }
         let query = request.query.to_lowercase();
         let mut results = self
             .state
@@ -103,6 +112,21 @@ impl MemoryStore for FakeMemoryStore {
     }
 
     async fn context(&self, request: MemoryContextRequest) -> Result<MemoryContextResult> {
+        if request.source_id.is_some() {
+            return Err(unsupported_option("source_id"));
+        }
+        if request.graph_node_id.is_some() {
+            return Err(unsupported_option("graph_node_id"));
+        }
+        if !request.filters.is_empty() {
+            return Err(unsupported_option("filters"));
+        }
+        if request.depth.is_some() {
+            return Err(unsupported_option("depth"));
+        }
+        if request.include_working {
+            return Err(unsupported_option("include_working"));
+        }
         let query = request.query.unwrap_or_default();
         let search = self
             .search(MemorySearchRequest {
@@ -119,16 +143,26 @@ impl MemoryStore for FakeMemoryStore {
             .into_iter()
             .map(|item| item.record)
             .collect::<Vec<_>>();
-        let context = memories
+        let mut context = memories
             .iter()
             .map(|record| record.body.as_str())
             .collect::<Vec<_>>()
             .join("\n");
+        let mut exclusions = Vec::new();
+        let token_estimate = context.split_whitespace().count() as u32;
+        if token_estimate > request.token_budget {
+            context = context
+                .split_whitespace()
+                .take(request.token_budget as usize)
+                .collect::<Vec<_>>()
+                .join(" ");
+            exclusions.push("token_budget".to_string());
+        }
         Ok(MemoryContextResult {
             token_estimate: context.split_whitespace().count() as u32,
             context,
             memories,
-            exclusions: Vec::new(),
+            exclusions,
             warnings: Vec::new(),
         })
     }
@@ -217,6 +251,14 @@ fn missing_memory(memory_id: &MemoryId) -> ApiError {
         "memory.not_found",
         axon_error::ErrorStage::Retrieving,
         format!("memory {} not found", memory_id.0),
+    )
+}
+
+fn unsupported_option(option: &str) -> ApiError {
+    ApiError::new(
+        "memory.unsupported_option",
+        axon_error::ErrorStage::Retrieving,
+        format!("fake memory store does not implement option {option}"),
     )
 }
 

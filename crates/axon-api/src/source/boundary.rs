@@ -1,7 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::capability::RenderMode;
 use super::common::*;
 use super::document::SourceDocument;
 use super::enums::*;
@@ -337,88 +336,6 @@ pub struct WatchHistoryRequest {
 pub struct WatchHistoryResult {
     pub runs: Vec<JobDescriptor>,
     pub warnings: Vec<SourceWarning>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SearchRequest {
-    pub query: String,
-    pub limit: u32,
-    pub metadata: MetadataMap,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SearchResult {
-    pub query: String,
-    pub results: Vec<SearchResultItem>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SearchResultItem {
-    pub title: String,
-    pub url: String,
-    pub snippet: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct FetchRequest {
-    pub uri: String,
-    pub method: String,
-    pub headers: RedactedHeaders,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct FetchedResource {
-    pub uri: String,
-    pub status: u16,
-    pub content: ContentRef,
-    pub headers: RedactedHeaders,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RenderRequest {
-    pub uri: String,
-    pub mode: RenderMode,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RenderedResource {
-    pub uri: String,
-    pub markdown: String,
-    pub artifacts: Vec<ArtifactRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct NetworkCaptureRequest {
-    pub uri: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct NetworkCaptureResult {
-    pub uri: String,
-    pub entries: Vec<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CredentialRequest {
-    pub credential_kind: CredentialKind,
-    pub secret_ref: SecretRef,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CredentialMaterial {
-    pub secret_ref: SecretRef,
-    pub redacted_value: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

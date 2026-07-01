@@ -406,6 +406,11 @@ dependencies = [
 [[package]]
 name = "axon-adapters"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "tokio",
+]
 
 [[package]]
 name = "axon-api"
@@ -770,6 +775,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-error",
+ "serde_json",
  "tokio",
 ]
 
@@ -905,6 +911,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-error",
+ "serde_json",
  "tokio",
  "uuid",
 ]
