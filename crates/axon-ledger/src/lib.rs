@@ -18,3 +18,7 @@ pub mod testing;
 pub mod transaction;
 
 pub const CRATE_NAME: &str = "axon-ledger";
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod store_tests;
