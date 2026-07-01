@@ -585,6 +585,10 @@ dependencies = [
 [[package]]
 name = "axon-document"
 version = "6.2.1"
+dependencies = [
+ "axon-api",
+ "serde_json",
+]
 
 [[package]]
 name = "axon-embedding"
