@@ -798,6 +798,11 @@ dependencies = [
 [[package]]
 name = "axon-parse"
 version = "6.2.1"
+dependencies = [
+ "axon-api",
+ "serde_json",
+ "uuid",
+]
 
 [[package]]
 name = "axon-prune"

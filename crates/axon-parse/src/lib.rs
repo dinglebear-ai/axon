@@ -18,3 +18,7 @@ pub mod testing;
 pub mod tool;
 
 pub const CRATE_NAME: &str = "axon-parse";
+
+#[cfg(test)]
+#[path = "parser_tests.rs"]
+mod parser_tests;
