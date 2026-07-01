@@ -258,7 +258,19 @@ pub struct ConfigValidationReport {
     pub warnings: Vec<SourceWarning>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    utoipa::ToSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentCacheKey {
     pub source_id: SourceId,
