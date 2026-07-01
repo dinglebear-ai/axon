@@ -10,6 +10,7 @@ pub mod env;
 pub mod facts;
 pub mod graph_candidate;
 pub mod manifest;
+pub mod markdown;
 pub mod parser;
 pub mod registry;
 pub mod schema;
