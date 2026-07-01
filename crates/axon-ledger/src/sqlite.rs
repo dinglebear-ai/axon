@@ -26,6 +26,10 @@ impl SqliteLedgerStore {
             .connect("sqlite::memory:")
             .await
             .map_err(sqlite_error)?;
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .map_err(sqlite_error)?;
         migrate_ledger(&pool).await?;
         Ok(Self::new(pool))
     }
@@ -553,6 +557,14 @@ impl SqliteLedgerStore {
             .await
             .map_err(sqlite_error)?;
         Ok(count as usize)
+    }
+
+    pub async fn foreign_keys_enabled(&self) -> Result<bool> {
+        let enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sqlite_error)?;
+        Ok(enabled == 1)
     }
 }
 

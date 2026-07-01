@@ -362,6 +362,13 @@ async fn sqlite_migration_creates_required_ledger_tables() {
 }
 
 #[tokio::test]
+async fn sqlite_store_enables_foreign_keys() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+
+    assert!(store.foreign_keys_enabled().await.expect("foreign keys"));
+}
+
+#[tokio::test]
 async fn sqlite_generation_publish_controls_committed_baseline() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
