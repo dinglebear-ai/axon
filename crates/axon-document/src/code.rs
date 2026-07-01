@@ -9,14 +9,14 @@ struct LineSpan<'a> {
     text: &'a str,
 }
 
-pub fn code_manifest(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn code_manifest(text: &str) -> Vec<DocumentChunk> {
     atomic_text(text)
         .into_iter()
         .map(|chunk| chunk.with_metadata("manifest", true.into()))
         .collect()
 }
 
-pub fn code_symbols(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn code_symbols(text: &str) -> Vec<DocumentChunk> {
     if let Some(chunks) = repomix_packed_code_symbols(text) {
         return chunks;
     }

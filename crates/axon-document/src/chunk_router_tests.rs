@@ -80,6 +80,42 @@ fn router_selects_profile_from_document_shape_when_no_override_exists() {
     }
 }
 
+#[test]
+fn router_ignores_generic_profile_metadata() {
+    let mut doc = source_doc(ContentKind::PlainText, "release profile text");
+    doc.metadata = metadata([("profile", json!("production"))]);
+
+    assert_eq!(
+        ChunkRouter::default().route(&doc).unwrap(),
+        ChunkingProfile::PlainTextWindows
+    );
+}
+
+#[test]
+fn router_recognizes_common_manifest_and_config_files() {
+    for path in [
+        "requirements.txt",
+        "docker-compose.yaml",
+        "Dockerfile",
+        ".env.example",
+        "main.tf",
+        "openapi.yaml",
+    ] {
+        let doc = source_doc(ContentKind::PlainText, "name=value").with_path(path);
+        let expected = if path == "openapi.yaml" {
+            ChunkingProfile::ApiSchema
+        } else {
+            ChunkingProfile::CodeManifest
+        };
+
+        assert_eq!(
+            ChunkRouter::default().route(&doc).unwrap(),
+            expected,
+            "{path} should route to the expected profile"
+        );
+    }
+}
+
 trait SourceDocTestExt {
     fn with_path(self, path: &str) -> Self;
 }

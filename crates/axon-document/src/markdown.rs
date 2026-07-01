@@ -3,7 +3,7 @@
 use crate::chunk::DocumentChunk;
 use crate::text::{plain_text_windows, source_range};
 
-pub fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
     let mut starts = Vec::new();
     for (byte, line) in text.match_indices('#') {
         let at_line_start = byte == 0 || text.as_bytes().get(byte - 1) == Some(&b'\n');
@@ -41,7 +41,7 @@ pub fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
         .collect()
 }
 
-pub fn html_article(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {
     let mut plain = String::with_capacity(text.len());
     let mut in_tag = false;
     for ch in text.chars() {

@@ -1,8 +1,8 @@
-use axon_api::source::{Severity, SourceParseFacts, SourceWarning};
+use axon_api::source::{LifecycleStatus, Severity, SourceParseFacts, SourceWarning};
 use serde_json::{Value, json};
 
 use crate::facts::{inline_text, source_fact};
-use crate::parser::ParseInput;
+use crate::parser::{ParseInput, ParseResult, stage_header};
 
 pub const MODULE_NAME: &str = "tool";
 
@@ -12,16 +12,25 @@ pub struct ToolParseItems {
     pub warnings: Vec<SourceWarning>,
 }
 
-pub fn tool_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
-    tool_parse_items(input).facts
-}
-
 pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
     let mut parsed = ToolParseItems::default();
 
     for (idx, line) in inline_text(input).lines().enumerate() {
-        let Ok(value) = serde_json::from_str::<Value>(line.trim()) else {
+        let line_no = idx as u32 + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
             continue;
+        }
+        let value = match serde_json::from_str::<Value>(trimmed) {
+            Ok(value) => value,
+            Err(error) => {
+                parsed.warnings.push(warning(
+                    input,
+                    "parse.jsonl.invalid_line",
+                    format!("invalid JSONL at line {line_no}: {error}"),
+                ));
+                continue;
+            }
         };
         let Some(tool) = value
             .get("tool")
@@ -37,7 +46,6 @@ pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
         let name = action
             .map(|action| format!("{tool}.{action}"))
             .unwrap_or_else(|| tool.to_string());
-        let line_no = idx as u32 + 1;
         let output_kind = value.get("output").map(json_kind).unwrap_or("missing");
 
         parsed.facts.push(source_fact(
@@ -102,6 +110,25 @@ pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
     }
 
     parsed
+}
+
+pub fn tool_parse_result(input: &ParseInput) -> ParseResult {
+    let parsed = tool_parse_items(input);
+    let status = if parsed.warnings.is_empty() {
+        LifecycleStatus::Completed
+    } else {
+        LifecycleStatus::CompletedDegraded
+    };
+    ParseResult {
+        header: stage_header(input, status, parsed.warnings.clone(), None),
+        document_id: input.document.document_id.clone(),
+        facts: parsed.facts,
+        graph_candidates: Vec::new(),
+        parser_id: "tool_output_jsonl".to_string(),
+        parser_version: crate::facts::PARSER_VERSION.to_string(),
+        warnings: parsed.warnings,
+        errors: Vec::new(),
+    }
 }
 
 fn json_kind(value: &Value) -> &'static str {

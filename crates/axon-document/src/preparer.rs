@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
-    SourceError, SourceRange, SourceWarning,
+    SourceRange,
 };
 
 use crate::chunk::DocumentChunk;
@@ -43,10 +43,10 @@ impl DocumentPreparer {
             metadata: request.document.metadata,
             cleanup_keys: Vec::<CleanupKey>::new(),
             graph_refs: Vec::new(),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::<SourceWarning>::new(),
-            errors: Vec::<SourceError>::new(),
+            parse_facts: request.parse_facts,
+            graph_candidates: request.graph_candidates,
+            warnings: request.warnings,
+            errors: request.errors,
         };
         validate_prepared_document(&document)?;
         Ok(PrepareSourceDocumentResult { document })
@@ -90,7 +90,7 @@ fn prepare_chunks(
     chunks: Vec<DocumentChunk>,
 ) -> Vec<PreparedChunk> {
     let len = chunks.len();
-    chunks
+    let mut prepared: Vec<PreparedChunk> = chunks
         .into_iter()
         .enumerate()
         .map(|(idx, mut chunk)| {
@@ -103,13 +103,22 @@ fn prepare_chunks(
                 .and_then(serde_json::Value::as_str)
                 .map(ToOwned::to_owned)
                 .or_else(|| request.document.path.clone());
-            let chunk_id = ChunkId::from(format!("{}:{idx:04}", request.document.document_id.0));
+            let content_hash = simple_hash(&chunk.content);
+            let chunk_key = stable_chunk_key(
+                request,
+                profile,
+                idx,
+                path.as_deref(),
+                &chunk,
+                &content_hash,
+            );
+            let chunk_id = ChunkId::from(format!("chunk_{}", stable_token(&chunk_key)));
             PreparedChunk {
                 chunk_id: chunk_id.clone(),
-                chunk_key: format!("{}:{idx:04}", request.document.document_id.0),
+                chunk_key,
                 document_id: request.document.document_id.clone(),
                 chunk_index: idx as u32,
-                content_hash: simple_hash(&chunk.content),
+                content_hash,
                 embedding_text: None,
                 chunk_locator: ChunkLocator {
                     canonical_uri: request.document.canonical_uri.clone(),
@@ -123,17 +132,24 @@ fn prepare_chunks(
                 title: chunk.title.or_else(|| request.document.title.clone()),
                 graph_refs: Vec::new(),
                 parent_chunk_id: None,
-                previous_chunk_id: (idx > 0).then(|| {
-                    ChunkId::from(format!("{}:{:04}", request.document.document_id.0, idx - 1))
-                }),
-                next_chunk_id: (idx + 1 < len).then(|| {
-                    ChunkId::from(format!("{}:{:04}", request.document.document_id.0, idx + 1))
-                }),
+                previous_chunk_id: None,
+                next_chunk_id: None,
                 metadata: merge_metadata(&request.document.metadata, chunk.metadata),
                 content: chunk.content,
             }
         })
-        .collect()
+        .collect();
+
+    for idx in 0..len {
+        if idx > 0 {
+            prepared[idx].previous_chunk_id = Some(prepared[idx - 1].chunk_id.clone());
+        }
+        if idx + 1 < len {
+            prepared[idx].next_chunk_id = Some(prepared[idx + 1].chunk_id.clone());
+        }
+    }
+
+    prepared
 }
 
 pub(crate) fn validate_prepared_document(document: &PreparedDocument) -> Result<(), String> {
@@ -199,4 +215,50 @@ fn simple_hash(text: &str) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("fnv1a64:{hash:016x}")
+}
+
+fn stable_token(text: &str) -> String {
+    simple_hash(text).trim_start_matches("fnv1a64:").to_string()
+}
+
+fn stable_chunk_key(
+    request: &PrepareSourceDocumentRequest,
+    profile: ChunkingProfile,
+    idx: usize,
+    path: Option<&str>,
+    chunk: &DocumentChunk,
+    content_hash: &str,
+) -> String {
+    let range = &chunk.range;
+    let locator = format!(
+        "path={}|heading={}|symbol={}|line={:?}-{:?}|byte={:?}-{:?}|char={:?}-{:?}|json={:?}|yaml={:?}|session={:?}",
+        path.unwrap_or(""),
+        chunk.heading_path.join("/"),
+        chunk.symbol.as_deref().unwrap_or(""),
+        range.line_start,
+        range.line_end,
+        range.byte_start,
+        range.byte_end,
+        range.char_start,
+        range.char_end,
+        range.json_pointer,
+        range.yaml_path,
+        range.session_turn_id,
+    );
+    let raw_key = format!(
+        "source={}|generation={}|item={}|document={}|profile={}|index={idx}|{locator}|content={content_hash}",
+        request.document.source_id.0,
+        request.generation.0,
+        request.document.source_item_key.0,
+        request.document.document_id.0,
+        profile.as_str(),
+    );
+    format!(
+        "{}:{}:{}:{}:{}",
+        request.document.source_id.0,
+        request.generation.0,
+        request.document.source_item_key.0,
+        profile.as_str(),
+        stable_token(&raw_key)
+    )
 }

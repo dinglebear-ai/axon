@@ -38,8 +38,18 @@ impl FakeParser {
         self
     }
 
+    pub fn with_path_suffix(mut self, suffix: impl Into<String>) -> Self {
+        self.capability.path_suffixes.push(suffix.into());
+        self
+    }
+
     pub fn with_sniff_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.capability.sniff_prefixes.push(prefix.into());
+        self
+    }
+
+    pub fn with_priority(mut self, priority: u32) -> Self {
+        self.capability.priority = priority;
         self
     }
 

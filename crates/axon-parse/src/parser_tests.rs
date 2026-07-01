@@ -138,6 +138,52 @@ fn registry_selects_by_hint_content_kind_mime_path_and_sniffing() {
 }
 
 #[test]
+fn registry_specific_matches_beat_generic_content_kind() {
+    let generic_markdown = parser("generic_markdown")
+        .with_content_kind(ContentKind::Markdown)
+        .with_priority(0);
+    let readme_markdown = parser("readme_markdown")
+        .with_path_suffix("README.md")
+        .with_priority(100);
+    let registry = ParserRegistry::new()
+        .with_parser(generic_markdown)
+        .with_parser(readme_markdown);
+
+    let selected = registry
+        .select(&input(source_doc(
+            ContentKind::Markdown,
+            Some("README.md"),
+            None,
+            "# Readme",
+        )))
+        .expect("path-specific parser");
+
+    assert_eq!(selected.capability().parser_id, "readme_markdown");
+}
+
+#[test]
+fn registry_uses_priority_as_same_score_tie_breaker() {
+    let low = parser("low_priority")
+        .with_file_extension("toml")
+        .with_priority(50);
+    let high = parser("high_priority")
+        .with_file_extension("toml")
+        .with_priority(5);
+    let registry = ParserRegistry::new().with_parser(low).with_parser(high);
+
+    let selected = registry
+        .select(&input(source_doc(
+            ContentKind::Toml,
+            Some("Cargo.toml"),
+            None,
+            "[package]",
+        )))
+        .expect("priority-selected parser");
+
+    assert_eq!(selected.capability().parser_id, "high_priority");
+}
+
+#[test]
 fn unsupported_input_degrades_to_warning_result() {
     let registry = ParserRegistry::new();
     let result = registry.parse(&input(source_doc(

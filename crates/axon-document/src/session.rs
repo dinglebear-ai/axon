@@ -3,7 +3,7 @@
 use crate::chunk::DocumentChunk;
 use crate::transcript::split_on_nonempty_lines;
 
-pub fn session_turns(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn session_turns(text: &str) -> Vec<DocumentChunk> {
     split_on_nonempty_lines(text, "session_turn")
         .into_iter()
         .enumerate()

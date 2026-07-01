@@ -1,24 +1,39 @@
-use axon_api::source::{GraphCandidate, SourceParseFacts};
+use axon_api::source::{
+    GraphCandidate, LifecycleStatus, Severity, SourceParseFacts, SourceWarning,
+};
 use serde_json::{Value, json};
 
 use crate::facts::{inline_text, source_fact, turn_range};
 use crate::graph_candidate::graph_candidate;
-use crate::parser::ParseInput;
+use crate::parser::{ParseInput, ParseResult, stage_header};
 
 pub const MODULE_NAME: &str = "session";
 
-pub fn session_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
-    session_items(input).0
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SessionParseItems {
+    pub facts: Vec<SourceParseFacts>,
+    pub graph_candidates: Vec<GraphCandidate>,
+    pub warnings: Vec<SourceWarning>,
 }
 
-pub fn session_items(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
-    let mut facts = Vec::new();
-    let mut candidates = Vec::new();
+pub fn session_parse_items(input: &ParseInput) -> SessionParseItems {
+    let mut parsed = SessionParseItems::default();
 
     for (idx, line) in inline_text(input).lines().enumerate() {
         let trimmed = line.trim();
-        let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        if trimmed.is_empty() {
             continue;
+        };
+        let value = match serde_json::from_str::<Value>(trimmed) {
+            Ok(value) => value,
+            Err(error) => {
+                parsed.warnings.push(warning(
+                    input,
+                    "parse.jsonl.invalid_line",
+                    format!("invalid JSONL at line {}: {error}", idx + 1),
+                ));
+                continue;
+            }
         };
         let line_no = idx as u32 + 1;
         let turn_id = (idx + 1).to_string();
@@ -42,12 +57,12 @@ pub fn session_items(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCan
             Some(line_no),
         );
         turn_fact.range = Some(turn_range(line_no, turn_id.clone()));
-        facts.push(turn_fact);
+        parsed.facts.push(turn_fact);
 
         append_invocations(
             input,
-            &mut facts,
-            &mut candidates,
+            &mut parsed.facts,
+            &mut parsed.graph_candidates,
             &value,
             InvocationSpec {
                 keys: &["tool_calls", "tool_call", "tools", "tool"],
@@ -60,8 +75,8 @@ pub fn session_items(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCan
         );
         append_invocations(
             input,
-            &mut facts,
-            &mut candidates,
+            &mut parsed.facts,
+            &mut parsed.graph_candidates,
             &value,
             InvocationSpec {
                 keys: &["skills", "skill", "skills_invoked", "skill_invocations"],
@@ -74,8 +89,8 @@ pub fn session_items(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCan
         );
         append_invocations(
             input,
-            &mut facts,
-            &mut candidates,
+            &mut parsed.facts,
+            &mut parsed.graph_candidates,
             &value,
             InvocationSpec {
                 keys: &[
@@ -94,7 +109,26 @@ pub fn session_items(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCan
         );
     }
 
-    (facts, candidates)
+    parsed
+}
+
+pub fn session_parse_result(input: &ParseInput) -> ParseResult {
+    let parsed = session_parse_items(input);
+    let status = if parsed.warnings.is_empty() {
+        LifecycleStatus::Completed
+    } else {
+        LifecycleStatus::CompletedDegraded
+    };
+    ParseResult {
+        header: stage_header(input, status, parsed.warnings.clone(), None),
+        document_id: input.document.document_id.clone(),
+        facts: parsed.facts,
+        graph_candidates: parsed.graph_candidates,
+        parser_id: "session_jsonl".to_string(),
+        parser_version: crate::facts::PARSER_VERSION.to_string(),
+        warnings: parsed.warnings,
+        errors: Vec::new(),
+    }
 }
 
 struct InvocationSpec<'a> {
@@ -202,6 +236,16 @@ fn invocations_from_value(value: &Value, field: &str, name_keys: &[&str]) -> Vec
                 .collect()
         }
         _ => Vec::new(),
+    }
+}
+
+fn warning(input: &ParseInput, code: &str, message: String) -> SourceWarning {
+    SourceWarning {
+        code: code.to_string(),
+        severity: Severity::Warning,
+        message,
+        source_item_key: Some(input.document.source_item_key.clone()),
+        retryable: false,
     }
 }
 

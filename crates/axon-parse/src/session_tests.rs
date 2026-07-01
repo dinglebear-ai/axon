@@ -2,7 +2,7 @@ use axon_api::source::*;
 use uuid::Uuid;
 
 use crate::parser::ParseInput;
-use crate::session::{session_facts, session_items};
+use crate::session::{session_parse_items, session_parse_result};
 
 fn input(text: &str) -> ParseInput {
     ParseInput {
@@ -33,10 +33,11 @@ fn input(text: &str) -> ParseInput {
 
 #[test]
 fn extracts_jsonl_session_turn_facts() {
-    let facts = session_facts(&input(
+    let parsed = session_parse_items(&input(
         r#"{"type":"message","role":"user","content":"hello"}"#,
     ));
 
+    let facts = parsed.facts;
     assert_eq!(facts.len(), 1);
     assert_eq!(facts[0].fact_kind, "session_turn");
     assert_eq!(facts[0].name, "user");
@@ -49,11 +50,15 @@ fn extracts_jsonl_session_turn_facts() {
 
 #[test]
 fn extracts_session_tool_skill_and_agent_invocations() {
-    let (facts, candidates) = session_items(&input(
+    let parsed = session_parse_items(&input(
         r#"{"type":"message","role":"assistant","tool_calls":[{"id":"call_1","name":"axon.search"}],"skills":["axon:using-axon"],"agents_invoked":[{"name":"researcher"}]}"#,
     ));
 
-    let kinds: Vec<_> = facts.iter().map(|fact| fact.fact_kind.as_str()).collect();
+    let kinds: Vec<_> = parsed
+        .facts
+        .iter()
+        .map(|fact| fact.fact_kind.as_str())
+        .collect();
     assert_eq!(
         kinds,
         vec![
@@ -63,16 +68,17 @@ fn extracts_session_tool_skill_and_agent_invocations() {
             "session_agent_invocation"
         ]
     );
-    assert_eq!(facts[1].name, "axon.search");
-    assert_eq!(facts[1].value["call_id"], "call_1");
-    assert_eq!(facts[2].name, "axon:using-axon");
-    assert_eq!(facts[3].name, "researcher");
+    assert_eq!(parsed.facts[1].name, "axon.search");
+    assert_eq!(parsed.facts[1].value["call_id"], "call_1");
+    assert_eq!(parsed.facts[2].name, "axon:using-axon");
+    assert_eq!(parsed.facts[3].name, "researcher");
     assert_eq!(
-        facts[1].range.as_ref().unwrap().session_turn_id,
+        parsed.facts[1].range.as_ref().unwrap().session_turn_id,
         Some("1".to_string())
     );
 
-    let candidate_kinds: Vec<_> = candidates
+    let candidate_kinds: Vec<_> = parsed
+        .graph_candidates
         .iter()
         .map(|candidate| candidate.kind.as_str())
         .collect();
@@ -84,4 +90,17 @@ fn extracts_session_tool_skill_and_agent_invocations() {
             "session_agent_invocation"
         ]
     );
+}
+
+#[test]
+fn malformed_jsonl_degrades_with_warning() {
+    let result = session_parse_result(&input(
+        "{\"type\":\"message\",\"role\":\"user\"}\nnot-json\n",
+    ));
+
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.facts.len(), 1);
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(result.warnings[0].code, "parse.jsonl.invalid_line");
+    assert!(result.warnings[0].message.contains("line 2"));
 }

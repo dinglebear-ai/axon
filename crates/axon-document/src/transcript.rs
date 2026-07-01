@@ -3,7 +3,7 @@
 use crate::chunk::DocumentChunk;
 use crate::text::source_range;
 
-pub fn transcript_segments(text: &str) -> Vec<DocumentChunk> {
+pub(crate) fn transcript_segments(text: &str) -> Vec<DocumentChunk> {
     split_on_nonempty_lines(text, "transcript_segment")
 }
 

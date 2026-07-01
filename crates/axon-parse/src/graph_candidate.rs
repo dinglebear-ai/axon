@@ -6,6 +6,7 @@ use serde_json::json;
 
 pub const MODULE_NAME: &str = "graph_candidate";
 
+use crate::facts::PARSER_VERSION;
 use crate::parser::ParseInput;
 
 pub fn graph_candidate(
@@ -16,11 +17,19 @@ pub fn graph_candidate(
     line: Option<u32>,
     quote: Option<String>,
 ) -> GraphCandidate {
-    let source_key = sanitize(input.document.source_item_key.0.as_str());
-    let name_key = sanitize(name);
-    let candidate_id = format!("cand_{source_key}_{kind}_{name_key}");
-    let file_key = format!("source:{}", input.document.canonical_uri);
-    let item_key = format!("{kind}:{name_key}");
+    let source_scope = format!(
+        "source_id={}|item={}|uri={}",
+        input.document.source_id.0, input.document.source_item_key.0, input.document.canonical_uri
+    );
+    let file_key = format!("source_item:{}", stable_token(&source_scope));
+    let item_identity = format!("{source_scope}|kind={kind}|name={name}|line={line:?}");
+    let item_token = stable_token(&item_identity);
+    let candidate_id = format!("cand_{kind}_{item_token}");
+    let item_key = format!("{kind}:{item_token}");
+    let evidence_id = format!(
+        "ev_{}",
+        stable_token(&format!("{candidate_id}|quote={quote:?}"))
+    );
 
     let mut evidence_metadata = MetadataMap::new();
     evidence_metadata.insert("parser_id".to_string(), json!(parser_id));
@@ -37,7 +46,7 @@ pub fn graph_candidate(
         producer: GraphCandidateProducer {
             adapter: "axon-parse".to_string(),
             parser: Some(parser_id.to_string()),
-            version: "pr8-baseline".to_string(),
+            version: PARSER_VERSION.to_string(),
         },
         nodes: vec![
             GraphNodeCandidate {
@@ -60,7 +69,7 @@ pub fn graph_candidate(
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
-            evidence_id: format!("ev_{candidate_id}"),
+            evidence_id,
             evidence_kind: "source_line".to_string(),
             source_id: input.document.source_id.clone(),
             source_item_key: input.document.source_item_key.clone(),
@@ -93,9 +102,15 @@ pub fn graph_candidate(
     }
 }
 
-fn sanitize(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect()
+fn stable_token(value: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in value.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
 }
+
+#[cfg(test)]
+#[path = "graph_candidate_tests.rs"]
+mod tests;
