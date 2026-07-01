@@ -1,6 +1,7 @@
 use axon_api::source::*;
 
 use crate::parser::{ParseInput, ParseResult, ParserCapability, SourceParser, stage_header};
+use crate::registry::ParserRegistry;
 
 #[derive(Debug, Clone)]
 pub struct FakeParser {
@@ -79,5 +80,25 @@ impl SourceParser for FakeParser {
             warnings: self.warnings.clone(),
             errors: self.errors.clone(),
         }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct FakeParserRegistry {
+    registry: ParserRegistry,
+}
+
+impl FakeParserRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_parser(mut self, parser: FakeParser) -> Self {
+        self.registry = self.registry.with_parser(parser);
+        self
+    }
+
+    pub fn parse(&self, input: &ParseInput) -> ParseResult {
+        self.registry.parse(input)
     }
 }

@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::parser::{ParseInput, ParserCapability, stage_header};
 use crate::registry::ParserRegistry;
-use crate::testing::FakeParser;
+use crate::testing::{FakeParser, FakeParserRegistry};
 
 fn source_doc(
     content_kind: ContentKind,
@@ -153,6 +153,38 @@ fn unsupported_input_degrades_to_warning_result() {
     assert_eq!(result.warnings[0].code, "parse.unsupported");
     assert!(result.facts.is_empty());
     assert!(result.graph_candidates.is_empty());
+}
+
+#[test]
+fn fake_parser_registry_wraps_registry_selection_for_tests() {
+    let registry = FakeParserRegistry::new().with_parser(
+        parser("fake_markdown")
+            .with_content_kind(ContentKind::Markdown)
+            .with_fact(SourceParseFacts {
+                document_id: DocumentId::from("doc_1"),
+                source_item_key: SourceItemKey::from("README.md"),
+                fact_kind: "markdown_heading".to_string(),
+                name: "Readme".to_string(),
+                value: serde_json::json!({ "level": 1 }),
+                parser_id: "fake_markdown".to_string(),
+                parser_version: "test".to_string(),
+                parser_method: "fake".to_string(),
+                range: None,
+                confidence: 1.0,
+                metadata: MetadataMap::new(),
+            }),
+    );
+
+    let result = registry.parse(&input(source_doc(
+        ContentKind::Markdown,
+        Some("README.md"),
+        None,
+        "# Readme",
+    )));
+
+    assert_eq!(result.parser_id, "fake_markdown");
+    assert_eq!(result.facts.len(), 1);
+    assert_eq!(result.facts[0].name, "Readme");
 }
 
 #[test]
