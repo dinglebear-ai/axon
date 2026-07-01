@@ -419,6 +419,30 @@ async fn sqlite_same_owner_can_renew_lease() {
 }
 
 #[tokio::test]
+async fn sqlite_heartbeat_extends_lease_by_id() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    let first = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            ts_at(0),
+        ))
+        .await
+        .expect("acquire")
+        .expect("lease");
+
+    let heartbeat = store
+        .heartbeat_lease(first.lease_id.clone(), ts_at(20), 30)
+        .await
+        .expect("heartbeat")
+        .expect("lease should still exist");
+
+    assert_eq!(heartbeat.lease_id, first.lease_id);
+    assert_eq!(heartbeat.heartbeat_at, ts_at(20));
+    assert!(heartbeat.expires_at.0 > first.expires_at.0);
+}
+
+#[tokio::test]
 async fn sqlite_migration_creates_required_ledger_tables() {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
