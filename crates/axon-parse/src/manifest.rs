@@ -1,26 +1,39 @@
-use axon_api::source::{ContentKind, GraphCandidate, SourceParseFacts};
-use serde_json::{Value, json};
+use axon_api::source::{GraphCandidate, SourceParseFacts};
+use serde_json::json;
 
-use crate::facts::{inline_text, source_fact};
+use crate::facts::source_fact;
 use crate::graph_candidate::graph_candidate;
 use crate::parser::ParseInput;
 
 pub const MODULE_NAME: &str = "manifest";
 
+#[path = "manifest/cargo.rs"]
+mod cargo;
+#[path = "manifest/go.rs"]
+mod go;
+#[path = "manifest/maven.rs"]
+mod maven;
+#[path = "manifest/npm.rs"]
+mod npm;
+#[path = "manifest/python.rs"]
+mod python;
+#[path = "manifest/yaml_iac.rs"]
+mod yaml_iac;
+
 pub fn dependency_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let path = input.document.path.as_deref().unwrap_or_default();
     let deps = if path.ends_with("Cargo.toml") {
-        cargo_deps(input)
+        cargo::deps(input)
     } else if path.ends_with("package.json") {
-        package_json_deps(input)
+        npm::deps(input)
     } else if path.ends_with("requirements.txt") {
-        requirements_deps(input)
+        python::requirements_deps(input)
     } else if path.ends_with("pyproject.toml") {
-        pyproject_deps(input)
+        python::pyproject_deps(input)
     } else if path.ends_with("go.mod") {
-        go_mod_deps(input)
+        go::deps(input)
     } else if path.ends_with("pom.xml") {
-        maven_pom_deps(input)
+        maven::deps(input)
     } else {
         Vec::new()
     };
@@ -50,7 +63,7 @@ pub fn dependency_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<Graph
             Some(dep.quote),
         ));
     }
-    for resource in yaml_iac_resources(input) {
+    for resource in yaml_iac::resources(input) {
         facts.push(source_fact(
             input,
             "yaml_iac_manifest",
@@ -93,253 +106,6 @@ struct IacResource {
     resource_name: String,
     line: u32,
     quote: String,
-}
-
-fn cargo_deps(input: &ParseInput) -> Vec<Dep> {
-    let mut deps = Vec::new();
-    let mut scope: Option<&'static str> = None;
-    for (idx, line) in inline_text(input).lines().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            scope = match trimmed {
-                "[dependencies]" => Some("dependencies"),
-                "[dev-dependencies]" => Some("dev-dependencies"),
-                "[build-dependencies]" => Some("build-dependencies"),
-                _ => None,
-            };
-            continue;
-        }
-        let Some(scope) = scope else { continue };
-        let Some((name, rest)) = trimmed.split_once('=') else {
-            continue;
-        };
-        let name = name.trim();
-        if name.is_empty() || name.starts_with('#') {
-            continue;
-        }
-        deps.push(Dep {
-            parser_id: "cargo_manifest",
-            ecosystem: "cargo",
-            scope,
-            name: name.to_string(),
-            version: first_quoted(rest),
-            line: idx as u32 + 1,
-            quote: trimmed.to_string(),
-        });
-    }
-    deps
-}
-
-fn package_json_deps(input: &ParseInput) -> Vec<Dep> {
-    let Ok(root) = serde_json::from_str::<Value>(inline_text(input)) else {
-        return Vec::new();
-    };
-    let mut deps = Vec::new();
-    for scope in ["dependencies", "devDependencies", "peerDependencies"] {
-        let Some(obj) = root.get(scope).and_then(Value::as_object) else {
-            continue;
-        };
-        for (name, version) in obj {
-            deps.push(Dep {
-                parser_id: "package_json",
-                ecosystem: "npm",
-                scope,
-                name: name.clone(),
-                version: version.as_str().map(ToOwned::to_owned),
-                line: 1,
-                quote: format!("{name}: {version}"),
-            });
-        }
-    }
-    deps
-}
-
-fn requirements_deps(input: &ParseInput) -> Vec<Dep> {
-    inline_text(input)
-        .lines()
-        .enumerate()
-        .filter_map(|(idx, line)| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                return None;
-            }
-            let split_at = trimmed
-                .find(|ch: char| ['=', '<', '>', '!', '~', '['].contains(&ch))
-                .unwrap_or(trimmed.len());
-            let name = trimmed[..split_at].trim();
-            if name.is_empty() {
-                return None;
-            }
-            Some(Dep {
-                parser_id: "requirements_txt",
-                ecosystem: "python",
-                scope: "runtime",
-                name: name.to_string(),
-                version: (split_at < trimmed.len()).then(|| trimmed[split_at..].to_string()),
-                line: idx as u32 + 1,
-                quote: trimmed.to_string(),
-            })
-        })
-        .collect()
-}
-
-fn pyproject_deps(input: &ParseInput) -> Vec<Dep> {
-    let mut deps = Vec::new();
-    for (idx, line) in inline_text(input).lines().enumerate() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with("dependencies") {
-            continue;
-        }
-        for quoted in quoted_values(trimmed) {
-            let split_at = quoted
-                .find(|ch: char| ['=', '<', '>', '!', '~', '['].contains(&ch))
-                .unwrap_or(quoted.len());
-            deps.push(Dep {
-                parser_id: "pyproject_toml",
-                ecosystem: "python",
-                scope: "project.dependencies",
-                name: quoted[..split_at].to_string(),
-                version: (split_at < quoted.len()).then(|| quoted[split_at..].to_string()),
-                line: idx as u32 + 1,
-                quote: quoted,
-            });
-        }
-    }
-    deps
-}
-
-fn go_mod_deps(input: &ParseInput) -> Vec<Dep> {
-    let mut deps = Vec::new();
-    let mut in_require_block = false;
-    for (idx, line) in inline_text(input).lines().enumerate() {
-        let trimmed = line.trim();
-        if trimmed == "require (" {
-            in_require_block = true;
-            continue;
-        }
-        if in_require_block && trimmed == ")" {
-            in_require_block = false;
-            continue;
-        }
-        let dep_line = trimmed.strip_prefix("require ").unwrap_or(trimmed);
-        if dep_line.is_empty()
-            || dep_line.starts_with("//")
-            || (!in_require_block && dep_line == trimmed)
-        {
-            continue;
-        }
-        let mut parts = dep_line.split_whitespace();
-        let Some(name) = parts.next() else { continue };
-        if name.is_empty() {
-            continue;
-        }
-        deps.push(Dep {
-            parser_id: "go_mod",
-            ecosystem: "go",
-            scope: "require",
-            name: name.to_string(),
-            version: parts.next().map(ToOwned::to_owned),
-            line: idx as u32 + 1,
-            quote: trimmed.to_string(),
-        });
-    }
-    deps
-}
-
-fn maven_pom_deps(input: &ParseInput) -> Vec<Dep> {
-    let text = inline_text(input);
-    dependency_blocks(inline_text(input))
-        .into_iter()
-        .filter_map(|block| {
-            let group = tag_value(block, "groupId")?;
-            let artifact = tag_value(block, "artifactId")?;
-            let offset = block.as_ptr() as usize - text.as_ptr() as usize;
-            Some(Dep {
-                parser_id: "maven_pom",
-                ecosystem: "maven",
-                scope: "dependencies",
-                name: format!("{group}:{artifact}"),
-                version: tag_value(block, "version").map(ToOwned::to_owned),
-                line: line_for_offset(text, offset),
-                quote: compact_quote(block),
-            })
-        })
-        .collect()
-}
-
-fn yaml_iac_resources(input: &ParseInput) -> Vec<IacResource> {
-    let path = input.document.path.as_deref().unwrap_or_default();
-    if input.document.content_kind != ContentKind::Yaml
-        && !path.ends_with(".yaml")
-        && !path.ends_with(".yml")
-    {
-        return Vec::new();
-    }
-
-    let mut resources = Vec::new();
-    let mut doc_start_line = 1;
-    let mut doc_lines = Vec::new();
-    for (idx, line) in inline_text(input).lines().enumerate() {
-        if line.trim() == "---" {
-            push_yaml_resource(&mut resources, doc_start_line, &doc_lines);
-            doc_start_line = idx as u32 + 2;
-            doc_lines.clear();
-        } else {
-            doc_lines.push(line);
-        }
-    }
-    push_yaml_resource(&mut resources, doc_start_line, &doc_lines);
-    resources
-}
-
-fn push_yaml_resource(resources: &mut Vec<IacResource>, start_line: u32, lines: &[&str]) {
-    let mut api_version: Option<String> = None;
-    let mut kind: Option<String> = None;
-    let mut metadata_indent: Option<usize> = None;
-    let mut metadata_name: Option<String> = None;
-    let mut top_level_name: Option<String> = None;
-    let mut kind_line = start_line;
-
-    for (offset, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        let indent = line.len() - line.trim_start().len();
-        if let Some(value) = yaml_scalar(trimmed, "apiVersion") {
-            api_version = Some(value.to_string());
-        } else if let Some(value) = yaml_scalar(trimmed, "kind") {
-            kind = Some(value.to_string());
-            kind_line = start_line + offset as u32;
-        } else if trimmed == "metadata:" {
-            metadata_indent = Some(indent);
-        } else if let Some(value) = yaml_scalar(trimmed, "name") {
-            if metadata_indent.is_some_and(|metadata| indent > metadata) {
-                metadata_name = Some(value.to_string());
-            } else if indent == 0 {
-                top_level_name = Some(value.to_string());
-            }
-        }
-    }
-
-    let Some(api_version) = api_version else {
-        return;
-    };
-    let Some(resource_name) = metadata_name.or(top_level_name) else {
-        return;
-    };
-    let kind = kind.unwrap_or_else(|| {
-        if api_version == "v2" {
-            "Chart".to_string()
-        } else {
-            "YamlResource".to_string()
-        }
-    });
-    resources.push(IacResource {
-        name: format!("{kind}/{resource_name}"),
-        api_version,
-        kind: kind.clone(),
-        resource_name,
-        line: kind_line,
-        quote: format!("kind: {kind}"),
-    });
 }
 
 fn first_quoted(value: &str) -> Option<String> {
