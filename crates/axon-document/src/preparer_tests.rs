@@ -11,15 +11,12 @@ use crate::{
 
 #[test]
 fn preparer_builds_prepared_document_from_inline_source_dto() {
-    let request = PrepareSourceDocumentRequest {
-        document: source_doc(ContentKind::Markdown, "# Intro\nHello\n\n## Next\nWorld"),
-        generation: SourceGenerationId::from("gen-1"),
-        profile: Some(ChunkingProfile::MarkdownSections),
-        parse_facts: Vec::new(),
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        errors: Vec::new(),
-    };
+    let request = request(
+        ContentKind::Markdown,
+        "# Intro\nHello\n\n## Next\nWorld",
+        "gen-1",
+        ChunkingProfile::MarkdownSections,
+    );
 
     let result = DocumentPreparer::default().prepare(request).unwrap();
     let prepared = result.document;
@@ -55,15 +52,12 @@ fn preparer_builds_prepared_document_from_inline_source_dto() {
 #[test]
 fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
     let mut recorder = RecordingPreparer::new(DocumentPreparer::default());
-    let request = PrepareSourceDocumentRequest {
-        document: source_doc(ContentKind::PlainText, "alpha\r\n\r\nbeta"),
-        generation: SourceGenerationId::from("gen-fake"),
-        profile: Some(ChunkingProfile::PlainTextWindows),
-        parse_facts: Vec::new(),
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        errors: Vec::new(),
-    };
+    let request = request(
+        ContentKind::PlainText,
+        "alpha\r\n\r\nbeta",
+        "gen-fake",
+        ChunkingProfile::PlainTextWindows,
+    );
 
     let result = recorder.prepare(request.clone()).unwrap();
 
@@ -74,15 +68,12 @@ fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
 
 #[test]
 fn preparer_rejects_empty_prepared_documents() {
-    let request = PrepareSourceDocumentRequest {
-        document: source_doc(ContentKind::PlainText, " \n\n\t"),
-        generation: SourceGenerationId::from("gen-empty"),
-        profile: Some(ChunkingProfile::PlainTextWindows),
-        parse_facts: Vec::new(),
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        errors: Vec::new(),
-    };
+    let request = request(
+        ContentKind::PlainText,
+        " \n\n\t",
+        "gen-empty",
+        ChunkingProfile::PlainTextWindows,
+    );
 
     let error = DocumentPreparer::default().prepare(request).unwrap_err();
 
@@ -92,15 +83,12 @@ fn preparer_rejects_empty_prepared_documents() {
 #[test]
 fn validate_prepared_document_rejects_duplicate_chunk_identity() {
     let prepared = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: source_doc(ContentKind::PlainText, "alpha\n\nbeta"),
-            generation: SourceGenerationId::from("gen-duplicates"),
-            profile: Some(ChunkingProfile::PlainTextWindows),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
+        .prepare(request(
+            ContentKind::PlainText,
+            "alpha\n\nbeta",
+            "gen-duplicates",
+            ChunkingProfile::PlainTextWindows,
+        ))
         .unwrap()
         .document;
     let mut invalid = prepared;
@@ -116,15 +104,12 @@ fn validate_prepared_document_rejects_duplicate_chunk_identity() {
 #[test]
 fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
     let prepared = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: source_doc(ContentKind::PlainText, "alpha"),
-            generation: SourceGenerationId::from("gen-invalid-range"),
-            profile: Some(ChunkingProfile::PlainTextWindows),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
+        .prepare(request(
+            ContentKind::PlainText,
+            "alpha",
+            "gen-invalid-range",
+            ChunkingProfile::PlainTextWindows,
+        ))
         .unwrap()
         .document;
     let mut invalid = prepared;
@@ -155,15 +140,12 @@ File: src/main.rs\n\
 ================================================================\n\
 fn main() {}\n";
     let result = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: source_doc(ContentKind::Code, packed),
-            generation: SourceGenerationId::from("gen-repomix"),
-            profile: Some(ChunkingProfile::CodeSymbol),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
+        .prepare(request(
+            ContentKind::Code,
+            packed,
+            "gen-repomix",
+            ChunkingProfile::CodeSymbol,
+        ))
         .unwrap();
 
     let chunks = result.document.chunks;
@@ -267,5 +249,22 @@ fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
         artifact_id: None,
         chunk_hints: Vec::new(),
         parser_hints: Vec::new(),
+    }
+}
+
+fn request(
+    content_kind: ContentKind,
+    text: &str,
+    generation: &str,
+    profile: ChunkingProfile,
+) -> PrepareSourceDocumentRequest {
+    PrepareSourceDocumentRequest {
+        document: source_doc(content_kind, text),
+        generation: SourceGenerationId::from(generation),
+        profile: Some(profile),
+        parse_facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
     }
 }
