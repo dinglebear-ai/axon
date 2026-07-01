@@ -404,6 +404,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon-adapters"
+version = "6.2.0"
+
+[[package]]
 name = "axon-api"
 version = "6.2.0"
 dependencies = [
@@ -568,6 +572,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon-document"
+version = "6.2.0"
+
+[[package]]
+name = "axon-embedding"
+version = "6.2.0"
+
+[[package]]
+name = "axon-error"
+version = "6.2.0"
+
+[[package]]
 name = "axon-extract"
 version = "6.2.0"
 dependencies = [
@@ -591,6 +607,10 @@ dependencies = [
  "tracing",
  "url",
 ]
+
+[[package]]
+name = "axon-graph"
+version = "6.2.0"
 
 [[package]]
 name = "axon-ingest"
@@ -664,6 +684,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon-ledger"
+version = "6.2.0"
+
+[[package]]
+name = "axon-llm"
+version = "6.2.0"
+
+[[package]]
 name = "axon-mcp"
 version = "6.2.0"
 dependencies = [
@@ -693,6 +721,30 @@ dependencies = [
  "url",
  "uuid",
 ]
+
+[[package]]
+name = "axon-memory"
+version = "6.2.0"
+
+[[package]]
+name = "axon-observe"
+version = "6.2.0"
+
+[[package]]
+name = "axon-parse"
+version = "6.2.0"
+
+[[package]]
+name = "axon-prune"
+version = "6.2.0"
+
+[[package]]
+name = "axon-retrieval"
+version = "6.2.0"
+
+[[package]]
+name = "axon-route"
+version = "6.2.0"
 
 [[package]]
 name = "axon-services"
@@ -798,6 +850,10 @@ dependencies = [
  "url",
  "uuid",
 ]
+
+[[package]]
+name = "axon-vectors"
+version = "6.2.0"
 
 [[package]]
 name = "axon-web"
