@@ -40,6 +40,7 @@ resolver = "2"
 [workspace.package]
 version = "6.2.0"
 edition = "2024"
+rust-version = "1.94.0"
 authors = ["jmagar"]
 license = "MIT"
 

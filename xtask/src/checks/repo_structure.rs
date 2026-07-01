@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+const TARGET_RUST_VERSION: &str = "1.94.0";
+
 pub struct TargetCrate {
     pub name: &'static str,
     pub modules: &'static [&'static str],
@@ -230,6 +232,7 @@ pub fn check(root: &Path) -> anyhow::Result<()> {
 pub fn check_root(root: &Path) -> Result<(), String> {
     let mut errors = Vec::new();
     let cargo_toml = read(root.join("Cargo.toml"), &mut errors);
+    require_workspace_rust_version(&cargo_toml, &mut errors);
     let workspace_members = workspace_members(&cargo_toml, &mut errors);
 
     for krate in TARGET_CRATES {
@@ -259,13 +262,15 @@ fn check_target_crate(
 
     let crate_root = root.join("crates").join(krate.name);
     let crate_toml = read(crate_root.join("Cargo.toml"), errors);
+    require_target_manifest_metadata(krate.name, &crate_toml, errors);
     require_empty_dependency_tables(krate.name, &crate_toml, errors);
 
-    let lib_rs = read(crate_root.join("src/lib.rs"), errors);
-    require_modules(krate, &crate_root, &lib_rs, errors);
-    require_file(&crate_root.join("src/CLAUDE.md"), errors);
-    require_claude_symlink(&crate_root.join("src/AGENTS.md"), errors);
-    require_claude_symlink(&crate_root.join("src/GEMINI.md"), errors);
+    let src_dir = crate_root.join("src");
+    let lib_rs = read(src_dir.join("lib.rs"), errors);
+    require_modules(krate, &src_dir, &lib_rs, errors);
+    require_file(&src_dir.join("CLAUDE.md"), errors);
+    require_claude_symlink(&src_dir.join("AGENTS.md"), errors);
+    require_claude_symlink(&src_dir.join("GEMINI.md"), errors);
 }
 
 fn require_workspace_member(
@@ -281,21 +286,42 @@ fn require_workspace_member(
     }
 }
 
+fn require_workspace_rust_version(cargo_toml: &str, errors: &mut Vec<String>) {
+    let parsed = match toml::from_str::<toml::Table>(cargo_toml) {
+        Ok(parsed) => parsed,
+        Err(_) => return,
+    };
+
+    let actual = parsed
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("rust-version"))
+        .and_then(toml::Value::as_str);
+
+    if actual != Some(TARGET_RUST_VERSION) {
+        errors.push(format!(
+            "root Cargo.toml must set workspace.package.rust-version = {TARGET_RUST_VERSION:?}"
+        ));
+    }
+}
+
 fn require_file(path: &Path, errors: &mut Vec<String>) {
     if !path.is_file() {
         errors.push(format!("missing required file: {}", display(path)));
     }
 }
 
-fn require_modules(krate: &TargetCrate, crate_root: &Path, lib_rs: &str, errors: &mut Vec<String>) {
+fn require_modules(krate: &TargetCrate, src_dir: &Path, lib_rs: &str, errors: &mut Vec<String>) {
+    let declarations = lib_rs.lines().map(str::trim).collect::<BTreeSet<_>>();
+
     for module in krate.modules {
-        require_file(&crate_root.join("src").join(format!("{module}.rs")), errors);
+        require_file(&src_dir.join(format!("{module}.rs")), errors);
 
         let expected_decl = format!("pub mod {module};");
-        if !lib_rs.lines().any(|line| line.trim() == expected_decl) {
+        if !declarations.contains(expected_decl.as_str()) {
             errors.push(format!(
-                "{}/src/lib.rs is missing module declaration: {expected_decl}",
-                display(crate_root)
+                "{}/lib.rs is missing module declaration: {expected_decl}",
+                display(src_dir)
             ));
         }
     }
@@ -309,13 +335,37 @@ fn require_claude_symlink(path: &Path, errors: &mut Vec<String>) {
     }
 }
 
-fn require_empty_dependency_tables(krate: &str, cargo_toml: &str, errors: &mut Vec<String>) {
+fn require_target_manifest_metadata(krate: &str, cargo_toml: &str, errors: &mut Vec<String>) {
     let parsed = match toml::from_str::<toml::Table>(cargo_toml) {
         Ok(parsed) => parsed,
         Err(err) => {
             errors.push(format!("failed to parse crates/{krate}/Cargo.toml: {err}"));
             return;
         }
+    };
+
+    let Some(package) = parsed.get("package").and_then(toml::Value::as_table) else {
+        errors.push(format!("crates/{krate}/Cargo.toml is missing [package]"));
+        return;
+    };
+
+    match package.get("rust-version") {
+        Some(value)
+            if value
+                .as_table()
+                .and_then(|table| table.get("workspace"))
+                .and_then(toml::Value::as_bool)
+                == Some(true) => {}
+        _ => errors.push(format!(
+            "PR0 target crate {krate} must set rust-version.workspace = true (workspace rust-version {TARGET_RUST_VERSION})"
+        )),
+    }
+}
+
+fn require_empty_dependency_tables(krate: &str, cargo_toml: &str, errors: &mut Vec<String>) {
+    let parsed = match toml::from_str::<toml::Table>(cargo_toml) {
+        Ok(parsed) => parsed,
+        Err(_) => return,
     };
 
     for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
