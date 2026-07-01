@@ -1,31 +1,19 @@
-# axon-document
+# axon-document Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-document` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-document/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep document preparation, chunk routing, chunking profiles, prepared chunks,
+  and chunk metadata here.
+- Consume `SourceParseFacts`; do not implement parser ownership here.
+- Do not add embedding calls, vector writes, source acquisition, or transport
+  rendering.
+- Update `../../../docs/pipeline-unification/crates/axon-document/README.md`, `../../../docs/pipeline-unification/sources/chunking-contract.md`, and
+  `../../../docs/pipeline-unification/sources/metadata-payload.md` together.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `preparer`
-- `chunk_router`
-- `profile`
-- `prepared`
-- `chunk`
-- `metadata`
-- `code`
-- `markdown`
-- `transcript`
-- `session`
-- `schema`
-- `text`
-- `testing`
+- All adapters still emit `SourceDocument`; this crate emits `PreparedDocument`.
+- Chunk ids are stable for unchanged source items.
+- Unsupported content has a bounded fallback profile.

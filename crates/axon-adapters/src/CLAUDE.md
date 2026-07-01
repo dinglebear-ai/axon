@@ -1,34 +1,20 @@
-# axon-adapters
+# axon-adapters Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-adapters` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-adapters/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep source acquisition implementations and adapter capability declarations
+  here.
+- Every adapter must emit `SourceDocument` plus manifest/fetch metadata; never
+  `PreparedDocument` or vector points.
+- Update `../../../docs/pipeline-unification/crates/axon-adapters/README.md`, `../../../docs/pipeline-unification/sources/new-source-contract.md`,
+  `../../../docs/pipeline-unification/sources/adapter-scopes.md`, and source-specific metadata docs together.
+- Add fixtures for happy path, auth-required, degraded fetch, and failure.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `adapter`
-- `registry`
-- `capability`
-- `acquisition`
-- `manifest`
-- `web`
-- `local`
-- `git`
-- `registry_sources`
-- `feed`
-- `youtube`
-- `reddit`
-- `sessions`
-- `cli_tool`
-- `mcp_tool`
-- `testing`
+- New sources declare scopes, auth/secrets, metadata, parsers, graph facts, and
+  tests.
+- No direct Qdrant, embedding, retrieval, or transport behavior.
+- Acquisition errors carry fetch status and retry/degrade policy.

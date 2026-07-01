@@ -1,29 +1,19 @@
-# axon-memory
+# axon-memory Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-memory` crate docs.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-memory/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Keep durable memory lifecycle, recall, decay, reinforcement, review, context,
+  and graph links here.
+- Do not turn memory into a generic source adapter or vector-store owner.
+- Update `../../../docs/pipeline-unification/crates/axon-memory/README.md`, `../../../docs/pipeline-unification/runtime/memory-contract.md`,
+  `../../../docs/pipeline-unification/sources/source-graph.md`, and metadata/schema docs together.
+- Preserve memory links to sessions, repos, issues, artifacts, tools, skills,
+  and agents.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `store`
-- `sqlite`
-- `migration`
-- `record`
-- `link`
-- `decay`
-- `review`
-- `recall`
-- `context`
-- `graph`
-- `testing`
+- Supersession preserves history.
+- Decay/review policies are explicit and testable.
+- Recall output is bounded and cited.

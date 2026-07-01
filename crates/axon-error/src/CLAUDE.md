@@ -1,28 +1,20 @@
-# axon-error
+# axon-error Agent Instructions
 
-This crate is part of the issue #298 pipeline-unification target structure.
+This file is the agent-facing contract for the `axon-error` crate docs. Keep it
+short, operational, and distinct from `../../../docs/pipeline-unification/crates/axon-error/README.md`.
 
-## Ownership
+## When Editing
 
-- Owns the target boundaries documented in `docs/pipeline-unification/crates/axon-error/README.md`.
-- Contains marker modules only in PR0.
-- Must not own runtime behavior until the implementation PR that moves that boundary also moves its contract tests.
+- Preserve `axon-error` as the lowest shared error boundary.
+- Keep error taxonomy, retry, cooling, degradation, severity, and redacted
+  context here.
+- Do not add transport rendering, provider clients, stores, or job scheduling.
+- Update `../../../docs/pipeline-unification/crates/axon-error/README.md`, `../../../docs/pipeline-unification/runtime/error-handling.md`, and
+  `../../../docs/pipeline-unification/schemas/error-schema.md` together when error shapes change.
+- Add/adjust schema fixtures for every new `ErrorCode`, stage, or policy.
 
-## PR0 Rules
+## Review Checklist
 
-- Do not import from runtime crates.
-- Do not change public CLI, MCP, REST, job, vector, crawl, embed, ingest, ask, memory, or watch behavior from this crate.
-- Keep this crate compileable with workspace defaults and no external dependencies unless a later PR moves real behavior here.
-
-## Modules
-
-- `api_error`
-- `code`
-- `stage`
-- `severity`
-- `retry`
-- `degradation`
-- `cooling`
-- `context`
-- `conversion`
-- `testing`
+- No dependency on higher crates.
+- Every error has machine-readable stage, severity, retry, and degradation data.
+- Display/debug output is redaction-safe.
