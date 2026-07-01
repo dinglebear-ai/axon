@@ -5,6 +5,7 @@ use axon_source_ledger::{
 };
 use axon_vector::ops::qdrant::{
     CleanupSelectorV1, qdrant_delete_source_cleanup_selectors, qdrant_publish_source_generation,
+    qdrant_republish_committed_source_generation,
 };
 use axon_vector::ops::{LedgerPayload, embed_prepared_docs, prepare_path_native_docs};
 use sha2::{Digest, Sha256};
@@ -82,7 +83,7 @@ pub(super) async fn embed_and_commit_sync_crawl_manifest_to_ledger(
     }
     let mut active_generation = None;
     let result: Result<(), Box<dyn Error>> = async {
-        republish_committed_crawl_generation(cfg, &store, &source)
+        qdrant_republish_committed_source_generation(cfg, &store, &source)
             .await
             .map_err(|err| -> Box<dyn Error> { err.into() })?;
         let manifest_items = crawl_manifest_to_ledger_items(manifest_path).await?;
@@ -223,29 +224,16 @@ async fn embed_publish_and_cleanup_crawl_generation(
     }
     .await;
     stop_source_lease_heartbeat(Some(heartbeat)).await;
-    if let Err(err) = &result {
-        set_source_backoff(store, &source.source_id, "qdrant", &err.to_string()).await;
+    if let Err(err) = &result
+        && let Err(backoff_err) =
+            set_source_backoff(store, &source.source_id, "qdrant", &err.to_string()).await
+    {
+        return Err(format!(
+            "{err}; additionally failed to set source ledger backoff: {backoff_err}"
+        )
+        .into());
     }
     result
-}
-
-async fn republish_committed_crawl_generation(
-    cfg: &Config,
-    store: &SourceLedgerStore,
-    source: &SourceIdentity,
-) -> Result<(), anyhow::Error> {
-    let status = store.source_status(&source.source_id).await?;
-    if status.committed_generation > 0 {
-        qdrant_publish_source_generation(
-            cfg,
-            &source.source_id,
-            status.committed_generation,
-            source.index_version,
-            0,
-        )
-        .await?;
-    }
-    Ok(())
 }
 
 fn crawl_cleanup_debt(
@@ -324,20 +312,14 @@ async fn set_source_backoff(
     source_id: &str,
     dependency: &str,
     message: &str,
-) {
+) -> Result<(), Box<dyn Error>> {
     let until_ms = chrono::Utc::now()
         .timestamp_millis()
         .saturating_add(SOURCE_LEDGER_BACKOFF_MS);
-    if let Err(err) = store
+    store
         .set_backoff(source_id, until_ms, dependency, message)
         .await
-    {
-        tracing::warn!(
-            source_id,
-            error = %err,
-            "failed to set crawl source ledger backoff"
-        );
-    }
+        .map_err(|err| -> Box<dyn Error> { err.into() })
 }
 
 pub(crate) fn crawl_source_identity(start_url: &str, collection: &str) -> SourceIdentity {

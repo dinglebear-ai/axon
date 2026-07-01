@@ -16,9 +16,14 @@ pub mod sqlite;
 pub mod store;
 pub mod testing;
 pub mod transaction;
+pub mod validation;
 
 pub const CRATE_NAME: &str = "axon-ledger";
 
 #[cfg(test)]
 #[path = "store_tests.rs"]
 mod store_tests;
+
+#[cfg(test)]
+#[path = "sqlite_tests.rs"]
+mod sqlite_tests;

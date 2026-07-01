@@ -89,6 +89,7 @@ string_id!(VectorPointId);
 string_id!(ProviderId);
 string_id!(ArtifactId);
 string_id!(CleanupDebtId);
+string_id!(LeaseId);
 string_id!(WatchId);
 string_id!(MemoryId);
 string_id!(GraphNodeId);
