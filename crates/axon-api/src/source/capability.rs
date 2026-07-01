@@ -6,6 +6,7 @@ use super::common::*;
 use super::enums::*;
 use super::ids::*;
 use super::status::ApiError;
+use axon_error::ErrorStage;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -79,6 +80,65 @@ pub struct ProviderCapability {
     pub render: Option<RenderProviderCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential: Option<CredentialProviderCapability>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FakeProviderModeState {
+    Success,
+    Timeout,
+    RateLimited,
+    Fatal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FakeProviderCapabilityState {
+    pub health: HealthStatus,
+    pub cooldown_until: Option<Timestamp>,
+    pub last_error: Option<ApiError>,
+}
+
+pub fn fake_provider_capability_state(
+    mode: FakeProviderModeState,
+    provider_id: &str,
+    stage: ErrorStage,
+    label: &str,
+) -> FakeProviderCapabilityState {
+    FakeProviderCapabilityState {
+        health: fake_provider_mode_health(mode),
+        cooldown_until: (mode == FakeProviderModeState::RateLimited)
+            .then(|| Timestamp("2026-07-01T00:00:30Z".to_string())),
+        last_error: fake_provider_mode_error(mode, provider_id, stage, label),
+    }
+}
+
+pub fn fake_provider_mode_health(mode: FakeProviderModeState) -> HealthStatus {
+    match mode {
+        FakeProviderModeState::Success => HealthStatus::Healthy,
+        FakeProviderModeState::Timeout => HealthStatus::Degraded,
+        FakeProviderModeState::RateLimited => HealthStatus::Cooling,
+        FakeProviderModeState::Fatal => HealthStatus::Unavailable,
+    }
+}
+
+pub fn fake_provider_mode_error(
+    mode: FakeProviderModeState,
+    provider_id: &str,
+    stage: ErrorStage,
+    label: &str,
+) -> Option<ApiError> {
+    let (code, message) = match mode {
+        FakeProviderModeState::Success => return None,
+        FakeProviderModeState::Timeout => ("provider.timeout", format!("{label} timed out")),
+        FakeProviderModeState::RateLimited => {
+            ("provider.rate_limited", format!("{label} rate limited"))
+        }
+        FakeProviderModeState::Fatal => ("provider.fatal", format!("{label} failed fatally")),
+    };
+    let mut error = ApiError::new(code, stage, message).with_provider_id(provider_id);
+    if mode == FakeProviderModeState::Fatal {
+        error.retryable = false;
+    }
+    Some(error)
 }
 
 #[derive(
