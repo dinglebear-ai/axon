@@ -39,23 +39,43 @@ pub struct PreparedDocument {
     pub source_id: SourceId,
     pub source_item_key: SourceItemKey,
     pub generation: SourceGenerationId,
+    pub canonical_uri: String,
+    pub prepare_version: String,
+    pub chunking_profile: String,
+    pub chunking_method: String,
     pub chunks: Vec<PreparedChunk>,
     pub metadata: MetadataMap,
     pub cleanup_keys: Vec<CleanupKey>,
     pub graph_refs: Vec<GraphRef>,
+    pub parse_facts: Vec<SourceParseFacts>,
+    pub graph_candidates: Vec<GraphCandidate>,
+    pub warnings: Vec<SourceWarning>,
+    pub errors: Vec<SourceError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PreparedChunk {
     pub chunk_id: ChunkId,
+    pub chunk_key: String,
     pub document_id: DocumentId,
     pub chunk_index: u32,
-    pub chunk_text: String,
-    pub chunk_hash: String,
+    pub content: String,
+    pub content_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_text: Option<String>,
     pub chunk_locator: ChunkLocator,
     pub source_range: SourceRange,
     pub content_kind: ContentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub graph_refs: Vec<GraphRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_chunk_id: Option<ChunkId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_chunk_id: Option<ChunkId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_chunk_id: Option<ChunkId>,
     pub metadata: MetadataMap,
 }
 

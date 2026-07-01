@@ -276,6 +276,163 @@
         }
       ]
     },
+    "ChunkLocator": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/ChunkLocator_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "title": "ChunkLocator",
+      "type": "object"
+    },
+    "ChunkLocator_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "CleanupDebt": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -903,6 +1060,732 @@
     "DocumentStatus_SourceItemKey": {
       "type": "string"
     },
+    "EmbeddingBatch": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "$ref": "#/$defs/EmbeddingBatch_BatchId"
+        },
+        "instruction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EmbeddingBatch_EmbeddingInput"
+          },
+          "type": "array"
+        },
+        "job_id": {
+          "$ref": "#/$defs/EmbeddingBatch_JobId"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "model": {
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/EmbeddingBatch_JobPriority"
+        },
+        "provider_id": {
+          "$ref": "#/$defs/EmbeddingBatch_ProviderId"
+        }
+      },
+      "required": [
+        "batch_id",
+        "job_id",
+        "provider_id",
+        "model",
+        "items",
+        "priority",
+        "metadata"
+      ],
+      "title": "EmbeddingBatch",
+      "type": "object"
+    },
+    "EmbeddingBatch_BatchId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "EmbeddingBatch_ChunkId": {
+      "type": "string"
+    },
+    "EmbeddingBatch_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "EmbeddingBatch_EmbeddingInput": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/EmbeddingBatch_ChunkId"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/EmbeddingBatch_ContentKind"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "text",
+        "content_kind",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "EmbeddingBatch_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "EmbeddingBatch_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "EmbeddingBatch_ProviderId": {
+      "type": "string"
+    },
+    "EmbeddingInput": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/EmbeddingInput_ChunkId"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/EmbeddingInput_ContentKind"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "text",
+        "content_kind",
+        "metadata"
+      ],
+      "title": "EmbeddingInput",
+      "type": "object"
+    },
+    "EmbeddingInput_ChunkId": {
+      "type": "string"
+    },
+    "EmbeddingInput_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "GraphCandidate": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/GraphCandidate_GraphEdgeCandidate"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/GraphCandidate_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "item_canonical_uri": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/GraphCandidate_JobId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "merge_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/GraphCandidate_GraphNodeCandidate"
+          },
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/GraphCandidate_GraphCandidateProducer"
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphCandidate_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphCandidate_SourceItemKey"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "job_id",
+        "source_id",
+        "source_item_key",
+        "item_canonical_uri",
+        "kind",
+        "producer",
+        "nodes",
+        "edges",
+        "evidence",
+        "confidence",
+        "metadata"
+      ],
+      "title": "GraphCandidate",
+      "type": "object"
+    },
+    "GraphCandidate_ChunkId": {
+      "type": "string"
+    },
+    "GraphCandidate_DocumentId": {
+      "type": "string"
+    },
+    "GraphCandidate_GraphCandidateProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "parser": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "version"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_GraphEdgeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_kind": {
+          "type": "string"
+        },
+        "from_stable_key": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_kind",
+        "from_stable_key",
+        "to_stable_key",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphCandidate_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphCandidate_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_GraphNodeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "node_kind": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_kind",
+        "stable_key",
+        "label",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "GraphCandidate_SourceId": {
+      "type": "string"
+    },
+    "GraphCandidate_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphCandidate_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GraphEvidence": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEvidence_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEvidence_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEvidence_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphEvidence_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphEvidence_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "title": "GraphEvidence",
+      "type": "object"
+    },
+    "GraphEvidence_ChunkId": {
+      "type": "string"
+    },
+    "GraphEvidence_DocumentId": {
+      "type": "string"
+    },
+    "GraphEvidence_SourceId": {
+      "type": "string"
+    },
+    "GraphEvidence_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphEvidence_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "LeaseGuard": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1001,6 +1884,1277 @@
     "LeaseRequest_JobId": {
       "format": "uuid",
       "type": "string"
+    },
+    "PreparedChunk": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/PreparedChunk_ChunkId"
+        },
+        "chunk_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunk_key": {
+          "type": "string"
+        },
+        "chunk_locator": {
+          "$ref": "#/$defs/PreparedChunk_ChunkLocator"
+        },
+        "content": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/PreparedChunk_ContentKind"
+        },
+        "document_id": {
+          "$ref": "#/$defs/PreparedChunk_DocumentId"
+        },
+        "embedding_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/PreparedChunk_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "next_chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedChunk_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedChunk_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previous_chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedChunk_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_range": {
+          "$ref": "#/$defs/PreparedChunk_SourceRange"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "chunk_id",
+        "chunk_key",
+        "document_id",
+        "chunk_index",
+        "content",
+        "content_hash",
+        "chunk_locator",
+        "source_range",
+        "content_kind",
+        "graph_refs",
+        "metadata"
+      ],
+      "title": "PreparedChunk",
+      "type": "object"
+    },
+    "PreparedChunk_ChunkId": {
+      "type": "string"
+    },
+    "PreparedChunk_ChunkLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/PreparedChunk_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "type": "object"
+    },
+    "PreparedChunk_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "PreparedChunk_DocumentId": {
+      "type": "string"
+    },
+    "PreparedChunk_GraphEdgeId": {
+      "type": "string"
+    },
+    "PreparedChunk_GraphNodeId": {
+      "type": "string"
+    },
+    "PreparedChunk_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedChunk_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedChunk_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PreparedChunk_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PreparedDocument": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "chunking_method": {
+          "type": "string"
+        },
+        "chunking_profile": {
+          "type": "string"
+        },
+        "chunks": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_PreparedChunk"
+          },
+          "type": "array"
+        },
+        "cleanup_keys": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_CleanupKey"
+          },
+          "type": "array"
+        },
+        "document_id": {
+          "$ref": "#/$defs/PreparedDocument_DocumentId"
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_SourceError"
+          },
+          "type": "array"
+        },
+        "generation": {
+          "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+        },
+        "graph_candidates": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_GraphCandidate"
+          },
+          "type": "array"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parse_facts": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_SourceParseFacts"
+          },
+          "type": "array"
+        },
+        "prepare_version": {
+          "type": "string"
+        },
+        "source_id": {
+          "$ref": "#/$defs/PreparedDocument_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "generation",
+        "canonical_uri",
+        "prepare_version",
+        "chunking_profile",
+        "chunking_method",
+        "chunks",
+        "metadata",
+        "cleanup_keys",
+        "graph_refs",
+        "parse_facts",
+        "graph_candidates",
+        "warnings",
+        "errors"
+      ],
+      "title": "PreparedDocument",
+      "type": "object"
+    },
+    "PreparedDocument_ArtifactId": {
+      "type": "string"
+    },
+    "PreparedDocument_ChunkId": {
+      "type": "string"
+    },
+    "PreparedDocument_ChunkLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/PreparedDocument_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_CleanupDebtKind": {
+      "enum": [
+        "vector_delete",
+        "artifact_delete",
+        "ledger_prune",
+        "graph_prune",
+        "memory_prune",
+        "job_retention",
+        "cache_prune"
+      ],
+      "type": "string"
+    },
+    "PreparedDocument_CleanupKey": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PreparedDocument_CleanupDebtKind"
+        },
+        "selector": {
+          "$ref": "#/$defs/PreparedDocument_CleanupSelector"
+        }
+      },
+      "required": [
+        "kind",
+        "selector"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_CleanupSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+            },
+            "kind": {
+              "const": "source_item",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "document_id": {
+              "$ref": "#/$defs/PreparedDocument_DocumentId"
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_id": {
+              "$ref": "#/$defs/PreparedDocument_ChunkId"
+            },
+            "kind": {
+              "const": "chunk",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "chunk_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/PreparedDocument_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreparedDocument_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "PreparedDocument_DocumentId": {
+      "type": "string"
+    },
+    "PreparedDocument_GraphCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_GraphEdgeCandidate"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "item_canonical_uri": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/PreparedDocument_JobId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "merge_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_GraphNodeCandidate"
+          },
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/PreparedDocument_GraphCandidateProducer"
+        },
+        "source_id": {
+          "$ref": "#/$defs/PreparedDocument_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "job_id",
+        "source_id",
+        "source_item_key",
+        "item_canonical_uri",
+        "kind",
+        "producer",
+        "nodes",
+        "edges",
+        "evidence",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_GraphCandidateProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "parser": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "version"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_GraphEdgeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_kind": {
+          "type": "string"
+        },
+        "from_stable_key": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_kind",
+        "from_stable_key",
+        "to_stable_key",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_GraphEdgeId": {
+      "type": "string"
+    },
+    "PreparedDocument_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/PreparedDocument_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_GraphNodeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "node_kind": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_kind",
+        "stable_key",
+        "label",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_GraphNodeId": {
+      "type": "string"
+    },
+    "PreparedDocument_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PreparedDocument_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "PreparedDocument_PreparedChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/PreparedDocument_ChunkId"
+        },
+        "chunk_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunk_key": {
+          "type": "string"
+        },
+        "chunk_locator": {
+          "$ref": "#/$defs/PreparedDocument_ChunkLocator"
+        },
+        "content": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/PreparedDocument_ContentKind"
+        },
+        "document_id": {
+          "$ref": "#/$defs/PreparedDocument_DocumentId"
+        },
+        "embedding_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/PreparedDocument_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "next_chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previous_chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_range": {
+          "$ref": "#/$defs/PreparedDocument_SourceRange"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "chunk_id",
+        "chunk_key",
+        "document_id",
+        "chunk_index",
+        "content",
+        "content_hash",
+        "chunk_locator",
+        "source_range",
+        "content_kind",
+        "graph_refs",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_ProviderId": {
+      "type": "string"
+    },
+    "PreparedDocument_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "PreparedDocument_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/PreparedDocument_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_SourceGenerationId": {
+      "type": "string"
+    },
+    "PreparedDocument_SourceId": {
+      "type": "string"
+    },
+    "PreparedDocument_SourceItemKey": {
+      "type": "string"
+    },
+    "PreparedDocument_SourceParseFacts": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "$ref": "#/$defs/PreparedDocument_DocumentId"
+        },
+        "fact_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parser_id": {
+          "type": "string"
+        },
+        "parser_method": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+        },
+        "value": true
+      },
+      "required": [
+        "document_id",
+        "source_item_key",
+        "fact_kind",
+        "name",
+        "value",
+        "parser_id",
+        "parser_version",
+        "parser_method",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PreparedDocument_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PreparedDocument_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/PreparedDocument_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
     },
     "PublishGenerationRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1261,6 +3415,259 @@
       ],
       "type": "object"
     },
+    "SourceDocument": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceDocument_ArtifactId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "canonical_uri": {
+          "type": "string"
+        },
+        "chunk_hints": {
+          "items": {
+            "$ref": "#/$defs/SourceDocument_ChunkHint"
+          },
+          "type": "array"
+        },
+        "content": {
+          "$ref": "#/$defs/SourceDocument_ContentRef"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/SourceDocument_ContentKind"
+        },
+        "document_id": {
+          "$ref": "#/$defs/SourceDocument_DocumentId"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "mime_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parser_hints": {
+          "items": {
+            "$ref": "#/$defs/SourceDocument_ParserHint"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceDocument_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceDocument_SourceItemKey"
+        },
+        "structured_payload": true,
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "canonical_uri",
+        "content_kind",
+        "content",
+        "metadata",
+        "chunk_hints",
+        "parser_hints"
+      ],
+      "title": "SourceDocument",
+      "type": "object"
+    },
+    "SourceDocument_ArtifactId": {
+      "type": "string"
+    },
+    "SourceDocument_ChunkHint": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "profile": {
+          "$ref": "#/$defs/SourceDocument_ChunkProfile"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "reason",
+        "options"
+      ],
+      "type": "object"
+    },
+    "SourceDocument_ChunkProfile": {
+      "enum": [
+        "code_ast",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "session",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "SourceDocument_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "SourceDocument_ContentRef": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "inline_text",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bytes_base64": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "inline_bytes",
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bytes_base64",
+            "mime_type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/SourceDocument_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "integrity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "uri": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "uri"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SourceDocument_DocumentId": {
+      "type": "string"
+    },
+    "SourceDocument_ParserHint": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parser_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "parser_id",
+        "reason",
+        "options"
+      ],
+      "type": "object"
+    },
+    "SourceDocument_SourceId": {
+      "type": "string"
+    },
+    "SourceDocument_SourceItemKey": {
+      "type": "string"
+    },
     "SourceGeneration": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1435,6 +3842,192 @@
     },
     "SourceGeneration_SourceId": {
       "type": "string"
+    },
+    "SourceParseFacts": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "$ref": "#/$defs/SourceParseFacts_DocumentId"
+        },
+        "fact_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parser_id": {
+          "type": "string"
+        },
+        "parser_method": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceParseFacts_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceParseFacts_SourceItemKey"
+        },
+        "value": true
+      },
+      "required": [
+        "document_id",
+        "source_item_key",
+        "fact_kind",
+        "name",
+        "value",
+        "parser_id",
+        "parser_version",
+        "parser_method",
+        "confidence",
+        "metadata"
+      ],
+      "title": "SourceParseFacts",
+      "type": "object"
+    },
+    "SourceParseFacts_DocumentId": {
+      "type": "string"
+    },
+    "SourceParseFacts_SourceItemKey": {
+      "type": "string"
+    },
+    "SourceParseFacts_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "SourceRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2754,7 +5347,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:440df35a4770496537f5653b2db00303d4289aece42a0aa393b7a50a5f6dd985",
+        "checksum": "sha256:5e127dacb627d9c8072ed81bff9f22377ba476bb02e595a7927902b24c0ca653",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -2762,6 +5355,11 @@
         "checksum": "sha256:6c2988098d122010597c0b092d91543eb7250313cab9c0a6cfb0c00da56f8fc0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
+      },
+      {
+        "checksum": "sha256:d96090e8b5089f0d19f68e755eeee577e86961a46269ad98c7de1548ba0558f0",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/graph.rs"
       },
       {
         "checksum": "sha256:7021f1ca8e0f68587f4496bb8a0a79d50e0765dbf44ede057e897708d073a004",
@@ -2774,7 +5372,7 @@
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
       {
-        "checksum": "sha256:118e99fc369f22426f522c1add2f2a1ff1115311eb9472439bd751a3045eb4a7",
+        "checksum": "sha256:18aee671aff0ef6c181bb4898bd793576e3c757c8286060110ecd31d0027f90c",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/stage.rs"
       },
@@ -2787,6 +5385,11 @@
         "checksum": "sha256:3313680c7f0c4dfa5ffc3ebb33939c4659bf0b7465de5cdb83e858ee086da6b3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
+      },
+      {
+        "checksum": "sha256:a11af79bc5e6e71efef79e4ead255fe3f265e09ace9d0c26df269aeaa97b8645",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/vector.rs"
       },
       {
         "checksum": "sha256:3f04b3919509ee296cd5badafac5a9dcbc653215827e70f0d8bf98bbb0eb5f7e",
