@@ -5,7 +5,8 @@ use axon_api::source::{
 use axon_document::{ChunkingProfile, DocumentPreparer, PrepareSourceDocumentRequest};
 use serde_json::Value;
 
-use super::{PreparedDoc, SourceDocument, base_chunk_metadata, chunk_metadata};
+use super::support::{base_chunk_metadata, chunk_metadata};
+use super::{PreparedDoc, SourceDocument};
 
 pub(super) fn prepare_atomic_source(
     doc: SourceDocument,

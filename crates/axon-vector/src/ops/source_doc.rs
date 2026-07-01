@@ -10,12 +10,18 @@ use axon_core::logging::log_warn;
 mod document_bridge;
 mod ledger;
 mod support;
+#[cfg(test)]
+mod target_payload_fixture;
+
 use document_bridge::prepare_atomic_source;
 pub use ledger::LedgerPayload;
 use ledger::sanitize_doc_extra;
 use support::{
-    LineIndex, domain_for_origin, domain_from_web_url, file_locator, insert_missing_or_null,
+    LineIndex, base_chunk_metadata, chunk_metadata, domain_for_origin, domain_from_web_url,
+    file_locator, insert_missing_or_null,
 };
+#[cfg(test)]
+pub(in crate::ops) use target_payload_fixture::target_vector_payload_fixture_for_chunk;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceOrigin {
@@ -447,31 +453,6 @@ fn safe_markdown_chunks_with_offsets(text: &str) -> (Vec<(usize, usize, String)>
     } else {
         (chunk_markdown_with_offsets(text), false)
     }
-}
-
-fn base_chunk_metadata(
-    content_kind: &str,
-    locator: &str,
-    line_start: u32,
-    line_end: u32,
-    byte_start: usize,
-    byte_end: usize,
-) -> Map<String, Value> {
-    let mut range = Map::new();
-    range.insert("line_start".into(), line_start.into());
-    range.insert("line_end".into(), line_end.into());
-    range.insert("byte_start".into(), byte_start.into());
-    range.insert("byte_end".into(), byte_end.into());
-
-    let mut extra = Map::new();
-    extra.insert("chunk_content_kind".into(), content_kind.into());
-    extra.insert("chunk_locator".into(), locator.into());
-    extra.insert("source_range".into(), Value::Object(range));
-    extra
-}
-
-fn chunk_metadata(metadata: Map<String, Value>) -> Value {
-    Value::Object(metadata)
 }
 
 fn ensure_file_doc_extra(

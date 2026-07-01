@@ -10,6 +10,9 @@ use super::rel;
 use super::schema_json::{json_string, schema_defs};
 use super::source_input::{SourceInput, source_inputs};
 
+#[path = "vector_payload.rs"]
+mod vector_payload;
+
 pub trait FamilyGenerator {
     fn generate(&self, root: &Path) -> Result<Vec<SchemaArtifact>>;
 }
@@ -45,6 +48,7 @@ impl FamilyGenerator for Generator {
             SchemaFamily::Api => api_artifacts(root),
             SchemaFamily::Errors => error_artifacts(root),
             SchemaFamily::Adapters => super::adapters::adapter_artifacts(root),
+            SchemaFamily::VectorPayload => vector_payload::vector_payload_artifacts(root),
             family => skeleton_artifacts(root, family_specs::spec_for(family)),
         }
     }
@@ -84,91 +88,7 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-error/src/api_error.rs",
         ],
     )?;
-    let defs = schema_defs(
-        &[
-            (
-                "SourceRequest",
-                schemars::schema_for!(axon_api::source::SourceRequest).into(),
-            ),
-            (
-                "SourceResult",
-                schemars::schema_for!(axon_api::source::SourceResult).into(),
-            ),
-            (
-                "ResolvedSource",
-                schemars::schema_for!(axon_api::source::ResolvedSource).into(),
-            ),
-            (
-                "SourceGeneration",
-                schemars::schema_for!(axon_api::source::SourceGeneration).into(),
-            ),
-            (
-                "PublishGenerationRequest",
-                schemars::schema_for!(axon_api::source::PublishGenerationRequest).into(),
-            ),
-            (
-                "CleanupDebt",
-                schemars::schema_for!(axon_api::source::CleanupDebt).into(),
-            ),
-            (
-                "LeaseRequest",
-                schemars::schema_for!(axon_api::source::LeaseRequest).into(),
-            ),
-            (
-                "LeaseGuard",
-                schemars::schema_for!(axon_api::source::LeaseGuard).into(),
-            ),
-            (
-                "CleanupSelector",
-                schemars::schema_for!(axon_api::source::CleanupSelector).into(),
-            ),
-            (
-                "DocumentStatus",
-                schemars::schema_for!(axon_api::source::DocumentStatus).into(),
-            ),
-            (
-                "SourceDocument",
-                schemars::schema_for!(axon_api::source::SourceDocument).into(),
-            ),
-            (
-                "PreparedDocument",
-                schemars::schema_for!(axon_api::source::PreparedDocument).into(),
-            ),
-            (
-                "PreparedChunk",
-                schemars::schema_for!(axon_api::source::PreparedChunk).into(),
-            ),
-            (
-                "ChunkLocator",
-                schemars::schema_for!(axon_api::source::ChunkLocator).into(),
-            ),
-            (
-                "SourceParseFacts",
-                schemars::schema_for!(axon_api::source::SourceParseFacts).into(),
-            ),
-            (
-                "GraphCandidate",
-                schemars::schema_for!(axon_api::source::GraphCandidate).into(),
-            ),
-            (
-                "GraphEvidence",
-                schemars::schema_for!(axon_api::source::GraphEvidence).into(),
-            ),
-            (
-                "EmbeddingBatch",
-                schemars::schema_for!(axon_api::source::EmbeddingBatch).into(),
-            ),
-            (
-                "EmbeddingInput",
-                schemars::schema_for!(axon_api::source::EmbeddingInput).into(),
-            ),
-            (
-                "ApiError",
-                schemars::schema_for!(axon_error::ApiError).into(),
-            ),
-        ],
-        Some(enum_defs("axon-api")),
-    );
+    let defs = schema_defs(&api_schema_defs(), Some(enum_defs("axon-api")));
     let schema = schema_bundle(
         "https://axon.local/schemas/api/schemas.schema.json",
         "AxonApiSchemas",
@@ -182,9 +102,177 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             rel("docs/reference/api/schemas.json"),
             json_string(&schema)?,
         ),
-        SchemaArtifact::new(rel("docs/reference/api/dto.md"), markdown("api", &inputs)),
+        SchemaArtifact::new(rel("docs/reference/api/dto.md"), api_markdown(&inputs)),
         SchemaArtifact::new(rel("docs/reference/api/enums.md"), enum_markdown()),
     ])
+}
+
+fn api_schema_defs() -> Vec<(&'static str, Value)> {
+    let mut defs = api_source_schema_defs();
+    defs.extend(api_vector_schema_defs());
+    defs.push((
+        "ApiError",
+        schemars::schema_for!(axon_error::ApiError).into(),
+    ));
+    defs
+}
+
+fn api_source_schema_defs() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "SourceRequest",
+            schemars::schema_for!(axon_api::source::SourceRequest).into(),
+        ),
+        (
+            "SourceResult",
+            schemars::schema_for!(axon_api::source::SourceResult).into(),
+        ),
+        (
+            "ResolvedSource",
+            schemars::schema_for!(axon_api::source::ResolvedSource).into(),
+        ),
+        (
+            "SourceGeneration",
+            schemars::schema_for!(axon_api::source::SourceGeneration).into(),
+        ),
+        (
+            "PublishGenerationRequest",
+            schemars::schema_for!(axon_api::source::PublishGenerationRequest).into(),
+        ),
+        (
+            "CleanupDebt",
+            schemars::schema_for!(axon_api::source::CleanupDebt).into(),
+        ),
+        (
+            "LeaseRequest",
+            schemars::schema_for!(axon_api::source::LeaseRequest).into(),
+        ),
+        (
+            "LeaseGuard",
+            schemars::schema_for!(axon_api::source::LeaseGuard).into(),
+        ),
+        (
+            "CleanupSelector",
+            schemars::schema_for!(axon_api::source::CleanupSelector).into(),
+        ),
+        (
+            "DocumentStatus",
+            schemars::schema_for!(axon_api::source::DocumentStatus).into(),
+        ),
+        (
+            "SourceDocument",
+            schemars::schema_for!(axon_api::source::SourceDocument).into(),
+        ),
+        (
+            "PreparedDocument",
+            schemars::schema_for!(axon_api::source::PreparedDocument).into(),
+        ),
+        (
+            "PreparedChunk",
+            schemars::schema_for!(axon_api::source::PreparedChunk).into(),
+        ),
+        (
+            "ChunkLocator",
+            schemars::schema_for!(axon_api::source::ChunkLocator).into(),
+        ),
+        (
+            "SourceParseFacts",
+            schemars::schema_for!(axon_api::source::SourceParseFacts).into(),
+        ),
+        (
+            "GraphCandidate",
+            schemars::schema_for!(axon_api::source::GraphCandidate).into(),
+        ),
+        (
+            "GraphEvidence",
+            schemars::schema_for!(axon_api::source::GraphEvidence).into(),
+        ),
+    ]
+}
+
+fn api_vector_schema_defs() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "EmbeddingBatch",
+            schemars::schema_for!(axon_api::source::EmbeddingBatch).into(),
+        ),
+        (
+            "EmbeddingInput",
+            schemars::schema_for!(axon_api::source::EmbeddingInput).into(),
+        ),
+        (
+            "EmbeddingResult",
+            schemars::schema_for!(axon_api::source::EmbeddingResult).into(),
+        ),
+        (
+            "EmbeddingVector",
+            schemars::schema_for!(axon_api::source::EmbeddingVector).into(),
+        ),
+        (
+            "ProviderUsage",
+            schemars::schema_for!(axon_api::source::ProviderUsage).into(),
+        ),
+        (
+            "VectorPointBatch",
+            schemars::schema_for!(axon_api::source::VectorPointBatch).into(),
+        ),
+        (
+            "VectorPoint",
+            schemars::schema_for!(axon_api::source::VectorPoint).into(),
+        ),
+        (
+            "SparseVector",
+            schemars::schema_for!(axon_api::source::SparseVector).into(),
+        ),
+        (
+            "PayloadIndexSpec",
+            schemars::schema_for!(axon_api::source::PayloadIndexSpec).into(),
+        ),
+        (
+            "CollectionSpec",
+            schemars::schema_for!(axon_api::source::CollectionSpec).into(),
+        ),
+        (
+            "VectorConfig",
+            schemars::schema_for!(axon_api::source::VectorConfig).into(),
+        ),
+        (
+            "SparseVectorConfig",
+            schemars::schema_for!(axon_api::source::SparseVectorConfig).into(),
+        ),
+        (
+            "VectorDeleteSelector",
+            schemars::schema_for!(axon_api::source::VectorDeleteSelector).into(),
+        ),
+        (
+            "VectorStoreDeleteResult",
+            schemars::schema_for!(axon_api::source::VectorStoreDeleteResult).into(),
+        ),
+        (
+            "VectorSearchRequest",
+            schemars::schema_for!(axon_api::source::VectorSearchRequest).into(),
+        ),
+        (
+            "VectorSearchResult",
+            schemars::schema_for!(axon_api::source::VectorSearchResult).into(),
+        ),
+        (
+            "VectorSearchMatch",
+            schemars::schema_for!(axon_api::source::VectorSearchMatch).into(),
+        ),
+        (
+            "PayloadFieldSchema",
+            schemars::schema_for!(axon_api::source::PayloadFieldSchema).into(),
+        ),
+        (
+            "VectorDistance",
+            schemars::schema_for!(axon_api::source::VectorDistance).into(),
+        ),
+        (
+            "SparseVectorModifier",
+            schemars::schema_for!(axon_api::source::SparseVectorModifier).into(),
+        ),
+    ]
 }
 
 fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
@@ -357,6 +445,33 @@ fn markdown(family: &str, inputs: &[SourceInput]) -> String {
     out.push_str("## Source Inputs\n\n| Path | SHA-256 |\n|---|---|\n");
     for input in inputs {
         out.push_str(&format!("| `{}` | `{}` |\n", input.path, input.checksum));
+    }
+    out
+}
+
+fn api_markdown(inputs: &[SourceInput]) -> String {
+    let mut out = markdown("api", inputs);
+    out.push_str("\n## DTO Coverage\n\n| DTO |\n|---|\n");
+    for dto in [
+        "SourceRequest",
+        "SourceResult",
+        "ResolvedSource",
+        "SourceGeneration",
+        "PreparedDocument",
+        "PreparedChunk",
+        "EmbeddingBatch",
+        "EmbeddingInput",
+        "EmbeddingResult",
+        "VectorPointBatch",
+        "VectorPoint",
+        "PayloadIndexSpec",
+        "CollectionSpec",
+        "VectorDeleteSelector",
+        "VectorSearchRequest",
+        "VectorSearchResult",
+        "VectorSearchMatch",
+    ] {
+        out.push_str(&format!("| `{dto}` |\n"));
     }
     out
 }

@@ -1,0 +1,38 @@
+{
+  "payload_contract_version": "2026-07-01",
+  "collection": "axon",
+  "source_family": "web",
+  "source_id": "src-web",
+  "source_generation": "gen_3",
+  "committed_generation": "gen_3",
+  "document_id": "doc-web",
+  "chunk_id": "chunk-web-1",
+  "chunk_text": "fixture chunk text",
+  "chunk_locator": {
+    "canonical_uri": "/home/jmagar/workspace/axon/src/lib.rs",
+    "path": "/home/jmagar/workspace/axon/src/lib.rs",
+    "heading_path": [],
+    "symbol": null,
+    "range": {
+      "line_start": 1,
+      "line_end": 2
+    }
+  },
+  "source_range": {
+    "selector": "#intro"
+  },
+  "visibility": "public",
+  "redaction_status": "clean",
+  "job_id": "00000000-0000-0000-0000-000000000002",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000042",
+  "document_status": "ready",
+  "embedding_model": "text-embedding-test",
+  "embedding_dimensions": 1024,
+  "embedding_provider": "tei",
+  "embedding_profile": "document",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "web_title": "Example Docs",
+  "web_domain": "example.com",
+  "web_status_code": 200,
+  "web_depth": 1
+}

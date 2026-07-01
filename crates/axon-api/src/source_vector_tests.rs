@@ -47,9 +47,10 @@ fn vector_delete_selector_round_trips_tagged_variants() {
         collection: "axon".to_string(),
         point_ids: vec![VectorPointId::from("point_1")],
     };
-    let filter = VectorDeleteSelector::Filter {
+    let canonical_uri = VectorDeleteSelector::CanonicalUri {
         collection: "axon".to_string(),
-        filter: json!({"must": [{"key": "source_id", "match": {"value": "src_local"}}]}),
+        canonical_uri: "https://example.com/docs".to_string(),
+        match_prefix: true,
     };
 
     assert_eq!(
@@ -62,9 +63,11 @@ fn vector_delete_selector_round_trips_tagged_variants() {
         points
     );
     assert_eq!(
-        serde_json::from_value::<VectorDeleteSelector>(serde_json::to_value(&filter).unwrap())
-            .unwrap(),
-        filter
+        serde_json::from_value::<VectorDeleteSelector>(
+            serde_json::to_value(&canonical_uri).unwrap()
+        )
+        .unwrap(),
+        canonical_uri
     );
 }
 

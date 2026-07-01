@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use fake::{FakeEmbeddingMode, FakeEmbeddingProvider};
 use provider::EmbeddingProvider;
-use reservation::{ProviderReservationConfig, ProviderReservationManager, ProviderReservations};
+use reservation::{ProviderReservationConfig, ProviderReservationManager};
+use std::time::Duration;
 
 fn batch(priority: JobPriority) -> EmbeddingBatch {
     EmbeddingBatch {
@@ -24,6 +25,96 @@ fn batch(priority: JobPriority) -> EmbeddingBatch {
     }
 }
 
+fn input(chunk_id: &str, text: &str, content_kind: ContentKind) -> EmbeddingInput {
+    EmbeddingInput {
+        chunk_id: ChunkId::new(chunk_id),
+        text: text.to_string(),
+        content_kind,
+        metadata: MetadataMap::new(),
+    }
+}
+
+#[test]
+fn batch_builder_rejects_empty_batches() {
+    let err = batch::EmbeddingBatchBuilder::new(
+        BatchId::new(Uuid::from_u128(10)),
+        JobId::new(Uuid::from_u128(11)),
+        ProviderId::new("fake-embedding"),
+        "fake-embedding",
+    )
+    .build()
+    .unwrap_err();
+
+    assert_eq!(err.code.to_string(), "embedding.batch_empty");
+}
+
+#[test]
+fn batch_builder_rejects_duplicate_chunk_ids() {
+    let err = batch::EmbeddingBatchBuilder::new(
+        BatchId::new(Uuid::from_u128(12)),
+        JobId::new(Uuid::from_u128(13)),
+        ProviderId::new("fake-embedding"),
+        "fake-embedding",
+    )
+    .push_input(input("chunk-a", "first", ContentKind::PlainText))
+    .push_input(input("chunk-a", "second", ContentKind::PlainText))
+    .build()
+    .unwrap_err();
+
+    assert_eq!(err.code.to_string(), "embedding.duplicate_chunk_id");
+    assert_eq!(err.chunk_id.as_deref(), Some("chunk-a"));
+}
+
+#[test]
+fn batch_builder_rejects_blank_embedding_text() {
+    let err = batch::EmbeddingBatchBuilder::new(
+        BatchId::new(Uuid::from_u128(14)),
+        JobId::new(Uuid::from_u128(15)),
+        ProviderId::new("fake-embedding"),
+        "fake-embedding",
+    )
+    .push_input(input("chunk-a", "  \n\t", ContentKind::Markdown))
+    .build()
+    .unwrap_err();
+
+    assert_eq!(err.code.to_string(), "embedding.blank_text");
+    assert_eq!(err.chunk_id.as_deref(), Some("chunk-a"));
+}
+
+#[test]
+fn batch_builder_accepts_mixed_content_kinds_and_preserves_order() {
+    let built = batch::EmbeddingBatchBuilder::new(
+        BatchId::new(Uuid::from_u128(16)),
+        JobId::new(Uuid::from_u128(17)),
+        ProviderId::new("fake-embedding"),
+        "fake-embedding",
+    )
+    .priority(JobPriority::Interactive)
+    .push_input(input("chunk-a", "plain", ContentKind::PlainText))
+    .push_input(input("chunk-b", "# markdown", ContentKind::Markdown))
+    .push_input(input("chunk-c", "fn main() {}", ContentKind::Code))
+    .build()
+    .unwrap();
+
+    let chunk_ids: Vec<_> = built
+        .items
+        .iter()
+        .map(|item| item.chunk_id.0.as_str())
+        .collect();
+    assert_eq!(chunk_ids, vec!["chunk-a", "chunk-b", "chunk-c"]);
+
+    let validation = batch::validate_batch(&built).unwrap();
+    assert_eq!(validation.item_count, 3);
+    assert_eq!(
+        validation.content_kinds,
+        vec![
+            ContentKind::PlainText,
+            ContentKind::Markdown,
+            ContentKind::Code
+        ]
+    );
+}
+
 #[tokio::test]
 async fn fake_embedding_provider_returns_deterministic_dimensioned_vectors() {
     let provider = FakeEmbeddingProvider::new("fake-embedding", 4);
@@ -40,6 +131,224 @@ async fn fake_embedding_provider_returns_deterministic_dimensioned_vectors() {
     assert_eq!(first.dimensions, 4);
     assert_eq!(first.vectors, second.vectors);
     assert_eq!(provider.calls().await.len(), 2);
+}
+
+#[tokio::test]
+async fn fake_embedding_provider_preserves_input_order() {
+    let provider = FakeEmbeddingProvider::new("fake-embedding", 2);
+    let batch = batch::EmbeddingBatchBuilder::new(
+        BatchId::new(Uuid::from_u128(20)),
+        JobId::new(Uuid::from_u128(21)),
+        ProviderId::new("fake-embedding"),
+        "fake-embedding",
+    )
+    .push_input(input("chunk-a", "first", ContentKind::PlainText))
+    .push_input(input("chunk-b", "second", ContentKind::PlainText))
+    .push_input(input("chunk-c", "third", ContentKind::PlainText))
+    .build()
+    .unwrap();
+
+    let result = provider.embed(batch).await.unwrap();
+    let chunk_ids: Vec<_> = result
+        .vectors
+        .iter()
+        .map(|vector| vector.chunk_id.0.as_str())
+        .collect();
+
+    assert_eq!(chunk_ids, vec!["chunk-a", "chunk-b", "chunk-c"]);
+}
+
+#[tokio::test]
+async fn fake_embedding_provider_rejects_zero_dimensions() {
+    let provider = FakeEmbeddingProvider::new("fake-embedding", 0);
+    let err = provider
+        .embed(batch(JobPriority::Background))
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code.to_string(), "provider.invalid_dimensions");
+}
+
+#[tokio::test]
+async fn fake_embedding_provider_rejects_raw_invalid_batches() {
+    let provider = FakeEmbeddingProvider::new("fake-embedding", 4);
+
+    let mut empty = batch(JobPriority::Background);
+    empty.items.clear();
+    let err = provider.embed(empty).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "embedding.batch_empty");
+
+    let mut blank = batch(JobPriority::Background);
+    blank.items[0].text = "  \n".to_string();
+    let err = provider.embed(blank).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "embedding.blank_text");
+
+    let mut duplicate = batch(JobPriority::Background);
+    duplicate.items.push(duplicate.items[0].clone());
+    let err = provider.embed(duplicate).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "embedding.duplicate_chunk_id");
+}
+
+#[tokio::test]
+async fn fake_embedding_provider_rejects_provider_and_model_mismatches() {
+    let provider = FakeEmbeddingProvider::new("fake-embedding", 4);
+
+    let mut wrong_provider = batch(JobPriority::Background);
+    wrong_provider.provider_id = ProviderId::new("other-provider");
+    let err = provider.embed(wrong_provider).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "provider.provider_mismatch");
+
+    let mut wrong_model = batch(JobPriority::Background);
+    wrong_model.model = "other-model".to_string();
+    let err = provider.embed(wrong_model).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "provider.model_mismatch");
+}
+
+#[tokio::test]
+async fn fake_embedding_provider_call_records_do_not_expose_mutable_internals() {
+    let provider = FakeEmbeddingProvider::new("fake-embedding", 4);
+
+    provider
+        .embed(batch(JobPriority::Background))
+        .await
+        .unwrap();
+
+    let mut calls = provider.calls().await;
+    calls.clear();
+
+    assert_eq!(provider.calls().await.len(), 1);
+}
+
+#[tokio::test]
+async fn fake_embedding_provider_determinism_uses_chunk_id_and_dimensions() {
+    let four_dims = FakeEmbeddingProvider::new("fake-embedding", 4)
+        .embed(batch(JobPriority::Background))
+        .await
+        .unwrap()
+        .vectors
+        .remove(0);
+    let same_four_dims = FakeEmbeddingProvider::new("fake-embedding", 4)
+        .embed(batch(JobPriority::Background))
+        .await
+        .unwrap()
+        .vectors
+        .remove(0);
+    let six_dims = FakeEmbeddingProvider::new("fake-embedding", 6)
+        .embed(batch(JobPriority::Background))
+        .await
+        .unwrap()
+        .vectors
+        .remove(0);
+
+    assert_eq!(four_dims.values, same_four_dims.values);
+    assert_ne!(four_dims.values, six_dims.values);
+    assert_eq!(six_dims.values.len(), 6);
+}
+
+#[tokio::test]
+async fn tei_adapter_config_is_reflected_in_capabilities_without_network_calls() {
+    let provider = tei::TeiEmbeddingProvider::new(tei::TeiEmbeddingConfig {
+        endpoint: "http://tei.local:8080".to_string(),
+        model: "qwen3-embedding".to_string(),
+        dimensions: 1024,
+        timeout: Duration::from_secs(30),
+        max_batch_inputs: 64,
+        max_input_tokens: 8192,
+        max_batch_tokens: 131_072,
+        instruction_support: InstructionSupport::QueryAndDocument,
+    });
+
+    assert_eq!(provider.config().endpoint, "http://tei.local:8080");
+    assert_eq!(provider.config().timeout, Duration::from_secs(30));
+    assert_eq!(provider.config().max_batch_inputs, 64);
+
+    let capability = provider.capabilities().await.unwrap();
+    let embedding = capability.embedding.unwrap();
+
+    assert_eq!(capability.provider_id, ProviderId::new("tei"));
+    assert_eq!(capability.health, HealthStatus::Unavailable);
+    assert_eq!(
+        capability.last_error.unwrap().code.to_string(),
+        "provider.not_wired"
+    );
+    assert_eq!(capability.reservation_state.available_units, 0);
+    assert_eq!(capability.limits.timeout_ms, Some(30_000));
+    assert_eq!(embedding.model_id, "qwen3-embedding");
+    assert_eq!(embedding.dimensions, 1024);
+    assert_eq!(embedding.batch_limits.max_items, 64);
+    assert_eq!(
+        embedding.instruction_support,
+        InstructionSupport::QueryAndDocument
+    );
+}
+
+#[tokio::test]
+async fn openai_compat_adapter_config_is_reflected_in_capabilities_without_network_calls() {
+    let provider =
+        openai_compat::OpenAiCompatEmbeddingProvider::new(openai_compat::OpenAiCompatConfig {
+            base_url: "https://llm.example.test/v1".to_string(),
+            model: "text-embedding-3-large".to_string(),
+            dimensions: 3072,
+            timeout: Duration::from_secs(45),
+            max_batch_inputs: 96,
+            max_input_tokens: 8191,
+            max_batch_tokens: 196_608,
+        });
+
+    assert_eq!(provider.config().base_url, "https://llm.example.test/v1");
+    assert_eq!(provider.config().timeout, Duration::from_secs(45));
+    assert_eq!(provider.config().max_batch_inputs, 96);
+
+    let capability = provider.capabilities().await.unwrap();
+    let embedding = capability.embedding.unwrap();
+
+    assert_eq!(capability.provider_id, ProviderId::new("openai-compat"));
+    assert_eq!(capability.health, HealthStatus::Unavailable);
+    assert_eq!(
+        capability.last_error.unwrap().code.to_string(),
+        "provider.not_wired"
+    );
+    assert_eq!(capability.reservation_state.available_units, 0);
+    assert_eq!(capability.limits.timeout_ms, Some(45_000));
+    assert_eq!(embedding.model_id, "text-embedding-3-large");
+    assert_eq!(embedding.dimensions, 3072);
+    assert_eq!(embedding.batch_limits.max_items, 96);
+    assert_eq!(embedding.max_batch_tokens, 196_608);
+}
+
+#[tokio::test]
+async fn adapter_shell_embed_returns_not_wired_error() {
+    let tei = tei::TeiEmbeddingProvider::new(tei::TeiEmbeddingConfig {
+        endpoint: "http://tei.local:8080".to_string(),
+        model: "qwen3-embedding".to_string(),
+        dimensions: 1024,
+        timeout: Duration::from_secs(30),
+        max_batch_inputs: 64,
+        max_input_tokens: 8192,
+        max_batch_tokens: 131_072,
+        instruction_support: InstructionSupport::QueryAndDocument,
+    });
+    let openai =
+        openai_compat::OpenAiCompatEmbeddingProvider::new(openai_compat::OpenAiCompatConfig {
+            base_url: "https://llm.example.test/v1".to_string(),
+            model: "text-embedding-3-large".to_string(),
+            dimensions: 3072,
+            timeout: Duration::from_secs(45),
+            max_batch_inputs: 96,
+            max_input_tokens: 8191,
+            max_batch_tokens: 196_608,
+        });
+
+    let tei_err = tei.embed(batch(JobPriority::Background)).await.unwrap_err();
+    let openai_err = openai
+        .embed(batch(JobPriority::Background))
+        .await
+        .unwrap_err();
+
+    assert_eq!(tei_err.code.to_string(), "provider.not_wired");
+    assert_eq!(tei_err.provider_id.as_deref(), Some("tei"));
+    assert_eq!(openai_err.code.to_string(), "provider.not_wired");
+    assert_eq!(openai_err.provider_id.as_deref(), Some("openai-compat"));
 }
 
 #[tokio::test]
@@ -183,44 +492,4 @@ async fn reservation_drop_releases_capacity_synchronously() {
         .reserve(JobPriority::Interactive, 1)
         .await
         .unwrap();
-}
-
-#[tokio::test]
-async fn compatibility_provider_reservations_keep_legacy_per_provider_api() {
-    let reservations = ProviderReservations::new(2, 1);
-
-    let held = reservations
-        .reserve(
-            ProviderId::new("fake-embedding"),
-            JobPriority::Interactive,
-            1,
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(held.provider_id(), &ProviderId::new("fake-embedding"));
-    assert_eq!(reservations.snapshot().await.active, 1);
-}
-
-#[tokio::test]
-async fn compatibility_provider_reservations_share_capacity_across_provider_ids() {
-    let reservations = ProviderReservations::new(2, 0);
-
-    let _first = reservations
-        .reserve(ProviderId::new("fake-a"), JobPriority::Interactive, 1)
-        .await
-        .unwrap();
-    let _second = reservations
-        .reserve(ProviderId::new("fake-b"), JobPriority::Interactive, 1)
-        .await
-        .unwrap();
-
-    let denied = reservations
-        .reserve(ProviderId::new("fake-c"), JobPriority::Interactive, 1)
-        .await
-        .unwrap_err();
-
-    assert_eq!(denied.code.to_string(), "provider.capacity_exhausted");
-    assert_eq!(denied.provider_id, Some("fake-c".to_string()));
-    assert_eq!(reservations.snapshot().await.available_units, 0);
 }

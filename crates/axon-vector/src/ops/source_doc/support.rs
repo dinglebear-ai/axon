@@ -29,6 +29,31 @@ pub(super) fn file_locator(path: &str, line_start: u32, line_end: u32) -> String
     }
 }
 
+pub(super) fn base_chunk_metadata(
+    content_kind: &str,
+    locator: &str,
+    line_start: u32,
+    line_end: u32,
+    byte_start: usize,
+    byte_end: usize,
+) -> Map<String, Value> {
+    let mut range = Map::new();
+    range.insert("line_start".into(), line_start.into());
+    range.insert("line_end".into(), line_end.into());
+    range.insert("byte_start".into(), byte_start.into());
+    range.insert("byte_end".into(), byte_end.into());
+
+    let mut extra = Map::new();
+    extra.insert("chunk_content_kind".into(), content_kind.into());
+    extra.insert("chunk_locator".into(), locator.into());
+    extra.insert("source_range".into(), Value::Object(range));
+    extra
+}
+
+pub(super) fn chunk_metadata(metadata: Map<String, Value>) -> Value {
+    Value::Object(metadata)
+}
+
 pub(super) struct LineIndex {
     text_len: usize,
     newline_offsets: Vec<usize>,
