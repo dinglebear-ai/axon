@@ -68,6 +68,108 @@ async fn failed_pending_generation_preserves_committed_baseline() {
 }
 
 #[tokio::test]
+async fn stale_generation_commit_cannot_publish_after_newer_generation_exists() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    store.ensure_source(&source).await.unwrap();
+
+    let generation_1 = store.begin_generation(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            generation_1,
+            ManifestItem::new("src/lib.rs", "hash-a", 10),
+        )
+        .await
+        .unwrap();
+    store
+        .commit_generation("source-a", generation_1)
+        .await
+        .unwrap();
+
+    let stale_generation = store.begin_generation(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            stale_generation,
+            ManifestItem::new("src/lib.rs", "hash-stale", 10),
+        )
+        .await
+        .unwrap();
+    let newer_generation = store.begin_generation(&source).await.unwrap();
+    store
+        .record_manifest_item(
+            "source-a",
+            newer_generation,
+            ManifestItem::new("src/lib.rs", "hash-newer", 10),
+        )
+        .await
+        .unwrap();
+    store
+        .commit_generation("source-a", newer_generation)
+        .await
+        .unwrap();
+
+    let err = store
+        .commit_generation("source-a", stale_generation)
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("stale"),
+        "stale generation should fail clearly: {err}"
+    );
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        newer_generation
+    );
+    let diff = store
+        .diff_manifest(
+            "source-a",
+            &[ManifestItem::new("src/lib.rs", "hash-newer", 10)],
+        )
+        .await
+        .unwrap();
+    assert_eq!(diff, Default::default());
+}
+
+#[tokio::test]
+async fn first_generation_commit_requires_manifest_state() {
+    let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+        .await
+        .unwrap();
+    let store = SourceLedgerStore::new(pool);
+    let source = SourceIdentity::new("source-a", SourceKind::LocalCode, "axon", 1);
+    store.ensure_source(&source).await.unwrap();
+    let generation = store.begin_generation(&source).await.unwrap();
+
+    let err = store
+        .commit_generation("source-a", generation)
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("manifest"),
+        "missing manifest should fail clearly: {err}"
+    );
+    assert_eq!(
+        store
+            .source_status("source-a")
+            .await
+            .unwrap()
+            .committed_generation,
+        0
+    );
+}
+
+#[tokio::test]
 async fn preflight_backoff_blocks_generation_allocation() {
     let pool = axon_jobs::store::open_sqlite_pool(":memory:")
         .await

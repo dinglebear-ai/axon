@@ -335,3 +335,22 @@ async fn fake_ledger_acquires_conflicts_reclaims_and_releases_leases() {
         .unwrap();
     assert!(reacquired.is_some());
 }
+
+#[tokio::test]
+async fn fake_ledger_same_owner_can_renew_lease() {
+    let ledger = FakeLedgerStore::new();
+    let first = ledger
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(0)))
+        .await
+        .unwrap()
+        .expect("first lease");
+
+    let renewed = ledger
+        .acquire_lease(lease_request("source:src_a:refresh", "owner-a", ts_at(10)))
+        .await
+        .unwrap()
+        .expect("same owner renewal");
+
+    assert_eq!(renewed.lease_id, first.lease_id);
+    assert!(renewed.expires_at.0 > first.expires_at.0);
+}

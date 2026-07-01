@@ -1,7 +1,13 @@
 use crate::{CleanupDebtItem, ManifestItem, SourceLedgerStore};
 use anyhow::Context;
-use sqlx::{QueryBuilder, Sqlite};
+use sqlx::{QueryBuilder, Row, Sqlite};
 use std::collections::BTreeSet;
+
+struct CommitState {
+    committed_generation: i64,
+    max_generation: i64,
+    lease_owner: Option<String>,
+}
 
 async fn prune_removed_items_in_tx(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
@@ -155,6 +161,16 @@ impl SourceLedgerStore {
         for debt in cleanup_debt {
             insert_cleanup_debt(&mut tx, source_id, debt, now_ms).await?;
         }
+        let state = self
+            .validate_generation_commit_in_tx(&mut tx, source_id, generation, Some(owner))
+            .await?;
+        ensure_generation_has_manifest_state_in_tx(
+            &mut tx,
+            source_id,
+            generation,
+            state.committed_generation,
+        )
+        .await?;
         prune_removed_items_in_tx(&mut tx, source_id, live_item_keys).await?;
         prune_replaced_items_in_tx(&mut tx, source_id, generation, changed_manifest).await?;
         commit_pending_generation_items_in_tx(&mut tx, source_id, generation, now_ms).await?;
@@ -236,6 +252,16 @@ impl SourceLedgerStore {
         owner: Option<&str>,
         now_ms: i64,
     ) -> anyhow::Result<()> {
+        let state = self
+            .validate_generation_commit_in_tx(tx, source_id, generation, owner)
+            .await?;
+        ensure_generation_has_manifest_state_in_tx(
+            tx,
+            source_id,
+            generation,
+            state.committed_generation,
+        )
+        .await?;
         sqlx::query(
             "DELETE FROM axon_source_manifest_items
              WHERE source_id = ? AND pending = 0 AND indexed_generation < ?",
@@ -248,6 +274,48 @@ impl SourceLedgerStore {
         commit_pending_generation_items_in_tx(tx, source_id, generation, now_ms).await?;
         self.commit_generation_metadata_in_tx(tx, source_id, generation, owner, now_ms)
             .await
+    }
+
+    async fn validate_generation_commit_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        source_id: &str,
+        generation: i64,
+        owner: Option<&str>,
+    ) -> anyhow::Result<CommitState> {
+        let row = sqlx::query(
+            "SELECT committed_generation, max_generation, lease_owner
+             FROM axon_source_sources
+             WHERE source_id = ?",
+        )
+        .bind(source_id)
+        .fetch_optional(tx.as_mut())
+        .await
+        .context("failed to read source generation state before commit")?
+        .ok_or_else(|| anyhow::anyhow!("source ledger source {source_id} does not exist"))?;
+
+        let state = CommitState {
+            committed_generation: row.try_get("committed_generation")?,
+            max_generation: row.try_get("max_generation")?,
+            lease_owner: row.try_get("lease_owner")?,
+        };
+
+        if let Some(owner) = owner {
+            if state.lease_owner.as_deref() != Some(owner) {
+                anyhow::bail!("source ledger lease for {source_id} was lost before commit");
+            }
+        }
+
+        let allows_implicit_generation = state.max_generation == state.committed_generation
+            && generation == state.committed_generation.saturating_add(1);
+        if state.max_generation != generation && !allows_implicit_generation {
+            anyhow::bail!(
+                "source ledger generation {generation} is stale for {source_id}; active generation is {}",
+                state.max_generation
+            );
+        }
+
+        Ok(state)
     }
 
     async fn commit_generation_metadata_in_tx(
@@ -268,6 +336,7 @@ impl SourceLedgerStore {
                  backoff_dependency = NULL,
                  updated_at_ms = ?
              WHERE source_id = ?
+               AND (max_generation = ? OR (max_generation = committed_generation AND committed_generation = ?))
                AND (? IS NULL OR lease_owner = ?)",
         )
         .bind(generation)
@@ -275,6 +344,8 @@ impl SourceLedgerStore {
         .bind(now_ms)
         .bind(now_ms)
         .bind(source_id)
+        .bind(generation)
+        .bind(generation.saturating_sub(1))
         .bind(owner)
         .bind(owner);
         let result = query
@@ -286,6 +357,33 @@ impl SourceLedgerStore {
         }
         Ok(())
     }
+}
+
+async fn ensure_generation_has_manifest_state_in_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    source_id: &str,
+    generation: i64,
+    committed_generation: i64,
+) -> anyhow::Result<()> {
+    if committed_generation != 0 {
+        return Ok(());
+    }
+    let pending_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM axon_source_manifest_items
+         WHERE source_id = ? AND indexed_generation = ? AND pending = 1",
+    )
+    .bind(source_id)
+    .bind(generation)
+    .fetch_one(tx.as_mut())
+    .await
+    .context("failed to verify first source generation manifest state")?;
+    if pending_count == 0 {
+        anyhow::bail!(
+            "source ledger first generation {generation} for {source_id} cannot commit without manifest state"
+        );
+    }
+    Ok(())
 }
 
 async fn insert_pending_manifest_item(
