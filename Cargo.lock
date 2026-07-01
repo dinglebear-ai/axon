@@ -8921,11 +8921,14 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axon-api",
+ "axon-error",
  "axon-web",
  "clap",
  "dotenvy",
  "regex",
  "reqwest 0.13.4",
+ "schemars",
  "semver",
  "serde",
  "serde_json",

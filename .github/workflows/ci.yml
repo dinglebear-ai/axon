@@ -754,6 +754,32 @@ jobs:
       - name: Enforce generated MCP schema docs are in sync
         run: python3 scripts/generate_mcp_schema_doc.py --check
 
+  schema-contract-sync:
+    name: schema-contract-sync
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            Cargo.toml
+            Cargo.lock
+            src
+            crates
+            xtask
+            docs
+            .github
+            scripts
+            config
+            vendor
+            .cargo
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - name: Enforce generated pipeline schema artifacts are in sync
+        run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- schemas generate --check
+
   rest-api-parity:
     name: rest-api-parity
     runs-on: ubuntu-latest
@@ -1649,6 +1675,7 @@ jobs:
       - shell-completions-smoke
       - web-panel
       - mcp-schema-doc-sync
+      - schema-contract-sync
       - rest-api-parity
       - mcp-oauth-smoke
       - advisory-lock-policy
@@ -1691,6 +1718,7 @@ jobs:
           require_success_or_skipped shell-completions-smoke "${{ needs.shell-completions-smoke.result }}"
           require_success_or_skipped web-panel "${{ needs.web-panel.result }}"
           require_success_or_skipped mcp-schema-doc-sync "${{ needs.mcp-schema-doc-sync.result }}"
+          require_success_or_skipped schema-contract-sync "${{ needs.schema-contract-sync.result }}"
           require_success_or_skipped rest-api-parity "${{ needs.rest-api-parity.result }}"
           require_success_or_skipped mcp-oauth-smoke "${{ needs.mcp-oauth-smoke.result }}"
           require_success_or_skipped advisory-lock-policy "${{ needs.advisory-lock-policy.result }}"

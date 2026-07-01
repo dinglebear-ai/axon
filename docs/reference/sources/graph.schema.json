@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "SchemaFamilyContract": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "graph"
+        },
+        "future_registry": {
+          "type": "string"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "skeleton"
+        }
+      },
+      "required": [
+        "family",
+        "status",
+        "owner_crates"
+      ],
+      "type": "object",
+      "x-axon": {
+        "replaced_by": "crate-owned registry generator in the matching implementation PR",
+        "skeleton": true
+      }
+    }
+  },
+  "$id": "https://axon.local/schemas/sources/graph.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon schema contract artifact.",
+  "title": "AxonGraphSchema",
+  "type": "object",
+  "x-axon": {
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas graph",
+    "owner_crates": [
+      "axon-graph",
+      "axon-parse"
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:783d1aa6349c1bbaaae418c8dfb089e96910722795dbe61f924dc2c34b28d125",
+        "kind": "rust_module",
+        "path": "crates/axon-graph/src/lib.rs"
+      },
+      {
+        "checksum": "sha256:0d6d2291576679e85aa3baa93d939a17a5f9050d5432f77a2e9dcfd2c8e69615",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/sources/source-graph.md"
+      }
+    ]
+  }
+}

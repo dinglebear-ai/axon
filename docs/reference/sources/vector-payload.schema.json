@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "SchemaFamilyContract": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "vector-payload"
+        },
+        "future_registry": {
+          "type": "string"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "skeleton"
+        }
+      },
+      "required": [
+        "family",
+        "status",
+        "owner_crates"
+      ],
+      "type": "object",
+      "x-axon": {
+        "replaced_by": "crate-owned registry generator in the matching implementation PR",
+        "skeleton": true
+      }
+    }
+  },
+  "$id": "https://axon.local/schemas/sources/vector-payload.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon schema contract artifact.",
+  "title": "AxonVectorPayloadSchema",
+  "type": "object",
+  "x-axon": {
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas vector-payload",
+    "owner_crates": [
+      "axon-vectors",
+      "axon-api"
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:710f871228dd3c5dbbba3007dbcdecf551f2ad460eb77f0ce68c2f80e07213a3",
+        "kind": "rust_module",
+        "path": "crates/axon-vectors/src/lib.rs"
+      },
+      {
+        "checksum": "sha256:ef84517d66acc0e35fe0b432df3cee52fc07e6643006003eca0ec0c29a5cde7f",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
+      }
+    ]
+  }
+}

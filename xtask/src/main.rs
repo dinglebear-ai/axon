@@ -48,6 +48,8 @@ enum Command {
     CheckAndroidApiContract,
     /// Run the path-aware local pre-push router.
     PrePush(pre_push::PrePushArgs),
+    /// Generate/check clean-break pipeline schema artifacts.
+    Schemas(schemas::SchemasArgs),
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
     CheckReleaseVersions {
         #[arg(long)]
@@ -134,6 +136,7 @@ fn main() -> Result<()> {
         Command::CheckOpenapiDrift => checks::openapi_drift::check(&root),
         Command::CheckAndroidApiContract => checks::android_api_contract::check(&root),
         Command::PrePush(args) => pre_push::run(&root, args),
+        Command::Schemas(args) => schemas::run(&root, args),
         Command::CheckReleaseVersions {
             base,
             head,
@@ -195,3 +198,4 @@ fn main() -> Result<()> {
 mod bench_embed;
 mod checks;
 mod pre_push;
+mod schemas;

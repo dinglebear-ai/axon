@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "SchemaFamilyContract": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "providers"
+        },
+        "future_registry": {
+          "type": "string"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "skeleton"
+        }
+      },
+      "required": [
+        "family",
+        "status",
+        "owner_crates"
+      ],
+      "type": "object",
+      "x-axon": {
+        "replaced_by": "crate-owned registry generator in the matching implementation PR",
+        "skeleton": true
+      }
+    }
+  },
+  "$id": "https://axon.local/schemas/runtime/provider-capabilities.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon schema contract artifact.",
+  "title": "AxonProviderCapabilitySchema",
+  "type": "object",
+  "x-axon": {
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas providers",
+    "owner_crates": [
+      "axon-api",
+      "axon-embedding",
+      "axon-llm"
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:fcc8a36a0baf86b69898c70f6816f66fb341dae752e47e07dcc4df953351e0c0",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/capability.rs"
+      },
+      {
+        "checksum": "sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/runtime/provider-contract.md"
+      }
+    ]
+  }
+}
