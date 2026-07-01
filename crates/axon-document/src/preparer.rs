@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
-    SourceRange,
+    Severity, SourceItemKey, SourceRange, SourceWarning,
 };
 
 use crate::chunk::DocumentChunk;
@@ -27,9 +27,19 @@ impl DocumentPreparer {
             .profile
             .map(Ok)
             .unwrap_or_else(|| self.router.route(&request.document))?;
-        let text = inline_text(&request.document.content)?;
-        let chunks = build_chunks(profile, text, request.document.structured_payload.as_ref());
-        let prepared_chunks = prepare_chunks(&request, profile, chunks);
+        let content = content_text(&request.document);
+        let effective_profile = content.force_profile.unwrap_or(profile);
+        let build = build_chunks(
+            effective_profile,
+            &content.text,
+            request.document.structured_payload.as_ref(),
+            &request.document.source_item_key,
+        );
+        let chunks = build.chunks;
+        let prepared_chunks = prepare_chunks(&request, effective_profile, chunks);
+        let mut warnings = request.warnings;
+        warnings.extend(content.warnings);
+        warnings.extend(build.warnings);
         let document = PreparedDocument {
             document_id: request.document.document_id,
             source_id: request.document.source_id,
@@ -37,15 +47,15 @@ impl DocumentPreparer {
             generation: request.generation,
             canonical_uri: request.document.canonical_uri,
             prepare_version: "axon-document-pr8".to_string(),
-            chunking_profile: profile.as_str().to_string(),
-            chunking_method: profile.as_str().to_string(),
+            chunking_profile: effective_profile.as_str().to_string(),
+            chunking_method: effective_profile.as_str().to_string(),
             chunks: prepared_chunks,
             metadata: request.document.metadata,
             cleanup_keys: Vec::<CleanupKey>::new(),
             graph_refs: Vec::new(),
             parse_facts: request.parse_facts,
             graph_candidates: request.graph_candidates,
-            warnings: request.warnings,
+            warnings,
             errors: request.errors,
         };
         validate_prepared_document(&document)?;
@@ -53,21 +63,70 @@ impl DocumentPreparer {
     }
 }
 
-fn inline_text(content: &ContentRef) -> Result<&str, String> {
-    match content {
-        ContentRef::InlineText { text } => Ok(text),
-        ContentRef::InlineBytes { .. } => Err("inline bytes are not prepared yet".to_string()),
-        ContentRef::Artifact { .. } => Err("artifact content is not prepared yet".to_string()),
-        ContentRef::External { .. } => Err("external content is not prepared yet".to_string()),
+struct PreparedContentText {
+    text: String,
+    warnings: Vec<SourceWarning>,
+    force_profile: Option<ChunkingProfile>,
+}
+
+fn content_text(document: &axon_api::source::SourceDocument) -> PreparedContentText {
+    match &document.content {
+        ContentRef::InlineText { text } => PreparedContentText {
+            text: text.clone(),
+            warnings: Vec::new(),
+            force_profile: None,
+        },
+        ContentRef::InlineBytes {
+            bytes_base64,
+            mime_type,
+        } => PreparedContentText {
+            text: format!(
+                "inline bytes omitted from text preparation\nmime_type: {mime_type}\nencoded_bytes: {}",
+                bytes_base64.len()
+            ),
+            warnings: vec![warning(
+                "document.content.inline_bytes_fallback",
+                "inline bytes prepared as bounded metadata text",
+                &document.source_item_key,
+            )],
+            force_profile: Some(ChunkingProfile::AtomicMetadata),
+        },
+        ContentRef::Artifact { artifact_id } => PreparedContentText {
+            text: format!("artifact content reference\nartifact_id: {}", artifact_id.0),
+            warnings: vec![warning(
+                "document.content.artifact_fallback",
+                "artifact content prepared as metadata reference",
+                &document.source_item_key,
+            )],
+            force_profile: Some(ChunkingProfile::AtomicMetadata),
+        },
+        ContentRef::External { uri, integrity } => PreparedContentText {
+            text: format!(
+                "external content reference\nuri: {uri}\nintegrity: {}",
+                integrity.as_deref().unwrap_or("unknown")
+            ),
+            warnings: vec![warning(
+                "document.content.external_fallback",
+                "external content prepared as metadata reference",
+                &document.source_item_key,
+            )],
+            force_profile: Some(ChunkingProfile::AtomicMetadata),
+        },
     }
+}
+
+struct ChunkBuild {
+    chunks: Vec<DocumentChunk>,
+    warnings: Vec<SourceWarning>,
 }
 
 fn build_chunks(
     profile: ChunkingProfile,
     text: &str,
     structured_payload: Option<&serde_json::Value>,
-) -> Vec<DocumentChunk> {
-    match profile {
+    source_item_key: &SourceItemKey,
+) -> ChunkBuild {
+    let chunks = match profile {
         ChunkingProfile::CodeSymbol => code::code_symbols(text),
         ChunkingProfile::CodeManifest => code::code_manifest(text),
         ChunkingProfile::MarkdownSections => markdown::markdown_sections(text),
@@ -75,12 +134,75 @@ fn build_chunks(
         ChunkingProfile::PlainTextWindows => text::plain_text_windows(text),
         ChunkingProfile::TranscriptSegments => transcript::transcript_segments(text),
         ChunkingProfile::StructuredRecords => {
-            metadata::structured_records(text, structured_payload)
+            return structured_or_fallback(
+                profile,
+                metadata::structured_records(text, structured_payload),
+                text,
+                source_item_key,
+            );
         }
-        ChunkingProfile::ApiSchema => schema::api_schema(text, structured_payload),
+        ChunkingProfile::ApiSchema => {
+            return structured_or_fallback(
+                profile,
+                schema::api_schema(text, structured_payload),
+                text,
+                source_item_key,
+            );
+        }
         ChunkingProfile::ToolOutput => transcript::split_on_nonempty_lines(text, "tool_output"),
         ChunkingProfile::SessionTurns => session::session_turns(text),
         ChunkingProfile::AtomicMetadata => metadata::atomic_metadata(text),
+    };
+    ChunkBuild {
+        chunks,
+        warnings: Vec::new(),
+    }
+}
+
+fn structured_or_fallback(
+    profile: ChunkingProfile,
+    result: Result<Vec<DocumentChunk>, String>,
+    text: &str,
+    source_item_key: &SourceItemKey,
+) -> ChunkBuild {
+    match result {
+        Ok(chunks) => ChunkBuild {
+            chunks,
+            warnings: Vec::new(),
+        },
+        Err(error) => ChunkBuild {
+            chunks: metadata::atomic_metadata(text)
+                .into_iter()
+                .map(|chunk| {
+                    chunk
+                        .with_metadata("chunking_fallback", "atomic_text".into())
+                        .with_metadata("chunking_fallback_from", profile.as_str().into())
+                        .with_metadata("structured_parse_error", error.clone().into())
+                })
+                .collect(),
+            warnings: vec![warning(
+                "chunk.structured_parse_failed",
+                format!(
+                    "structured chunk parse failed for {}: {error}",
+                    profile.as_str()
+                ),
+                source_item_key,
+            )],
+        },
+    }
+}
+
+fn warning(
+    code: impl Into<String>,
+    message: impl Into<String>,
+    source_item_key: &SourceItemKey,
+) -> SourceWarning {
+    SourceWarning {
+        code: code.into(),
+        severity: Severity::Warning,
+        message: message.into(),
+        source_item_key: Some(source_item_key.clone()),
+        retryable: false,
     }
 }
 

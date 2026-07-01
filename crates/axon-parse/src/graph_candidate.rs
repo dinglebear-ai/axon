@@ -22,13 +22,13 @@ pub fn graph_candidate(
         input.document.source_id.0, input.document.source_item_key.0, input.document.canonical_uri
     );
     let file_key = format!("source_item:{}", stable_token(&source_scope));
-    let item_identity = format!("{source_scope}|kind={kind}|name={name}|line={line:?}");
+    let item_identity = format!("{source_scope}|kind={kind}|name={name}");
     let item_token = stable_token(&item_identity);
     let candidate_id = format!("cand_{kind}_{item_token}");
     let item_key = format!("{kind}:{item_token}");
     let evidence_id = format!(
         "ev_{}",
-        stable_token(&format!("{candidate_id}|quote={quote:?}"))
+        stable_token(&format!("{candidate_id}|line={line:?}|quote={quote:?}"))
     );
 
     let mut evidence_metadata = MetadataMap::new();

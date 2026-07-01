@@ -4,10 +4,8 @@ use crate::facts::inline_text;
 use crate::manifest::Dep;
 use crate::parser::ParseInput;
 
-pub(super) fn deps(input: &ParseInput) -> Vec<Dep> {
-    let Ok(root) = serde_json::from_str::<Value>(inline_text(input)) else {
-        return Vec::new();
-    };
+pub(super) fn deps(input: &ParseInput) -> Result<Vec<Dep>, String> {
+    let root = serde_json::from_str::<Value>(inline_text(input)).map_err(|err| err.to_string())?;
     let mut deps = Vec::new();
     for scope in ["dependencies", "devDependencies", "peerDependencies"] {
         let Some(obj) = root.get(scope).and_then(Value::as_object) else {
@@ -25,5 +23,5 @@ pub(super) fn deps(input: &ParseInput) -> Vec<Dep> {
             });
         }
     }
-    deps
+    Ok(deps)
 }

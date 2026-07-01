@@ -1,7 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::manifest::dependency_facts;
+use crate::manifest::{dependency_facts, dependency_parse_result};
 use crate::parser::ParseInput;
 
 fn input(path: &str, kind: ContentKind, text: &str) -> ParseInput {
@@ -102,4 +102,18 @@ fn extracts_heuristic_yaml_iac_resources_and_graph_candidates() {
             candidate.kind == "iac_resource" && !candidate.evidence.is_empty()
         })
     );
+}
+
+#[test]
+fn malformed_package_json_degrades_with_warning() {
+    let result = dependency_parse_result(&input(
+        "package.json",
+        ContentKind::Json,
+        r#"{"dependencies":{"react":"19"}"#,
+    ));
+
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert!(result.facts.is_empty());
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(result.warnings[0].code, "parse.manifest.invalid");
 }

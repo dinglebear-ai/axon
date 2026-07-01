@@ -3,6 +3,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use axon_api::source::ChunkProfile;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChunkingProfile {
     CodeSymbol,
@@ -16,6 +18,24 @@ pub enum ChunkingProfile {
     ToolOutput,
     SessionTurns,
     AtomicMetadata,
+}
+
+impl From<ChunkProfile> for ChunkingProfile {
+    fn from(value: ChunkProfile) -> Self {
+        match value {
+            ChunkProfile::CodeSymbol => Self::CodeSymbol,
+            ChunkProfile::CodeManifest => Self::CodeManifest,
+            ChunkProfile::MarkdownSections => Self::MarkdownSections,
+            ChunkProfile::HtmlArticle => Self::HtmlArticle,
+            ChunkProfile::PlainTextWindows => Self::PlainTextWindows,
+            ChunkProfile::TranscriptSegments => Self::TranscriptSegments,
+            ChunkProfile::StructuredRecords => Self::StructuredRecords,
+            ChunkProfile::ApiSchema => Self::ApiSchema,
+            ChunkProfile::ToolOutput => Self::ToolOutput,
+            ChunkProfile::SessionTurns => Self::SessionTurns,
+            ChunkProfile::AtomicMetadata => Self::AtomicMetadata,
+        }
+    }
 }
 
 impl ChunkingProfile {

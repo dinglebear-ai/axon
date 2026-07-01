@@ -6,7 +6,7 @@ use crate::text::{atomic_text, source_range};
 pub(crate) fn structured_records(
     text: &str,
     structured_payload: Option<&serde_json::Value>,
-) -> Vec<DocumentChunk> {
+) -> Result<Vec<DocumentChunk>, String> {
     if let Some(value) = structured_payload {
         let mut chunks = Vec::new();
         if !text.trim().is_empty() {
@@ -17,11 +17,11 @@ pub(crate) fn structured_records(
             }));
         }
         chunks.extend(chunks_from_json_value(value));
-        return chunks;
+        return Ok(chunks);
     }
     serde_json::from_str::<serde_json::Value>(text)
         .map(|value| chunks_from_json_value(&value))
-        .unwrap_or_else(|_| atomic_text(text))
+        .map_err(|error| error.to_string())
 }
 
 pub(crate) fn atomic_metadata(text: &str) -> Vec<DocumentChunk> {

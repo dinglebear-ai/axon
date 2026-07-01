@@ -230,6 +230,60 @@ fn preparer_carries_parse_artifacts_to_prepared_document() {
     assert_eq!(prepared.errors, vec![error]);
 }
 
+#[test]
+fn malformed_structured_text_degrades_with_fallback_warning() {
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Json,
+            "{\"broken\":",
+            "gen-structured",
+            ChunkingProfile::StructuredRecords,
+        ))
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunks.len(), 1);
+    assert_eq!(
+        prepared.chunks[0].metadata["chunking_fallback"],
+        "atomic_text"
+    );
+    assert_eq!(prepared.warnings.len(), 1);
+    assert_eq!(prepared.warnings[0].code, "chunk.structured_parse_failed");
+}
+
+#[test]
+fn non_inline_content_degrades_to_atomic_metadata_chunk() {
+    let mut doc = source_doc(ContentKind::BinaryMetadata, "");
+    doc.content = ContentRef::External {
+        uri: "artifact://source/raw".to_string(),
+        integrity: Some("sha256:abc".to_string()),
+    };
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-external"),
+            profile: Some(ChunkingProfile::PlainTextWindows),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_profile, "atomic_metadata");
+    assert_eq!(prepared.chunks.len(), 1);
+    assert!(
+        prepared.chunks[0]
+            .content
+            .contains("external content reference")
+    );
+    assert_eq!(
+        prepared.warnings[0].code,
+        "document.content.external_fallback"
+    );
+}
+
 fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
     SourceDocument {
         document_id: DocumentId::from("doc-test"),

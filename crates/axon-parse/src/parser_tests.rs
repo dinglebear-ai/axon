@@ -1,6 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
+use crate::builtins::production_registry;
 use crate::parser::{ParseInput, ParserCapability, stage_header};
 use crate::registry::ParserRegistry;
 use crate::testing::{FakeParser, FakeParserRegistry};
@@ -199,6 +200,52 @@ fn unsupported_input_degrades_to_warning_result() {
     assert_eq!(result.warnings[0].code, "parse.unsupported");
     assert!(result.facts.is_empty());
     assert!(result.graph_candidates.is_empty());
+}
+
+#[test]
+fn requested_missing_parser_degrades_without_fallback() {
+    let registry = ParserRegistry::new()
+        .with_parser(parser("fallback").with_content_kind(ContentKind::Markdown));
+    let mut request = input(source_doc(
+        ContentKind::Markdown,
+        Some("README.md"),
+        None,
+        "# Readme",
+    ));
+    request.requested_parser = Some("missing_parser".to_string());
+
+    let result = registry.parse(&request);
+
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.parser_id, "missing_parser");
+    assert_eq!(
+        result.warnings[0].code,
+        "parse.requested_parser_unavailable"
+    );
+    assert!(result.facts.is_empty());
+}
+
+#[test]
+fn production_registry_runs_real_parser_families() {
+    let registry = production_registry();
+
+    let manifest = registry.parse(&input(source_doc(
+        ContentKind::Json,
+        Some("package.json"),
+        None,
+        r#"{"dependencies":{"vite":"7"}}"#,
+    )));
+    assert_eq!(manifest.parser_id, "manifest");
+    assert_eq!(manifest.facts[0].name, "vite");
+
+    let markdown = registry.parse(&input(source_doc(
+        ContentKind::Markdown,
+        Some("README.md"),
+        None,
+        "# Readme",
+    )));
+    assert_eq!(markdown.parser_id, "markdown_headings");
+    assert_eq!(markdown.facts[0].fact_kind, "markdown_heading");
 }
 
 #[test]

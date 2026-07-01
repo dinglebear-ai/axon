@@ -202,14 +202,17 @@ pub struct ParserHint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChunkProfile {
-    CodeAst,
-    Markdown,
-    Html,
-    PlainText,
-    Transcript,
-    Structured,
-    Session,
-    BinaryMetadata,
+    CodeSymbol,
+    CodeManifest,
+    MarkdownSections,
+    HtmlArticle,
+    PlainTextWindows,
+    TranscriptSegments,
+    StructuredRecords,
+    ApiSchema,
+    ToolOutput,
+    SessionTurns,
+    AtomicMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

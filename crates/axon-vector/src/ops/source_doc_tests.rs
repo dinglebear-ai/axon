@@ -245,6 +245,21 @@ async fn memory_source_is_atomic_and_preserves_point_id() {
     assert_eq!(prepared.chunks, vec!["Important memory text".to_string()]);
     assert_eq!(prepared.chunk_point_ids, vec![point_id]);
     assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "plain_text");
+    assert!(
+        prepared.chunk_extra[0]["prepared_chunk_id"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("chunk_"))
+    );
+    assert!(
+        prepared.chunk_extra[0]["prepared_chunk_key"]
+            .as_str()
+            .is_some_and(|value| value.contains("atomic_metadata"))
+    );
+    assert!(
+        prepared.chunk_extra[0]["prepared_content_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("fnv1a64:"))
+    );
     assert_eq!(
         prepared.chunk_extra[0]["chunk_locator"],
         format!("{url}#chunk-0")

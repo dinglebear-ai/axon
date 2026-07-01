@@ -1,9 +1,11 @@
-use axon_api::source::{GraphCandidate, SourceParseFacts};
+use axon_api::source::{
+    GraphCandidate, LifecycleStatus, Severity, SourceParseFacts, SourceWarning,
+};
 use serde_json::json;
 
 use crate::facts::source_fact;
 use crate::graph_candidate::graph_candidate;
-use crate::parser::ParseInput;
+use crate::parser::{ParseInput, ParseResult, stage_header};
 
 pub const MODULE_NAME: &str = "manifest";
 
@@ -20,22 +22,47 @@ mod python;
 #[path = "manifest/yaml_iac.rs"]
 mod yaml_iac;
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ManifestParseItems {
+    pub facts: Vec<SourceParseFacts>,
+    pub graph_candidates: Vec<GraphCandidate>,
+    pub warnings: Vec<SourceWarning>,
+}
+
+#[cfg(test)]
 pub fn dependency_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
+    let parsed = dependency_parse_items(input);
+    (parsed.facts, parsed.graph_candidates)
+}
+
+pub fn dependency_parse_items(input: &ParseInput) -> ManifestParseItems {
     let path = input.document.path.as_deref().unwrap_or_default();
+    let mut warnings = Vec::new();
     let deps = if path.ends_with("Cargo.toml") {
-        cargo::deps(input)
+        Ok(cargo::deps(input))
     } else if path.ends_with("package.json") {
         npm::deps(input)
     } else if path.ends_with("requirements.txt") {
-        python::requirements_deps(input)
+        Ok(python::requirements_deps(input))
     } else if path.ends_with("pyproject.toml") {
-        python::pyproject_deps(input)
+        Ok(python::pyproject_deps(input))
     } else if path.ends_with("go.mod") {
-        go::deps(input)
+        Ok(go::deps(input))
     } else if path.ends_with("pom.xml") {
-        maven::deps(input)
+        Ok(maven::deps(input))
     } else {
-        Vec::new()
+        Ok(Vec::new())
+    };
+    let deps = match deps {
+        Ok(deps) => deps,
+        Err(error) => {
+            warnings.push(warning(
+                input,
+                "parse.manifest.invalid",
+                format!("manifest parse failed for {path}: {error}"),
+            ));
+            Vec::new()
+        }
     };
 
     let mut facts = Vec::new();
@@ -86,7 +113,30 @@ pub fn dependency_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<Graph
             Some(resource.quote),
         ));
     }
-    (facts, candidates)
+    ManifestParseItems {
+        facts,
+        graph_candidates: candidates,
+        warnings,
+    }
+}
+
+pub fn dependency_parse_result(input: &ParseInput) -> ParseResult {
+    let parsed = dependency_parse_items(input);
+    let status = if parsed.warnings.is_empty() {
+        LifecycleStatus::Completed
+    } else {
+        LifecycleStatus::CompletedDegraded
+    };
+    ParseResult {
+        header: stage_header(input, status, parsed.warnings.clone(), None),
+        document_id: input.document.document_id.clone(),
+        facts: parsed.facts,
+        graph_candidates: parsed.graph_candidates,
+        parser_id: "manifest".to_string(),
+        parser_version: crate::facts::PARSER_VERSION.to_string(),
+        warnings: parsed.warnings,
+        errors: Vec::new(),
+    }
 }
 
 struct Dep {
@@ -165,6 +215,16 @@ fn yaml_scalar<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let value = line.strip_prefix(key)?.strip_prefix(':')?.trim();
     let value = value.trim_matches('"').trim_matches('\'');
     (!value.is_empty()).then_some(value)
+}
+
+fn warning(input: &ParseInput, code: &str, message: String) -> SourceWarning {
+    SourceWarning {
+        code: code.to_string(),
+        severity: Severity::Warning,
+        message,
+        source_item_key: Some(input.document.source_item_key.clone()),
+        retryable: false,
+    }
 }
 
 #[cfg(test)]
