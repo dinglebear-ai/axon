@@ -53,6 +53,7 @@ fn extracts_markdown_heading_facts_and_candidates() {
     assert_eq!(facts[0].name, "Axon Guide");
     assert_eq!(facts[0].value["level"], 1);
     assert_eq!(facts[0].value["anchor"], "axon-guide");
+    assert_eq!(facts[0].confidence, 0.7);
     assert_eq!(
         facts[0].value["heading_path"],
         serde_json::json!(["Axon Guide"])
