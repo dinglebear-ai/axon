@@ -25,6 +25,7 @@ fn fixture_repo() -> TempDir {
         "crates/axon-error/src/stage.rs",
         "crates/axon-cli/src/lib.rs",
         "crates/axon-core/src/config/types.rs",
+        "crates/axon-route/src/capability.rs",
         "crates/axon-web/src/lib.rs",
         "crates/axon-mcp/src/lib.rs",
         "crates/axon-observe/src/lib.rs",
@@ -40,6 +41,7 @@ fn fixture_repo() -> TempDir {
         "docs/pipeline-unification/sources/source-graph.md",
         "docs/pipeline-unification/schemas/vector-payload-schema.md",
         "docs/pipeline-unification/runtime/provider-contract.md",
+        "docs/pipeline-unification/sources/adapter-scopes.md",
     ] {
         write_fixture(tmp.path(), path, "fixture");
     }
@@ -125,9 +127,73 @@ fn generate_writes_all_required_family_artifacts() {
         "docs/reference/sources/vector-payload.md",
         "docs/reference/runtime/provider-capabilities.schema.json",
         "docs/reference/runtime/provider-capabilities.md",
+        "docs/reference/sources/adapter-scopes.json",
+        "docs/reference/sources/adapter-scopes.md",
     ] {
         assert!(tmp.path().join(path).exists(), "{path} should be generated");
     }
+}
+
+#[test]
+fn generated_adapter_docs_include_route_time_registry() {
+    let tmp = fixture_repo();
+    generate(tmp.path()).unwrap();
+
+    let content = std::fs::read_to_string(
+        tmp.path()
+            .join("docs/reference/sources/adapter-scopes.json"),
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let adapters = value["x-axon"]["adapters"].as_array().unwrap();
+    let web = adapters
+        .iter()
+        .find(|adapter| adapter["name"] == "web")
+        .expect("web adapter exists");
+
+    assert_eq!(
+        value["$id"],
+        "https://axon.local/schemas/sources/adapter-scopes.json"
+    );
+    assert_eq!(web["source_kind"], "web");
+    assert_eq!(web["default_scope"], "site");
+    assert!(
+        web["supported_scopes"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("map"))
+    );
+    assert_eq!(web["watch_supported"], true);
+
+    let markdown =
+        std::fs::read_to_string(tmp.path().join("docs/reference/sources/adapter-scopes.md"))
+            .unwrap();
+    assert!(markdown.contains("| `web` | `web` | `site` | `site`, `page`, `docs`, `map` |"));
+}
+
+#[test]
+fn generated_adapter_schema_models_registry_payload() {
+    let tmp = fixture_repo();
+    generate(tmp.path()).unwrap();
+
+    let content = std::fs::read_to_string(
+        tmp.path()
+            .join("docs/reference/sources/adapter-scopes.json"),
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let properties = value["properties"].as_object().unwrap();
+    let x_axon = properties["x-axon"].as_object().unwrap();
+    let x_axon_properties = x_axon["properties"].as_object().unwrap();
+    let adapters = x_axon_properties["adapters"].as_object().unwrap();
+
+    assert_eq!(value["required"][0], "x-axon");
+    assert_eq!(adapters["type"], "array");
+    assert_eq!(adapters["items"]["$ref"], "#/$defs/AdapterCapability");
+    assert_eq!(
+        value["$defs"]["AdapterCapability"]["properties"]["supported_scopes"]["items"]["type"],
+        "string"
+    );
 }
 
 #[test]

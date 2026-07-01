@@ -5,6 +5,7 @@ pub mod android_api_contract;
 pub mod api_parity;
 pub mod broken_symlinks;
 pub mod claude_symlinks;
+pub mod dep_graph;
 pub mod doc_contracts;
 pub mod doc_links;
 pub mod env_staged;
@@ -36,6 +37,7 @@ pub fn check(root: &Path) -> Result<()> {
     broken_symlinks::check(root)?;
     doc_links::check(root)?;
     doc_contracts::check(root)?;
+    dep_graph::check(root)?;
     sqlite_migrations::check(root)?;
     secrets::check(root)?;
     release_versions::check_local(root)?;

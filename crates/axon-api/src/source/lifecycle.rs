@@ -107,6 +107,8 @@ pub struct ResolvedSource {
     pub authority: AuthorityLevel,
     pub confidence: f32,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_hint: Option<AuthorityHint>,
     pub warnings: Vec<SourceWarning>,
 }
 
