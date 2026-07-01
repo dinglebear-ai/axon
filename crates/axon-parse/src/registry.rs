@@ -22,11 +22,22 @@ impl ParserRegistry {
     }
 
     pub fn select(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
-        self.select_explicit(input)
-            .or_else(|| self.select_best_match(input))
+        if requested_parser_id(input).is_some() {
+            return self.select_explicit(input);
+        }
+        self.select_best_match(input)
     }
 
     pub fn parse(&self, input: &ParseInput) -> ParseResult {
+        if let Some(requested) = requested_parser_id(input)
+            && let Some(parser) =
+                self.select_by(|parser| parser.capability().parser_id == *requested)
+        {
+            return parser.parse(input);
+        } else if let Some(requested) = requested_parser_id(input) {
+            return requested_parser_unavailable(input, requested);
+        }
+
         if let Some(parser) = self.select(input) {
             return parser.parse(input);
         }
@@ -34,13 +45,7 @@ impl ParserRegistry {
     }
 
     fn select_explicit(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
-        let requested = input.requested_parser.as_ref().or_else(|| {
-            input
-                .document
-                .parser_hints
-                .first()
-                .map(|hint| &hint.parser_id)
-        })?;
+        let requested = requested_parser_id(input)?;
         self.select_by(|parser| parser.capability().parser_id == *requested)
     }
 
@@ -72,6 +77,16 @@ impl ParserRegistry {
 
         best.map(|(_, _, parser)| parser)
     }
+}
+
+fn requested_parser_id(input: &ParseInput) -> Option<&String> {
+    input.requested_parser.as_ref().or_else(|| {
+        input
+            .document
+            .parser_hints
+            .first()
+            .map(|hint| &hint.parser_id)
+    })
 }
 
 fn match_score(capability: &ParserCapability, input: &ParseInput) -> Option<u8> {
@@ -109,6 +124,31 @@ fn unsupported_result(input: &ParseInput) -> ParseResult {
         graph_candidates: Vec::new(),
         parser_id: "none".to_string(),
         parser_version: "0".to_string(),
+        warnings: vec![warning],
+        errors: Vec::new(),
+    }
+}
+
+fn requested_parser_unavailable(input: &ParseInput, parser_id: &str) -> ParseResult {
+    let warning = SourceWarning {
+        code: "parse.requested_parser_unavailable".to_string(),
+        severity: Severity::Warning,
+        message: format!("requested parser is not registered: {parser_id}"),
+        source_item_key: Some(input.document.source_item_key.clone()),
+        retryable: false,
+    };
+    ParseResult {
+        header: stage_header(
+            input,
+            LifecycleStatus::CompletedDegraded,
+            vec![warning.clone()],
+            None,
+        ),
+        document_id: input.document.document_id.clone(),
+        facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        parser_id: parser_id.to_string(),
+        parser_version: "unavailable".to_string(),
         warnings: vec![warning],
         errors: Vec::new(),
     }

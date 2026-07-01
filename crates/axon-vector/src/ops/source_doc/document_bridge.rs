@@ -20,12 +20,19 @@ pub(super) fn prepare_atomic_source(
     let mut chunks = Vec::with_capacity(prepared.chunks.len());
     let mut chunk_extra = Vec::with_capacity(prepared.chunks.len());
     for (idx, chunk) in prepared.chunks.into_iter().enumerate() {
+        let chunk_id = chunk.chunk_id.0;
+        let chunk_key = chunk.chunk_key;
+        let content_hash = chunk.content_hash;
         chunks.push(chunk.content);
-        chunk_extra.push(chunk_metadata(base_chunk_metadata_from_range(
+        let mut metadata = base_chunk_metadata_from_range(
             "plain_text",
             &format!("{}#chunk-{idx}", doc.url),
             &chunk.source_range,
-        )));
+        );
+        metadata.insert("prepared_chunk_id".to_string(), chunk_id.into());
+        metadata.insert("prepared_chunk_key".to_string(), chunk_key.into());
+        metadata.insert("prepared_content_hash".to_string(), content_hash.into());
+        chunk_extra.push(chunk_metadata(metadata));
     }
     Ok(doc
         .into_prepared(chunks, "text", chunk_extra)

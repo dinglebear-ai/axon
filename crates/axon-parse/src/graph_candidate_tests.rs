@@ -39,6 +39,30 @@ fn graph_candidate_keys_are_source_scoped_and_collision_resistant() {
     assert_ne!(left.nodes[0].stable_key, other_source.nodes[0].stable_key);
 }
 
+#[test]
+fn graph_node_identity_is_stable_when_entity_moves_lines() {
+    let first = graph_candidate(
+        &input("src-a", "foo.rs", "file:///repo-a/foo.rs"),
+        "test-parser",
+        "code_symbol",
+        "run",
+        Some(7),
+        Some("fn run() {}".to_string()),
+    );
+    let moved = graph_candidate(
+        &input("src-a", "foo.rs", "file:///repo-a/foo.rs"),
+        "test-parser",
+        "code_symbol",
+        "run",
+        Some(20),
+        Some("fn run() {}".to_string()),
+    );
+
+    assert_eq!(first.candidate_id, moved.candidate_id);
+    assert_eq!(first.nodes[1].stable_key, moved.nodes[1].stable_key);
+    assert_ne!(first.evidence[0].evidence_id, moved.evidence[0].evidence_id);
+}
+
 fn input(source_id: &str, item_key: &str, uri: &str) -> ParseInput {
     ParseInput {
         job_id: JobId(uuid::Uuid::nil()),

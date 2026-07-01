@@ -3529,14 +3529,17 @@
     },
     "SourceDocument_ChunkProfile": {
       "enum": [
-        "code_ast",
-        "markdown",
-        "html",
-        "plain_text",
-        "transcript",
-        "structured",
-        "session",
-        "binary_metadata"
+        "code_symbol",
+        "code_manifest",
+        "markdown_sections",
+        "html_article",
+        "plain_text_windows",
+        "transcript_segments",
+        "structured_records",
+        "api_schema",
+        "tool_output",
+        "session_turns",
+        "atomic_metadata"
       ],
       "type": "string"
     },

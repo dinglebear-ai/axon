@@ -2,6 +2,8 @@
 
 use std::str::FromStr;
 
+#[cfg(test)]
+use axon_api::source::ChunkProfile;
 use axon_api::source::{ContentKind, MetadataMap, SourceDocument};
 
 use crate::profile::ChunkingProfile;
@@ -38,6 +40,10 @@ impl ChunkRouter {
 }
 
 fn explicit_profile(doc: &SourceDocument) -> Result<Option<ChunkingProfile>, String> {
+    if let Some(hint) = doc.chunk_hints.first() {
+        return Ok(Some(hint.profile.clone().into()));
+    }
+
     for map in
         std::iter::once(&doc.metadata).chain(doc.chunk_hints.iter().map(|hint| &hint.options))
     {
@@ -46,6 +52,38 @@ fn explicit_profile(doc: &SourceDocument) -> Result<Option<ChunkingProfile>, Str
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+pub(crate) fn public_profiles() -> [(ChunkProfile, ChunkingProfile); 11] {
+    [
+        (ChunkProfile::CodeSymbol, ChunkingProfile::CodeSymbol),
+        (ChunkProfile::CodeManifest, ChunkingProfile::CodeManifest),
+        (
+            ChunkProfile::MarkdownSections,
+            ChunkingProfile::MarkdownSections,
+        ),
+        (ChunkProfile::HtmlArticle, ChunkingProfile::HtmlArticle),
+        (
+            ChunkProfile::PlainTextWindows,
+            ChunkingProfile::PlainTextWindows,
+        ),
+        (
+            ChunkProfile::TranscriptSegments,
+            ChunkingProfile::TranscriptSegments,
+        ),
+        (
+            ChunkProfile::StructuredRecords,
+            ChunkingProfile::StructuredRecords,
+        ),
+        (ChunkProfile::ApiSchema, ChunkingProfile::ApiSchema),
+        (ChunkProfile::ToolOutput, ChunkingProfile::ToolOutput),
+        (ChunkProfile::SessionTurns, ChunkingProfile::SessionTurns),
+        (
+            ChunkProfile::AtomicMetadata,
+            ChunkingProfile::AtomicMetadata,
+        ),
+    ]
 }
 
 fn profile_value(map: &MetadataMap) -> Option<&str> {
@@ -89,8 +127,13 @@ fn is_api_schema(doc: &SourceDocument) -> bool {
     let path = doc.path.as_deref().unwrap_or(&doc.canonical_uri);
     path.contains("openapi")
         || path.contains("swagger")
-        || doc
-            .mime_type
-            .as_deref()
-            .is_some_and(|mime| mime.contains("schema"))
+        || path.ends_with(".graphql")
+        || path.ends_with(".graphqls")
+        || path.ends_with(".proto")
+        || doc.mime_type.as_deref().is_some_and(|mime| {
+            mime.contains("schema")
+                || mime.contains("graphql")
+                || mime.contains("protobuf")
+                || mime.contains("proto")
+        })
 }

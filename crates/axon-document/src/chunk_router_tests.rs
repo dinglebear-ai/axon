@@ -4,38 +4,50 @@ use axon_api::source::{
 };
 use serde_json::json;
 
-use crate::{ChunkRouter, ChunkingProfile};
+use crate::{ChunkRouter, ChunkingProfile, chunk_router::public_profiles};
 
 #[test]
-fn router_honors_all_pr8_explicit_profiles_from_chunk_hints() {
-    let cases = [
-        ("code_symbol", ChunkingProfile::CodeSymbol),
-        ("code_manifest", ChunkingProfile::CodeManifest),
-        ("markdown_sections", ChunkingProfile::MarkdownSections),
-        ("html_article", ChunkingProfile::HtmlArticle),
-        ("plain_text_windows", ChunkingProfile::PlainTextWindows),
-        ("transcript_segments", ChunkingProfile::TranscriptSegments),
-        ("structured_records", ChunkingProfile::StructuredRecords),
-        ("api_schema", ChunkingProfile::ApiSchema),
-        ("tool_output", ChunkingProfile::ToolOutput),
-        ("session_turns", ChunkingProfile::SessionTurns),
-        ("atomic_metadata", ChunkingProfile::AtomicMetadata),
-    ];
-
-    for (profile_name, expected) in cases {
+fn router_honors_typed_pr8_profiles_from_chunk_hints() {
+    for (profile, expected) in public_profiles() {
         let mut doc = source_doc(ContentKind::PlainText, "body");
         doc.chunk_hints = vec![ChunkHint {
-            profile: ChunkProfile::PlainText,
+            profile,
             reason: "test override".to_string(),
-            options: metadata([("axon_document_profile", json!(profile_name))]),
+            options: MetadataMap::new(),
         }];
 
         assert_eq!(
             ChunkRouter::default().route(&doc).unwrap(),
             expected,
-            "profile override {profile_name} should route"
+            "typed profile override should route"
         );
     }
+}
+
+#[test]
+fn typed_chunk_hint_wins_over_metadata_profile_escape_hatch() {
+    let mut doc = source_doc(ContentKind::PlainText, "body");
+    doc.chunk_hints = vec![ChunkHint {
+        profile: ChunkProfile::PlainTextWindows,
+        reason: "test override".to_string(),
+        options: metadata([("axon_document_profile", json!("code_symbol"))]),
+    }];
+
+    assert_eq!(
+        ChunkRouter::default().route(&doc).unwrap(),
+        ChunkingProfile::PlainTextWindows
+    );
+}
+
+#[test]
+fn router_honors_metadata_profile_when_no_typed_hint_exists() {
+    let mut doc = source_doc(ContentKind::PlainText, "body");
+    doc.metadata = metadata([("axon_document_profile", json!("code_symbol"))]);
+
+    assert_eq!(
+        ChunkRouter::default().route(&doc).unwrap(),
+        ChunkingProfile::CodeSymbol
+    );
 }
 
 #[test]
@@ -100,9 +112,11 @@ fn router_recognizes_common_manifest_and_config_files() {
         ".env.example",
         "main.tf",
         "openapi.yaml",
+        "schema.graphql",
+        "service.proto",
     ] {
         let doc = source_doc(ContentKind::PlainText, "name=value").with_path(path);
-        let expected = if path == "openapi.yaml" {
+        let expected = if matches!(path, "openapi.yaml" | "schema.graphql" | "service.proto") {
             ChunkingProfile::ApiSchema
         } else {
             ChunkingProfile::CodeManifest

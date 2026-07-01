@@ -3,6 +3,7 @@
 //! This crate is intentionally marker-only in PR0. Runtime behavior moves here
 //! in issue #298 implementation PRs after contract tests exist.
 
+pub mod builtins;
 pub mod code;
 pub mod config;
 pub mod docker;
