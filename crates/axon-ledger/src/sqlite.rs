@@ -371,6 +371,83 @@ impl LedgerStore for SqliteLedgerStore {
         Ok(())
     }
 
+    async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
+        let mut tx = self.pool.begin().await.map_err(sqlite_error)?;
+        let existing = sqlx::query(
+            r#"
+            SELECT lease_id, expires_at
+            FROM axon_ledger_leases
+            WHERE lease_key = ?1
+            "#,
+        )
+        .bind(&request.lease_key)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlite_error)?;
+
+        if let Some(row) = existing {
+            let expires_at: String = row.get("expires_at");
+            if expires_at > request.acquired_at.0 {
+                tx.rollback().await.map_err(sqlite_error)?;
+                return Ok(None);
+            }
+            let lease_id: String = row.get("lease_id");
+            sqlx::query("DELETE FROM axon_ledger_leases WHERE lease_id = ?1")
+                .bind(lease_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(sqlite_error)?;
+        }
+
+        let guard = LeaseGuard {
+            lease_id: LeaseId::new(format!("lease_{}", uuid::Uuid::new_v4())),
+            lease_key: request.lease_key,
+            owner_id: request.owner_id,
+            expires_at: add_seconds(&request.acquired_at, request.ttl_seconds),
+            heartbeat_at: request.acquired_at.clone(),
+            acquired_at: request.acquired_at,
+            job_id: request.job_id,
+            metadata: request.metadata,
+        };
+        let lease_json = serde_json::to_string(&guard).map_err(json_error)?;
+        sqlx::query(
+            r#"
+            INSERT INTO axon_ledger_leases (
+                lease_id,
+                lease_key,
+                owner_id,
+                acquired_at,
+                expires_at,
+                heartbeat_at,
+                job_id,
+                lease_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind(&guard.lease_id.0)
+        .bind(&guard.lease_key)
+        .bind(&guard.owner_id)
+        .bind(&guard.acquired_at.0)
+        .bind(&guard.expires_at.0)
+        .bind(&guard.heartbeat_at.0)
+        .bind(guard.job_id.map(|value| value.0.to_string()))
+        .bind(lease_json)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlite_error)?;
+        tx.commit().await.map_err(sqlite_error)?;
+        Ok(Some(guard))
+    }
+
+    async fn release_lease(&self, lease_id: LeaseId) -> Result<()> {
+        sqlx::query("DELETE FROM axon_ledger_leases WHERE lease_id = ?1")
+            .bind(&lease_id.0)
+            .execute(&self.pool)
+            .await
+            .map_err(sqlite_error)?;
+        Ok(())
+    }
+
     async fn reset(&self) -> Result<()> {
         clear_ledger(&self.pool).await
     }
@@ -381,7 +458,14 @@ impl LedgerStore for SqliteLedgerStore {
             version: env!("CARGO_PKG_VERSION").to_string(),
             owner_crate: "axon-ledger".to_string(),
             health: HealthStatus::Healthy,
-            features: vec!["source_summary".to_string()],
+            features: vec![
+                "source_summary".to_string(),
+                "manifest_diff".to_string(),
+                "generation_publish".to_string(),
+                "document_status".to_string(),
+                "cleanup_debt".to_string(),
+                "leases".to_string(),
+            ],
             limits: MetadataMap::new(),
         }
         .into())
@@ -549,6 +633,15 @@ fn stage_header(phase: PipelinePhase) -> StageResultHeader {
 
 fn timestamp() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
+}
+
+fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
+    let parsed = chrono::DateTime::parse_from_rfc3339(&timestamp.0)
+        .map(|value| value.with_timezone(&chrono::Utc));
+    match parsed {
+        Ok(value) => Timestamp((value + chrono::Duration::seconds(seconds as i64)).to_rfc3339()),
+        Err(_) => timestamp.clone(),
+    }
 }
 
 fn json_error(error: serde_json::Error) -> ApiError {

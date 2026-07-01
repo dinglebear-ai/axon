@@ -19,6 +19,8 @@ pub trait LedgerStore: Send + Sync {
     async fn publish_generation(&self, generation: SourceGeneration) -> Result<()>;
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
+    async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>>;
+    async fn release_lease(&self, lease_id: LeaseId) -> Result<()>;
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<LedgerStoreCapability>;
 }
@@ -35,6 +37,8 @@ struct FakeLedgerState {
     committed: BTreeMap<SourceId, SourceGenerationId>,
     document_statuses: BTreeMap<DocumentId, DocumentStatus>,
     cleanup_debt: BTreeMap<CleanupDebtId, CleanupDebt>,
+    leases: BTreeMap<LeaseId, LeaseGuard>,
+    lease_ids_by_key: BTreeMap<String, LeaseId>,
     generation_counters: BTreeMap<SourceId, u64>,
 }
 
@@ -218,6 +222,46 @@ impl LedgerStore for FakeLedgerStore {
         Ok(())
     }
 
+    async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
+        let mut state = self.state.lock().await;
+        if let Some(existing_id) = state.lease_ids_by_key.get(&request.lease_key).cloned() {
+            let existing = state.leases.get(&existing_id).cloned();
+            match existing {
+                Some(existing) if existing.expires_at.0 > request.acquired_at.0 => {
+                    return Ok(None);
+                }
+                Some(_) | None => {
+                    state.leases.remove(&existing_id);
+                    state.lease_ids_by_key.remove(&request.lease_key);
+                }
+            }
+        }
+
+        let guard = LeaseGuard {
+            lease_id: LeaseId::new(format!("lease_{}", uuid::Uuid::new_v4())),
+            lease_key: request.lease_key,
+            owner_id: request.owner_id,
+            expires_at: add_seconds(&request.acquired_at, request.ttl_seconds),
+            heartbeat_at: request.acquired_at.clone(),
+            acquired_at: request.acquired_at,
+            job_id: request.job_id,
+            metadata: request.metadata,
+        };
+        state
+            .lease_ids_by_key
+            .insert(guard.lease_key.clone(), guard.lease_id.clone());
+        state.leases.insert(guard.lease_id.clone(), guard.clone());
+        Ok(Some(guard))
+    }
+
+    async fn release_lease(&self, lease_id: LeaseId) -> Result<()> {
+        let mut state = self.state.lock().await;
+        if let Some(guard) = state.leases.remove(&lease_id) {
+            state.lease_ids_by_key.remove(&guard.lease_key);
+        }
+        Ok(())
+    }
+
     async fn reset(&self) -> Result<()> {
         *self.state.lock().await = FakeLedgerState::default();
         Ok(())
@@ -234,6 +278,7 @@ impl LedgerStore for FakeLedgerStore {
                 "generation_publish".to_string(),
                 "document_status".to_string(),
                 "cleanup_debt".to_string(),
+                "leases".to_string(),
             ],
             limits: MetadataMap::new(),
         }
@@ -277,4 +322,13 @@ fn stage_header(phase: PipelinePhase) -> StageResultHeader {
 
 fn timestamp() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
+}
+
+fn add_seconds(timestamp: &Timestamp, seconds: u64) -> Timestamp {
+    let parsed = chrono::DateTime::parse_from_rfc3339(&timestamp.0)
+        .map(|value| value.with_timezone(&chrono::Utc));
+    match parsed {
+        Ok(value) => Timestamp((value + chrono::Duration::seconds(seconds as i64)).to_rfc3339()),
+        Err(_) => timestamp.clone(),
+    }
 }

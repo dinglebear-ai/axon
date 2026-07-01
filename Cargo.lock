@@ -724,6 +724,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-error",
+ "chrono",
  "serde_json",
  "sqlx",
  "tokio",

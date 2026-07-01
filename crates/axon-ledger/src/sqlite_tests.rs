@@ -8,6 +8,10 @@ fn ts() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
 }
 
+fn ts_at(second: u32) -> Timestamp {
+    Timestamp(format!("2026-07-01T00:00:{second:02}Z"))
+}
+
 fn source() -> SourceSummary {
     SourceSummary {
         source_id: SourceId::new("src_sqlite"),
@@ -108,6 +112,17 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
         },
         cleanup_debt: Vec::new(),
         previous_generation: None,
+    }
+}
+
+fn lease_request(key: &str, owner: &str, acquired_at: Timestamp) -> LeaseRequest {
+    LeaseRequest {
+        lease_key: key.to_string(),
+        owner_id: owner.to_string(),
+        ttl_seconds: 30,
+        acquired_at,
+        job_id: None,
+        metadata: MetadataMap::new(),
     }
 }
 
@@ -258,4 +273,54 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
             .expect("count cleanup debt"),
         1
     );
+}
+
+#[tokio::test]
+async fn sqlite_acquires_conflicts_reclaims_and_releases_leases() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+
+    let first = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            ts_at(0),
+        ))
+        .await
+        .expect("acquire first")
+        .expect("first lease");
+    let conflict = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-b",
+            ts_at(10),
+        ))
+        .await
+        .expect("conflicting acquire");
+    assert_eq!(conflict, None);
+
+    let reclaimed = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-b",
+            ts_at(31),
+        ))
+        .await
+        .expect("reclaim expired")
+        .expect("expired lease should be reclaimable");
+    assert_ne!(first.lease_id, reclaimed.lease_id);
+    assert_eq!(reclaimed.owner_id, "owner-b");
+
+    store
+        .release_lease(reclaimed.lease_id.clone())
+        .await
+        .expect("release lease");
+    let reacquired = store
+        .acquire_lease(lease_request(
+            "source:src_sqlite:refresh",
+            "owner-a",
+            ts_at(32),
+        ))
+        .await
+        .expect("reacquire after release");
+    assert!(reacquired.is_some());
 }
