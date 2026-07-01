@@ -291,11 +291,11 @@ Verification:
 
 - [x] Run a changed-file LOC check; split any Rust file over 500 lines.
 - [x] Run local verification commands.
-- [ ] Push and open the PR.
-- [ ] Run mandatory `lavra-review` on the PR and address all findings.
-- [ ] Dispatch PR review toolkit agents and address all findings.
-- [ ] Confirm required GitHub checks are green.
-- [ ] Re-read issue #298 and audit the active PR8 checklist item-by-item:
+- [x] Push and open the PR.
+- [x] Run mandatory `lavra-review` on the PR and address all findings.
+- [x] Dispatch PR review toolkit agents and address all findings.
+- [x] Confirm required GitHub checks are green.
+- [x] Re-read issue #298 and audit the active PR8 checklist item-by-item:
   - parser registry
   - `SourceParseFacts`
   - `GraphCandidate`
@@ -308,7 +308,7 @@ Verification:
   - package/manifest routing
   - API/schema routing
   - plain-text routing
-- [ ] Post the final pre-merge gate audit to the PR/issue.
+- [x] Post the final pre-merge gate audit to the PR/issue.
 - [ ] Merge only after the audit and required checks are green.
 
 ## Expected Verification Set
