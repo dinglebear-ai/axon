@@ -70,6 +70,42 @@ pub async fn migrate_ledger(pool: &SqlitePool) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_axon_ledger_source_items_canonical_uri
             ON axon_ledger_source_items(source_id, item_canonical_uri)
             "#,
+        r#"
+            CREATE TABLE IF NOT EXISTS axon_ledger_document_status (
+                document_id TEXT PRIMARY KEY NOT NULL,
+                source_id TEXT NOT NULL,
+                source_item_key TEXT NOT NULL,
+                generation TEXT NOT NULL,
+                status TEXT NOT NULL,
+                status_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (source_id) REFERENCES axon_ledger_sources(source_id) ON DELETE CASCADE
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_axon_ledger_document_status_source_generation_item
+            ON axon_ledger_document_status(source_id, generation, source_item_key)
+            "#,
+        r#"
+            CREATE TABLE IF NOT EXISTS axon_ledger_cleanup_debt (
+                debt_id TEXT PRIMARY KEY NOT NULL,
+                job_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                generation TEXT,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                debt_json TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                next_retry_at TEXT,
+                completed_at TEXT,
+                FOREIGN KEY (source_id) REFERENCES axon_ledger_sources(source_id) ON DELETE CASCADE
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_axon_ledger_cleanup_debt_status_retry
+            ON axon_ledger_cleanup_debt(status, next_retry_at)
+            "#,
     ] {
         pool.execute(statement).await.map_err(sqlite_error)?;
     }
@@ -80,6 +116,8 @@ pub async fn migrate_ledger(pool: &SqlitePool) -> Result<()> {
 pub(crate) async fn clear_ledger(pool: &SqlitePool) -> Result<()> {
     for statement in [
         "DELETE FROM axon_ledger_source_items",
+        "DELETE FROM axon_ledger_document_status",
+        "DELETE FROM axon_ledger_cleanup_debt",
         "DELETE FROM axon_ledger_source_manifests",
         "DELETE FROM axon_ledger_generations",
         "DELETE FROM axon_ledger_sources",

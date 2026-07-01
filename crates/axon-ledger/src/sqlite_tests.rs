@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use uuid::Uuid;
 
 use crate::sqlite::SqliteLedgerStore;
 use crate::store::LedgerStore;
@@ -193,5 +194,68 @@ async fn sqlite_diff_manifest_against_committed_generation() {
     assert_eq!(
         diff.unchanged[0].source_item_key,
         SourceItemKey::new("README.md")
+    );
+}
+
+#[tokio::test]
+async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let status = DocumentStatus {
+        document_id: DocumentId::new("doc-sqlite"),
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: SourceGenerationId::new("gen_1"),
+        status: DocumentLifecycleStatus::Published,
+        updated_at: ts(),
+        chunk_count: 2,
+        vector_point_count: 2,
+        error: None,
+        cleanup_status: None,
+    };
+    store
+        .update_document_status(status.clone())
+        .await
+        .expect("record document status");
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-sqlite"))
+            .await
+            .expect("read document status"),
+        Some(status)
+    );
+
+    let debt = CleanupDebt {
+        debt_id: CleanupDebtId::new("debt-sqlite"),
+        job_id: JobId::new(Uuid::from_u128(1)),
+        source_id: SourceId::new("src_sqlite"),
+        generation: Some(SourceGenerationId::new("gen_1")),
+        kind: CleanupDebtKind::VectorDelete,
+        selector: CleanupSelector::Document {
+            document_id: DocumentId::new("doc-sqlite"),
+        },
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    };
+    store
+        .record_cleanup_debt(debt.clone())
+        .await
+        .expect("record cleanup debt");
+    store
+        .record_cleanup_debt(debt)
+        .await
+        .expect("record cleanup debt idempotently");
+
+    assert_eq!(
+        store
+            .cleanup_debt_count()
+            .await
+            .expect("count cleanup debt"),
+        1
     );
 }
