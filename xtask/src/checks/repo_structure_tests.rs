@@ -184,13 +184,13 @@ fn unexpected_target_module_file_fails() {
 fn target_dependency_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-error/Cargo.toml"),
-        "[package]\nname = \"axon-error\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        &fixture.root.join("crates/axon-observe/Cargo.toml"),
+        "[package]\nname = \"axon-observe\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-error must keep [dependencies] empty"),
+        err.contains("PR0 target crate axon-observe must keep [dependencies] empty"),
         "{err}"
     );
 }
@@ -199,13 +199,15 @@ fn target_dependency_fails() {
 fn target_specific_dependency_fails() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-error/Cargo.toml"),
-        "[package]\nname = \"axon-error\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
+        &fixture.root.join("crates/axon-observe/Cargo.toml"),
+        "[package]\nname = \"axon-observe\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-error must keep [target.cfg(unix).dependencies] empty"),
+        err.contains(
+            "PR0 target crate axon-observe must keep [target.cfg(unix).dependencies] empty"
+        ),
         "{err}"
     );
 }
@@ -214,8 +216,8 @@ fn target_specific_dependency_fails() {
 fn package_metadata_dependencies_are_allowed() {
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-error/Cargo.toml"),
-        "[package]\nname = \"axon-error\"\nrust-version.workspace = true\n\n[package.metadata.dependencies]\nnotes = \"not a Cargo dependency table\"\n\n[dependencies]\n",
+        &fixture.root.join("crates/axon-observe/Cargo.toml"),
+        "[package]\nname = \"axon-observe\"\nrust-version.workspace = true\n\n[package.metadata.dependencies]\nnotes = \"not a Cargo dependency table\"\n\n[dependencies]\n",
     );
 
     check_root(&fixture.root).unwrap();

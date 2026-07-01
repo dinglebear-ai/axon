@@ -54,26 +54,11 @@ pub struct PageInfo {
     pub total: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ApiError {
-    pub code: String,
-    pub message: String,
-    pub stage: PipelinePhase,
-    pub retryable: bool,
-    pub severity: Severity,
-    pub details: MetadataMap,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub job_id: Option<JobId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_id: Option<SourceId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_id: Option<ProviderId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retry_after_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cooldown_until: Option<Timestamp>,
-}
+// `ApiError` and its error enums are owned by `axon-error`, the lowest shared
+// error boundary. `axon-api` re-exports them so the surrounding envelopes
+// (`ErrorEnvelope`, `StreamEvent::Error`, `SourceStatus.last_error`,
+// `SourceProgressEvent.error`, `capability.rs`) embed the one shared shape.
+pub use axon_error::{ApiError, ErrorSeverity, ErrorStage, ErrorVisibility};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

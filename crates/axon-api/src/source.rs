@@ -49,3 +49,7 @@ mod vector_tests;
 #[cfg(test)]
 #[path = "source_graph_tests.rs"]
 mod graph_tests;
+
+#[cfg(test)]
+#[path = "source_stage_fixture_tests.rs"]
+mod stage_fixture_tests;
