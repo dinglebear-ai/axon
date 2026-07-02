@@ -1,17 +1,22 @@
 //! `axon source <input>` — index a source through the unified pipeline.
 //!
 //! This is the first user-facing surface of the new source pipeline. It handles
-//! two acquisition classes:
+//! three acquisition classes:
 //!
 //! * **Local paths** — dispatched to the target local-source runtime via
 //!   [`axon_services::index_local_source_with_job`].
 //! * **Git repository URLs** — shallow-cloned (acquisition) then dispatched to
 //!   the git bridge via [`axon_services::index_git_source_with_job`].
+//! * **Web URLs** (http/https, not a git target) — crawled to completion then
+//!   dispatched to the web bridge via
+//!   [`axon_services::index_web_source_with_job`]. This is the canonical
+//!   replacement for `axon crawl <url>`.
 //!
-//! Everything else (web/feed/reddit/youtube acquisition) returns a clear "not
-//! yet wired" error — a later P10 slice.
+//! Everything else (feed/reddit/youtube acquisition) returns a clear "not yet
+//! wired" error — a later P10 slice.
 
 mod git;
+mod web;
 
 use axon_api::source::JobId;
 use axon_core::config::Config;
@@ -36,7 +41,9 @@ enum SourceInputKind {
     Local,
     /// A parseable git repository URL (github/gitlab/gitea/`.git`/`git+https`).
     Git,
-    /// Neither — unsupported for this slice.
+    /// An http/https URL that is not a git target — crawled + indexed.
+    Web,
+    /// None of the above — unsupported for this slice.
     Unsupported,
 }
 
@@ -52,6 +59,10 @@ pub async fn run_source(
             let runtime = require_data_plane(service_context)?;
             git::run_git_source(cfg, runtime, &input).await
         }
+        SourceInputKind::Web => {
+            let runtime = require_data_plane(service_context)?;
+            web::run_web_source(cfg, runtime, &input).await
+        }
         SourceInputKind::Unsupported => Err(unsupported_input_error(&input)),
     }
 }
@@ -59,9 +70,9 @@ pub async fn run_source(
 /// Classify the input into an acquisition class.
 ///
 /// Local existence wins first (a directory literally named like a URL is still
-/// treated as local), then git-URL parsing, then unsupported. Split out as a
-/// pure-ish async fn (only fs metadata + string parsing) so routing is testable
-/// without a data plane.
+/// treated as local), then a genuine git target, then a plain http/https web
+/// URL, then unsupported. Split out as a pure-ish async fn (only fs metadata +
+/// string parsing) so routing is testable without a data plane.
 async fn classify_source_input(input: &str) -> SourceInputKind {
     if input_is_local_path(input).await {
         return SourceInputKind::Local;
@@ -69,7 +80,20 @@ async fn classify_source_input(input: &str) -> SourceInputKind {
     if input_is_git_target(input) {
         return SourceInputKind::Git;
     }
+    if input_is_web_url(input) {
+        return SourceInputKind::Web;
+    }
     SourceInputKind::Unsupported
+}
+
+/// True when `input` parses as an http/https URL. Checked only after git-target
+/// classification, so plain web URLs (docs sites, blogs) route here while
+/// git-hosting URLs still route to the git clone path.
+fn input_is_web_url(input: &str) -> bool {
+    match url::Url::parse(input) {
+        Ok(parsed) => matches!(parsed.scheme(), "http" | "https"),
+        Err(_) => false,
+    }
 }
 
 /// True when `input` resolves to an existing path on disk.
@@ -77,9 +101,39 @@ async fn input_is_local_path(input: &str) -> bool {
     tokio::fs::metadata(PathBuf::from(input)).await.is_ok()
 }
 
-/// True when `input` parses as a git repository target.
+/// True when `input` should route to the git clone path.
+///
+/// [`axon_services::is_git_target`] alone is too permissive for routing: it
+/// accepts *any* `https://host/path` as a cloneable repo (unknown hosts get the
+/// generic `git` provider), which would swallow ordinary web URLs like
+/// `https://docs.example.com/guide`. For `axon source` routing we require a
+/// genuine git signal on top of it — a known git host or an explicit git marker
+/// (`.git` suffix, `git+`/`git:` prefix) — so plain web URLs fall through to the
+/// web branch. The git clone path itself still uses the permissive parser.
 fn input_is_git_target(input: &str) -> bool {
-    axon_services::is_git_target(input)
+    axon_services::is_git_target(input) && has_git_signal(input)
+}
+
+/// Whether `input` carries an explicit git signal (known host or git marker).
+fn has_git_signal(input: &str) -> bool {
+    let trimmed = input.trim();
+    if trimmed.starts_with("git+") || trimmed.starts_with("git:") {
+        return true;
+    }
+    if let Ok(parsed) = url::Url::parse(trimmed.strip_prefix("git+").unwrap_or(trimmed)) {
+        if parsed.path().trim_end_matches('/').ends_with(".git") {
+            return true;
+        }
+        if let Some(host) = parsed.host_str() {
+            let host = host.to_ascii_lowercase();
+            return host.contains("github")
+                || host.contains("gitlab")
+                || host.contains("gitea")
+                || host.contains("forgejo")
+                || host.contains("codeberg");
+        }
+    }
+    false
 }
 
 /// Read the positional argument, mirroring how `run_embed` resolves input.
@@ -88,7 +142,9 @@ fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
         .first()
         .cloned()
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "axon source requires a local path or git repository URL argument".into())
+        .ok_or_else(|| {
+            "axon source requires a local path, git repository URL, or web URL argument".into()
+        })
 }
 
 /// Require the target source runtime (the data plane), or return the shared
@@ -105,11 +161,11 @@ fn require_data_plane(
         })
 }
 
-/// Clear error for inputs that are neither a local path nor a git URL.
+/// Clear error for inputs that are not a local path, git URL, or web URL.
 fn unsupported_input_error(input: &str) -> Box<dyn Error> {
     format!(
-        "axon source supports local paths and git repository URLs; {input} is neither \
-         (web/feed/reddit/youtube acquisition is a P10 follow-up)"
+        "axon source supports local paths, git repository URLs, and web URLs; {input} is none \
+         of these (feed/reddit/youtube acquisition is a P10 follow-up)"
     )
     .into()
 }

@@ -57,8 +57,10 @@ pub mod system;
 pub mod transport;
 pub mod types;
 pub mod watch;
-#[allow(dead_code)]
 pub(crate) mod web_source;
+pub use web_source::{
+    WebSourceIndexInput, WebSourceIndexOutput, index_web_source, index_web_source_with_job,
+};
 #[allow(dead_code)]
 pub(crate) mod youtube_source;
 
