@@ -76,8 +76,19 @@ impl LedgerStore for SqliteLedgerStore {
         generation::create_generation(self, source_id).await
     }
 
+    async fn committed_generation(
+        &self,
+        source_id: SourceId,
+    ) -> Result<Option<SourceGenerationId>> {
+        generation::committed_generation(self, &source_id).await
+    }
+
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
         generation::complete_generation(self, generation).await
+    }
+
+    async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
+        generation::fail_generation(self, generation).await
     }
 
     async fn publish_generation(

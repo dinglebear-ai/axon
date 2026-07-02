@@ -350,10 +350,14 @@ fn build_payload(
         json!(document.source_item_key.0),
     );
     metadata.insert(
+        "item_canonical_uri".to_string(),
+        json!(document.canonical_uri),
+    );
+    metadata.insert(
         "source_generation".to_string(),
         json!(document.generation.0),
     );
-    insert_default_string(&mut metadata, "committed_generation", "uncommitted");
+    metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("document_id".to_string(), json!(document.document_id.0));
     metadata.insert("chunk_id".to_string(), json!(chunk.chunk_id.0));
     metadata.insert("chunk_key".to_string(), json!(chunk.chunk_key));
@@ -375,7 +379,7 @@ fn build_payload(
         "embedding_batch_id".to_string(),
         json!(batch_id.0.to_string()),
     );
-    metadata.insert("document_status".to_string(), json!("prepared"));
+    metadata.insert("document_status".to_string(), json!("vectorized"));
     metadata.insert("embedding_model".to_string(), json!(model));
     metadata.insert(
         "embedding_dimensions".to_string(),

@@ -30,4 +30,8 @@ mod chunk_router_tests;
 #[path = "preparer_tests.rs"]
 mod preparer_tests;
 
+#[cfg(test)]
+#[path = "local_source_tests.rs"]
+mod local_source_tests;
+
 pub const CRATE_NAME: &str = "axon-document";

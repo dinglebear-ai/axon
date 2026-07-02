@@ -433,6 +433,12 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-error",
+ "base64",
+ "chrono",
+ "globset",
+ "ignore",
+ "serde_json",
+ "sha2 0.10.9",
  "tokio",
  "uuid",
 ]
@@ -871,15 +877,20 @@ version = "6.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axon-adapters",
  "axon-api",
  "axon-code-index",
  "axon-core",
  "axon-crawl",
+ "axon-document",
+ "axon-embedding",
  "axon-extract",
  "axon-ingest",
  "axon-jobs",
+ "axon-ledger",
  "axon-source-ledger",
  "axon-vector",
+ "axon-vectors",
  "base64",
  "chrono",
  "dotenvy",
@@ -3025,6 +3036,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "globset"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52dfc19153a48bde0cbd630453615c8151bce3a5adfac7a0aebfbf0a1e1f57e3"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3731,6 +3755,22 @@ checksum = "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
+]
+
+[[package]]
+name = "ignore"
+version = "0.4.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe112b004901c62c2faa11f4f75e9864e0cc5af8da71c9115d184a3aa888749f"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
 ]
 
 [[package]]

@@ -63,8 +63,19 @@ pub(in crate::ops) fn target_vector_payload_fixture_for_chunk(
     );
     payload.insert("collection".to_string(), collection.into());
     payload.insert("source_family".to_string(), source_family.into());
+    payload.insert("source_type".to_string(), doc.source_type.clone().into());
+    payload.insert("source_kind".to_string(), target_source_kind(doc).into());
+    payload.insert(
+        "source_adapter".to_string(),
+        target_source_adapter(doc).into(),
+    );
+    payload.insert("source_scope".to_string(), target_source_scope(doc).into());
     payload.insert("source_id".to_string(), source_id.into());
     payload.insert("source_item_key".to_string(), source_item_key.into());
+    payload.insert(
+        "item_canonical_uri".to_string(),
+        target_safe_uri(&doc.url).into(),
+    );
     payload.insert(
         "source_generation".to_string(),
         source_generation.clone().into(),
@@ -182,6 +193,44 @@ fn target_source_family(
         return "code";
     }
     "web"
+}
+
+fn target_source_kind(doc: &PreparedDoc) -> &'static str {
+    match doc.source_type.as_str() {
+        "local_code" => "local",
+        "github" | "gitlab" | "gitea" | "forgejo" | "git" => "repo",
+        "memory" => "memory",
+        "session" => "session",
+        "package" | "crates" | "npm" | "pypi" => "package",
+        _ if doc.url.starts_with("file://") => "local",
+        _ if doc.url.starts_with("http://") || doc.url.starts_with("https://") => "web",
+        _ => "unknown",
+    }
+}
+
+fn target_source_adapter(doc: &PreparedDoc) -> &'static str {
+    match doc.source_type.as_str() {
+        "local_code" => "local",
+        "github" | "gitlab" | "gitea" | "forgejo" | "git" => "git",
+        "memory" => "memory",
+        "session" => "session",
+        "package" | "crates" | "npm" | "pypi" => "package",
+        "crawl" | "scrape" => "web",
+        _ => "legacy-vector",
+    }
+}
+
+fn target_source_scope(doc: &PreparedDoc) -> &'static str {
+    match doc.source_type.as_str() {
+        "local_code" => "file",
+        "github" | "gitlab" | "gitea" | "forgejo" | "git" => "repo",
+        "memory" => "item",
+        "session" => "session",
+        "package" | "crates" | "npm" | "pypi" => "package",
+        "crawl" => "site",
+        "scrape" => "page",
+        _ => "item",
+    }
 }
 
 fn insert_target_code_field(

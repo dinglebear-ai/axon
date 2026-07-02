@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axon_api::source::*;
+use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::collection::{
@@ -15,7 +16,17 @@ use crate::filter::{
     matches_delete_selector, matches_search_filters, selector_collection, validate_delete_selector,
     validate_search_filters,
 };
+use crate::store_helpers::{
+    delete_result, dot_score, payload_string, sparse_dot_score, stage_header,
+};
 use crate::validation::validate_upsert_batch;
+
+#[path = "store/fake_capability.rs"]
+mod fake_capability;
+#[path = "store/fake_commit.rs"]
+mod fake_commit;
+#[path = "store/fake_state.rs"]
+mod fake_state;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -23,6 +34,24 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 pub trait VectorStore: Send + Sync {
     async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()>;
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult>;
+    async fn mark_generation_committed(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult>;
+    /// Carry unchanged items into a new committed generation without mutating
+    /// the previous committed generation's points. Implementations should copy
+    /// or otherwise stage new-generation visibility so old committed searches
+    /// remain valid until ledger publish is durable.
+    async fn mark_unchanged_items_committed(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        previous_generation: SourceGenerationId,
+        committed_generation: SourceGenerationId,
+        source_item_keys: Vec<SourceItemKey>,
+    ) -> Result<VectorStoreWriteResult>;
     async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult>;
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult>;
     async fn capabilities(&self) -> Result<ProviderCapability>;
@@ -45,6 +74,9 @@ pub enum FakeVectorMode {
     Fatal,
     PartialFailure,
     SlowWrite,
+    CommitFailure,
+    PartialCommitFailure,
+    DeleteFailure,
 }
 
 #[derive(Debug, Default)]
@@ -82,6 +114,16 @@ impl FakeVectorStore {
         self.state.lock().await.collections.get(collection).cloned()
     }
 
+    pub async fn points(&self, collection: &str) -> Vec<VectorPoint> {
+        self.state
+            .lock()
+            .await
+            .points
+            .get(collection)
+            .map(|points| points.values().cloned().collect())
+            .unwrap_or_default()
+    }
+
     fn mode_error(&self) -> Option<ApiError> {
         self.mode_error_for(axon_error::ErrorStage::Upserting)
     }
@@ -90,7 +132,10 @@ impl FakeVectorStore {
         match self.mode {
             FakeVectorMode::Success
             | FakeVectorMode::PartialFailure
-            | FakeVectorMode::SlowWrite => None,
+            | FakeVectorMode::SlowWrite
+            | FakeVectorMode::CommitFailure
+            | FakeVectorMode::PartialCommitFailure
+            | FakeVectorMode::DeleteFailure => None,
             FakeVectorMode::Unavailable => Some(
                 ApiError::new("provider.unavailable", stage, "vector store unavailable")
                     .with_provider_id(&self.provider_id.0),
@@ -120,7 +165,10 @@ impl FakeVectorStore {
         match self.mode {
             FakeVectorMode::Success
             | FakeVectorMode::PartialFailure
-            | FakeVectorMode::SlowWrite => FakeProviderModeState::Success,
+            | FakeVectorMode::SlowWrite
+            | FakeVectorMode::CommitFailure
+            | FakeVectorMode::PartialCommitFailure
+            | FakeVectorMode::DeleteFailure => FakeProviderModeState::Success,
             FakeVectorMode::Unavailable => FakeProviderModeState::Fatal,
             FakeVectorMode::Timeout => FakeProviderModeState::Timeout,
             FakeVectorMode::RateLimited => FakeProviderModeState::RateLimited,
@@ -229,9 +277,69 @@ impl VectorStore for FakeVectorStore {
         })
     }
 
+    async fn mark_generation_committed(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        let mut state = self.state.lock().await;
+        state.calls.push("mark_generation_committed");
+        if self.mode == FakeVectorMode::CommitFailure {
+            return Err(ApiError::new(
+                "provider.commit_failed",
+                axon_error::ErrorStage::Publishing,
+                "vector store failed to mark generation committed",
+            )
+            .with_provider_id(&self.provider_id.0));
+        }
+        if let Some(err) = self.mode_error_for(axon_error::ErrorStage::Publishing) {
+            return Err(err);
+        }
+        state.collection_spec(&collection, axon_error::ErrorStage::Publishing)?;
+        let points = state.points.entry(collection.clone()).or_default();
+        let mut points_written = 0;
+        for point in points.values_mut() {
+            let point_source = payload_string(&point.payload, "source_id");
+            let point_generation = payload_string(&point.payload, "source_generation");
+            if point_source.as_deref() == Some(source_id.0.as_str())
+                && point_generation.as_deref() == Some(generation.0.as_str())
+            {
+                point
+                    .payload
+                    .insert("committed_generation".to_string(), json!(generation.0));
+                point
+                    .payload
+                    .insert("document_status".to_string(), json!("published"));
+                points_written += 1;
+            }
+        }
+        Ok(VectorStoreWriteResult {
+            header: stage_header(PipelinePhase::Publishing),
+            collection,
+            points_attempted: points_written,
+            points_written,
+            payload_indexes_created: Vec::new(),
+            usage: ProviderUsage {
+                input_tokens: None,
+                output_tokens: None,
+                requests: 1,
+                duration_ms: 0,
+            },
+        })
+    }
+
     async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
         let mut state = self.state.lock().await;
         state.calls.push("delete");
+        if self.mode == FakeVectorMode::DeleteFailure {
+            return Err(ApiError::new(
+                "provider.delete_failed",
+                axon_error::ErrorStage::Cleaning,
+                "fake vector store failed to delete points",
+            )
+            .with_provider_id(&self.provider_id.0));
+        }
         if let Some(err) = self.mode_error_for(axon_error::ErrorStage::Cleaning) {
             return Err(err);
         }
@@ -245,6 +353,24 @@ impl VectorStore for FakeVectorStore {
             collection,
             before.saturating_sub(points.len()) as u64,
         ))
+    }
+
+    async fn mark_unchanged_items_committed(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        previous_generation: SourceGenerationId,
+        committed_generation: SourceGenerationId,
+        source_item_keys: Vec<SourceItemKey>,
+    ) -> Result<VectorStoreWriteResult> {
+        self.mark_unchanged_items_committed_inner(
+            collection,
+            source_id,
+            previous_generation,
+            committed_generation,
+            source_item_keys,
+        )
+        .await
     }
 
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
@@ -314,7 +440,8 @@ impl VectorStore for FakeVectorStore {
                 chunk_id: Some(point.chunk_id.clone()),
                 document_id: payload_string(&point.payload, "document_id").map(DocumentId::new),
                 source_id: payload_string(&point.payload, "source_id").map(SourceId::new),
-                source_item_key: None,
+                source_item_key: payload_string(&point.payload, "source_item_key")
+                    .map(SourceItemKey::new),
                 text: payload_string(&point.payload, "chunk_text"),
                 payload: point.payload.clone(),
             })
@@ -330,74 +457,7 @@ impl VectorStore for FakeVectorStore {
     }
 
     async fn capabilities(&self) -> Result<ProviderCapability> {
-        let state = self.capability_state();
-        let store_state = self.state.lock().await;
-        let sparse_configured = store_state
-            .collections
-            .values()
-            .any(|spec| spec.sparse.is_some());
-        let payload_indexes = store_state
-            .collections
-            .values()
-            .next()
-            .map(|spec| {
-                spec.payload_indexes
-                    .iter()
-                    .map(|index| index.field_name.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-        drop(store_state);
-        Ok(ProviderCapability {
-            provider_id: self.provider_id.clone(),
-            provider_kind: ProviderKind::Vector,
-            implementation: "fake".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            health: state.health,
-            limits: ProviderLimits {
-                max_concurrency: Some(2),
-                interactive_reserved_concurrency: Some(1),
-                background_max_concurrency: Some(1),
-                ..ProviderLimits::default()
-            },
-            features: vec!["dense".to_string(), "delete_by_chunk".to_string()],
-            cooldown_until: state.cooldown_until,
-            last_error: state.last_error,
-            reservation_policy: ReservationPolicy {
-                supports_reservations: true,
-                queue_policy: QueuePolicy::Priority,
-                interactive_reserve: 1,
-                cooldown_after_failures: 1,
-                cooldown_secs: 30,
-                retry_backoff_ms: Some(100),
-            },
-            reservation_state: ReservationStateSnapshot {
-                queued: 0,
-                active: 0,
-                available_units: 2,
-                oldest_queued_ms: None,
-                priority_breakdown: Default::default(),
-                states: vec![ReservationState::Granted],
-            },
-            cost_class: ProviderCostClass::Internal,
-            degraded_modes: Vec::new(),
-            fake_overrides_supported: true,
-            embedding: None,
-            llm: None,
-            vector_store: Some(VectorStoreCapability {
-                dense: true,
-                sparse: sparse_configured,
-                hybrid: sparse_configured,
-                payload_filters: true,
-                payload_indexes,
-                delete_by_filter: true,
-                collection_aliases: false,
-                consistency: VectorConsistency::Strong,
-            }),
-            fetch: None,
-            render: None,
-            credential: None,
-        })
+        self.capabilities_inner().await
     }
 }
 
@@ -405,87 +465,5 @@ impl FakeVectorStore {
     pub async fn reset(&self) -> Result<()> {
         *self.state.lock().await = FakeVectorState::default();
         Ok(())
-    }
-}
-
-impl FakeVectorState {
-    fn collection_spec(
-        &self,
-        collection: &str,
-        stage: axon_error::ErrorStage,
-    ) -> Result<&CollectionSpec> {
-        self.collections.get(collection).ok_or_else(|| {
-            ApiError::new(
-                "vector.collection_not_found",
-                stage,
-                format!("collection {collection} has not been ensured"),
-            )
-        })
-    }
-}
-
-fn delete_result(collection: String, points_deleted: u64) -> VectorStoreDeleteResult {
-    VectorStoreDeleteResult {
-        collection,
-        points_matched: points_deleted,
-        points_deleted,
-        dry_run: false,
-        warnings: Vec::new(),
-        metadata: MetadataMap::new(),
-    }
-}
-
-fn dot_score(left: &[f32], right: &[f32]) -> f64 {
-    left.iter()
-        .zip(right.iter())
-        .map(|(left, right)| f64::from(*left) * f64::from(*right))
-        .sum()
-}
-
-fn sparse_dot_score(query: Option<&SparseVector>, point: Option<&SparseVector>) -> f64 {
-    let (Some(query), Some(point)) = (query, point) else {
-        return 0.0;
-    };
-    query
-        .indices
-        .iter()
-        .zip(query.values.iter())
-        .map(|(query_index, query_value)| {
-            point
-                .indices
-                .iter()
-                .position(|point_index| point_index == query_index)
-                .and_then(|position| point.values.get(position))
-                .map(|point_value| f64::from(*query_value) * f64::from(*point_value))
-                .unwrap_or(0.0)
-        })
-        .sum()
-}
-
-fn payload_string(payload: &MetadataMap, field: &str) -> Option<String> {
-    payload.get(field)?.as_str().map(ToString::to_string)
-}
-
-fn stage_header(phase: PipelinePhase) -> StageResultHeader {
-    let timestamp = Timestamp("2026-07-01T00:00:00Z".to_string());
-    StageResultHeader {
-        job_id: JobId::new(uuid::Uuid::from_u128(0)),
-        stage_id: StageId::new(uuid::Uuid::from_u128(0)),
-        phase,
-        status: LifecycleStatus::Completed,
-        started_at: timestamp.clone(),
-        completed_at: Some(timestamp),
-        counts: StageCounts {
-            items_total: None,
-            items_done: 0,
-            documents_total: None,
-            documents_done: 0,
-            chunks_total: None,
-            chunks_done: 0,
-            bytes_total: None,
-            bytes_done: 0,
-        },
-        warnings: Vec::new(),
-        error: None,
     }
 }

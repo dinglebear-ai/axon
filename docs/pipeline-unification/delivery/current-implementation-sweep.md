@@ -1,5 +1,5 @@
 # Current Implementation Sweep
-Last Modified: 2026-06-30
+Last Modified: 2026-07-02
 
 ## Contract
 
@@ -10,7 +10,7 @@ deletes/replaces old paths deliberately.
 
 ## Verification Refresh
 
-Refreshed on 2026-06-30 against the current checkout:
+Refreshed on 2026-07-02 against the current checkout:
 
 - CLI command inventory was checked against
   `crates/axon-core/src/config/cli.rs`.
@@ -18,12 +18,25 @@ Refreshed on 2026-06-30 against the current checkout:
   `crates/axon-web/src/server/routing.rs`.
 - Source pipeline current/target split was checked against
   `docs/pipeline-unification/foundation/source-pipeline.md`.
-- `axon-api::source` now exists as a data-only DTO spike. It is not wired into
-  CLI, MCP, REST, services, jobs, or adapters yet.
-- `crates/axon-jobs/src/migrations/0017_source_ledger.sql` exists as early
-  source-ledger migration scaffolding. It creates generic source, manifest item,
-  and cleanup-debt tables, but there is not yet a `LedgerStore` implementation
-  or public source pipeline using those tables.
+- `axon-api::source` now exists as the target source DTO surface and is wired
+  into the new boundary crates (`axon-route`, `axon-adapters`, `axon-ledger`,
+  `axon-document`, `axon-embedding`, `axon-vectors`, and target source job DTOs
+  in `axon-jobs`) for fake-boundary/local-source tests.
+- `axon-ledger` has `LedgerStore` plus fake and SQLite implementations. The
+  PR11 local-source service path uses `LedgerStore` for source summaries,
+  manifest diffs, generations, leases, document status, and cleanup debt.
+- `axon-services::local_source` now has a target local-source orchestration
+  path that can run local discovery -> ledger diff/generation -> document
+  preparation -> embedding provider -> vector store -> generation publish using
+  dependency-injected target stores/providers. It is proven with fake providers
+  and is not yet the default public `embed`/`code-search` runtime.
+- `code-search` refresh has an opt-in target-local bridge. When target local
+  source dependencies are injected, refresh can run the target local-source job
+  path; current user-facing search still reads the legacy `axon-code-index`
+  committed-generation path until target vector search is feature-complete.
+- The target TEI/OpenAI-compatible embedding providers and target Qdrant vector
+  store are still runtime shells/not-wired for live indexing. The existing live
+  TEI/Qdrant implementation remains in the legacy `axon-vector` crate.
 - The current public surfaces are still old-state: `embed`, `ingest`, `scrape`,
   `crawl`, `code-search`, `code-search-watch`, nested REST job families, and
   legacy MCP action families remain present until the planned hard cutover.
@@ -38,6 +51,19 @@ Current Cargo workspace members:
 | `axon-api` | Current shared DTOs, MCP schema pieces, job DTO/status/progress, ingest/diff/purge/explain result types, plus the initial data-only `source` DTO spike. |
 | `axon-authz` | Current OAuth scope constants and HTTP auth helpers. |
 | `axon-core` | Config, HTTP/content helpers, artifacts, redaction, LLM provider implementations, CLI config parsing. |
+| `axon-observe` | Target observability boundary scaffolding. |
+| `axon-route` | Target source resolver/router capability scaffolding. |
+| `axon-adapters` | Target source adapter scaffolding, including local adapter capability/discovery/acquisition. |
+| `axon-ledger` | Target source ledger store boundary with fake and SQLite implementations. |
+| `axon-parse` | Target parsing boundary scaffolding. |
+| `axon-graph` | Target source graph boundary scaffolding. |
+| `axon-memory` | Target memory boundary scaffolding. |
+| `axon-document` | Target document preparation/chunk routing boundary. |
+| `axon-embedding` | Target embedding provider boundary with fake provider and not-wired live shells. |
+| `axon-vectors` | Target vector store/payload boundary with fake store and not-wired Qdrant shell. |
+| `axon-retrieval` | Target retrieval boundary scaffolding. |
+| `axon-llm` | Target LLM provider boundary scaffolding. |
+| `axon-prune` | Target pruning/cleanup boundary scaffolding. |
 | `axon-crawl` | Spider.rs crawl engine, scrape helpers, sitemap/backfill, Chrome bootstrap. |
 | `axon-extract` | Vertical extractor framework, scrape dispatch, deterministic/LLM structured extraction sync path. |
 | `axon-ingest` | GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, RSS, YouTube, and session ingest. |
@@ -52,34 +78,20 @@ Current Cargo workspace members:
 
 Current `xtask` automation includes focused checks such as API parity
 generation/checking, OpenAPI drift checks, Android route-contract checks, CLI
-help contract checks, and CLAUDE/AGENTS/GEMINI symlink checks. The target
-`xtask docs ...` and aggregate `xtask schemas ...` command tree does not exist
-yet.
+help contract checks, generated source-schema checks, doc contract checks, and
+CLAUDE/AGENTS/GEMINI symlink checks. The aggregate `cargo xtask schemas
+generate` / `cargo xtask schemas generate --check` command exists and owns
+generated adapter/vector/source reference artifacts.
 
-Current source-ledger scaffolding:
+Current source-ledger state:
 
-- `crates/axon-jobs/src/migrations/0017_source_ledger.sql` creates
-  `axon_source_sources`, `axon_source_manifest_items`, and
-  `axon_source_cleanup_debt`.
-- This is schema scaffolding only. It does not mean source pipeline ownership
-  has moved out of the current per-family paths.
-
-Target crates introduced by this contract do not exist yet:
-
-- `axon-error`
-- `axon-observe`
-- `axon-route`
-- `axon-adapters`
-- `axon-ledger`
-- `axon-parse`
-- `axon-graph`
-- `axon-memory`
-- `axon-document`
-- `axon-embedding`
-- `axon-vectors`
-- `axon-retrieval`
-- `axon-llm`
-- `axon-prune`
+- Legacy `crates/axon-jobs/src/migrations/0017_source_ledger.sql` remains as
+  older source-ledger scaffolding for the current jobs database.
+- Target `axon-ledger` owns the new `LedgerStore` boundary and SQLite/fake
+  implementations used by target local-source tests.
+- Source pipeline ownership has moved only for the PR11 local-source
+  fake-boundary/bridge path. Hosted git, crawl, feeds, sessions, registries,
+  memory, and public source command cutover remain on old paths.
 
 ## Current CLI Surface
 

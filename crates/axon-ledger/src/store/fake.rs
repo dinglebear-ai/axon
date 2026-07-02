@@ -11,14 +11,23 @@ mod lease;
 use super::util::*;
 use super::{LedgerStore, Result};
 use crate::validation::{
-    ensure_generation_publishable, ensure_generation_writable, manifest_missing_error,
-    validate_manifest,
+    ensure_generation_publishable, ensure_generation_writable, generation_already_published_error,
+    manifest_missing_error, validate_manifest,
 };
 use cleanup::record_removed_item_cleanup_debt;
 
 #[derive(Debug, Clone, Default)]
 pub struct FakeLedgerStore {
     state: Arc<Mutex<FakeLedgerState>>,
+    mode: FakeLedgerMode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum FakeLedgerMode {
+    #[default]
+    Success,
+    PublishFailure,
+    HeartbeatLost,
 }
 
 #[derive(Debug, Default)]
@@ -37,6 +46,16 @@ struct FakeLedgerState {
 impl FakeLedgerStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_publish_generation_failure(mut self) -> Self {
+        self.mode = FakeLedgerMode::PublishFailure;
+        self
+    }
+
+    pub fn with_heartbeat_lost(mut self) -> Self {
+        self.mode = FakeLedgerMode::HeartbeatLost;
+        self
     }
 
     pub async fn committed_generation(&self, source_id: &SourceId) -> Option<SourceGenerationId> {
@@ -58,6 +77,14 @@ impl FakeLedgerStore {
 
     pub async fn cleanup_debt_count(&self) -> usize {
         self.state.lock().await.cleanup_debt.len()
+    }
+
+    pub async fn generation_count(&self) -> usize {
+        self.state.lock().await.generations.len()
+    }
+
+    pub async fn manifest_count(&self) -> usize {
+        self.state.lock().await.manifests.len()
     }
 }
 
@@ -229,6 +256,13 @@ impl LedgerStore for FakeLedgerStore {
         Ok(generation)
     }
 
+    async fn committed_generation(
+        &self,
+        source_id: SourceId,
+    ) -> Result<Option<SourceGenerationId>> {
+        Ok(self.state.lock().await.committed.get(&source_id).cloned())
+    }
+
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
         ensure_generation_publishable(&generation)?;
         let mut state = self.state.lock().await;
@@ -272,10 +306,39 @@ impl LedgerStore for FakeLedgerStore {
         Ok(completed)
     }
 
+    async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
+        let mut state = self.state.lock().await;
+        let key = (generation.source_id.clone(), generation.generation.clone());
+        let Some(stored) = state.generations.get(&key).cloned() else {
+            return Err(generation_missing_error(
+                &generation.source_id,
+                &generation.generation,
+            ));
+        };
+        if stored.published_at.is_some() || stored.publish_state != PublishState::Writing {
+            return Err(generation_already_published_error(&stored));
+        }
+        let mut failed = generation;
+        failed.created_at = stored.created_at;
+        failed.published_at = None;
+        failed.publish_state = PublishState::Writing;
+        failed.status = LifecycleStatus::Failed;
+        state.generations.insert(key, failed.clone());
+        Ok(failed)
+    }
+
     async fn publish_generation(
         &self,
         request: PublishGenerationRequest,
     ) -> Result<SourceGeneration> {
+        if self.mode == FakeLedgerMode::PublishFailure {
+            return Err(ApiError::new(
+                "source.ledger.publish_failed",
+                ErrorStage::Publishing,
+                "fake ledger failed to publish generation",
+            )
+            .with_source_id(request.source_id.0));
+        }
         let mut state = self.state.lock().await;
         let Some(generation) = state
             .generations
@@ -395,6 +458,9 @@ impl LedgerStore for FakeLedgerStore {
         owner_id: String,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>> {
+        if self.mode == FakeLedgerMode::HeartbeatLost {
+            return Ok(None);
+        }
         lease::heartbeat_lease(&self.state, lease_id, owner_id, ttl_seconds).await
     }
 

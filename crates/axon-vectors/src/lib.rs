@@ -16,6 +16,7 @@ mod qdrant;
 pub mod query;
 mod sparse;
 pub mod store;
+mod store_helpers;
 pub mod testing;
 mod validation;
 
@@ -36,6 +37,10 @@ mod payload_tests;
 #[cfg(test)]
 #[path = "point_tests.rs"]
 mod point_tests;
+
+#[cfg(test)]
+#[path = "local_payload_tests.rs"]
+mod local_payload_tests;
 
 #[cfg(test)]
 #[path = "qdrant_tests.rs"]

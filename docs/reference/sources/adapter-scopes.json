@@ -305,7 +305,15 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "include_globs",
+          "exclude_globs",
+          "respect_gitignore",
+          "follow_symlinks",
+          "max_file_bytes",
+          "binary_policy",
+          "watch_policy"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "directory",
@@ -320,7 +328,9 @@
         "supported_scopes": [
           "directory",
           "file",
-          "workspace"
+          "workspace",
+          "repo",
+          "map"
         ],
         "version": "1",
         "watch_supported": true
@@ -503,7 +513,7 @@
     "registry_status": "route-time implemented subset",
     "source_inputs": [
       {
-        "checksum": "sha256:397100f9ad536758ff4cb9db030ff6b235f44d3f44bad04e930f2f13719cb120",
+        "checksum": "sha256:ded9abecd6713fb7663445ca66506f5b58a216ef3e627a2574dc098a9da565bb",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

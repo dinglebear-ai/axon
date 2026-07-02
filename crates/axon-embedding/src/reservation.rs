@@ -3,8 +3,8 @@
 use axon_api::source::{JobPriority, ProviderId, ProviderKind, ReservationStateSnapshot};
 
 pub use axon_observe::reservation::{
-    ProviderReservation, ProviderReservationConfig, ProviderReservationManager,
-    ProviderReservationOutcome,
+    ProviderReservation, ProviderReservationConfig, ProviderReservationContext,
+    ProviderReservationManager, ProviderReservationOutcome,
 };
 
 pub type Result<T> = axon_observe::reservation::Result<T>;

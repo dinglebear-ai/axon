@@ -124,6 +124,7 @@ fn vector_and_llm_capabilities_have_typed_family_sections() {
         payload_filters: true,
         payload_indexes: vec!["seed_url".to_string(), "source_type".to_string()],
         delete_by_filter: true,
+        generation_publish: true,
         collection_aliases: true,
         consistency: VectorConsistency::Tunable,
     });
@@ -143,6 +144,7 @@ fn vector_and_llm_capabilities_have_typed_family_sections() {
     let llm_value = serde_json::to_value(llm).expect("llm capability");
 
     assert_eq!(vector_value["vector_store"]["hybrid"], true);
+    assert_eq!(vector_value["vector_store"]["generation_publish"], true);
     assert_eq!(vector_value["vector_store"]["consistency"], "tunable");
     assert_eq!(llm_value["llm"]["context_window"], 1_000_000);
     assert_eq!(llm_value["llm"]["json_schema"], true);

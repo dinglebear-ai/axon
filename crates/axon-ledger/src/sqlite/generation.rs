@@ -6,8 +6,8 @@ use crate::sqlite::cleanup::insert_cleanup_debt_once_in_tx;
 use crate::sqlite::util::{enum_wire_value, json_error, timestamp};
 use crate::store::Result;
 use crate::validation::{
-    ensure_generation_publishable, ensure_generation_writable, manifest_missing_error,
-    source_missing_error,
+    ensure_generation_publishable, ensure_generation_writable, generation_already_published_error,
+    manifest_missing_error, source_missing_error,
 };
 
 mod stale_cleanup;
@@ -119,6 +119,26 @@ pub(super) async fn complete_generation(
     upsert_generation_in_tx(&mut tx, &completed, None).await?;
     tx.commit().await.map_err(sqlite_error)?;
     Ok(completed)
+}
+
+pub(super) async fn fail_generation(
+    store: &SqliteLedgerStore,
+    generation: SourceGeneration,
+) -> Result<SourceGeneration> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
+    if stored.published_at.is_some() || stored.publish_state != PublishState::Writing {
+        return Err(generation_already_published_error(&stored));
+    }
+
+    let mut failed = generation;
+    failed.created_at = stored.created_at;
+    failed.published_at = None;
+    failed.publish_state = PublishState::Writing;
+    failed.status = LifecycleStatus::Failed;
+    upsert_generation_in_tx(&mut tx, &failed, None).await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(failed)
 }
 
 pub(super) async fn publish_generation(

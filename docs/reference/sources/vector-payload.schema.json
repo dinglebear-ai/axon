@@ -797,6 +797,11 @@
             },
             {
               "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -896,6 +901,11 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
               ]
             },
             {
@@ -1008,6 +1018,11 @@
             },
             {
               "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
                 "web_title"
               ]
             },
@@ -1107,6 +1122,11 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
               ]
             },
             {
@@ -1215,6 +1235,11 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
               ]
             },
             {
@@ -1397,10 +1422,17 @@
       },
       "type": "array"
     },
+    "item_canonical_uri": {
+      "minLength": 1,
+      "type": "string"
+    },
     "job_id": {
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "manifest": {
+      "type": "boolean"
     },
     "memory_id": {
       "type": "string"
@@ -1447,6 +1479,10 @@
     "session_turn_index": {
       "type": "integer"
     },
+    "source_adapter": {
+      "minLength": 1,
+      "type": "string"
+    },
     "source_family": {
       "enum": [
         "code",
@@ -1475,8 +1511,20 @@
       "type": "string",
       "x-qdrant-index": "keyword"
     },
+    "source_kind": {
+      "minLength": 1,
+      "type": "string"
+    },
     "source_range": {
       "$ref": "#/$defs/SourceRange"
+    },
+    "source_scope": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "source_type": {
+      "minLength": 1,
+      "type": "string"
     },
     "vector_namespace": {
       "minLength": 1,
@@ -1512,7 +1560,12 @@
     "payload_contract_version",
     "collection",
     "source_family",
+    "source_kind",
+    "source_adapter",
+    "source_scope",
     "source_id",
+    "source_item_key",
+    "item_canonical_uri",
     "source_generation",
     "document_id",
     "chunk_id",
@@ -1598,13 +1651,17 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-code",
+        "manifest": true,
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
+        "source_adapter": "source_adapter",
         "source_family": "code",
         "source_generation": "gen-code-7",
         "source_id": "src-code",
         "source_item_key": "code-item",
+        "source_kind": "source_kind",
         "source_range": {
           "byte_end": null,
           "byte_start": null,
@@ -1623,6 +1680,7 @@
           "xml_xpath": null,
           "yaml_path": null
         },
+        "source_scope": "source_scope",
         "visibility": "internal"
       },
       {
@@ -1666,13 +1724,16 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-web",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
+        "source_adapter": "source_adapter",
         "source_family": "web",
         "source_generation": "gen-web-7",
         "source_id": "src-web",
         "source_item_key": "web-item",
+        "source_kind": "source_kind",
         "source_range": {
           "byte_end": null,
           "byte_start": null,
@@ -1691,6 +1752,7 @@
           "xml_xpath": null,
           "yaml_path": null
         },
+        "source_scope": "source_scope",
         "visibility": "internal",
         "web_depth": 1,
         "web_domain": "example.com",
@@ -1738,16 +1800,19 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-package",
         "package_ecosystem": "cargo",
         "package_name": "axon",
         "package_version": "6.2.1",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
+        "source_adapter": "source_adapter",
         "source_family": "package",
         "source_generation": "gen-package-7",
         "source_id": "src-package",
         "source_item_key": "package-item",
+        "source_kind": "source_kind",
         "source_range": {
           "byte_end": null,
           "byte_start": null,
@@ -1766,6 +1831,7 @@
           "xml_xpath": null,
           "yaml_path": null
         },
+        "source_scope": "source_scope",
         "visibility": "internal"
       },
       {
@@ -1809,6 +1875,7 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-session",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
@@ -1816,10 +1883,12 @@
         "session_skill_name": "test-driven-development",
         "session_tool_name": "schemas",
         "session_turn_index": 3,
+        "source_adapter": "source_adapter",
         "source_family": "session",
         "source_generation": "gen-session-7",
         "source_id": "src-session",
         "source_item_key": "session-item",
+        "source_kind": "source_kind",
         "source_range": {
           "byte_end": null,
           "byte_start": null,
@@ -1838,6 +1907,7 @@
           "xml_xpath": null,
           "yaml_path": null
         },
+        "source_scope": "source_scope",
         "visibility": "internal"
       },
       {
@@ -1889,13 +1959,16 @@
           "node-a",
           "node-b"
         ],
+        "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-graph",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
+        "source_adapter": "source_adapter",
         "source_family": "graph",
         "source_generation": "gen-graph-7",
         "source_id": "src-graph",
         "source_item_key": "graph-item",
+        "source_kind": "source_kind",
         "source_range": {
           "byte_end": null,
           "byte_start": null,
@@ -1914,6 +1987,7 @@
           "xml_xpath": null,
           "yaml_path": null
         },
+        "source_scope": "source_scope",
         "visibility": "internal"
       },
       {
@@ -1957,16 +2031,19 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-memory",
         "memory_id": "memory-memory",
         "memory_importance": 5,
         "memory_status": "active",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
+        "source_adapter": "source_adapter",
         "source_family": "memory",
         "source_generation": "gen-memory-7",
         "source_id": "src-memory",
         "source_item_key": "memory-item",
+        "source_kind": "source_kind",
         "source_range": {
           "byte_end": null,
           "byte_start": null,
@@ -1985,6 +2062,7 @@
           "xml_xpath": null,
           "yaml_path": null
         },
+        "source_scope": "source_scope",
         "visibility": "internal"
       }
     ],
@@ -2154,12 +2232,12 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:a22a875e26722ba297f4a94cb1e0b0aa4c35713d78462b5a5d745930f0408854",
+        "checksum": "sha256:706cb77687b473a57630683340901f9aa6e6618c30d7ff98384603f4b64cd798",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:698c1a043423685b53859cb7669c3424f3ea5c2a605c4b3d4b2a69ca4ad5b0bc",
+        "checksum": "sha256:decf7f92843c93b4fe20297140008e9c9377d312dbeb3254f082b1b90bc3ef58",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },
@@ -2190,7 +2268,8 @@
           "code_language",
           "code_symbol_name",
           "code_symbol_kind",
-          "code_file_type"
+          "code_file_type",
+          "manifest"
         ],
         "source_family": "code"
       },

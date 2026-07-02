@@ -235,6 +235,17 @@ fn prepare_chunks(
                 &content_hash,
             );
             let chunk_id = ChunkId::from(format!("chunk_{}", stable_token(&chunk_key)));
+            let symbol = chunk.symbol.clone();
+            let mut metadata = merge_metadata(&request.document.metadata, chunk.metadata);
+            if profile == ChunkingProfile::CodeSymbol
+                && let Some(symbol) = &symbol
+            {
+                metadata.insert("code_symbol_name".to_string(), symbol.clone().into());
+                metadata.insert(
+                    "code_symbol_kind".to_string(),
+                    code_symbol_kind(&chunk.content).into(),
+                );
+            }
             PreparedChunk {
                 chunk_id: chunk_id.clone(),
                 chunk_key,
@@ -246,7 +257,7 @@ fn prepare_chunks(
                     canonical_uri: request.document.canonical_uri.clone(),
                     path,
                     heading_path: chunk.heading_path,
-                    symbol: chunk.symbol,
+                    symbol,
                     range: chunk.range.clone(),
                 },
                 source_range: chunk.range,
@@ -256,7 +267,7 @@ fn prepare_chunks(
                 parent_chunk_id: None,
                 previous_chunk_id: None,
                 next_chunk_id: None,
-                metadata: merge_metadata(&request.document.metadata, chunk.metadata),
+                metadata,
                 content: chunk.content,
             }
         })
@@ -328,6 +339,21 @@ fn merge_metadata(doc: &MetadataMap, mut chunk: MetadataMap) -> MetadataMap {
         chunk.entry(key.clone()).or_insert_with(|| value.clone());
     }
     chunk
+}
+
+fn code_symbol_kind(content: &str) -> &'static str {
+    let first = content.lines().next().unwrap_or_default().trim_start();
+    if first.starts_with("pub fn ") || first.starts_with("fn ") || first.starts_with("def ") {
+        "function"
+    } else if first.starts_with("class ") || first.starts_with("struct ") {
+        "type"
+    } else if first.starts_with("enum ") {
+        "enum"
+    } else if first.starts_with("impl ") {
+        "impl"
+    } else {
+        "symbol"
+    }
 }
 
 fn simple_hash(text: &str) -> String {

@@ -139,7 +139,7 @@ fn payload(
                 "embedding_batch_id".to_string(),
                 json!("00000000-0000-0000-0000-00000000000a"),
             ),
-            ("document_status".to_string(), json!("prepared")),
+            ("document_status".to_string(), json!("vectorized")),
             ("embedding_model".to_string(), json!("fake-embedding")),
             ("embedding_dimensions".to_string(), json!(3)),
             ("embedding_provider".to_string(), json!("fake-vector")),
@@ -148,6 +148,10 @@ fn payload(
             ("payload_contract_version".to_string(), json!("2026-07-01")),
             ("collection".to_string(), json!("axon-test")),
             ("source_family".to_string(), json!("web")),
+            ("source_kind".to_string(), json!("web")),
+            ("source_adapter".to_string(), json!("web")),
+            ("source_scope".to_string(), json!("page")),
+            ("item_canonical_uri".to_string(), json!(url)),
             ("content_kind".to_string(), json!(content_kind)),
             ("web_title".to_string(), json!("Fixture")),
             ("web_domain".to_string(), json!("example.com")),
@@ -207,6 +211,101 @@ async fn fake_vector_store_upserts_searches_and_deletes_without_qdrant() {
 }
 
 #[tokio::test]
+async fn fake_vector_store_search_filters_committed_source_generation_and_path_prefix() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    let mut batch = batch();
+    batch.points[0]
+        .payload
+        .insert("source_item_key".to_string(), json!("src/lib.rs"));
+    batch.points[0]
+        .payload
+        .get_mut("chunk_locator")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .insert("path".to_string(), json!("src/lib.rs"));
+    batch.points[1]
+        .payload
+        .insert("source_item_key".to_string(), json!("docs/notes.md"));
+    batch.points[1]
+        .payload
+        .get_mut("chunk_locator")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .insert("path".to_string(), json!("docs/notes.md"));
+    store.upsert(batch).await.unwrap();
+
+    let mut request = search(MetadataMap::new());
+    request
+        .filters
+        .insert("source_id".to_string(), json!("src-a"));
+    request
+        .filters
+        .insert("source_generation".to_string(), json!("7"));
+    request
+        .filters
+        .insert("committed_generation".to_string(), json!("7"));
+    request
+        .filters
+        .insert("path_prefix".to_string(), json!("src/"));
+
+    let search = store.search(request).await.unwrap();
+
+    assert_eq!(search.results.len(), 1);
+    assert_eq!(
+        search.results[0].source_item_key,
+        Some(SourceItemKey::new("src/lib.rs"))
+    );
+    assert_eq!(search.results[0].point_id, VectorPointId::new("point-a"));
+}
+
+#[tokio::test]
+async fn unchanged_items_are_carried_forward_without_mutating_previous_generation() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    let mut batch = batch();
+    batch.points[0]
+        .payload
+        .insert("source_item_key".to_string(), json!("src/lib.rs"));
+    store.upsert(batch).await.unwrap();
+
+    let written = store
+        .mark_unchanged_items_committed(
+            "axon-test".to_string(),
+            SourceId::new("src-a"),
+            SourceGenerationId::new("7"),
+            SourceGenerationId::new("9"),
+            vec![SourceItemKey::new("src/lib.rs")],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(written.points_written, 1);
+    let points = store.points("axon-test").await;
+    let carried = points
+        .iter()
+        .filter(|point| {
+            point
+                .payload
+                .get("source_item_key")
+                .and_then(|value| value.as_str())
+                == Some("src/lib.rs")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(carried.len(), 2);
+    assert!(carried.iter().any(|point| {
+        point.payload["source_generation"].as_str() == Some("7")
+            && point.payload["committed_generation"].as_str() == Some("7")
+    }));
+    assert!(carried.iter().any(|point| {
+        point.payload["source_generation"].as_str() == Some("9")
+            && point.payload["committed_generation"].as_str() == Some("9")
+    }));
+}
+
+#[tokio::test]
 async fn fake_vector_store_reports_capabilities_and_records_calls() {
     let store = FakeVectorStore::new("fake-vector");
 
@@ -217,6 +316,7 @@ async fn fake_vector_store_reports_capabilities_and_records_calls() {
     assert!(!vector_store.sparse);
     assert!(!vector_store.hybrid);
     assert!(vector_store.delete_by_filter);
+    assert!(vector_store.generation_publish);
 
     store.ensure_collection(collection()).await.unwrap();
     store.upsert(batch()).await.unwrap();
@@ -334,6 +434,31 @@ async fn fake_vector_store_filters_searches_by_indexed_payload_fields() {
             .iter()
             .all(|result| result.payload["source_generation"] == "7")
     );
+}
+
+#[tokio::test]
+async fn mark_generation_committed_updates_visibility_and_document_status() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    let write = store
+        .mark_generation_committed(
+            "axon-test".to_string(),
+            SourceId::new("src-a"),
+            SourceGenerationId::new("7"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(write.points_written, 1);
+    let result = store
+        .search(search(filter("document_id", json!("doc-a"))))
+        .await
+        .unwrap();
+    assert_eq!(result.results.len(), 1);
+    assert_eq!(result.results[0].payload["committed_generation"], "7");
+    assert_eq!(result.results[0].payload["document_status"], "published");
 }
 
 #[tokio::test]

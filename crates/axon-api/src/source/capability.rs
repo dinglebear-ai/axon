@@ -302,6 +302,7 @@ pub struct VectorStoreCapability {
     pub payload_filters: bool,
     pub payload_indexes: Vec<String>,
     pub delete_by_filter: bool,
+    pub generation_publish: bool,
     pub collection_aliases: bool,
     pub consistency: VectorConsistency,
 }

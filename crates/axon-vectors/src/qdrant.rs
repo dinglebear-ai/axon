@@ -14,7 +14,7 @@ use qdrant_client::qdrant::{
 };
 
 use crate::collection::{normalize_collection_spec, validate_collection_spec};
-use crate::filter::{SEARCH_GENERATION_FIELD, validate_search_filters};
+use crate::filter::{PATH_PREFIX, SEARCH_GENERATION_FIELD, validate_search_filters};
 use crate::store::{Result, VectorStore};
 use crate::validation::validate_upsert_batch;
 
@@ -60,6 +60,26 @@ impl VectorStore for QdrantVectorStore {
 
     async fn upsert(&self, _batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         Err(self.not_wired(axon_error::ErrorStage::Upserting))
+    }
+
+    async fn mark_generation_committed(
+        &self,
+        _collection: String,
+        _source_id: SourceId,
+        _generation: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        Err(self.not_wired(axon_error::ErrorStage::Publishing))
+    }
+
+    async fn mark_unchanged_items_committed(
+        &self,
+        _collection: String,
+        _source_id: SourceId,
+        _previous_generation: SourceGenerationId,
+        _committed_generation: SourceGenerationId,
+        _source_item_keys: Vec<SourceItemKey>,
+    ) -> Result<VectorStoreWriteResult> {
+        Err(self.not_wired(axon_error::ErrorStage::Publishing))
     }
 
     async fn delete(&self, _selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
@@ -114,6 +134,7 @@ impl VectorStore for QdrantVectorStore {
                 payload_filters: true,
                 payload_indexes: Vec::new(),
                 delete_by_filter: true,
+                generation_publish: false,
                 collection_aliases: true,
                 consistency: VectorConsistency::Strong,
             }),
@@ -247,6 +268,13 @@ pub fn qdrant_filter(request: &VectorSearchRequest) -> Result<Option<Filter>> {
     validate_search_filters(request)?;
     let mut conditions = Vec::new();
     for (field, value) in request.filters.iter() {
+        if field == PATH_PREFIX {
+            return Err(ApiError::new(
+                "vector.qdrant.path_prefix_unsupported",
+                axon_error::ErrorStage::Retrieving,
+                "target Qdrant path-prefix filters require live prefix-query wiring",
+            ));
+        }
         conditions.extend(qdrant_field_conditions(field, value));
     }
     if let Some(generation) = &request.generation {

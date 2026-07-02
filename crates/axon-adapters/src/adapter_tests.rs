@@ -279,7 +279,7 @@ fn route_plan(adapter_name: &str, source_kind: SourceKind, scope: SourceScope) -
         option_schema_id: format!("adapter:{adapter_name}:options:v1"),
         validated_options: AdapterOptions::default(),
         chunking_hints: vec![ChunkHint {
-            profile: ChunkProfile::Markdown,
+            profile: ChunkProfile::MarkdownSections,
             reason: "test chunk hint".to_string(),
             options: MetadataMap::new(),
         }],
