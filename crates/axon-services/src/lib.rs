@@ -73,8 +73,15 @@ pub(crate) mod web_source;
 pub use web_source::{
     WebSourceIndexInput, WebSourceIndexOutput, index_web_source, index_web_source_with_job,
 };
+pub mod youtube_acquire;
+pub use youtube_acquire::fetch_youtube_dump;
 #[allow(dead_code)]
 pub(crate) mod youtube_source;
+pub use youtube_source::{
+    YoutubeSourceIndexInput, YoutubeSourceIndexOutput, index_youtube_source_with_job,
+};
+pub mod youtube_target;
+pub use youtube_target::is_youtube_target;
 
 #[cfg(test)]
 #[path = "client_contract_tests.rs"]

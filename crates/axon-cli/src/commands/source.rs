@@ -29,6 +29,7 @@ mod feed;
 mod git;
 mod reddit;
 mod web;
+mod youtube;
 
 use axon_api::source::JobId;
 use axon_core::config::Config;
@@ -56,11 +57,15 @@ enum SourceInputKind {
     /// An RSS/Atom/RDF feed URL (or `rss:`/`feed:`/`atom:` prefix) — fetched +
     /// indexed through the feed bridge.
     Feed,
+    /// A youtube video/playlist/channel URL, `@handle`, or bare 11-char video
+    /// id — yt-dlp-fetched to a prepared dump + indexed through the youtube
+    /// bridge.
+    Youtube,
     /// A reddit subreddit (`r/<name>`) or reddit.com thread URL — OAuth-fetched
     /// to a prepared dump + indexed through the reddit bridge.
     Reddit,
-    /// An http/https URL that is not a git, feed, or reddit target — crawled +
-    /// indexed.
+    /// An http/https URL that is not a git, feed, youtube, or reddit target —
+    /// crawled + indexed.
     Web,
     /// None of the above — unsupported for this slice.
     Unsupported,
@@ -82,6 +87,10 @@ pub async fn run_source(
             let runtime = require_data_plane(service_context)?;
             feed::run_feed_source(cfg, runtime, &input).await
         }
+        SourceInputKind::Youtube => {
+            let runtime = require_data_plane(service_context)?;
+            youtube::run_youtube_source(cfg, runtime, &input).await
+        }
         SourceInputKind::Reddit => {
             let runtime = require_data_plane(service_context)?;
             reddit::run_reddit_source(cfg, runtime, &input).await
@@ -97,13 +106,19 @@ pub async fn run_source(
 /// Classify the input into an acquisition class.
 ///
 /// Local existence wins first (a directory literally named like a URL is still
-/// treated as local), then a genuine git target, then a feed URL, then a reddit
-/// target, then a plain http/https web URL, then unsupported. Feed AND reddit
-/// classification MUST precede the web branch: both feed URLs and reddit.com
-/// thread URLs are http/https, so the web catch-all would otherwise swallow
-/// them. Reddit is checked *after* git (a reddit.com URL carries no git signal,
-/// so git never claims it). Split out as a pure-ish async fn (only fs metadata +
-/// string parsing) so routing is testable without a data plane.
+/// treated as local), then a genuine git target, then a feed URL, then a
+/// youtube target, then a reddit target, then a plain http/https web URL, then
+/// unsupported. Feed, youtube, AND reddit classification MUST precede the web
+/// branch: feed URLs, youtube.com/youtu.be URLs, and reddit.com thread URLs are
+/// all http/https, so the web catch-all would otherwise swallow them.
+///
+/// Youtube is checked *before reddit*: a bare 11-char video id whose characters
+/// are all alphanumeric/`_` (no `-`) would also satisfy reddit's bare-subreddit
+/// rule, so the more specific youtube id check must run first or such an id
+/// would be mis-claimed as a subreddit. Both are checked *after* git (a
+/// youtube/reddit URL carries no git signal, so git never claims it). Split out
+/// as a pure-ish async fn (only fs metadata + string parsing) so routing is
+/// testable without a data plane.
 async fn classify_source_input(input: &str) -> SourceInputKind {
     if input_is_local_path(input).await {
         return SourceInputKind::Local;
@@ -113,6 +128,9 @@ async fn classify_source_input(input: &str) -> SourceInputKind {
     }
     if axon_services::is_feed_target(input) {
         return SourceInputKind::Feed;
+    }
+    if axon_services::is_youtube_target(input) {
+        return SourceInputKind::Youtube;
     }
     if axon_services::is_reddit_target(input) {
         return SourceInputKind::Reddit;
@@ -180,8 +198,8 @@ fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
         .cloned()
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| {
-            "axon source requires a local path, git repository URL, feed URL, reddit target, \
-             or web URL argument"
+            "axon source requires a local path, git repository URL, feed URL, youtube target, \
+             reddit target, or web URL argument"
                 .into()
         })
 }
@@ -200,13 +218,14 @@ fn require_data_plane(
         })
 }
 
-/// Clear error for inputs that are not a local path, git URL, feed URL, reddit
-/// target, or web URL.
+/// Clear error for inputs that are not a local path, git URL, feed URL, youtube
+/// target, reddit target, or web URL.
 fn unsupported_input_error(input: &str) -> Box<dyn Error> {
     format!(
-        "axon source supports local paths, git repository URLs, feed URLs, reddit targets \
+        "axon source supports local paths, git repository URLs, feed URLs, youtube targets \
+         (a video/playlist/channel URL, @handle, or 11-char video id), reddit targets \
          (r/<name> or a reddit.com thread URL), and web URLs; {input} is none of these \
-         (youtube/sessions/registry acquisition is a P10 follow-up)"
+         (sessions/registry acquisition is a P10 follow-up)"
     )
     .into()
 }
