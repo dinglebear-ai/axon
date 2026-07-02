@@ -17,6 +17,7 @@ axon-jobs = { path = "../axon-jobs" }
 axon-code-index = { path = "../axon-code-index" }
 axon-source-ledger = { path = "../axon-source-ledger" }
 axon-adapters = { path = "../axon-adapters" }
+axon-route = { path = "../axon-route" }
 axon-document = { path = "../axon-document" }
 axon-embedding = { path = "../axon-embedding" }
 axon-ledger = { path = "../axon-ledger" }

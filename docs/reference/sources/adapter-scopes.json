@@ -460,7 +460,11 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "manifest_path",
+          "markdown_root",
+          "map_urls"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "site",
@@ -513,7 +517,12 @@
     "registry_status": "route-time implemented subset",
     "source_inputs": [
       {
-        "checksum": "sha256:ded9abecd6713fb7663445ca66506f5b58a216ef3e627a2574dc098a9da565bb",
+        "checksum": "sha256:3fdc258530a45c6390485434dae01058d641424b7cbb9a49a54503fb63846c07",
+        "kind": "rust_module",
+        "path": "crates/axon-adapters/src/web.rs"
+      },
+      {
+        "checksum": "sha256:7189b435f0277c9fffbcbd1390899b8723b28101f9efbd8157509b54299627e0",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

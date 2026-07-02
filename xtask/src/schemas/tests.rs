@@ -30,6 +30,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/stage.rs",
         "crates/axon-cli/src/lib.rs",
         "crates/axon-core/src/config/types.rs",
+        "crates/axon-adapters/src/web.rs",
         "crates/axon-route/src/capability.rs",
         "crates/axon-web/src/lib.rs",
         "crates/axon-mcp/src/lib.rs",

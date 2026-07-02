@@ -32,6 +32,7 @@ fn generated_adapter_docs_include_route_time_registry() {
     .unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
     let adapters = value["x-axon"]["adapters"].as_array().unwrap();
+    let source_inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
     let web = adapters
         .iter()
         .find(|adapter| adapter["name"] == "web")
@@ -43,6 +44,10 @@ fn generated_adapter_docs_include_route_time_registry() {
     );
     assert_eq!(web["source_kind"], "web");
     assert_eq!(web["default_scope"], "site");
+    assert_eq!(
+        web["allowed_option_keys"],
+        serde_json::json!(["manifest_path", "markdown_root", "map_urls"])
+    );
     assert!(
         web["supported_scopes"]
             .as_array()
@@ -50,6 +55,10 @@ fn generated_adapter_docs_include_route_time_registry() {
             .contains(&serde_json::json!("map"))
     );
     assert_eq!(web["watch_supported"], true);
+    assert!(source_inputs.iter().any(|input| {
+        input["path"] == "crates/axon-adapters/src/web.rs"
+            && input["checksum"].as_str().unwrap().starts_with("sha256:")
+    }));
 
     let markdown =
         std::fs::read_to_string(tmp.path().join("docs/reference/sources/adapter-scopes.md"))
