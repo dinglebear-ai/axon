@@ -13,6 +13,7 @@ pub mod layering;
 pub mod mcp_http;
 pub mod no_mod_rs;
 pub mod openapi_drift;
+pub mod public_api;
 pub mod release_versions;
 pub mod repo_structure;
 pub mod repo_structure_spec;
@@ -41,6 +42,7 @@ pub fn check(root: &Path) -> Result<()> {
     doc_links::check(root)?;
     doc_contracts::check(root)?;
     dep_graph::check(root)?;
+    public_api::check(root)?;
     sqlite_migrations::check(root)?;
     secrets::check(root)?;
     release_versions::check_local(root)?;
