@@ -5,7 +5,13 @@
 //! All business logic lives here; the CLI command is a thin formatting wrapper.
 
 pub mod chrome_fallback;
+mod for_source;
 mod source_ledger;
+
+pub use for_source::{
+    CrawlForSourceResult, crawl_for_source, crawl_output_manifest_and_markdown,
+    crawl_sync_output_dir,
+};
 
 use crate::types::CrawlSyncResult;
 use axon_core::config::{Config, ScrapeFormat};

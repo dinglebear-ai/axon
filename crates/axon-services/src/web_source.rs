@@ -1,5 +1,8 @@
 mod publish;
 mod vectorize;
+mod web_source_job;
+
+pub use self::web_source_job::index_web_source_with_job;
 
 use std::path::PathBuf;
 

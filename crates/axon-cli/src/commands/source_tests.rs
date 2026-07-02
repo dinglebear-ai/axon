@@ -140,8 +140,24 @@ async fn run_source_rejects_missing_positional_path() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     assert!(
         err.to_string()
-            .contains("requires a local path or git repository URL"),
+            .contains("requires a local path, git repository URL, or web URL"),
         "expected missing-path error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn run_source_web_url_requires_data_plane_runtime() {
+    // A plain http/https URL that is NOT a git target routes to the web branch,
+    // which requires the data plane BEFORE any crawl work — assert the guard
+    // fires there (no network access in this test).
+    let cfg = source_cfg("https://docs.example.com/guide");
+    let ctx = context_without_data_plane();
+
+    let err = run_source(&cfg, &ctx).await.unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("requires a running data plane"),
+        "expected data-plane guard error for web input, got: {msg}"
     );
 }
 
@@ -154,7 +170,7 @@ async fn run_source_rejects_unsupported_input() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("local paths and git repository URLs"),
+        msg.contains("local paths, git repository URLs, and web URLs"),
         "expected unsupported-input error, got: {msg}"
     );
     assert!(
@@ -183,9 +199,58 @@ async fn classify_source_input_detects_git_url() {
 }
 
 #[tokio::test]
+async fn classify_source_input_detects_web_url() {
+    // Plain http/https URLs that are not git targets classify as Web.
+    assert_eq!(
+        classify_source_input("https://docs.example.com/guide").await,
+        SourceInputKind::Web
+    );
+    assert_eq!(
+        classify_source_input("http://example.com").await,
+        SourceInputKind::Web
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_git_url_beats_web_url() {
+    // A GitHub URL is an http URL, but git classification runs first, so it must
+    // route to Git, not Web.
+    assert_eq!(
+        classify_source_input("https://github.com/jmagar/axon").await,
+        SourceInputKind::Git
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_dot_git_on_unknown_host_is_git() {
+    // A `.git` suffix is an explicit git signal even on a host we don't
+    // recognize, so it routes to Git rather than the web crawl.
+    assert_eq!(
+        classify_source_input("https://example.com/team/repo.git").await,
+        SourceInputKind::Git
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_plain_https_path_is_web_not_git() {
+    // A plain docs URL parses as a generic git target under the permissive
+    // parser, but has no git signal, so `axon source` routes it to the web
+    // crawl branch.
+    assert_eq!(
+        classify_source_input("https://docs.example.com/team/guide").await,
+        SourceInputKind::Web
+    );
+}
+
+#[tokio::test]
 async fn classify_source_input_rejects_plain_word() {
     assert_eq!(
         classify_source_input("just-a-word").await,
+        SourceInputKind::Unsupported
+    );
+    // Non-http schemes are not web sources.
+    assert_eq!(
+        classify_source_input("ftp://example.com/file").await,
         SourceInputKind::Unsupported
     );
 }
