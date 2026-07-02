@@ -578,23 +578,45 @@ fn duplicate_points_are_rejected_before_qdrant_conversion() {
     assert_eq!(err.code.to_string(), "vector.duplicate_point_id");
 }
 
-#[tokio::test]
-async fn qdrant_vector_store_live_calls_return_not_wired_errors() {
-    let raw_url = "http://token:secret@127.0.0.1:6334/path?api_key=hunter2";
-    let store = QdrantVectorStore::new(raw_url, "target-qdrant");
+// Unreachable endpoint: connection is refused quickly, so live calls fail with
+// a redaction-safe transport error rather than blocking on the request timeout.
+// `hunter2` and the raw URL must never appear in any surfaced error detail.
+const UNREACHABLE_QDRANT_URL: &str = "http://token:secret@127.0.0.1:1/path?api_key=hunter2";
 
-    let err = store
-        .ensure_collection(test_collection_spec(3))
-        .await
-        .unwrap_err();
-    assert_eq!(err.code.to_string(), "vector.not_wired");
+fn assert_redacted(err: &ApiError) {
     assert_eq!(err.provider_id.as_deref(), Some("target-qdrant"));
     assert_eq!(
         err.details.get("endpoint").map(String::as_str),
         Some("configured")
     );
-    assert!(!err.details.values().any(|value| value.contains(raw_url)));
-    assert!(!err.details.values().any(|value| value.contains("hunter2")));
+    assert!(
+        !err.message.contains("hunter2") && !err.message.contains("secret"),
+        "message leaked credentials: {}",
+        err.message
+    );
+    assert!(
+        !err.message.contains(UNREACHABLE_QDRANT_URL),
+        "message leaked raw url: {}",
+        err.message
+    );
+    for value in err.details.values() {
+        assert!(!value.contains("hunter2"), "detail leaked api key: {value}");
+        assert!(
+            !value.contains(UNREACHABLE_QDRANT_URL),
+            "detail leaked raw url: {value}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn qdrant_vector_store_live_calls_surface_redaction_safe_transport_errors() {
+    let store = QdrantVectorStore::new(UNREACHABLE_QDRANT_URL, "target-qdrant");
+
+    let err = store
+        .ensure_collection(test_collection_spec(3))
+        .await
+        .unwrap_err();
+    assert_redacted(&err);
 
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
@@ -635,25 +657,26 @@ async fn qdrant_vector_store_live_calls_return_not_wired_errors() {
         store.delete(delete).await.unwrap_err(),
         store.search(search).await.unwrap_err(),
     ] {
-        assert_eq!(err.code.to_string(), "vector.not_wired");
-        assert_eq!(err.provider_id.as_deref(), Some("target-qdrant"));
+        assert_redacted(&err);
     }
+}
 
+#[tokio::test]
+async fn qdrant_capabilities_report_generation_publish_and_redact_on_probe_failure() {
+    let store = QdrantVectorStore::new(UNREACHABLE_QDRANT_URL, "target-qdrant");
     let capability = store.capabilities().await.unwrap();
+
     assert_eq!(capability.provider_kind, ProviderKind::Vector);
+    assert_eq!(capability.implementation, "qdrant");
+    // The instance is unreachable, so the liveness probe downgrades health.
     assert_eq!(capability.health, HealthStatus::Unavailable);
     let last_error = capability.last_error.as_ref().unwrap();
-    assert_eq!(
-        last_error.details.get("endpoint").map(String::as_str),
-        Some("configured")
-    );
-    assert!(
-        !last_error
-            .details
-            .values()
-            .any(|value| value.contains(raw_url))
-    );
+    assert_redacted(last_error);
+
     let vector_store = capability.vector_store.unwrap();
     assert!(vector_store.dense);
-    assert!(!vector_store.generation_publish);
+    assert!(vector_store.sparse);
+    assert!(vector_store.hybrid);
+    // Generation-aware publish is now supported by the live store.
+    assert!(vector_store.generation_publish);
 }

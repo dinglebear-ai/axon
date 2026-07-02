@@ -12,8 +12,7 @@ pub mod payload;
 pub mod payload_families;
 mod payload_redaction;
 pub mod point;
-#[cfg(test)]
-mod qdrant;
+pub mod qdrant;
 pub mod query;
 mod sparse;
 pub mod store;
@@ -22,6 +21,8 @@ pub mod testing;
 mod validation;
 
 pub const CRATE_NAME: &str = "axon-vectors";
+
+pub use qdrant::QdrantVectorStore;
 
 #[cfg(test)]
 #[path = "store_tests.rs"]
@@ -46,3 +47,7 @@ mod local_payload_tests;
 #[cfg(test)]
 #[path = "qdrant_tests.rs"]
 mod qdrant_tests;
+
+#[cfg(test)]
+#[path = "qdrant_live_tests.rs"]
+mod qdrant_live_tests;

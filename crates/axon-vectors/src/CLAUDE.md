@@ -8,10 +8,16 @@ contract (owns / API / deps / tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/storage-contract.md](../../../docs/pipeline-unification/runtime/storage-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 7**,
-decomposed out of `axon-vector`'s Qdrant/persistence logic. Do not add embedding
-generation, chunking, ledger commits, or RAG synthesis here.
+## Status — Phase 10 (Qdrant store live)
+Most modules are still **markers** pending later phases, but `qdrant.rs` is now a
+**live** `VectorStore` over the Qdrant REST API (reqwest): GET-then-PUT-on-404
+collection ensure, named dense + bm42 sparse RRF hybrid search, generation-aware
+publish (`mark_generation_committed` flips visibility in place;
+`mark_unchanged_items_committed` carries points into the new generation without
+mutating the old one). Wire logic lives in `qdrant/{http,convert,store_impl,
+search,commit}.rs`. Credentials from the configured URL are stripped before any
+error is surfaced (only the `endpoint = "configured"` marker leaks). Do not add
+embedding generation, chunking, ledger commits, or RAG synthesis here.
 
 ## Module map
 | File | Owns |
