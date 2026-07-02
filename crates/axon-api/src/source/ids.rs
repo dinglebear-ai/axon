@@ -95,6 +95,8 @@ string_id!(MemoryId);
 string_id!(GraphNodeId);
 string_id!(GraphEdgeId);
 string_id!(ConfigSnapshotId);
+string_id!(ReservationId);
+string_id!(CheckpointId);
 
 #[derive(
     Debug,

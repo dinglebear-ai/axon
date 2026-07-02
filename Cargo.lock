@@ -817,10 +817,13 @@ dependencies = [
 name = "axon-observe"
 version = "6.2.1"
 dependencies = [
+ "async-trait",
  "axon-api",
  "axon-error",
  "chrono",
+ "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

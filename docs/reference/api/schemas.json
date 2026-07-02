@@ -2119,6 +2119,3635 @@
       },
       "type": "object"
     },
+    "JobArtifactListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobArtifactListRequest_JobId"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobArtifactListRequest_ArtifactKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "JobArtifactListRequest",
+      "type": "object"
+    },
+    "JobArtifactListRequest_ArtifactKind": {
+      "enum": [
+        "raw_content",
+        "normalized_content",
+        "manifest",
+        "report",
+        "screenshot",
+        "warc",
+        "provider_trace"
+      ],
+      "type": "string"
+    },
+    "JobArtifactListRequest_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobArtifactListResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/JobArtifactListResult_ArtifactRef"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "artifacts",
+        "limit"
+      ],
+      "title": "JobArtifactListResult",
+      "type": "object"
+    },
+    "JobArtifactListResult_ArtifactId": {
+      "type": "string"
+    },
+    "JobArtifactListResult_ArtifactKind": {
+      "enum": [
+        "raw_content",
+        "normalized_content",
+        "manifest",
+        "report",
+        "screenshot",
+        "warc",
+        "provider_trace"
+      ],
+      "type": "string"
+    },
+    "JobArtifactListResult_ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/JobArtifactListResult_ArtifactId"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/JobArtifactListResult_ArtifactKind"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_kind",
+        "uri",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "JobAttemptSnapshot": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobAttemptSnapshot_ApiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heartbeat_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/JobAttemptSnapshot_LifecycleStatus"
+        },
+        "worker_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "attempt",
+        "status",
+        "started_at"
+      ],
+      "title": "JobAttemptSnapshot",
+      "type": "object"
+    },
+    "JobAttemptSnapshot_ApiError": {
+      "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
+      "properties": {
+        "chunk_id": {
+          "description": "Chunk id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "$ref": "#/$defs/JobAttemptSnapshot_ErrorCode",
+          "description": "Stable machine code (e.g. `provider.unavailable`)."
+        },
+        "cooldown_until": {
+          "description": "Provider/job cooling timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Redacted structured context (safe key/value pairs only).",
+          "type": "object"
+        },
+        "document_id": {
+          "description": "Document id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "description": "Job correlation id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Redacted human-readable message.",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider that failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Suggested retry delay, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobAttemptSnapshot_ErrorSeverity",
+          "description": "Severity classification."
+        },
+        "source_id": {
+          "description": "Source id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_item_key": {
+          "description": "Item/file/page key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/JobAttemptSnapshot_ErrorStage",
+          "description": "Pipeline/transport stage."
+        },
+        "visibility": {
+          "$ref": "#/$defs/JobAttemptSnapshot_ErrorVisibility",
+          "description": "Where this error may be surfaced."
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "retryable",
+        "severity",
+        "visibility",
+        "details"
+      ],
+      "type": "object"
+    },
+    "JobAttemptSnapshot_ErrorCode": {
+      "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
+      "type": "string"
+    },
+    "JobAttemptSnapshot_ErrorSeverity": {
+      "description": "How severe an error is and whether it terminates the item/job.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "Informational event; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "warning",
+          "description": "Non-fatal issue, full behavior preserved; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Behavior reduced but acceptable by policy; may or may not be terminal.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Required work failed; terminal for the affected item/job.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "Cannot continue safely; terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobAttemptSnapshot_ErrorStage": {
+      "description": "Pipeline/transport stage an error is attributed to.",
+      "oneOf": [
+        {
+          "const": "parsing",
+          "description": "CLI/MCP/REST request parse, removed command/action.",
+          "type": "string"
+        },
+        {
+          "const": "validation",
+          "description": "Missing fields, bad types, unsupported flags.",
+          "type": "string"
+        },
+        {
+          "const": "resolving",
+          "description": "Source resolution, canonical URI, authority.",
+          "type": "string"
+        },
+        {
+          "const": "routing",
+          "description": "Adapter/scope/provider selection.",
+          "type": "string"
+        },
+        {
+          "const": "authorizing",
+          "description": "Auth, credentials, execution policy.",
+          "type": "string"
+        },
+        {
+          "const": "planning",
+          "description": "Source plan, prune plan.",
+          "type": "string"
+        },
+        {
+          "const": "leasing",
+          "description": "Job/watch/source lease.",
+          "type": "string"
+        },
+        {
+          "const": "discovering",
+          "description": "Manifest/map discovery.",
+          "type": "string"
+        },
+        {
+          "const": "diffing",
+          "description": "Manifest diff.",
+          "type": "string"
+        },
+        {
+          "const": "fetching",
+          "description": "HTTP/git/package/local/MCP/CLI fetch.",
+          "type": "string"
+        },
+        {
+          "const": "rendering",
+          "description": "Browser/CDP/render provider.",
+          "type": "string"
+        },
+        {
+          "const": "normalizing",
+          "description": "SourceDocument creation.",
+          "type": "string"
+        },
+        {
+          "const": "parsing_content",
+          "description": "Parser facts/chunk parser (serialized as `parsing_content`).",
+          "type": "string"
+        },
+        {
+          "const": "graphing",
+          "description": "Graph writes/merge/conflict.",
+          "type": "string"
+        },
+        {
+          "const": "preparing",
+          "description": "Chunking/PreparedDocument.",
+          "type": "string"
+        },
+        {
+          "const": "embedding",
+          "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "upserting",
+          "description": "VectorStore writes.",
+          "type": "string"
+        },
+        {
+          "const": "publishing",
+          "description": "Generation publish.",
+          "type": "string"
+        },
+        {
+          "const": "cleaning",
+          "description": "Cleanup/prune/dedupe.",
+          "type": "string"
+        },
+        {
+          "const": "retrieving",
+          "description": "Query/retrieve context.",
+          "type": "string"
+        },
+        {
+          "const": "synthesizing",
+          "description": "LLM synthesis.",
+          "type": "string"
+        },
+        {
+          "const": "observing",
+          "description": "Progress/log/status emit.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobAttemptSnapshot_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobAttemptSnapshot_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobCancelRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "force_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "JobCancelRequest",
+      "type": "object"
+    },
+    "JobCancelResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "canceled_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobCancelResult_JobId"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobCancelResult_LifecycleStatus"
+        }
+      },
+      "required": [
+        "job_id",
+        "status"
+      ],
+      "title": "JobCancelResult",
+      "type": "object"
+    },
+    "JobCancelResult_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobCancelResult_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobCleanupRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "confirm_all_terminal": {
+          "default": false,
+          "type": "boolean"
+        },
+        "dry_run": {
+          "default": false,
+          "type": "boolean"
+        },
+        "older_than_seconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "JobCleanupRequest",
+      "type": "object"
+    },
+    "JobCleanupResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifacts_pruned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "events_pruned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "heartbeats_pruned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "jobs_pruned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "jobs_pruned",
+        "events_pruned",
+        "heartbeats_pruned",
+        "artifacts_pruned"
+      ],
+      "title": "JobCleanupResult",
+      "type": "object"
+    },
+    "JobCreateRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "auth_snapshot": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "config_snapshot_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCreateRequest_ConfigSnapshotId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_intent": {
+          "$ref": "#/$defs/JobCreateRequest_JobIntent"
+        },
+        "job_kind": {
+          "$ref": "#/$defs/JobCreateRequest_JobKind"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parent_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCreateRequest_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "$ref": "#/$defs/JobCreateRequest_JobPriority"
+        },
+        "request": true,
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requirements": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "result_schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "root_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCreateRequest_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCreateRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stage_plan": {
+          "items": {
+            "$ref": "#/$defs/JobCreateRequest_JobStagePlan"
+          },
+          "type": "array"
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCreateRequest_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "job_kind",
+        "job_intent",
+        "priority",
+        "stage_plan",
+        "metadata"
+      ],
+      "title": "JobCreateRequest",
+      "type": "object"
+    },
+    "JobCreateRequest_ConfigSnapshotId": {
+      "type": "string"
+    },
+    "JobCreateRequest_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobCreateRequest_JobIntent": {
+      "enum": [
+        "run",
+        "acquire",
+        "refresh",
+        "watch",
+        "exec",
+        "retry",
+        "recover",
+        "cleanup",
+        "probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_JobStagePlan": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/JobCreateRequest_PipelinePhase"
+        },
+        "provider_requirements": {
+          "items": {
+            "$ref": "#/$defs/JobCreateRequest_ProviderRequirement"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "phase",
+        "required",
+        "provider_requirements"
+      ],
+      "type": "object"
+    },
+    "JobCreateRequest_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_ProviderKind": {
+      "enum": [
+        "llm",
+        "embedding",
+        "vector",
+        "search",
+        "fetch",
+        "render",
+        "network_capture",
+        "artifact",
+        "ledger",
+        "graph",
+        "memory",
+        "job",
+        "watch",
+        "config",
+        "credential",
+        "cache",
+        "security",
+        "rate_limiter",
+        "health_probe"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_ProviderRequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/JobCreateRequest_ProviderKind"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider_kind",
+        "capability",
+        "required",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "JobCreateRequest_SourceId": {
+      "type": "string"
+    },
+    "JobCreateRequest_WatchId": {
+      "type": "string"
+    },
+    "JobDescriptor": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobDescriptor_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/JobDescriptor_JobKind"
+        },
+        "poll": {
+          "$ref": "#/$defs/JobDescriptor_PollDescriptor"
+        },
+        "status": {
+          "$ref": "#/$defs/JobDescriptor_LifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "kind",
+        "status",
+        "poll",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "JobDescriptor",
+      "type": "object"
+    },
+    "JobDescriptor_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobDescriptor_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobDescriptor_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobDescriptor_PollDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "events_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_url": {
+          "type": "string"
+        },
+        "suggested_interval_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status_url",
+        "suggested_interval_ms"
+      ],
+      "type": "object"
+    },
+    "JobEvent": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobEvent_JobId"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/JobEvent_PipelinePhase"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobEvent_Severity"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEvent_StageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobEvent_LifecycleStatus"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/JobEvent_Visibility",
+          "default": "internal"
+        }
+      },
+      "required": [
+        "event_id",
+        "sequence",
+        "job_id",
+        "phase",
+        "status",
+        "severity",
+        "message",
+        "timestamp",
+        "details"
+      ],
+      "title": "JobEvent",
+      "type": "object"
+    },
+    "JobEventListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobEventListRequest_JobId"
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEventListRequest_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEventListRequest_Severity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEventListRequest_Visibility"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "JobEventListRequest",
+      "type": "object"
+    },
+    "JobEventListRequest_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobEventListRequest_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobEventListRequest_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobEventListRequest_Visibility": {
+      "enum": [
+        "public",
+        "internal",
+        "sensitive",
+        "redacted",
+        "derived"
+      ],
+      "type": "string"
+    },
+    "JobEventPage": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/JobEventPage_JobEvent"
+          },
+          "type": "array"
+        },
+        "last_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "events",
+        "limit"
+      ],
+      "title": "JobEventPage",
+      "type": "object"
+    },
+    "JobEventPage_JobEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "details": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobEventPage_JobId"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/JobEventPage_PipelinePhase"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobEventPage_Severity"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEventPage_StageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobEventPage_LifecycleStatus"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/JobEventPage_Visibility",
+          "default": "internal"
+        }
+      },
+      "required": [
+        "event_id",
+        "sequence",
+        "job_id",
+        "phase",
+        "status",
+        "severity",
+        "message",
+        "timestamp",
+        "details"
+      ],
+      "type": "object"
+    },
+    "JobEventPage_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobEventPage_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobEventPage_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobEventPage_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobEventPage_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobEventPage_Visibility": {
+      "enum": [
+        "public",
+        "internal",
+        "sensitive",
+        "redacted",
+        "derived"
+      ],
+      "type": "string"
+    },
+    "JobEvent_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobEvent_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobEvent_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobEvent_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobEvent_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobEvent_Visibility": {
+      "enum": [
+        "public",
+        "internal",
+        "sensitive",
+        "redacted",
+        "derived"
+      ],
+      "type": "string"
+    },
+    "JobHeartbeat": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobHeartbeat_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "heartbeat_at": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobHeartbeat_JobId"
+        },
+        "last_event_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/JobHeartbeat_PipelinePhase"
+        },
+        "provider_reservations": {
+          "items": {
+            "$ref": "#/$defs/JobHeartbeat_ProviderReservationSnapshot"
+          },
+          "type": "array"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobHeartbeat_StageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobHeartbeat_LifecycleStatus"
+        },
+        "worker_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "job_id",
+        "phase",
+        "status",
+        "heartbeat_at"
+      ],
+      "title": "JobHeartbeat",
+      "type": "object"
+    },
+    "JobHeartbeat_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobHeartbeat_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "JobHeartbeat_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobHeartbeat_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobHeartbeat_ProviderCoolingSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "degraded": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "started_at",
+        "degraded"
+      ],
+      "type": "object"
+    },
+    "JobHeartbeat_ProviderId": {
+      "type": "string"
+    },
+    "JobHeartbeat_ProviderKind": {
+      "enum": [
+        "llm",
+        "embedding",
+        "vector",
+        "search",
+        "fetch",
+        "render",
+        "network_capture",
+        "artifact",
+        "ledger",
+        "graph",
+        "memory",
+        "job",
+        "watch",
+        "config",
+        "credential",
+        "cache",
+        "security",
+        "rate_limiter",
+        "health_probe"
+      ],
+      "type": "string"
+    },
+    "JobHeartbeat_ProviderReservationSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "acquired_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cooling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobHeartbeat_ProviderCoolingSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "granted_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "priority": {
+          "$ref": "#/$defs/JobHeartbeat_JobPriority"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobHeartbeat_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/JobHeartbeat_ProviderKind"
+        },
+        "queue_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requested_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reservation_id": {
+          "$ref": "#/$defs/JobHeartbeat_ReservationId"
+        },
+        "status": {
+          "$ref": "#/$defs/JobHeartbeat_ProviderReservationStatus"
+        }
+      },
+      "required": [
+        "reservation_id",
+        "provider_kind",
+        "priority",
+        "requested_units",
+        "granted_units",
+        "status"
+      ],
+      "type": "object"
+    },
+    "JobHeartbeat_ProviderReservationStatus": {
+      "enum": [
+        "requested",
+        "queued",
+        "granted",
+        "active",
+        "released",
+        "expired",
+        "canceled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "JobHeartbeat_ReservationId": {
+      "type": "string"
+    },
+    "JobHeartbeat_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
+    "JobHeartbeat_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobRecoveryRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allow_without_cutoff": {
+          "default": false,
+          "type": "boolean"
+        },
+        "dry_run": {
+          "default": false,
+          "type": "boolean"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobRecoveryRequest_JobKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "older_than_seconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "JobRecoveryRequest",
+      "type": "object"
+    },
+    "JobRecoveryRequest_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobRecoveryResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "jobs_failed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "jobs_requeued": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "jobs_scanned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JobRecoveryResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "jobs_scanned",
+        "jobs_requeued",
+        "jobs_failed",
+        "warnings"
+      ],
+      "title": "JobRecoveryResult",
+      "type": "object"
+    },
+    "JobRecoveryResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobRecoveryResult_SourceItemKey": {
+      "type": "string"
+    },
+    "JobRecoveryResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobRecoveryResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobRecoveryResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "JobRetryRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "from_phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobRetryRequest_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "$ref": "#/$defs/JobRetryRequest_JobRetryMode"
+        },
+        "overrides": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "JobRetryRequest",
+      "type": "object"
+    },
+    "JobRetryRequest_JobRetryMode": {
+      "enum": [
+        "same_config",
+        "with_overrides"
+      ],
+      "type": "string"
+    },
+    "JobRetryRequest_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobRetryResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "original_job_id": {
+          "$ref": "#/$defs/JobRetryResult_JobId"
+        },
+        "retry_job": {
+          "$ref": "#/$defs/JobRetryResult_JobDescriptor"
+        }
+      },
+      "required": [
+        "original_job_id",
+        "retry_job",
+        "attempt"
+      ],
+      "title": "JobRetryResult",
+      "type": "object"
+    },
+    "JobRetryResult_JobDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobRetryResult_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/JobRetryResult_JobKind"
+        },
+        "poll": {
+          "$ref": "#/$defs/JobRetryResult_PollDescriptor"
+        },
+        "status": {
+          "$ref": "#/$defs/JobRetryResult_LifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "kind",
+        "status",
+        "poll",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "JobRetryResult_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobRetryResult_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobRetryResult_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobRetryResult_PollDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "events_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_url": {
+          "type": "string"
+        },
+        "suggested_interval_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status_url",
+        "suggested_interval_ms"
+      ],
+      "type": "object"
+    },
+    "JobStageSnapshot": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "counts": {
+          "$ref": "#/$defs/JobStageSnapshot_StageCounts"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStageSnapshot_ApiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/JobStageSnapshot_PipelinePhase"
+        },
+        "provider_requirements": {
+          "items": {
+            "$ref": "#/$defs/JobStageSnapshot_ProviderRequirement"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "stage_id": {
+          "$ref": "#/$defs/JobStageSnapshot_StageId"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobStageSnapshot_LifecycleStatus"
+        }
+      },
+      "required": [
+        "stage_id",
+        "phase",
+        "status",
+        "required",
+        "provider_requirements",
+        "counts"
+      ],
+      "title": "JobStageSnapshot",
+      "type": "object"
+    },
+    "JobStageSnapshot_ApiError": {
+      "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
+      "properties": {
+        "chunk_id": {
+          "description": "Chunk id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "$ref": "#/$defs/JobStageSnapshot_ErrorCode",
+          "description": "Stable machine code (e.g. `provider.unavailable`)."
+        },
+        "cooldown_until": {
+          "description": "Provider/job cooling timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Redacted structured context (safe key/value pairs only).",
+          "type": "object"
+        },
+        "document_id": {
+          "description": "Document id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "description": "Job correlation id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Redacted human-readable message.",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider that failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Suggested retry delay, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobStageSnapshot_ErrorSeverity",
+          "description": "Severity classification."
+        },
+        "source_id": {
+          "description": "Source id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_item_key": {
+          "description": "Item/file/page key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/JobStageSnapshot_ErrorStage",
+          "description": "Pipeline/transport stage."
+        },
+        "visibility": {
+          "$ref": "#/$defs/JobStageSnapshot_ErrorVisibility",
+          "description": "Where this error may be surfaced."
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "retryable",
+        "severity",
+        "visibility",
+        "details"
+      ],
+      "type": "object"
+    },
+    "JobStageSnapshot_ErrorCode": {
+      "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
+      "type": "string"
+    },
+    "JobStageSnapshot_ErrorSeverity": {
+      "description": "How severe an error is and whether it terminates the item/job.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "Informational event; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "warning",
+          "description": "Non-fatal issue, full behavior preserved; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Behavior reduced but acceptable by policy; may or may not be terminal.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Required work failed; terminal for the affected item/job.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "Cannot continue safely; terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobStageSnapshot_ErrorStage": {
+      "description": "Pipeline/transport stage an error is attributed to.",
+      "oneOf": [
+        {
+          "const": "parsing",
+          "description": "CLI/MCP/REST request parse, removed command/action.",
+          "type": "string"
+        },
+        {
+          "const": "validation",
+          "description": "Missing fields, bad types, unsupported flags.",
+          "type": "string"
+        },
+        {
+          "const": "resolving",
+          "description": "Source resolution, canonical URI, authority.",
+          "type": "string"
+        },
+        {
+          "const": "routing",
+          "description": "Adapter/scope/provider selection.",
+          "type": "string"
+        },
+        {
+          "const": "authorizing",
+          "description": "Auth, credentials, execution policy.",
+          "type": "string"
+        },
+        {
+          "const": "planning",
+          "description": "Source plan, prune plan.",
+          "type": "string"
+        },
+        {
+          "const": "leasing",
+          "description": "Job/watch/source lease.",
+          "type": "string"
+        },
+        {
+          "const": "discovering",
+          "description": "Manifest/map discovery.",
+          "type": "string"
+        },
+        {
+          "const": "diffing",
+          "description": "Manifest diff.",
+          "type": "string"
+        },
+        {
+          "const": "fetching",
+          "description": "HTTP/git/package/local/MCP/CLI fetch.",
+          "type": "string"
+        },
+        {
+          "const": "rendering",
+          "description": "Browser/CDP/render provider.",
+          "type": "string"
+        },
+        {
+          "const": "normalizing",
+          "description": "SourceDocument creation.",
+          "type": "string"
+        },
+        {
+          "const": "parsing_content",
+          "description": "Parser facts/chunk parser (serialized as `parsing_content`).",
+          "type": "string"
+        },
+        {
+          "const": "graphing",
+          "description": "Graph writes/merge/conflict.",
+          "type": "string"
+        },
+        {
+          "const": "preparing",
+          "description": "Chunking/PreparedDocument.",
+          "type": "string"
+        },
+        {
+          "const": "embedding",
+          "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "upserting",
+          "description": "VectorStore writes.",
+          "type": "string"
+        },
+        {
+          "const": "publishing",
+          "description": "Generation publish.",
+          "type": "string"
+        },
+        {
+          "const": "cleaning",
+          "description": "Cleanup/prune/dedupe.",
+          "type": "string"
+        },
+        {
+          "const": "retrieving",
+          "description": "Query/retrieve context.",
+          "type": "string"
+        },
+        {
+          "const": "synthesizing",
+          "description": "LLM synthesis.",
+          "type": "string"
+        },
+        {
+          "const": "observing",
+          "description": "Progress/log/status emit.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobStageSnapshot_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobStageSnapshot_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobStageSnapshot_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobStageSnapshot_ProviderKind": {
+      "enum": [
+        "llm",
+        "embedding",
+        "vector",
+        "search",
+        "fetch",
+        "render",
+        "network_capture",
+        "artifact",
+        "ledger",
+        "graph",
+        "memory",
+        "job",
+        "watch",
+        "config",
+        "credential",
+        "cache",
+        "security",
+        "rate_limiter",
+        "health_probe"
+      ],
+      "type": "string"
+    },
+    "JobStageSnapshot_ProviderRequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/JobStageSnapshot_ProviderKind"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider_kind",
+        "capability",
+        "required",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "JobStageSnapshot_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
+    "JobStageSnapshot_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobStatusUpdate": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_ProgressCurrent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobStatusUpdate_JobId"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/JobStatusUpdate_PipelinePhase"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_StageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobStatusUpdate_LifecycleStatus"
+        }
+      },
+      "required": [
+        "job_id",
+        "status",
+        "phase"
+      ],
+      "title": "JobStatusUpdate",
+      "type": "object"
+    },
+    "JobStatusUpdate_ChunkId": {
+      "type": "string"
+    },
+    "JobStatusUpdate_DocumentId": {
+      "type": "string"
+    },
+    "JobStatusUpdate_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobStatusUpdate_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobStatusUpdate_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobStatusUpdate_ProgressCurrent": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "JobStatusUpdate_ProviderId": {
+      "type": "string"
+    },
+    "JobStatusUpdate_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobStatusUpdate_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobStatusUpdate_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "JobStatusUpdate_SourceItemKey": {
+      "type": "string"
+    },
+    "JobStatusUpdate_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
+    "JobStatusUpdate_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobSummary": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_ProgressCurrent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heartbeat": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_JobHeartbeat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_JobIntent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobSummary_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/JobSummary_JobKind"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/JobSummary_PipelinePhase"
+        },
+        "priority": {
+          "$ref": "#/$defs/JobSummary_JobPriority",
+          "default": "normal"
+        },
+        "root_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobSummary_LifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JobSummary_SourceWarning"
+          },
+          "type": "array"
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "JobSummary",
+      "type": "object"
+    },
+    "JobSummary_ChunkId": {
+      "type": "string"
+    },
+    "JobSummary_DocumentId": {
+      "type": "string"
+    },
+    "JobSummary_JobHeartbeat": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "heartbeat_at": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/JobSummary_JobId"
+        },
+        "last_event_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/JobSummary_PipelinePhase"
+        },
+        "provider_reservations": {
+          "items": {
+            "$ref": "#/$defs/JobSummary_ProviderReservationSnapshot"
+          },
+          "type": "array"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_StageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobSummary_LifecycleStatus"
+        },
+        "worker_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "job_id",
+        "phase",
+        "status",
+        "heartbeat_at"
+      ],
+      "type": "object"
+    },
+    "JobSummary_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobSummary_JobIntent": {
+      "enum": [
+        "run",
+        "acquire",
+        "refresh",
+        "watch",
+        "exec",
+        "retry",
+        "recover",
+        "cleanup",
+        "probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobSummary_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobSummary_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "JobSummary_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobSummary_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobSummary_ProgressCurrent": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "JobSummary_ProviderCoolingSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "degraded": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "started_at",
+        "degraded"
+      ],
+      "type": "object"
+    },
+    "JobSummary_ProviderId": {
+      "type": "string"
+    },
+    "JobSummary_ProviderKind": {
+      "enum": [
+        "llm",
+        "embedding",
+        "vector",
+        "search",
+        "fetch",
+        "render",
+        "network_capture",
+        "artifact",
+        "ledger",
+        "graph",
+        "memory",
+        "job",
+        "watch",
+        "config",
+        "credential",
+        "cache",
+        "security",
+        "rate_limiter",
+        "health_probe"
+      ],
+      "type": "string"
+    },
+    "JobSummary_ProviderReservationSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "acquired_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cooling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_ProviderCoolingSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "granted_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "priority": {
+          "$ref": "#/$defs/JobSummary_JobPriority"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/JobSummary_ProviderKind"
+        },
+        "queue_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requested_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reservation_id": {
+          "$ref": "#/$defs/JobSummary_ReservationId"
+        },
+        "status": {
+          "$ref": "#/$defs/JobSummary_ProviderReservationStatus"
+        }
+      },
+      "required": [
+        "reservation_id",
+        "provider_kind",
+        "priority",
+        "requested_units",
+        "granted_units",
+        "status"
+      ],
+      "type": "object"
+    },
+    "JobSummary_ProviderReservationStatus": {
+      "enum": [
+        "requested",
+        "queued",
+        "granted",
+        "active",
+        "released",
+        "expired",
+        "canceled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "JobSummary_ReservationId": {
+      "type": "string"
+    },
+    "JobSummary_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobSummary_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobSummary_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "JobSummary_SourceId": {
+      "type": "string"
+    },
+    "JobSummary_SourceItemKey": {
+      "type": "string"
+    },
+    "JobSummary_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobSummary_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobSummary_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "JobSummary_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
+    "JobSummary_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobSummary_WatchId": {
+      "type": "string"
+    },
     "LeaseGuard": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -4317,6 +7946,1157 @@
       "type": "string"
     },
     "SourceGeneration_SourceId": {
+      "type": "string"
+    },
+    "SourceJobStatus": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "items": {
+            "$ref": "#/$defs/SourceJobStatus_JobAttemptSnapshot"
+          },
+          "type": "array"
+        },
+        "latest_event_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/$defs/SourceJobStatus_JobStageSnapshot"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/SourceJobStatus_JobSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "attempts",
+        "stages",
+        "metadata"
+      ],
+      "title": "SourceJobStatus",
+      "type": "object"
+    },
+    "SourceJobStatus_ApiError": {
+      "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
+      "properties": {
+        "chunk_id": {
+          "description": "Chunk id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "$ref": "#/$defs/SourceJobStatus_ErrorCode",
+          "description": "Stable machine code (e.g. `provider.unavailable`)."
+        },
+        "cooldown_until": {
+          "description": "Provider/job cooling timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Redacted structured context (safe key/value pairs only).",
+          "type": "object"
+        },
+        "document_id": {
+          "description": "Document id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "description": "Job correlation id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Redacted human-readable message.",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider that failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Suggested retry delay, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceJobStatus_ErrorSeverity",
+          "description": "Severity classification."
+        },
+        "source_id": {
+          "description": "Source id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_item_key": {
+          "description": "Item/file/page key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/SourceJobStatus_ErrorStage",
+          "description": "Pipeline/transport stage."
+        },
+        "visibility": {
+          "$ref": "#/$defs/SourceJobStatus_ErrorVisibility",
+          "description": "Where this error may be surfaced."
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "retryable",
+        "severity",
+        "visibility",
+        "details"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_ChunkId": {
+      "type": "string"
+    },
+    "SourceJobStatus_DocumentId": {
+      "type": "string"
+    },
+    "SourceJobStatus_ErrorCode": {
+      "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
+      "type": "string"
+    },
+    "SourceJobStatus_ErrorSeverity": {
+      "description": "How severe an error is and whether it terminates the item/job.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "Informational event; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "warning",
+          "description": "Non-fatal issue, full behavior preserved; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Behavior reduced but acceptable by policy; may or may not be terminal.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Required work failed; terminal for the affected item/job.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "Cannot continue safely; terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "SourceJobStatus_ErrorStage": {
+      "description": "Pipeline/transport stage an error is attributed to.",
+      "oneOf": [
+        {
+          "const": "parsing",
+          "description": "CLI/MCP/REST request parse, removed command/action.",
+          "type": "string"
+        },
+        {
+          "const": "validation",
+          "description": "Missing fields, bad types, unsupported flags.",
+          "type": "string"
+        },
+        {
+          "const": "resolving",
+          "description": "Source resolution, canonical URI, authority.",
+          "type": "string"
+        },
+        {
+          "const": "routing",
+          "description": "Adapter/scope/provider selection.",
+          "type": "string"
+        },
+        {
+          "const": "authorizing",
+          "description": "Auth, credentials, execution policy.",
+          "type": "string"
+        },
+        {
+          "const": "planning",
+          "description": "Source plan, prune plan.",
+          "type": "string"
+        },
+        {
+          "const": "leasing",
+          "description": "Job/watch/source lease.",
+          "type": "string"
+        },
+        {
+          "const": "discovering",
+          "description": "Manifest/map discovery.",
+          "type": "string"
+        },
+        {
+          "const": "diffing",
+          "description": "Manifest diff.",
+          "type": "string"
+        },
+        {
+          "const": "fetching",
+          "description": "HTTP/git/package/local/MCP/CLI fetch.",
+          "type": "string"
+        },
+        {
+          "const": "rendering",
+          "description": "Browser/CDP/render provider.",
+          "type": "string"
+        },
+        {
+          "const": "normalizing",
+          "description": "SourceDocument creation.",
+          "type": "string"
+        },
+        {
+          "const": "parsing_content",
+          "description": "Parser facts/chunk parser (serialized as `parsing_content`).",
+          "type": "string"
+        },
+        {
+          "const": "graphing",
+          "description": "Graph writes/merge/conflict.",
+          "type": "string"
+        },
+        {
+          "const": "preparing",
+          "description": "Chunking/PreparedDocument.",
+          "type": "string"
+        },
+        {
+          "const": "embedding",
+          "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "upserting",
+          "description": "VectorStore writes.",
+          "type": "string"
+        },
+        {
+          "const": "publishing",
+          "description": "Generation publish.",
+          "type": "string"
+        },
+        {
+          "const": "cleaning",
+          "description": "Cleanup/prune/dedupe.",
+          "type": "string"
+        },
+        {
+          "const": "retrieving",
+          "description": "Query/retrieve context.",
+          "type": "string"
+        },
+        {
+          "const": "synthesizing",
+          "description": "LLM synthesis.",
+          "type": "string"
+        },
+        {
+          "const": "observing",
+          "description": "Progress/log/status emit.",
+          "type": "string"
+        }
+      ]
+    },
+    "SourceJobStatus_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "SourceJobStatus_JobAttemptSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ApiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heartbeat_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceJobStatus_LifecycleStatus"
+        },
+        "worker_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "attempt",
+        "status",
+        "started_at"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_JobHeartbeat": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "heartbeat_at": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/SourceJobStatus_JobId"
+        },
+        "last_event_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/SourceJobStatus_PipelinePhase"
+        },
+        "provider_reservations": {
+          "items": {
+            "$ref": "#/$defs/SourceJobStatus_ProviderReservationSnapshot"
+          },
+          "type": "array"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_StageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/SourceJobStatus_LifecycleStatus"
+        },
+        "worker_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "job_id",
+        "phase",
+        "status",
+        "heartbeat_at"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceJobStatus_JobIntent": {
+      "enum": [
+        "run",
+        "acquire",
+        "refresh",
+        "watch",
+        "exec",
+        "retry",
+        "recover",
+        "cleanup",
+        "probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_JobStageSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "counts": {
+          "$ref": "#/$defs/SourceJobStatus_StageCounts"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ApiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/SourceJobStatus_PipelinePhase"
+        },
+        "provider_requirements": {
+          "items": {
+            "$ref": "#/$defs/SourceJobStatus_ProviderRequirement"
+          },
+          "type": "array"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "stage_id": {
+          "$ref": "#/$defs/SourceJobStatus_StageId"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/SourceJobStatus_LifecycleStatus"
+        }
+      },
+      "required": [
+        "stage_id",
+        "phase",
+        "status",
+        "required",
+        "provider_requirements",
+        "counts"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_JobSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ProgressCurrent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heartbeat": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_JobHeartbeat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_JobIntent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/SourceJobStatus_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/SourceJobStatus_JobKind"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/SourceJobStatus_PipelinePhase"
+        },
+        "priority": {
+          "$ref": "#/$defs/SourceJobStatus_JobPriority",
+          "default": "normal"
+        },
+        "root_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/SourceJobStatus_LifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/SourceJobStatus_SourceWarning"
+          },
+          "type": "array"
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_ProgressCurrent": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceJobStatus_ProviderCoolingSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "degraded": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "started_at",
+        "degraded"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_ProviderId": {
+      "type": "string"
+    },
+    "SourceJobStatus_ProviderKind": {
+      "enum": [
+        "llm",
+        "embedding",
+        "vector",
+        "search",
+        "fetch",
+        "render",
+        "network_capture",
+        "artifact",
+        "ledger",
+        "graph",
+        "memory",
+        "job",
+        "watch",
+        "config",
+        "credential",
+        "cache",
+        "security",
+        "rate_limiter",
+        "health_probe"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_ProviderRequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/SourceJobStatus_ProviderKind"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider_kind",
+        "capability",
+        "required",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_ProviderReservationSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "acquired_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cooling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ProviderCoolingSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "granted_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "priority": {
+          "$ref": "#/$defs/SourceJobStatus_JobPriority"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/SourceJobStatus_ProviderKind"
+        },
+        "queue_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requested_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reservation_id": {
+          "$ref": "#/$defs/SourceJobStatus_ReservationId"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceJobStatus_ProviderReservationStatus"
+        }
+      },
+      "required": [
+        "reservation_id",
+        "provider_kind",
+        "priority",
+        "requested_units",
+        "granted_units",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_ProviderReservationStatus": {
+      "enum": [
+        "requested",
+        "queued",
+        "granted",
+        "active",
+        "released",
+        "expired",
+        "canceled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_ReservationId": {
+      "type": "string"
+    },
+    "SourceJobStatus_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "SourceJobStatus_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceJobStatus_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_SourceId": {
+      "type": "string"
+    },
+    "SourceJobStatus_SourceItemKey": {
+      "type": "string"
+    },
+    "SourceJobStatus_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceJobStatus_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceJobStatus_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
+    "SourceJobStatus_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceJobStatus_WatchId": {
       "type": "string"
     },
     "SourceParseFacts": {
@@ -6820,9 +11600,14 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:6e2955cf43dcfab25a11d18c1a30d2bcbaf6d8d9d9b8d00d8cab7e96bf38e9a1",
+        "checksum": "sha256:db456b54eb9ce370e3f665eb4f793ed71cc898652c20bd0b70952ae4924d73ba",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
+      },
+      {
+        "checksum": "sha256:d60549ccbfcc7045a6b79dc59bfbadbb85cebacedc6c255645ccf5d2eafcf132",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/boundary.rs"
       },
       {
         "checksum": "sha256:5e127dacb627d9c8072ed81bff9f22377ba476bb02e595a7927902b24c0ca653",
@@ -6830,7 +11615,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:6c2988098d122010597c0b092d91543eb7250313cab9c0a6cfb0c00da56f8fc0",
+        "checksum": "sha256:df43510afe7111d878590106099ba4932dc75ee71a5cd3c90695e6eefff2bc7c",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
@@ -6840,14 +11625,24 @@
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:7021f1ca8e0f68587f4496bb8a0a79d50e0765dbf44ede057e897708d073a004",
+        "checksum": "sha256:ccc908e830556ba6ba9a2325b43b4a9c9809360a82d7a00f3b3d415640428592",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
+      },
+      {
+        "checksum": "sha256:e9e6705e67f29dda9e16618738749c791ea41c2baccec1e302f4bf28f552bed5",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/job.rs"
       },
       {
         "checksum": "sha256:86c1ac8217c666752db182a47d98b06742f04a97cc4419e5af1011159c3728b0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
+      },
+      {
+        "checksum": "sha256:e1f2ba8aca725d050001921a2fd6c72f54fae866f06091410da180ac5b374986",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/listing.rs"
       },
       {
         "checksum": "sha256:18aee671aff0ef6c181bb4898bd793576e3c757c8286060110ecd31d0027f90c",
@@ -6860,7 +11655,7 @@
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:3313680c7f0c4dfa5ffc3ebb33939c4659bf0b7465de5cdb83e858ee086da6b3",
+        "checksum": "sha256:75d4a2a43c699a17343689d6d57c0f4e3eb2c254718ae5f31f9b5fe1f5111616",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },

@@ -101,6 +101,18 @@ pub struct SourceProgressEvent {
     pub event_id: String,
     pub sequence: u64,
     pub job_id: JobId,
+    #[serde(default)]
+    pub attempt: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_id: Option<StageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_id: Option<BatchId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reservation_id: Option<ReservationId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_id: Option<CheckpointId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dedupe_key: Option<String>,
     pub phase: PipelinePhase,
     pub status: LifecycleStatus,
     pub severity: Severity,
@@ -119,6 +131,8 @@ pub struct SourceProgressEvent {
     pub generation: Option<SourceGenerationId>,
     pub counts: StageCounts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timing: Option<ProgressTiming>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<ProgressCurrent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub throughput: Option<ProgressThroughput>,
@@ -136,9 +150,25 @@ pub struct ProgressCurrent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_item_key: Option<SourceItemKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_id: Option<DocumentId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_id: Option<ChunkId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProgressTiming {
+    pub started_at: Timestamp,
+    pub updated_at: Timestamp,
+    pub elapsed_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

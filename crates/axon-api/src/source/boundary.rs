@@ -7,8 +7,8 @@ use super::document::SourceDocument;
 use super::enums::*;
 use super::graph::*;
 use super::ids::*;
-use super::lifecycle::{JobDescriptor, SourceRequest};
-use super::listing::{JobEvent, JobSummary, Page, WatchSummary};
+use super::lifecycle::JobDescriptor;
+use super::listing::{JobSummary, Page, WatchSummary};
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
@@ -373,35 +373,6 @@ where
     }
     Ok(())
 }
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JobCreateRequest {
-    pub kind: JobKind,
-    pub request: SourceRequest,
-    pub priority: JobPriority,
-    pub metadata: MetadataMap,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JobStatusUpdate {
-    pub job_id: JobId,
-    pub status: LifecycleStatus,
-    pub phase: PipelinePhase,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<SourceError>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JobHeartbeat {
-    pub job_id: JobId,
-    pub phase: PipelinePhase,
-    pub timestamp: Timestamp,
-}
-
-pub type JobEventPage = Page<JobEvent>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]

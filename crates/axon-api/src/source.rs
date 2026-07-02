@@ -11,6 +11,7 @@ pub mod document;
 pub mod enums;
 pub mod graph;
 pub mod ids;
+pub mod job;
 pub mod lifecycle;
 pub mod listing;
 pub mod llm;
@@ -27,6 +28,7 @@ pub use document::*;
 pub use enums::*;
 pub use graph::*;
 pub use ids::*;
+pub use job::*;
 pub use lifecycle::*;
 pub use listing::*;
 pub use llm::*;
@@ -47,6 +49,10 @@ mod capability_tests;
 #[cfg(test)]
 #[path = "source_status_tests.rs"]
 mod status_tests;
+
+#[cfg(test)]
+#[path = "source_job_tests.rs"]
+mod job_tests;
 
 #[cfg(test)]
 #[path = "source_vector_tests.rs"]

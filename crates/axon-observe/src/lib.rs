@@ -17,3 +17,15 @@ pub const CRATE_NAME: &str = "axon-observe";
 #[cfg(test)]
 #[path = "reservation_tests.rs"]
 mod reservation_tests;
+
+#[cfg(test)]
+#[path = "collector_tests.rs"]
+mod collector_tests;
+
+#[cfg(test)]
+#[path = "event_tests.rs"]
+mod event_tests;
+
+#[cfg(test)]
+#[path = "heartbeat_tests.rs"]
+mod heartbeat_tests;

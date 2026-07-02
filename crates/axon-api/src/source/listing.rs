@@ -6,8 +6,10 @@ use super::document::*;
 use super::enums::*;
 use super::graph::*;
 use super::ids::*;
+use super::job::JobHeartbeat;
 use super::lifecycle::WatchSchedule;
 use super::stage::{ManifestItem, StageCounts};
+use super::status::{ApiError, ProgressCurrent};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -152,18 +154,38 @@ pub struct ChunkDetail {
 pub struct JobSummary {
     pub job_id: JobId,
     pub kind: JobKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<JobIntent>,
     pub status: LifecycleStatus,
     pub phase: PipelinePhase,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_id: Option<SourceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch_id: Option<WatchId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_job_id: Option<JobId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_job_id: Option<JobId>,
+    #[serde(default)]
+    pub attempt: u32,
+    #[serde(default = "default_job_priority")]
+    pub priority: JobPriority,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub counts: Option<StageCounts>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<ProgressCurrent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat: Option<JobHeartbeat>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<SourceError>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<SourceWarning>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -183,9 +205,15 @@ pub struct JobEvent {
     pub event_id: String,
     pub sequence: u64,
     pub job_id: JobId,
+    #[serde(default)]
+    pub attempt: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_id: Option<StageId>,
     pub phase: PipelinePhase,
     pub status: LifecycleStatus,
     pub severity: Severity,
+    #[serde(default = "default_visibility")]
+    pub visibility: Visibility,
     pub message: String,
     pub timestamp: Timestamp,
     pub details: MetadataMap,
@@ -228,9 +256,76 @@ pub struct JobEventListRequest {
     pub job_id: JobId,
     pub phase: Option<PipelinePhase>,
     pub severity: Option<Severity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<Visibility>,
     pub since_sequence: Option<u64>,
     pub limit: Option<u32>,
     pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobEventPage {
+    pub events: Vec<JobEvent>,
+    pub limit: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_sequence: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SourceJobStatus {
+    pub summary: JobSummary,
+    pub attempts: Vec<JobAttemptSnapshot>,
+    pub stages: Vec<JobStageSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_event_sequence: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll_after_ms: Option<u64>,
+    pub metadata: MetadataMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobAttemptSnapshot {
+    pub attempt: u32,
+    pub status: LifecycleStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_id: Option<String>,
+    pub started_at: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobStageSnapshot {
+    pub stage_id: StageId,
+    pub phase: PipelinePhase,
+    pub status: LifecycleStatus,
+    pub required: bool,
+    pub provider_requirements: Vec<ProviderRequirement>,
+    pub counts: StageCounts,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ApiError>,
+}
+
+fn default_visibility() -> Visibility {
+    Visibility::Internal
+}
+
+fn default_job_priority() -> JobPriority {
+    JobPriority::Normal
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

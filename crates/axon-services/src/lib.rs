@@ -30,6 +30,7 @@ pub mod search;
 pub mod search_crawl;
 pub mod sessions;
 pub mod setup;
+pub mod source_jobs;
 #[allow(dead_code)]
 pub(crate) mod source_spike;
 pub mod summarize;
