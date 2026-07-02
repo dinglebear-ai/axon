@@ -7,7 +7,7 @@
 //! Keeping the network out of the adapter makes it unit-testable with fixture
 //! dumps and matches how the `git`/`web` adapters read prepared inputs.
 
-mod dump;
+pub mod dump;
 mod metadata;
 mod target;
 
