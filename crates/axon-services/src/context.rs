@@ -13,6 +13,8 @@ use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
+mod target_runtime;
+
 #[derive(Clone)]
 pub struct ServiceContext {
     pub cfg: Arc<Config>,
@@ -85,10 +87,11 @@ impl ServiceContext {
         spawn_freshness_scheduler: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
+        let target_local_source = Self::build_target_local_source(&cfg, &jobs, spawn_workers).await;
         let context = Self {
             cfg: Arc::clone(&cfg),
             jobs: Arc::clone(&jobs),
-            target_local_source: None,
+            target_local_source,
         };
         if spawn_freshness_scheduler {
             crate::freshness::spawn_freshness_scheduler(context.clone());
@@ -97,6 +100,39 @@ impl ServiceContext {
             spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
         }
         Ok(context)
+    }
+
+    /// Construct the production target local-source runtime, when applicable.
+    ///
+    /// Only worker-bearing contexts (`spawn_workers`, i.e. `serve`/`mcp` and
+    /// foreground `--wait`) attach it, and only when both `qdrant_url` and
+    /// `tei_url` are configured. Missing endpoints leave it unset rather than
+    /// failing startup; a construction error (e.g. the ledger migrations) is
+    /// logged and treated as absent so the process still comes up.
+    async fn build_target_local_source(
+        cfg: &Config,
+        jobs: &Arc<dyn ServiceJobRuntime>,
+        spawn_workers: bool,
+    ) -> Option<Arc<TargetLocalSourceRuntime>> {
+        if !spawn_workers || cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
+            return None;
+        }
+        let Some(pool) = jobs.sqlite_pool() else {
+            return None;
+        };
+        let store: Arc<dyn JobStore> = Arc::new(axon_jobs::unified::SqliteUnifiedJobStore::new(
+            (*pool).clone(),
+        ));
+        match TargetLocalSourceRuntime::from_config(cfg, store).await {
+            Ok(runtime) => Some(Arc::new(runtime)),
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "failed to construct target local-source runtime; continuing without it"
+                );
+                None
+            }
+        }
     }
 
     /// Create a ServiceContext without in-process workers (enqueue-only in the SQLite runtime).
@@ -141,11 +177,11 @@ impl ServiceContext {
         self
     }
 
-    /// Inject the target source runtime for PR11 tests.
+    /// Inject the target source runtime.
     ///
-    /// Production contexts intentionally leave this unset until the target
-    /// Qdrant/vector provider wiring lands in the provider/backend phase.
-    #[cfg(test)]
+    /// Used both by tests (with fakes via the `#[cfg(test)]`
+    /// [`TargetLocalSourceRuntime::new`]) and by production startup (with the
+    /// real stores via [`TargetLocalSourceRuntime::from_config`]).
     pub fn with_target_local_source_runtime(mut self, runtime: TargetLocalSourceRuntime) -> Self {
         self.target_local_source = Some(Arc::new(runtime));
         self
