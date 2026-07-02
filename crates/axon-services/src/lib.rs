@@ -14,7 +14,11 @@ pub mod embed;
 pub mod endpoints;
 pub mod events;
 pub mod extract;
+#[allow(dead_code)]
+pub(crate) mod feed_source;
 pub mod freshness;
+#[allow(dead_code)]
+pub(crate) mod git_source;
 pub mod ingest;
 pub mod jobs;
 pub(crate) mod local_source;
@@ -23,13 +27,19 @@ pub mod memory;
 pub mod migrate;
 pub mod mobile_sessions;
 pub mod query;
+#[allow(dead_code)]
+pub(crate) mod reddit_source;
 pub mod refresh;
+#[allow(dead_code)]
+pub(crate) mod registry_source;
 pub mod runtime;
 pub mod scrape;
 pub mod screenshot;
 pub mod search;
 pub mod search_crawl;
 pub mod sessions;
+#[allow(dead_code)]
+pub(crate) mod sessions_source;
 pub mod setup;
 pub mod source_jobs;
 #[allow(dead_code)]
@@ -42,6 +52,8 @@ pub mod types;
 pub mod watch;
 #[allow(dead_code)]
 pub(crate) mod web_source;
+#[allow(dead_code)]
+pub(crate) mod youtube_source;
 
 #[cfg(test)]
 #[path = "client_contract_tests.rs"]

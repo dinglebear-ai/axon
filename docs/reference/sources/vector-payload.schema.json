@@ -674,6 +674,960 @@
           "anyOf": [
             {
               "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "feed"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "social"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "media"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
                 "web_title"
               ]
             },
@@ -802,6 +1756,196 @@
             },
             {
               "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -906,6 +2050,196 @@
             {
               "required": [
                 "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
               ]
             },
             {
@@ -1023,6 +2357,196 @@
             },
             {
               "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
                 "web_title"
               ]
             },
@@ -1127,6 +2651,196 @@
             {
               "required": [
                 "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
               ]
             },
             {
@@ -1244,6 +2958,196 @@
             },
             {
               "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
                 "web_title"
               ]
             },
@@ -1319,6 +3223,12 @@
   ],
   "description": "Generated vector payload metadata contract derived from the axon-vectors registry.",
   "properties": {
+    "channel": {
+      "type": "string"
+    },
+    "channel_url": {
+      "type": "string"
+    },
     "chunk_id": {
       "minLength": 1,
       "type": "string",
@@ -1407,6 +3317,39 @@
       "type": "string",
       "x-qdrant-index": "keyword"
     },
+    "feed_entry_author": {
+      "type": "string"
+    },
+    "feed_entry_id": {
+      "type": "string"
+    },
+    "feed_entry_link": {
+      "type": "string"
+    },
+    "feed_entry_published": {
+      "type": "string"
+    },
+    "feed_link": {
+      "type": "string"
+    },
+    "feed_title": {
+      "type": "string"
+    },
+    "git_host": {
+      "type": "string"
+    },
+    "git_owner": {
+      "type": "string"
+    },
+    "git_provider": {
+      "type": "string"
+    },
+    "git_repo": {
+      "type": "string"
+    },
+    "git_web_url": {
+      "type": "string"
+    },
     "graph_confidence": {
       "type": "number"
     },
@@ -1467,6 +3410,48 @@
       "type": "string",
       "x-qdrant-index": "keyword"
     },
+    "reddit_author": {
+      "type": "string"
+    },
+    "reddit_created_utc": {
+      "type": "string"
+    },
+    "reddit_distinguished": {
+      "type": "string"
+    },
+    "reddit_domain": {
+      "type": "string"
+    },
+    "reddit_flair": {
+      "type": "string"
+    },
+    "reddit_gilded": {
+      "type": "string"
+    },
+    "reddit_is_video": {
+      "type": "string"
+    },
+    "reddit_kind": {
+      "type": "string"
+    },
+    "reddit_num_comments": {
+      "type": "string"
+    },
+    "reddit_permalink": {
+      "type": "string"
+    },
+    "reddit_score": {
+      "type": "string"
+    },
+    "reddit_subreddit": {
+      "type": "string"
+    },
+    "reddit_upvote_ratio": {
+      "type": "string"
+    },
+    "segment_kind": {
+      "type": "string"
+    },
     "session_id": {
       "type": "string"
     },
@@ -1490,7 +3475,10 @@
         "package",
         "session",
         "graph",
-        "memory"
+        "memory",
+        "feed",
+        "social",
+        "media"
       ],
       "minLength": 1,
       "type": "string",
@@ -1526,10 +3514,19 @@
       "minLength": 1,
       "type": "string"
     },
+    "title": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
     "vector_namespace": {
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "video_id": {
+      "type": "string"
     },
     "visibility": {
       "enum": [
@@ -1553,6 +3550,30 @@
       "type": "integer"
     },
     "web_title": {
+      "type": "string"
+    },
+    "yt_categories": {
+      "type": "string"
+    },
+    "yt_duration": {
+      "type": "string"
+    },
+    "yt_like_count": {
+      "type": "string"
+    },
+    "yt_tags": {
+      "type": "string"
+    },
+    "yt_thumbnail": {
+      "type": "string"
+    },
+    "yt_upload_date": {
+      "type": "string"
+    },
+    "yt_uploader_id": {
+      "type": "string"
+    },
+    "yt_view_count": {
       "type": "string"
     }
   },
@@ -1651,6 +3672,11 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "git_host": "git_host",
+        "git_owner": "git_owner",
+        "git_provider": "git_provider",
+        "git_repo": "git_repo",
+        "git_web_url": "git_web_url",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-code",
         "manifest": true,
@@ -1682,6 +3708,255 @@
         },
         "source_scope": "source_scope",
         "visibility": "internal"
+      },
+      {
+        "chunk_id": "chunk-feed-0",
+        "chunk_key": "feed-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/feed",
+          "heading_path": [
+            "feed heading"
+          ],
+          "path": "/feed",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:feedhash",
+        "document_id": "doc-feed",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_batch_id": "embedding_batch_id",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "feed_entry_author": "feed_entry_author",
+        "feed_entry_id": "feed_entry_id",
+        "feed_entry_link": "feed_entry_link",
+        "feed_entry_published": "feed_entry_published",
+        "feed_link": "feed_link",
+        "feed_title": "feed_title",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-feed",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_family": "feed",
+        "source_generation": "gen-feed-7",
+        "source_id": "src-feed",
+        "source_item_key": "feed-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "visibility": "internal"
+      },
+      {
+        "chunk_id": "chunk-social-0",
+        "chunk_key": "social-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/social",
+          "heading_path": [
+            "social heading"
+          ],
+          "path": "/social",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:socialhash",
+        "document_id": "doc-social",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_batch_id": "embedding_batch_id",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-social",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "reddit_author": "reddit_author",
+        "reddit_created_utc": "reddit_created_utc",
+        "reddit_distinguished": "reddit_distinguished",
+        "reddit_domain": "reddit_domain",
+        "reddit_flair": "reddit_flair",
+        "reddit_gilded": "reddit_gilded",
+        "reddit_is_video": "reddit_is_video",
+        "reddit_kind": "reddit_kind",
+        "reddit_num_comments": "reddit_num_comments",
+        "reddit_permalink": "reddit_permalink",
+        "reddit_score": "reddit_score",
+        "reddit_subreddit": "reddit_subreddit",
+        "reddit_upvote_ratio": "reddit_upvote_ratio",
+        "source_adapter": "source_adapter",
+        "source_family": "social",
+        "source_generation": "gen-social-7",
+        "source_id": "src-social",
+        "source_item_key": "social-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "visibility": "internal"
+      },
+      {
+        "channel": "channel",
+        "channel_url": "channel_url",
+        "chunk_id": "chunk-media-0",
+        "chunk_key": "media-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/media",
+          "heading_path": [
+            "media heading"
+          ],
+          "path": "/media",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:mediahash",
+        "document_id": "doc-media",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_batch_id": "embedding_batch_id",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-media",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "segment_kind": "segment_kind",
+        "source_adapter": "source_adapter",
+        "source_family": "media",
+        "source_generation": "gen-media-7",
+        "source_id": "src-media",
+        "source_item_key": "media-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "title": "title",
+        "url": "url",
+        "video_id": "video_id",
+        "visibility": "internal",
+        "yt_categories": "yt_categories",
+        "yt_duration": "yt_duration",
+        "yt_like_count": "yt_like_count",
+        "yt_tags": "yt_tags",
+        "yt_thumbnail": "yt_thumbnail",
+        "yt_upload_date": "yt_upload_date",
+        "yt_uploader_id": "yt_uploader_id",
+        "yt_view_count": "yt_view_count"
       },
       {
         "chunk_id": "chunk-web-0",
@@ -2232,7 +4507,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:706cb77687b473a57630683340901f9aa6e6618c30d7ff98384603f4b64cd798",
+        "checksum": "sha256:54ebd15f3e301e1cfe0d90836bba537904bbd527f740c1ddb58bf041e623685d",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -2269,9 +4544,62 @@
           "code_symbol_name",
           "code_symbol_kind",
           "code_file_type",
-          "manifest"
+          "manifest",
+          "git_provider",
+          "git_host",
+          "git_repo",
+          "git_owner",
+          "git_web_url"
         ],
         "source_family": "code"
+      },
+      {
+        "fields": [
+          "feed_title",
+          "feed_link",
+          "feed_entry_id",
+          "feed_entry_link",
+          "feed_entry_published",
+          "feed_entry_author"
+        ],
+        "source_family": "feed"
+      },
+      {
+        "fields": [
+          "reddit_author",
+          "reddit_created_utc",
+          "reddit_score",
+          "reddit_num_comments",
+          "reddit_upvote_ratio",
+          "reddit_subreddit",
+          "reddit_domain",
+          "reddit_is_video",
+          "reddit_distinguished",
+          "reddit_gilded",
+          "reddit_flair",
+          "reddit_permalink",
+          "reddit_kind"
+        ],
+        "source_family": "social"
+      },
+      {
+        "fields": [
+          "video_id",
+          "title",
+          "url",
+          "channel",
+          "channel_url",
+          "yt_uploader_id",
+          "yt_upload_date",
+          "yt_duration",
+          "yt_view_count",
+          "yt_like_count",
+          "yt_tags",
+          "yt_categories",
+          "yt_thumbnail",
+          "segment_kind"
+        ],
+        "source_family": "media"
       },
       {
         "fields": [
