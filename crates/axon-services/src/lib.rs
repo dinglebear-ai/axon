@@ -17,8 +17,11 @@ pub mod extract;
 #[allow(dead_code)]
 pub(crate) mod feed_source;
 pub mod freshness;
+pub mod git_acquire;
+pub use git_acquire::{clone_git_repo, is_git_target};
 #[allow(dead_code)]
 pub(crate) mod git_source;
+pub use git_source::{GitSourceIndexInput, GitSourceIndexOutput, index_git_source_with_job};
 pub mod ingest;
 pub mod jobs;
 pub(crate) mod local_source;
