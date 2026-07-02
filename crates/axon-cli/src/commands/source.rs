@@ -7,14 +7,20 @@
 //!   [`axon_services::index_local_source_with_job`].
 //! * **Git repository URLs** — shallow-cloned (acquisition) then dispatched to
 //!   the git bridge via [`axon_services::index_git_source_with_job`].
-//! * **Web URLs** (http/https, not a git target) — crawled to completion then
-//!   dispatched to the web bridge via
+//! * **Feed URLs** (RSS/Atom/RDF, or an explicit `rss:`/`feed:`/`atom:` prefix)
+//!   — fetched to a prepared document then dispatched to the feed bridge via
+//!   [`axon_services::index_feed_source_with_job`]. Classified *before* the web
+//!   branch so a feed URL (which is also http/https) is not swallowed by the
+//!   web catch-all.
+//! * **Web URLs** (http/https, not a git or feed target) — crawled to
+//!   completion then dispatched to the web bridge via
 //!   [`axon_services::index_web_source_with_job`]. This is the canonical
 //!   replacement for `axon crawl <url>`.
 //!
-//! Everything else (feed/reddit/youtube acquisition) returns a clear "not yet
-//! wired" error — a later P10 slice.
+//! Everything else (reddit/youtube acquisition) returns a clear "not yet wired"
+//! error — a later P10 slice.
 
+mod feed;
 mod git;
 mod web;
 
@@ -41,7 +47,10 @@ enum SourceInputKind {
     Local,
     /// A parseable git repository URL (github/gitlab/gitea/`.git`/`git+https`).
     Git,
-    /// An http/https URL that is not a git target — crawled + indexed.
+    /// An RSS/Atom/RDF feed URL (or `rss:`/`feed:`/`atom:` prefix) — fetched +
+    /// indexed through the feed bridge.
+    Feed,
+    /// An http/https URL that is not a git or feed target — crawled + indexed.
     Web,
     /// None of the above — unsupported for this slice.
     Unsupported,
@@ -59,6 +68,10 @@ pub async fn run_source(
             let runtime = require_data_plane(service_context)?;
             git::run_git_source(cfg, runtime, &input).await
         }
+        SourceInputKind::Feed => {
+            let runtime = require_data_plane(service_context)?;
+            feed::run_feed_source(cfg, runtime, &input).await
+        }
         SourceInputKind::Web => {
             let runtime = require_data_plane(service_context)?;
             web::run_web_source(cfg, runtime, &input).await
@@ -70,15 +83,20 @@ pub async fn run_source(
 /// Classify the input into an acquisition class.
 ///
 /// Local existence wins first (a directory literally named like a URL is still
-/// treated as local), then a genuine git target, then a plain http/https web
-/// URL, then unsupported. Split out as a pure-ish async fn (only fs metadata +
-/// string parsing) so routing is testable without a data plane.
+/// treated as local), then a genuine git target, then a feed URL, then a plain
+/// http/https web URL, then unsupported. Feed classification MUST precede the
+/// web branch: feed URLs are http/https, so the web catch-all would otherwise
+/// swallow them. Split out as a pure-ish async fn (only fs metadata + string
+/// parsing) so routing is testable without a data plane.
 async fn classify_source_input(input: &str) -> SourceInputKind {
     if input_is_local_path(input).await {
         return SourceInputKind::Local;
     }
     if input_is_git_target(input) {
         return SourceInputKind::Git;
+    }
+    if axon_services::is_feed_target(input) {
+        return SourceInputKind::Feed;
     }
     if input_is_web_url(input) {
         return SourceInputKind::Web;
@@ -143,7 +161,8 @@ fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
         .cloned()
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| {
-            "axon source requires a local path, git repository URL, or web URL argument".into()
+            "axon source requires a local path, git repository URL, feed URL, or web URL argument"
+                .into()
         })
 }
 
@@ -161,11 +180,12 @@ fn require_data_plane(
         })
 }
 
-/// Clear error for inputs that are not a local path, git URL, or web URL.
+/// Clear error for inputs that are not a local path, git URL, feed URL, or web
+/// URL.
 fn unsupported_input_error(input: &str) -> Box<dyn Error> {
     format!(
-        "axon source supports local paths, git repository URLs, and web URLs; {input} is none \
-         of these (feed/reddit/youtube acquisition is a P10 follow-up)"
+        "axon source supports local paths, git repository URLs, feed URLs, and web URLs; {input} \
+         is none of these (reddit/youtube acquisition is a P10 follow-up)"
     )
     .into()
 }

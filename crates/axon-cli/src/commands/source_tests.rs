@@ -140,7 +140,7 @@ async fn run_source_rejects_missing_positional_path() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     assert!(
         err.to_string()
-            .contains("requires a local path, git repository URL, or web URL"),
+            .contains("requires a local path, git repository URL, feed URL, or web URL"),
         "expected missing-path error, got: {err}"
     );
 }
@@ -170,7 +170,7 @@ async fn run_source_rejects_unsupported_input() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("local paths, git repository URLs, and web URLs"),
+        msg.contains("local paths, git repository URLs, feed URLs, and web URLs"),
         "expected unsupported-input error, got: {msg}"
     );
     assert!(
@@ -252,5 +252,69 @@ async fn classify_source_input_rejects_plain_word() {
     assert_eq!(
         classify_source_input("ftp://example.com/file").await,
         SourceInputKind::Unsupported
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_detects_feed_urls() {
+    // A `.rss`/`.atom` URL classifies as Feed, not Web.
+    assert_eq!(
+        classify_source_input("https://example.com/blog/feed.rss").await,
+        SourceInputKind::Feed
+    );
+    assert_eq!(
+        classify_source_input("https://example.com/releases.atom").await,
+        SourceInputKind::Feed
+    );
+    // An `rss:`-prefixed target is a feed even though the remainder is a plain
+    // web URL.
+    assert_eq!(
+        classify_source_input("rss:https://example.com/blog").await,
+        SourceInputKind::Feed
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_feed_url_beats_web_url() {
+    // A feed URL is http/https, but feed classification runs before the web
+    // catch-all, so it must route to Feed, not Web.
+    assert_eq!(
+        classify_source_input("https://example.com/feed").await,
+        SourceInputKind::Feed
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_plain_web_url_is_not_feed() {
+    // A plain docs URL must NOT be mis-detected as a feed.
+    assert_eq!(
+        classify_source_input("https://docs.example.com/guide").await,
+        SourceInputKind::Web
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_github_url_still_git_not_feed() {
+    // A GitHub URL routes to Git even though feed classification runs before
+    // web — git is checked first.
+    assert_eq!(
+        classify_source_input("https://github.com/jmagar/axon").await,
+        SourceInputKind::Git
+    );
+}
+
+#[tokio::test]
+async fn run_source_feed_url_requires_data_plane_runtime() {
+    // A feed URL routes to the feed branch, which requires the data plane
+    // BEFORE any network fetch — assert the guard fires there (no network
+    // access in this test).
+    let cfg = source_cfg("https://example.com/feed.rss");
+    let ctx = context_without_data_plane();
+
+    let err = run_source(&cfg, &ctx).await.unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("requires a running data plane"),
+        "expected data-plane guard error for feed input, got: {msg}"
     );
 }
