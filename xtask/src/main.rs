@@ -41,6 +41,10 @@ enum Command {
     CheckDepGraph,
     /// Regenerate docs/reference/crate-dependency-graph.md.
     GenDepGraph,
+    /// Verify the per-crate public-API surface snapshot is in sync.
+    CheckPublicApi,
+    /// Regenerate docs/reference/public-api-surface.md.
+    GenPublicApi,
     /// Verify SQLite job migrations are append-only and checksum-pinned.
     CheckSqliteMigrations,
     /// Regenerate the SQLite job migration checksum manifest after adding a migration.
@@ -141,6 +145,8 @@ fn main() -> Result<()> {
         Command::CheckDocContracts => checks::doc_contracts::check(&root),
         Command::CheckDepGraph => checks::dep_graph::check(&root),
         Command::GenDepGraph => checks::dep_graph::write(&root),
+        Command::CheckPublicApi => checks::public_api::check(&root),
+        Command::GenPublicApi => checks::public_api::write(&root),
         Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
         Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
         Command::CheckSecrets => checks::secrets::check(&root),
