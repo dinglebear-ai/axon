@@ -14,8 +14,13 @@ pub mod embed;
 pub mod endpoints;
 pub mod events;
 pub mod extract;
+pub mod feed_acquire;
+pub use feed_acquire::fetch_feed_to_file;
 #[allow(dead_code)]
 pub(crate) mod feed_source;
+pub use feed_source::{FeedSourceIndexInput, FeedSourceIndexOutput, index_feed_source_with_job};
+pub mod feed_target;
+pub use feed_target::{is_feed_target, normalize_feed_target};
 pub mod freshness;
 pub mod git_acquire;
 pub use git_acquire::{clone_git_repo, is_git_target};
