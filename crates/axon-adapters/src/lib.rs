@@ -49,3 +49,7 @@ mod local_test_support;
 #[cfg(test)]
 #[path = "web_tests.rs"]
 mod web_tests;
+
+#[cfg(test)]
+#[path = "registry_sources_test_support.rs"]
+mod registry_sources_test_support;
