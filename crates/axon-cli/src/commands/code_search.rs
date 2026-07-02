@@ -181,6 +181,7 @@ fn render_code_search_watch_event(event: CodeSearchWatchEvent) {
             indexed_files,
             removed_files,
             generation,
+            target_source_generation,
         } => {
             let outcome = if freshness_warning.is_some() {
                 "warning"
@@ -189,6 +190,7 @@ fn render_code_search_watch_event(event: CodeSearchWatchEvent) {
             };
             let generation = generation
                 .map(|generation| generation.to_string())
+                .or_else(|| target_source_generation.map(|generation| generation.0))
                 .unwrap_or_else(|| "none".to_string());
             println!(
                 "  {} {} {}",

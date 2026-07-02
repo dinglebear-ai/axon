@@ -146,6 +146,72 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
 }
 
 #[tokio::test]
+async fn sqlite_fail_generation_persists_failed_status_and_rejects_published_generations() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let running = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    store
+        .put_manifest(manifest_with_items(
+            &running.generation.0,
+            vec![manifest_item("src/lib.rs", "failed")],
+        ))
+        .await
+        .expect("put manifest");
+    let completed = store
+        .complete_generation(completed_generation_from(&running))
+        .await
+        .expect("complete generation");
+
+    let failed = store
+        .fail_generation(completed)
+        .await
+        .expect("fail generation");
+
+    assert_eq!(failed.status, LifecycleStatus::Failed);
+    assert_eq!(failed.publish_state, PublishState::Writing);
+    assert!(failed.published_at.is_none());
+    let row: (String, String, Option<String>, String) = sqlx::query_as(
+        "SELECT status, publish_state, published_at, generation_json FROM source_generations WHERE generation = ?1",
+    )
+    .bind(&running.generation.0)
+    .fetch_one(&store.pool)
+    .await
+    .expect("read failed generation");
+    assert_eq!(row.0, "failed");
+    assert_eq!(row.1, "writing");
+    assert!(row.2.is_none());
+    let stored_generation: SourceGeneration =
+        serde_json::from_str(&row.3).expect("parse generation json");
+    assert_eq!(stored_generation.status, LifecycleStatus::Failed);
+
+    let published_running = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create published generation");
+    store
+        .put_manifest(manifest_with_items(
+            &published_running.generation.0,
+            vec![manifest_item("src/lib.rs", "published")],
+        ))
+        .await
+        .expect("put published manifest");
+    let published =
+        complete_and_publish(&store, completed_generation_from(&published_running)).await;
+    let error = store
+        .fail_generation(published)
+        .await
+        .expect_err("published generation cannot be failed");
+    assert_eq!(
+        error.code.to_string(),
+        "source.ledger.generation_already_published"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_publish_rejects_stale_generation_baseline() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");

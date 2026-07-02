@@ -73,6 +73,11 @@ impl AdapterDefinition {
         });
         self
     }
+
+    pub fn with_options(mut self, keys: &[&str]) -> Self {
+        self.allowed_option_keys = keys.iter().map(|key| key.to_string()).collect();
+        self
+    }
 }
 
 fn safety_class(source_kind: SourceKind) -> SafetyClass {
@@ -133,6 +138,17 @@ impl AdapterRegistry {
             AdapterDefinition::new("local", "1", SourceKind::Local, SourceScope::Directory)
                 .with_scope(SourceScope::File)
                 .with_scope(SourceScope::Workspace)
+                .with_scope(SourceScope::Repo)
+                .with_scope(SourceScope::Map)
+                .with_options(&[
+                    "include_globs",
+                    "exclude_globs",
+                    "respect_gitignore",
+                    "follow_symlinks",
+                    "max_file_bytes",
+                    "binary_policy",
+                    "watch_policy",
+                ])
                 .with_safety_class(SafetyClass::LocalFilesystem),
             AdapterDefinition::new("mcp", "1", SourceKind::McpTool, SourceScope::Tool)
                 .with_safety_class(SafetyClass::ToolExecution),

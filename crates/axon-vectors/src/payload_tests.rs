@@ -14,12 +14,49 @@ fn fixture(name: &str) -> MetadataMap {
     let object = value
         .as_object()
         .unwrap_or_else(|| panic!("{path} must be a JSON object"));
-    MetadataMap(
+    let mut metadata = MetadataMap(
         object
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
-    )
+    );
+    apply_shared_lineage_fixture_defaults(&mut metadata);
+    metadata
+}
+
+fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
+    let Some(source_family) = metadata
+        .get("source_family")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+    else {
+        return;
+    };
+    metadata
+        .entry("source_kind".to_string())
+        .or_insert_with(|| serde_json::json!(source_family));
+    metadata
+        .entry("source_adapter".to_string())
+        .or_insert_with(|| serde_json::json!(source_family));
+    metadata
+        .entry("source_scope".to_string())
+        .or_insert_with(|| serde_json::json!("item"));
+    let canonical_uri = metadata
+        .get("source_item_key")
+        .cloned()
+        .or_else(|| {
+            metadata
+                .get("chunk_locator")
+                .and_then(|locator| locator.get("canonical_uri"))
+                .cloned()
+        })
+        .unwrap_or_else(|| serde_json::json!("fixture://payload/item"));
+    metadata
+        .entry("source_item_key".to_string())
+        .or_insert_with(|| canonical_uri.clone());
+    metadata
+        .entry("item_canonical_uri".to_string())
+        .or_insert(canonical_uri);
 }
 
 #[test]

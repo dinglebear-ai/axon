@@ -62,6 +62,13 @@ pub fn test_prepared_document() -> PreparedDocument {
                 ("embedding_provider_id".to_string(), json!("fake-embedding")),
                 ("embedding_model".to_string(), json!("text-embedding-test")),
                 ("source_family".to_string(), json!("web")),
+                ("source_kind".to_string(), json!("web")),
+                ("source_adapter".to_string(), json!("web")),
+                ("source_scope".to_string(), json!("page")),
+                (
+                    "item_canonical_uri".to_string(),
+                    json!("https://example.com/docs"),
+                ),
                 ("web_title".to_string(), json!("Example Docs")),
                 ("web_domain".to_string(), json!("example.com")),
                 ("web_status_code".to_string(), json!(200)),

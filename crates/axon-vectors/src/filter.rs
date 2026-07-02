@@ -12,6 +12,7 @@ pub const CHUNK_ID: &str = "chunk_id";
 pub const VECTOR_NAMESPACE: &str = "vector_namespace";
 pub const VISIBILITY: &str = "visibility";
 pub const CONTENT_KIND: &str = "content_kind";
+pub const PATH_PREFIX: &str = "path_prefix";
 
 type Result<T> = std::result::Result<T, ApiError>;
 
@@ -21,10 +22,12 @@ pub fn matches_search_filters(point: &VectorPoint, request: &VectorSearchRequest
     {
         return false;
     }
-    request
-        .filters
-        .iter()
-        .all(|(field, expected)| payload_matches_value(&point.payload, field, expected))
+    request.filters.iter().all(|(field, expected)| {
+        if field == PATH_PREFIX {
+            return payload_matches_path_prefix(&point.payload, expected);
+        }
+        payload_matches_value(&point.payload, field, expected)
+    })
 }
 
 pub fn validate_delete_selector(selector: &VectorDeleteSelector) -> Result<()> {
@@ -213,6 +216,29 @@ fn payload_matches_value(payload: &MetadataMap, field: &str, expected: &Value) -
     payload
         .get(field)
         .is_some_and(|actual| actual == expected || value_matches_string_value(actual, expected))
+}
+
+fn payload_matches_path_prefix(payload: &MetadataMap, expected: &Value) -> bool {
+    let Some(prefix) = expected.as_str() else {
+        return false;
+    };
+    let prefix = prefix.trim_end_matches('/');
+    let prefix = if prefix.is_empty() {
+        String::new()
+    } else {
+        format!("{prefix}/")
+    };
+    [
+        payload.get("source_item_key").and_then(Value::as_str),
+        payload
+            .get("chunk_locator")
+            .and_then(Value::as_object)
+            .and_then(|locator| locator.get("path"))
+            .and_then(Value::as_str),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|path| path == prefix.trim_end_matches('/') || path.starts_with(&prefix))
 }
 
 fn value_matches_string_value(actual: &Value, expected: &Value) -> bool {

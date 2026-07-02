@@ -26,6 +26,10 @@ pub type AdapterMatch = AdapterDefinition;
 pub type CanonicalUri = String;
 
 #[cfg(test)]
+#[path = "local_capability_tests.rs"]
+mod local_capability_tests;
+
+#[cfg(test)]
 #[path = "route_tests.rs"]
 mod tests;
 

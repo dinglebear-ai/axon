@@ -282,6 +282,7 @@ fn source_specific_field_schema(field: &str) -> Value {
             json!({ "type": "integer" })
         }
         "graph_confidence" => json!({ "type": "number" }),
+        "manifest" => json!({ "type": "boolean" }),
         "graph_node_ids" | "graph_edge_ids" => {
             json!({ "type": "array", "items": { "type": "string" } })
         }
@@ -414,6 +415,7 @@ fn source_specific_example_value(field: &str, family: &str) -> Value {
         "graph_node_ids" => json!(["node-a", "node-b"]),
         "graph_edge_ids" => json!(["edge-a"]),
         "graph_confidence" => json!(0.93),
+        "manifest" => json!(true),
         "memory_id" => json!(format!("memory-{family}")),
         "memory_importance" => json!(5),
         "memory_status" => json!("active"),

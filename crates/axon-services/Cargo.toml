@@ -16,6 +16,11 @@ axon-extract = { path = "../axon-extract" }
 axon-jobs = { path = "../axon-jobs" }
 axon-code-index = { path = "../axon-code-index" }
 axon-source-ledger = { path = "../axon-source-ledger" }
+axon-adapters = { path = "../axon-adapters" }
+axon-document = { path = "../axon-document" }
+axon-embedding = { path = "../axon-embedding" }
+axon-ledger = { path = "../axon-ledger" }
+axon-vectors = { path = "../axon-vectors" }
 anyhow = "1"
 async-trait = "0.1"
 base64 = "0.22"
