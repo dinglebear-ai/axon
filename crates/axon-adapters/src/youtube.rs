@@ -7,7 +7,7 @@
 //! adapter makes it unit-testable with fixture dumps and matches how the
 //! `git` adapter reads a prepared clone via `repo_root`.
 
-mod dump;
+pub mod dump;
 mod metadata;
 mod target;
 
