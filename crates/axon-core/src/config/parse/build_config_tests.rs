@@ -172,6 +172,24 @@ pub(in crate::config::parse) fn with_env_saved<F: FnOnce()>(keys: &[&str], body:
     body();
 }
 
+#[test]
+fn source_subcommand_parses_local_path_positional() {
+    let cfg = into_config(cli_with_services(&["source", "./somepath"]))
+        .expect("source subcommand should parse");
+
+    assert_eq!(cfg.command, crate::config::types::CommandKind::Source);
+    assert_eq!(cfg.positional, vec!["./somepath".to_string()]);
+}
+
+#[test]
+fn source_subcommand_without_path_has_empty_positional() {
+    let cfg = into_config(cli_with_services(&["source"]))
+        .expect("source subcommand without a path should parse");
+
+    assert_eq!(cfg.command, crate::config::types::CommandKind::Source);
+    assert!(cfg.positional.is_empty());
+}
+
 #[allow(unsafe_code)]
 #[test]
 fn skip_embed_flag_disables_default_embedding() {

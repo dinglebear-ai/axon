@@ -102,6 +102,8 @@ pub(super) enum CliCommand {
     Memory(MemoryArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
     Sessions(SessionsArgs),
+    /// Index a local source path through the unified pipeline (local paths only)
+    Source(SourceArgs),
     /// Capture a full-page screenshot of one or more URLs
     Screenshot(ScrapeArgs),
     #[command(alias = "completion")]
@@ -315,6 +317,13 @@ pub(super) struct UpdateArgs {
 pub(super) struct ScrapeArgs {
     #[arg(value_name = "URL")]
     pub(super) positional_urls: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct SourceArgs {
+    /// Local path to index. Only local paths are supported in this slice.
+    #[arg(value_name = "PATH")]
+    pub(super) path: Option<String>,
 }
 
 #[derive(Debug, Args)]
