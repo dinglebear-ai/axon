@@ -39,8 +39,15 @@ pub mod memory;
 pub mod migrate;
 pub mod mobile_sessions;
 pub mod query;
+pub mod reddit_acquire;
+pub use reddit_acquire::fetch_reddit_dump;
 #[allow(dead_code)]
 pub(crate) mod reddit_source;
+pub use reddit_source::{
+    RedditSourceIndexInput, RedditSourceIndexOutput, index_reddit_source_with_job,
+};
+pub mod reddit_target;
+pub use reddit_target::is_reddit_target;
 pub mod refresh;
 #[allow(dead_code)]
 pub(crate) mod registry_source;

@@ -140,7 +140,7 @@ async fn run_source_rejects_missing_positional_path() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     assert!(
         err.to_string()
-            .contains("requires a local path, git repository URL, feed URL, or web URL"),
+            .contains("requires a local path, git repository URL, feed URL, reddit target"),
         "expected missing-path error, got: {err}"
     );
 }
@@ -170,12 +170,73 @@ async fn run_source_rejects_unsupported_input() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("local paths, git repository URLs, feed URLs, and web URLs"),
+        msg.contains("local paths, git repository URLs, feed URLs, reddit targets"),
         "expected unsupported-input error, got: {msg}"
     );
     assert!(
         msg.contains("P10 follow-up"),
         "error should name the P10 follow-up, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_detects_reddit_targets() {
+    // A bare `r/<name>` subreddit reference classifies as Reddit.
+    assert_eq!(
+        classify_source_input("r/rust").await,
+        SourceInputKind::Reddit
+    );
+    // A reddit.com thread URL classifies as Reddit, not Web.
+    assert_eq!(
+        classify_source_input("https://www.reddit.com/r/rust/comments/abc123/some_title/").await,
+        SourceInputKind::Reddit
+    );
+    // old.reddit.com is an accepted reddit host.
+    assert_eq!(
+        classify_source_input("https://old.reddit.com/r/rust/comments/abc123/t/").await,
+        SourceInputKind::Reddit
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_reddit_thread_beats_web_url() {
+    // A reddit.com thread URL is http/https, but reddit classification runs
+    // before the web catch-all, so it must route to Reddit, not Web.
+    assert_eq!(
+        classify_source_input("https://reddit.com/r/rust/comments/abc123/some_title/").await,
+        SourceInputKind::Reddit
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_github_url_still_git_not_reddit() {
+    // A GitHub URL routes to Git even though reddit classification runs before
+    // web — git is checked first, and a github host is not a reddit target.
+    assert_eq!(
+        classify_source_input("https://github.com/jmagar/axon").await,
+        SourceInputKind::Git
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_plain_web_url_is_not_reddit() {
+    // A non-reddit http URL must NOT be mis-detected as a reddit target.
+    assert_eq!(
+        classify_source_input("https://docs.example.com/guide").await,
+        SourceInputKind::Web
+    );
+    assert_eq!(
+        classify_source_input("http://example.com").await,
+        SourceInputKind::Web
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_feed_url_still_feed_not_reddit() {
+    // Feed classification runs before reddit, so a feed URL stays Feed.
+    assert_eq!(
+        classify_source_input("https://example.com/feed.rss").await,
+        SourceInputKind::Feed
     );
 }
 

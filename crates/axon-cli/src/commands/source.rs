@@ -12,16 +12,22 @@
 //!   [`axon_services::index_feed_source_with_job`]. Classified *before* the web
 //!   branch so a feed URL (which is also http/https) is not swallowed by the
 //!   web catch-all.
-//! * **Web URLs** (http/https, not a git or feed target) — crawled to
+//! * **Reddit targets** (`r/<name>` subreddits or reddit.com thread URLs) —
+//!   OAuth-fetched to a prepared JSON dump then dispatched to the reddit bridge
+//!   via [`axon_services::index_reddit_source_with_job`]. Classified *before*
+//!   the web branch so a reddit.com thread URL (also http/https) is not
+//!   swallowed by the web catch-all.
+//! * **Web URLs** (http/https, not a git, feed, or reddit target) — crawled to
 //!   completion then dispatched to the web bridge via
 //!   [`axon_services::index_web_source_with_job`]. This is the canonical
 //!   replacement for `axon crawl <url>`.
 //!
-//! Everything else (reddit/youtube acquisition) returns a clear "not yet wired"
-//! error — a later P10 slice.
+//! Everything else (youtube/sessions/registry acquisition) returns a clear "not
+//! yet wired" error — a later P10 slice.
 
 mod feed;
 mod git;
+mod reddit;
 mod web;
 
 use axon_api::source::JobId;
@@ -50,7 +56,11 @@ enum SourceInputKind {
     /// An RSS/Atom/RDF feed URL (or `rss:`/`feed:`/`atom:` prefix) — fetched +
     /// indexed through the feed bridge.
     Feed,
-    /// An http/https URL that is not a git or feed target — crawled + indexed.
+    /// A reddit subreddit (`r/<name>`) or reddit.com thread URL — OAuth-fetched
+    /// to a prepared dump + indexed through the reddit bridge.
+    Reddit,
+    /// An http/https URL that is not a git, feed, or reddit target — crawled +
+    /// indexed.
     Web,
     /// None of the above — unsupported for this slice.
     Unsupported,
@@ -72,6 +82,10 @@ pub async fn run_source(
             let runtime = require_data_plane(service_context)?;
             feed::run_feed_source(cfg, runtime, &input).await
         }
+        SourceInputKind::Reddit => {
+            let runtime = require_data_plane(service_context)?;
+            reddit::run_reddit_source(cfg, runtime, &input).await
+        }
         SourceInputKind::Web => {
             let runtime = require_data_plane(service_context)?;
             web::run_web_source(cfg, runtime, &input).await
@@ -83,11 +97,13 @@ pub async fn run_source(
 /// Classify the input into an acquisition class.
 ///
 /// Local existence wins first (a directory literally named like a URL is still
-/// treated as local), then a genuine git target, then a feed URL, then a plain
-/// http/https web URL, then unsupported. Feed classification MUST precede the
-/// web branch: feed URLs are http/https, so the web catch-all would otherwise
-/// swallow them. Split out as a pure-ish async fn (only fs metadata + string
-/// parsing) so routing is testable without a data plane.
+/// treated as local), then a genuine git target, then a feed URL, then a reddit
+/// target, then a plain http/https web URL, then unsupported. Feed AND reddit
+/// classification MUST precede the web branch: both feed URLs and reddit.com
+/// thread URLs are http/https, so the web catch-all would otherwise swallow
+/// them. Reddit is checked *after* git (a reddit.com URL carries no git signal,
+/// so git never claims it). Split out as a pure-ish async fn (only fs metadata +
+/// string parsing) so routing is testable without a data plane.
 async fn classify_source_input(input: &str) -> SourceInputKind {
     if input_is_local_path(input).await {
         return SourceInputKind::Local;
@@ -97,6 +113,9 @@ async fn classify_source_input(input: &str) -> SourceInputKind {
     }
     if axon_services::is_feed_target(input) {
         return SourceInputKind::Feed;
+    }
+    if axon_services::is_reddit_target(input) {
+        return SourceInputKind::Reddit;
     }
     if input_is_web_url(input) {
         return SourceInputKind::Web;
@@ -161,7 +180,8 @@ fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
         .cloned()
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| {
-            "axon source requires a local path, git repository URL, feed URL, or web URL argument"
+            "axon source requires a local path, git repository URL, feed URL, reddit target, \
+             or web URL argument"
                 .into()
         })
 }
@@ -180,12 +200,13 @@ fn require_data_plane(
         })
 }
 
-/// Clear error for inputs that are not a local path, git URL, feed URL, or web
-/// URL.
+/// Clear error for inputs that are not a local path, git URL, feed URL, reddit
+/// target, or web URL.
 fn unsupported_input_error(input: &str) -> Box<dyn Error> {
     format!(
-        "axon source supports local paths, git repository URLs, feed URLs, and web URLs; {input} \
-         is none of these (reddit/youtube acquisition is a P10 follow-up)"
+        "axon source supports local paths, git repository URLs, feed URLs, reddit targets \
+         (r/<name> or a reddit.com thread URL), and web URLs; {input} is none of these \
+         (youtube/sessions/registry acquisition is a P10 follow-up)"
     )
     .into()
 }
