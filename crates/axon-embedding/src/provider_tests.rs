@@ -265,14 +265,14 @@ async fn tei_adapter_config_is_reflected_in_capabilities_without_network_calls()
     let capability = provider.capabilities().await.unwrap();
     let embedding = capability.embedding.unwrap();
 
+    // The TEI provider is now wired: it reports Available/Healthy with no
+    // not_wired error and non-zero reservation capacity.
     assert_eq!(capability.provider_id, ProviderId::new("tei"));
-    assert_eq!(capability.health, HealthStatus::Unavailable);
-    assert_eq!(
-        capability.last_error.unwrap().code.to_string(),
-        "provider.not_wired"
-    );
-    assert_eq!(capability.reservation_state.available_units, 0);
+    assert_eq!(capability.health, HealthStatus::Healthy);
+    assert!(capability.last_error.is_none());
+    assert_eq!(capability.reservation_state.available_units, 64);
     assert_eq!(capability.limits.timeout_ms, Some(30_000));
+    assert!(capability.features.contains(&"http_client".to_string()));
     assert_eq!(embedding.model_id, "qwen3-embedding");
     assert_eq!(embedding.dimensions, 1024);
     assert_eq!(embedding.batch_limits.max_items, 64);
@@ -316,18 +316,11 @@ async fn openai_compat_adapter_config_is_reflected_in_capabilities_without_netwo
     assert_eq!(embedding.max_batch_tokens, 196_608);
 }
 
+// OpenAiCompat remains a shell in this PR — assert its not_wired behavior
+// separately now that TEI is a real client. (The TEI half of the old combined
+// test moved to the mock-server tests in `tei_client_tests.rs`.)
 #[tokio::test]
-async fn adapter_shell_embed_returns_not_wired_error() {
-    let tei = tei::TeiEmbeddingProvider::new(tei::TeiEmbeddingConfig {
-        endpoint: "http://tei.local:8080".to_string(),
-        model: "qwen3-embedding".to_string(),
-        dimensions: 1024,
-        timeout: Duration::from_secs(30),
-        max_batch_inputs: 64,
-        max_input_tokens: 8192,
-        max_batch_tokens: 131_072,
-        instruction_support: InstructionSupport::QueryAndDocument,
-    });
+async fn openai_compat_shell_embed_returns_not_wired_error() {
     let openai =
         openai_compat::OpenAiCompatEmbeddingProvider::new(openai_compat::OpenAiCompatConfig {
             base_url: "https://llm.example.test/v1".to_string(),
@@ -339,14 +332,11 @@ async fn adapter_shell_embed_returns_not_wired_error() {
             max_batch_tokens: 196_608,
         });
 
-    let tei_err = tei.embed(batch(JobPriority::Background)).await.unwrap_err();
     let openai_err = openai
         .embed(batch(JobPriority::Background))
         .await
         .unwrap_err();
 
-    assert_eq!(tei_err.code.to_string(), "provider.not_wired");
-    assert_eq!(tei_err.provider_id.as_deref(), Some("tei"));
     assert_eq!(openai_err.code.to_string(), "provider.not_wired");
     assert_eq!(openai_err.provider_id.as_deref(), Some("openai-compat"));
 }

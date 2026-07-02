@@ -98,6 +98,39 @@ pub fn unavailable_embedding_provider_capability(
     })
 }
 
+/// Build an `Available`/`Healthy` embedding capability for a wired provider.
+///
+/// Mirrors [`unavailable_embedding_provider_capability`] but reports the
+/// provider as reachable: `Healthy` health, no `last_error`, and a reservation
+/// state with `capacity` granted units. No network call is performed — the
+/// capability reflects static config so it stays unit-testable.
+#[allow(clippy::too_many_arguments)]
+pub fn available_embedding_provider_capability(
+    provider_id: ProviderId,
+    implementation: impl Into<String>,
+    limits: ProviderLimits,
+    features: Vec<String>,
+    cost_class: ProviderCostClass,
+    capacity: u32,
+    embedding: EmbeddingCapabilityConfig,
+) -> ProviderCapability {
+    embedding_provider_capability(ProviderCapabilityConfig {
+        provider_id,
+        implementation: implementation.into(),
+        health: HealthStatus::Healthy,
+        limits,
+        features,
+        cooldown_until: None,
+        last_error: None,
+        reservation_policy: embedding_reservation_policy(true, QueuePolicy::Fifo, 0),
+        reservation_state: embedding_reservation_state(capacity),
+        cost_class,
+        degraded_modes: Vec::new(),
+        fake_overrides_supported: false,
+        embedding: embedding_capability(embedding),
+    })
+}
+
 pub fn embedding_reservation_policy(
     supports_reservations: bool,
     queue_policy: QueuePolicy,
