@@ -407,46 +407,7 @@ pub const VECTOR_VISIBILITY_VALUES: &[&str] =
 
 pub const VECTOR_REDACTION_STATUS_VALUES: &[&str] = &["clean", "redacted", "failed"];
 
-pub const VECTOR_SOURCE_FAMILIES: &[&str] =
-    &["code", "web", "package", "session", "graph", "memory"];
-
-pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
-    (
-        "code",
-        &[
-            "code_language",
-            "code_symbol_name",
-            "code_symbol_kind",
-            "code_file_type",
-            "manifest",
-        ],
-    ),
-    (
-        "web",
-        &["web_title", "web_domain", "web_status_code", "web_depth"],
-    ),
-    (
-        "package",
-        &["package_ecosystem", "package_name", "package_version"],
-    ),
-    (
-        "session",
-        &[
-            "session_id",
-            "session_turn_index",
-            "session_tool_name",
-            "session_skill_name",
-        ],
-    ),
-    (
-        "graph",
-        &["graph_node_ids", "graph_edge_ids", "graph_confidence"],
-    ),
-    (
-        "memory",
-        &["memory_id", "memory_importance", "memory_status"],
-    ),
-];
+pub use crate::payload_families::{VECTOR_SOURCE_FAMILIES, VECTOR_SOURCE_FAMILY_FIELDS};
 
 pub const VECTOR_SHARED_FIELDS: &[&str] = &[
     "payload_contract_version",

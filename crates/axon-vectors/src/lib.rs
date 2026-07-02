@@ -9,6 +9,7 @@ pub mod collection;
 pub mod filter;
 pub mod health;
 pub mod payload;
+pub mod payload_families;
 mod payload_redaction;
 pub mod point;
 #[cfg(test)]
