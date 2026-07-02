@@ -102,8 +102,10 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
     }));
     for path in [
         "crates/axon-api/src/source/document.rs",
+        "crates/axon-api/src/source/boundary.rs",
         "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
+        "crates/axon-api/src/source/listing.rs",
         "crates/axon-api/src/source/state.rs",
         "crates/axon-api/src/source/status.rs",
         "crates/axon-api/src/source/vector.rs",
@@ -130,6 +132,17 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
         "GraphEvidence",
         "EmbeddingBatch",
         "EmbeddingInput",
+        "JobCreateRequest",
+        "JobDescriptor",
+        "JobSummary",
+        "SourceJobStatus",
+        "JobEvent",
+        "JobHeartbeat",
+        "JobCancelRequest",
+        "JobRetryRequest",
+        "JobRecoveryRequest",
+        "JobCleanupRequest",
+        "JobArtifactListResult",
     ] {
         assert!(
             value["$defs"].get(def).is_some(),

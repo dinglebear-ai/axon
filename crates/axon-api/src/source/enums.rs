@@ -177,6 +177,33 @@ pub enum JobKind {
 }
 
 #[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum JobIntent {
+    #[default]
+    Run,
+    Acquire,
+    Refresh,
+    Watch,
+    Exec,
+    Retry,
+    Recover,
+    Cleanup,
+    Probe,
+    Reset,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum JobRetryMode {
+    SameConfig,
+    WithOverrides,
+}
+
+#[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
 #[serde(rename_all = "snake_case")]
@@ -230,6 +257,21 @@ pub enum LifecycleStatus {
     Canceled,
     Expired,
     Skipped,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderReservationStatus {
+    Requested,
+    Queued,
+    Granted,
+    Active,
+    Released,
+    Expired,
+    Canceled,
+    Failed,
 }
 
 #[derive(

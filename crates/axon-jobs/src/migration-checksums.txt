@@ -1,7 +1,7 @@
 # SHA-384 checksums for SQLite job migrations.
 #
-# Migrations are append-only once merged because SQLx stores the checksum in
-# each live jobs.db. To change an applied migration, add a new migration instead.
+# Migrations are append-only once merged because SQLx stores checksums in
+# live SQLite databases. To change an applied migration, add a new migration instead.
 0001_create_tables.sql fa9f6b3e6ceab928157250b56dfd2618bcece5e3f2a7ee20751ce5a4bd26ab0270a6f1630e511068215be53d32741ce1
 0002_create_watch_tables.sql 10f772c37222b4c8172d20999ed105771ad9e378fcad3e963a38b61d9f7204def467d40ffa0238cd732fbeac27a89dac
 0003_add_status_checks.sql 2c3c5bcb4cbaeb7758868e85b3720ef4e6f364e94f4915890461a63d16745f35f31174f02bfc1bb66def7a9ab257081b
@@ -19,3 +19,4 @@
 0015_freshness.sql ba1b28053b82d3091f70a63969c8734eccf525c14f4fae2d2262d05317c6f28358f909a5a8f7e87a341d5b488a834a14
 0016_freshness_run_retention_index.sql d94c4135aab2849d634ef165c6212529d27f7ebb428e8e77e1bd18c8eb91100bde878aa8f45a3f4af412563608e02a4e
 0017_source_ledger.sql 98d7bf296ad8e9a8b31b9730871e001c08b4843c79c919f6757f95674b28b31c97d18582a7068d92ab04a5b4a565c7fb
+0018_unified_jobs_observability.sql a5a35ff79e960a59670dfbeaae92bce3e0a4a5edd82c402a823052b58d665468d9ef0cad9f638141460a3513ff24f3c0

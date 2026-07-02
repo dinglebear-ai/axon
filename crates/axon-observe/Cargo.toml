@@ -9,7 +9,10 @@ license.workspace = true
 [dependencies]
 axon-api = { path = "../axon-api" }
 axon-error = { path = "../axon-error" }
+async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
