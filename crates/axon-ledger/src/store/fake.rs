@@ -83,6 +83,19 @@ impl FakeLedgerStore {
         self.state.lock().await.generations.len()
     }
 
+    pub async fn generation(
+        &self,
+        source_id: &SourceId,
+        generation: &SourceGenerationId,
+    ) -> Option<SourceGeneration> {
+        self.state
+            .lock()
+            .await
+            .generations
+            .get(&(source_id.clone(), generation.clone()))
+            .cloned()
+    }
+
     pub async fn manifest_count(&self) -> usize {
         self.state.lock().await.manifests.len()
     }

@@ -169,7 +169,8 @@ impl AdapterRegistry {
             AdapterDefinition::new("web", "1", SourceKind::Web, SourceScope::Site)
                 .with_scope(SourceScope::Page)
                 .with_scope(SourceScope::Docs)
-                .with_scope(SourceScope::Map),
+                .with_scope(SourceScope::Map)
+                .with_options(&["manifest_path", "markdown_root", "map_urls"]),
             AdapterDefinition::new("youtube", "1", SourceKind::Youtube, SourceScope::Video)
                 .with_scope(SourceScope::Playlist)
                 .with_scope(SourceScope::Channel),

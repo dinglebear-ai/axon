@@ -45,3 +45,7 @@ mod local_tests;
 #[cfg(test)]
 #[path = "local_test_support.rs"]
 mod local_test_support;
+
+#[cfg(test)]
+#[path = "web_tests.rs"]
+mod web_tests;

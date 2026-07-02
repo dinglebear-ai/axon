@@ -15,6 +15,7 @@ pub fn adapter_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         root,
         &[
             "crates/axon-route/src/capability.rs",
+            "crates/axon-adapters/src/web.rs",
             "docs/pipeline-unification/sources/adapter-scopes.md",
         ],
     )?;
