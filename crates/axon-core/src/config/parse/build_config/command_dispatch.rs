@@ -8,7 +8,7 @@ use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
     FreshSubcommand, IngestArgs, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs,
     ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs,
-    SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand, UpdateArgs,
+    SetupAuthMode, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
@@ -328,6 +328,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Ingest(args) => apply_ingest(&mut out, args),
         CliCommand::Memory(args) => apply_memory(&mut out, args.action),
         CliCommand::Sessions(args) => apply_sessions(&mut out, args),
+        CliCommand::Source(args) => apply_source(&mut out, args),
         CliCommand::Screenshot(args) => {
             out.command = CommandKind::Screenshot;
             out.positional = args.positional_urls;
@@ -544,6 +545,11 @@ fn apply_ingest(out: &mut DispatchOutput, args: IngestArgs) {
     } else {
         args.target.into_iter().collect()
     };
+}
+
+fn apply_source(out: &mut DispatchOutput, args: SourceArgs) {
+    out.command = CommandKind::Source;
+    out.positional = args.path.into_iter().collect();
 }
 
 fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {

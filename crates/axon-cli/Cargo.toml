@@ -7,6 +7,7 @@ description = "Axon CLI adapter: argv dispatch + command handlers for all axon s
 license = "MIT"
 
 [dependencies]
+axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-crawl = { path = "../axon-crawl" }
 axon-vector = { path = "../axon-vector" }

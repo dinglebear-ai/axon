@@ -22,6 +22,10 @@ pub(crate) mod git_source;
 pub mod ingest;
 pub mod jobs;
 pub(crate) mod local_source;
+pub use local_source::{
+    LocalSourceIndexInput, LocalSourceIndexOutput, LocalSourceSelectionPolicy,
+    index_local_source_with_job,
+};
 pub mod map;
 pub mod memory;
 pub mod migrate;
