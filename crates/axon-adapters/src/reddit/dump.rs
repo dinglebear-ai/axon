@@ -93,7 +93,13 @@ pub struct RedditDumpComment {
 }
 
 /// Parse a prepared Reddit JSON dump file into its post items.
-pub(super) fn parse_dump(bytes: &[u8]) -> Result<Vec<RedditDumpItem>> {
+///
+/// Public so the services acquire mapping (`axon_services::reddit_acquire`)
+/// can round-trip its produced dump JSON through the adapter's real
+/// deserialize path in tests — mirroring how `axon_adapters::youtube::dump`
+/// exposes `read_youtube_dump`. A field/serde drift in these dump structs
+/// then breaks that round-trip test.
+pub fn parse_dump(bytes: &[u8]) -> Result<Vec<RedditDumpItem>> {
     serde_json::from_slice::<Vec<RedditDumpItem>>(bytes).map_err(|err| {
         ApiError::new(
             "adapter.reddit.dump_invalid",

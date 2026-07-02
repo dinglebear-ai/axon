@@ -1,4 +1,5 @@
 use super::*;
+use axon_adapters::reddit::dump::{RedditDumpItem, parse_dump};
 use serde_json::json;
 
 #[test]
@@ -214,37 +215,12 @@ fn thread_without_comment_listing_maps_post_only() {
 
 #[test]
 fn serialized_dump_deserializes_back_into_dump_shape() {
-    // The serialized dump MUST round-trip through a struct with the exact field
-    // names the adapter's `RedditDumpItem`/`RedditDumpComment` deserialize
-    // targets use — this guards against a field-name drift between the acquire
-    // mapping and the adapter parser.
-    #[derive(serde::Deserialize)]
-    struct MirrorItem {
-        title: Option<String>,
-        #[serde(default)]
-        selftext: Option<String>,
-        permalink: Option<String>,
-        author: Option<String>,
-        score: Option<i64>,
-        subreddit: Option<String>,
-        domain: Option<String>,
-        num_comments: Option<u64>,
-        upvote_ratio: Option<f64>,
-        is_video: Option<bool>,
-        distinguished: Option<String>,
-        gilded: Option<u64>,
-        link_flair_text: Option<String>,
-        created_utc: Option<u64>,
-        #[serde(default)]
-        comments: Vec<MirrorComment>,
-    }
-    #[derive(serde::Deserialize)]
-    struct MirrorComment {
-        body: String,
-        #[serde(default)]
-        parent_text: Option<String>,
-    }
-
+    // The highest-risk assertion: the serialized dump MUST round-trip through
+    // the ADAPTER's REAL deserialize path (`axon_adapters::reddit::dump::parse_dump`
+    // → `RedditDumpItem`/`RedditDumpComment`), not a hand-copied mirror struct.
+    // If a field name or serde attribute drifts between this acquire mapping and
+    // the adapter's dump structs, this fails — mirroring how the youtube slice
+    // round-trips through `read_youtube_dump`.
     let thread = json!([
         {
             "data": {
@@ -272,28 +248,13 @@ fn serialized_dump_deserializes_back_into_dump_shape() {
     let item = map_thread(&thread).expect("maps");
     let bytes = serde_json::to_vec(&vec![item]).expect("serialize dump");
 
-    let parsed: Vec<MirrorItem> =
-        serde_json::from_slice(&bytes).expect("dump must parse into adapter dump shape");
+    let parsed: Vec<RedditDumpItem> =
+        parse_dump(&bytes).expect("dump must parse into the adapter's real dump shape");
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0].title.as_deref(), Some("Roundtrip"));
     assert_eq!(parsed[0].score, Some(7));
     assert_eq!(parsed[0].created_utc, Some(1_700_000_000));
     assert_eq!(parsed[0].comments.len(), 1);
     assert_eq!(parsed[0].comments[0].body, "hi");
-    // Silence dead-field warnings on the mirror structs — the deserialize itself
-    // is the assertion.
-    let _ = (
-        &parsed[0].selftext,
-        &parsed[0].permalink,
-        &parsed[0].author,
-        &parsed[0].subreddit,
-        &parsed[0].domain,
-        &parsed[0].num_comments,
-        &parsed[0].upvote_ratio,
-        &parsed[0].is_video,
-        &parsed[0].distinguished,
-        &parsed[0].gilded,
-        &parsed[0].link_flair_text,
-        &parsed[0].comments[0].parent_text,
-    );
+    assert_eq!(parsed[0].comments[0].parent_text, None);
 }
