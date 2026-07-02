@@ -117,6 +117,21 @@ async fn run_source_requires_data_plane_runtime() {
 }
 
 #[tokio::test]
+async fn run_source_git_url_requires_data_plane_runtime() {
+    // A git URL that is not a local path routes to the git branch, which still
+    // requires the data plane — assert the shared guard fires there too.
+    let cfg = source_cfg("https://github.com/jmagar/axon.git");
+    let ctx = context_without_data_plane();
+
+    let err = run_source(&cfg, &ctx).await.unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("requires a running data plane"),
+        "expected data-plane guard error for git input, got: {msg}"
+    );
+}
+
+#[tokio::test]
 async fn run_source_rejects_missing_positional_path() {
     let mut cfg = source_cfg("");
     cfg.positional = vec![];
@@ -124,20 +139,23 @@ async fn run_source_rejects_missing_positional_path() {
 
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     assert!(
-        err.to_string().contains("requires a local path"),
+        err.to_string()
+            .contains("requires a local path or git repository URL"),
         "expected missing-path error, got: {err}"
     );
 }
 
 #[tokio::test]
-async fn resolve_local_root_rejects_non_local_input() {
-    let err = resolve_local_root("https://example.com/repo.git")
-        .await
-        .unwrap_err();
+async fn run_source_rejects_unsupported_input() {
+    // A plain word is neither a local path nor a git URL.
+    let cfg = source_cfg("not-a-path-or-url");
+    let ctx = context_without_data_plane();
+
+    let err = run_source(&cfg, &ctx).await.unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("local paths only"),
-        "expected local-only error, got: {msg}"
+        msg.contains("local paths and git repository URLs"),
+        "expected unsupported-input error, got: {msg}"
     );
     assert!(
         msg.contains("P10 follow-up"),
@@ -146,12 +164,28 @@ async fn resolve_local_root_rejects_non_local_input() {
 }
 
 #[tokio::test]
-async fn resolve_local_root_accepts_existing_directory() {
+async fn classify_source_input_prefers_existing_local_path() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let path = dir.path().to_string_lossy().to_string();
+    assert_eq!(classify_source_input(&path).await, SourceInputKind::Local);
+}
 
-    let root = resolve_local_root(&path)
-        .await
-        .expect("existing dir resolves");
-    assert_eq!(root, PathBuf::from(&path));
+#[tokio::test]
+async fn classify_source_input_detects_git_url() {
+    assert_eq!(
+        classify_source_input("https://github.com/jmagar/axon.git").await,
+        SourceInputKind::Git
+    );
+    assert_eq!(
+        classify_source_input("https://gitlab.com/owner/repo").await,
+        SourceInputKind::Git
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_rejects_plain_word() {
+    assert_eq!(
+        classify_source_input("just-a-word").await,
+        SourceInputKind::Unsupported
+    );
 }
