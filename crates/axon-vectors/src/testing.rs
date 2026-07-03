@@ -77,11 +77,16 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
     let mut payload = MetadataMap::new();
     payload.insert("payload_contract_version".to_string(), json!("2026-07-01"));
     payload.insert("collection".to_string(), json!(spec.collection));
+    payload.insert("vector_point_id".to_string(), json!(spec.point_id));
     payload.insert("source_family".to_string(), json!("web"));
     payload.insert("source_kind".to_string(), json!("web"));
     payload.insert("source_adapter".to_string(), json!("web"));
     payload.insert("source_scope".to_string(), json!("page"));
     payload.insert("source_id".to_string(), json!("src-docs"));
+    payload.insert(
+        "source_canonical_uri".to_string(),
+        json!(canonical_uri.clone()),
+    );
     payload.insert("source_item_key".to_string(), json!(canonical_uri.clone()));
     payload.insert(
         "item_canonical_uri".to_string(),
@@ -121,6 +126,14 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
     payload.insert("embedded_at".to_string(), json!("2026-07-01T00:00:00Z"));
     payload.insert("vector_namespace".to_string(), json!(spec.namespace));
     payload.insert("content_kind".to_string(), json!("markdown"));
+    payload.insert(
+        "content_hash".to_string(),
+        json!(format!("sha256:content-{}", spec.chunk_id)),
+    );
+    payload.insert(
+        "chunk_hash".to_string(),
+        json!(format!("sha256:chunk-{}", spec.chunk_id)),
+    );
 
     VectorPoint {
         point_id: VectorPointId::new(spec.point_id),

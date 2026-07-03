@@ -104,13 +104,53 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, String>
 /// Run the evaluate pipeline and return the typed `EvaluateResult` directly.
 ///
 /// Forces `json_output = true` internally so the non-streaming path is used.
+///
+/// This entry point builds the RAG retrieval context on the LEGACY
+/// `axon_vector` reranker path. The issue #298 cutover routes production
+/// callers (CLI/MCP/REST via `axon-services`) through
+/// [`evaluate_result_with_context`] instead, supplying a context built by the
+/// `axon-retrieval` engine. This variant is retained for tests and any caller
+/// that has no read-plane runtime.
 pub async fn evaluate_result(cfg: &Config) -> Result<EvaluateResult, String> {
     let mut derived = cfg.clone();
     derived.json_output = true;
     let query = evaluate_query(&derived)?;
-    let client = http_client().map_err(|err| err.to_string())?;
     let eval_started = Instant::now();
     let ctx = build_evaluate_ask_context(&derived, &query).await?;
+    evaluate_from_context(derived, query, ctx, eval_started).await
+}
+
+/// Run the evaluate pipeline with a RAG context supplied by the caller.
+///
+/// Issue #298 cutover (this slice): the SEARCH + CONTEXT half of `evaluate` is
+/// built by `axon-services` through the `axon-retrieval` engine
+/// (`AskContext::from_retrieval`) and injected here, exactly mirroring the `ask`
+/// cutover (PR #348). The baseline answer, the judge (LLM analysis + its
+/// judge-reference retrieval), and all synthesis stay on the existing
+/// `axon_vector`/core-llm path. Forces `json_output = true` so the non-streaming
+/// path is used.
+pub async fn evaluate_result_with_context(
+    cfg: &Config,
+    query: String,
+    ctx: AskContext,
+) -> Result<EvaluateResult, String> {
+    let mut derived = cfg.clone();
+    derived.json_output = true;
+    super::ask::validate_ask_llm_config(&derived).map_err(|err| err.to_string())?;
+    let eval_started = Instant::now();
+    evaluate_from_context(derived, query, ctx, eval_started).await
+}
+
+/// Shared tail of the evaluate pipeline: given a RAG context (from either the
+/// legacy reranker or the `axon-retrieval` engine), produce the RAG + baseline
+/// answers, judge them, and assemble the `EvaluateResult`.
+async fn evaluate_from_context(
+    derived: Config,
+    query: String,
+    ctx: AskContext,
+    eval_started: Instant,
+) -> Result<EvaluateResult, String> {
+    let client = http_client().map_err(|err| err.to_string())?;
     let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) =
         acquire_rag_and_baseline_answers(&derived, client, &query, &ctx.context).await?;
     let normalized_rag_answer = normalize_ask_answer(&derived, &query, &rag_answer, &ctx.context);

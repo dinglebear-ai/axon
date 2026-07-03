@@ -3229,6 +3229,10 @@
     "channel_url": {
       "type": "string"
     },
+    "chunk_hash": {
+      "minLength": 1,
+      "type": "string"
+    },
     "chunk_id": {
       "minLength": 1,
       "type": "string",
@@ -3468,6 +3472,10 @@
       "minLength": 1,
       "type": "string"
     },
+    "source_canonical_uri": {
+      "minLength": 1,
+      "type": "string"
+    },
     "source_family": {
       "enum": [
         "code",
@@ -3525,6 +3533,10 @@
       "type": "string",
       "x-qdrant-index": "keyword"
     },
+    "vector_point_id": {
+      "minLength": 1,
+      "type": "string"
+    },
     "video_id": {
       "type": "string"
     },
@@ -3580,16 +3592,22 @@
   "required": [
     "payload_contract_version",
     "collection",
+    "vector_point_id",
+    "vector_namespace",
     "source_family",
     "source_kind",
     "source_adapter",
     "source_scope",
     "source_id",
+    "source_canonical_uri",
     "source_item_key",
     "item_canonical_uri",
     "source_generation",
     "document_id",
     "chunk_id",
+    "content_kind",
+    "content_hash",
+    "chunk_hash",
     "chunk_text",
     "chunk_locator",
     "source_range",
@@ -3597,7 +3615,6 @@
     "redaction_status",
     "job_id",
     "document_status",
-    "embedding_batch_id",
     "embedding_model",
     "embedding_dimensions",
     "embedding_provider",
@@ -3628,6 +3645,7 @@
     "contract_version": "2026-07-01",
     "examples": [
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-code-0",
         "chunk_key": "code-chunk-key",
         "chunk_locator": {
@@ -3664,10 +3682,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:codehash",
+        "content_kind": "content_kind",
         "document_id": "doc-code",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -3683,6 +3701,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "code",
         "source_generation": "gen-code-7",
         "source_id": "src-code",
@@ -3707,9 +3726,12 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-feed-0",
         "chunk_key": "feed-chunk-key",
         "chunk_locator": {
@@ -3742,10 +3764,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:feedhash",
+        "content_kind": "content_kind",
         "document_id": "doc-feed",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -3761,6 +3783,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "feed",
         "source_generation": "gen-feed-7",
         "source_id": "src-feed",
@@ -3785,9 +3808,12 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-social-0",
         "chunk_key": "social-chunk-key",
         "chunk_locator": {
@@ -3820,10 +3846,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:socialhash",
+        "content_kind": "content_kind",
         "document_id": "doc-social",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -3846,6 +3872,7 @@
         "reddit_subreddit": "reddit_subreddit",
         "reddit_upvote_ratio": "reddit_upvote_ratio",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "social",
         "source_generation": "gen-social-7",
         "source_id": "src-social",
@@ -3870,11 +3897,14 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       },
       {
         "channel": "channel",
         "channel_url": "channel_url",
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-media-0",
         "chunk_key": "media-chunk-key",
         "chunk_locator": {
@@ -3907,10 +3937,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:mediahash",
+        "content_kind": "content_kind",
         "document_id": "doc-media",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -3921,6 +3951,7 @@
         "redaction_status": "clean",
         "segment_kind": "segment_kind",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "media",
         "source_generation": "gen-media-7",
         "source_id": "src-media",
@@ -3947,6 +3978,8 @@
         "source_scope": "source_scope",
         "title": "title",
         "url": "url",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "video_id": "video_id",
         "visibility": "internal",
         "yt_categories": "yt_categories",
@@ -3959,6 +3992,7 @@
         "yt_view_count": "yt_view_count"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-web-0",
         "chunk_key": "web-chunk-key",
         "chunk_locator": {
@@ -3991,10 +4025,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:webhash",
+        "content_kind": "content_kind",
         "document_id": "doc-web",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -4004,6 +4038,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "web",
         "source_generation": "gen-web-7",
         "source_id": "src-web",
@@ -4028,6 +4063,8 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal",
         "web_depth": 1,
         "web_domain": "example.com",
@@ -4035,6 +4072,7 @@
         "web_title": "Example Docs"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-package-0",
         "chunk_key": "package-chunk-key",
         "chunk_locator": {
@@ -4067,10 +4105,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:packagehash",
+        "content_kind": "content_kind",
         "document_id": "doc-package",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -4083,6 +4121,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "package",
         "source_generation": "gen-package-7",
         "source_id": "src-package",
@@ -4107,9 +4146,12 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-session-0",
         "chunk_key": "session-chunk-key",
         "chunk_locator": {
@@ -4142,10 +4184,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:sessionhash",
+        "content_kind": "content_kind",
         "document_id": "doc-session",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -4159,6 +4201,7 @@
         "session_tool_name": "schemas",
         "session_turn_index": 3,
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "session",
         "source_generation": "gen-session-7",
         "source_id": "src-session",
@@ -4183,9 +4226,12 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-graph-0",
         "chunk_key": "graph-chunk-key",
         "chunk_locator": {
@@ -4218,10 +4264,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:graphhash",
+        "content_kind": "content_kind",
         "document_id": "doc-graph",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -4239,6 +4285,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "graph",
         "source_generation": "gen-graph-7",
         "source_id": "src-graph",
@@ -4263,9 +4310,12 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       },
       {
+        "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-memory-0",
         "chunk_key": "memory-chunk-key",
         "chunk_locator": {
@@ -4298,10 +4348,10 @@
         "collection": "axon",
         "committed_generation": "uncommitted",
         "content_hash": "sha256:memoryhash",
+        "content_kind": "content_kind",
         "document_id": "doc-memory",
         "document_status": "prepared",
         "embedded_at": "2026-06-30T00:00:00Z",
-        "embedding_batch_id": "embedding_batch_id",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
@@ -4314,6 +4364,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
         "source_family": "memory",
         "source_generation": "gen-memory-7",
         "source_id": "src-memory",
@@ -4338,6 +4389,8 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
         "visibility": "internal"
       }
     ],
@@ -4507,12 +4560,12 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:54ebd15f3e301e1cfe0d90836bba537904bbd527f740c1ddb58bf041e623685d",
+        "checksum": "sha256:cea034a48f79b54f2662125db097afaeffc14cff02f277a74b37991d5d0306f0",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:bf5ca88426666a2619d95ce6808c3f11cd296714d07d7f7dfae2a664dce612c5",
+        "checksum": "sha256:95b94d69355176f4d424840b13a4bee6e324b7bf3995038e737f4d14e323c487",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },

@@ -47,7 +47,7 @@ async fn run_once(
         CommandKind::Retrieve => run_retrieve(cfg).await?,
         CommandKind::Ask => run_ask(cfg, service_context).await?,
         CommandKind::Summarize => run_summarize(cfg).await?,
-        CommandKind::Evaluate => run_evaluate(cfg).await?,
+        CommandKind::Evaluate => run_evaluate(cfg, service_context).await?,
         CommandKind::Train => run_train(cfg, service_context).await?,
         CommandKind::Suggest => run_suggest(cfg).await?,
         CommandKind::Sources => run_sources(cfg).await?,

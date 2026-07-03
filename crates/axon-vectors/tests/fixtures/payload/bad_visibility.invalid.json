@@ -31,5 +31,11 @@
   "embedding_provider": "tei",
   "embedding_profile": "document",
   "embedded_at": "2026-07-01T12:00:00Z",
-  "web_title": "Example Docs"
+  "web_title": "Example Docs",
+  "vector_point_id": "vpt-invalid-1",
+  "vector_namespace": "source:web",
+  "source_canonical_uri": "https://example.com/item",
+  "content_kind": "markdown",
+  "content_hash": "sha256:content-invalid",
+  "chunk_hash": "sha256:chunk-invalid"
 }

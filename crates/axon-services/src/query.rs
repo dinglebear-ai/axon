@@ -6,7 +6,7 @@ use crate::types::{
 use axon_core::config::Config;
 use axon_core::error::{ServiceError, diagnostics_from_error};
 use axon_vector::ops::commands::discover_crawl_suggestions;
-use axon_vector::ops::commands::evaluate_result;
+use axon_vector::ops::commands::evaluate_result_with_context;
 use axon_vector::ops::qdrant::DirectRetrieveResult;
 use std::error::Error;
 use tokio::sync::mpsc;
@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 use crate::context::ServiceContext;
 
 pub use self::ask_retrieval::ask_via_retrieval;
+pub(crate) use self::ask_retrieval::retrieval_ask_context;
 pub(crate) use self::code_search::default_code_search_refresh_backend;
 pub use self::code_search::{
     CodeSearchProjectResult, CodeSearchRefreshBackend, CodeSearchRefreshResult, code_search,
@@ -311,16 +312,34 @@ where
 
 /// RAG evaluate: run RAG and baseline answers, then judge with a second LLM call.
 ///
+/// The RAG-retrieval half is routed through the new `axon-retrieval` engine
+/// (issue #298 cutover) via [`retrieval_ask_context`], mirroring the `ask` slice
+/// (PR #348); the baseline answer, the judge (LLM analysis + its judge-reference
+/// retrieval), and all synthesis stay on the existing `axon_vector`/core-llm
+/// path. `ctx` supplies the read-plane runtime (preferring an attached
+/// local-source runtime, else building read stores from `cfg`).
+///
 /// Returns the full structured evaluate payload without printing to stdout.
 #[must_use = "evaluate returns a Result that should be handled"]
 pub async fn evaluate(
+    ctx: &ServiceContext,
     cfg: &Config,
     question: &str,
 ) -> Result<EvaluateResult, Box<dyn Error + Send + Sync>> {
     let mut derived = cfg.clone();
     derived.query = Some(question.to_string());
     derived.positional = Vec::new();
-    evaluate_result(&derived)
+
+    let ask_ctx = retrieval_ask_context(ctx, &derived, question, "evaluate")
+        .await
+        .map_err(|e| -> Box<dyn Error + Send + Sync> {
+            Box::new(ServiceError::new(format!(
+                "evaluate retrieval failed for {}: {e}",
+                question.chars().take(80).collect::<String>()
+            )))
+        })?;
+
+    evaluate_result_with_context(&derived, question.to_string(), ask_ctx)
         .await
         .map_err(|e| -> Box<dyn Error + Send + Sync> {
             let message = format!(

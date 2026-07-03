@@ -151,8 +151,21 @@ fn payload(
             ("source_kind".to_string(), json!("web")),
             ("source_adapter".to_string(), json!("web")),
             ("source_scope".to_string(), json!("page")),
+            (
+                "vector_point_id".to_string(),
+                json!(format!("vpt-{chunk_id}")),
+            ),
+            ("source_canonical_uri".to_string(), json!(url)),
             ("item_canonical_uri".to_string(), json!(url)),
             ("content_kind".to_string(), json!(content_kind)),
+            (
+                "content_hash".to_string(),
+                json!(format!("sha256:content-{chunk_id}")),
+            ),
+            (
+                "chunk_hash".to_string(),
+                json!(format!("sha256:chunk-{chunk_id}")),
+            ),
             ("web_title".to_string(), json!("Fixture")),
             ("web_domain".to_string(), json!("example.com")),
             ("web_status_code".to_string(), json!(200)),
