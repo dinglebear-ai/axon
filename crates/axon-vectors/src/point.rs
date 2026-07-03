@@ -5,6 +5,7 @@ use std::fmt;
 
 use axon_api::source::*;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::payload::{
@@ -187,10 +188,18 @@ impl VectorPointBatchBuilder {
                     chunk_id: chunk.chunk_id.clone(),
                 }
             })?;
+            let point_id = stable_point_id(
+                &self.collection.collection,
+                &self.collection.dense.name,
+                &self.document.document_id,
+                &chunk.chunk_id,
+                &self.document.generation,
+            );
             let payload = match build_payload(
                 &self.collection,
                 &self.document,
                 chunk,
+                &point_id,
                 &batch_id,
                 &job_id,
                 &provider_id,
@@ -227,13 +236,7 @@ impl VectorPointBatchBuilder {
             let sparse = crate::bm42::compute_bm42_sparse(chunk.chunk_id.clone(), &chunk.content);
             let sparse_vector = (!sparse.indices.is_empty()).then_some(sparse);
             points.push(VectorPoint {
-                point_id: stable_point_id(
-                    &self.collection.collection,
-                    &self.collection.dense.name,
-                    &self.document.document_id,
-                    &chunk.chunk_id,
-                    &self.document.generation,
-                ),
+                point_id,
                 chunk_id: chunk.chunk_id.clone(),
                 vector: vector.values,
                 sparse_vector,
@@ -350,10 +353,12 @@ fn vectors_by_chunk_id(
     Ok(indexed)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_payload(
     collection: &CollectionSpec,
     document: &PreparedDocument,
     chunk: &PreparedChunk,
+    point_id: &VectorPointId,
     batch_id: &BatchId,
     job_id: &JobId,
     provider_id: &ProviderId,
@@ -373,10 +378,25 @@ fn build_payload(
         json!(VECTOR_PAYLOAD_CONTRACT_VERSION),
     );
     metadata.insert("collection".to_string(), json!(collection.collection));
+    metadata.insert("vector_point_id".to_string(), json!(point_id.0));
     metadata.insert("source_id".to_string(), json!(document.source_id.0));
     metadata.insert(
         "source_item_key".to_string(),
         json!(document.source_item_key.0),
+    );
+    // `source_canonical_uri` is the canonical URI of the source *identity*,
+    // distinct from `item_canonical_uri` (the item/page/file). Adapters that
+    // resolve a distinct source identity stamp it into document metadata; when
+    // absent (single-item sources), it collapses onto the item canonical URI.
+    let source_canonical_uri = metadata
+        .get("source_canonical_uri")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| document.canonical_uri.clone());
+    metadata.insert(
+        "source_canonical_uri".to_string(),
+        json!(source_canonical_uri),
     );
     metadata.insert(
         "item_canonical_uri".to_string(),
@@ -391,6 +411,10 @@ fn build_payload(
     metadata.insert("chunk_id".to_string(), json!(chunk.chunk_id.0));
     metadata.insert("chunk_key".to_string(), json!(chunk.chunk_key));
     metadata.insert("content_hash".to_string(), json!(chunk.content_hash));
+    metadata.insert(
+        "chunk_hash".to_string(),
+        json!(chunk_hash(chunk, &chunk.chunk_locator)),
+    );
     metadata.insert("chunk_text".to_string(), json!(chunk.content));
     metadata.insert("content_kind".to_string(), json!(chunk.content_kind));
     metadata.insert(
@@ -461,6 +485,20 @@ fn stable_point_id(
         document_id.0, chunk_id.0, source_generation.0
     );
     VectorPointId::new(Uuid::new_v5(&Uuid::NAMESPACE_URL, key.as_bytes()).to_string())
+}
+
+/// `sha256:<hex>` over the normalized chunk text plus a stable serialization of
+/// the chunk locator (canonical URI, path, heading path, symbol, and source
+/// range). Per the vector-payload contract, `chunk_hash` changes when either the
+/// chunk text or its source range/locator changes, so both feed the digest.
+fn chunk_hash(chunk: &PreparedChunk, locator: &ChunkLocator) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(chunk.content.as_bytes());
+    hasher.update([0u8]);
+    // A canonical (deterministic) JSON serialization of the locator — including
+    // its source range — is stable across transports and stores.
+    hasher.update(chunk_locator_json(locator).to_string().as_bytes());
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 fn chunk_locator_json(locator: &ChunkLocator) -> Value {

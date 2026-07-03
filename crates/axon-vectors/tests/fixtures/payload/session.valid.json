@@ -35,5 +35,11 @@
   "session_id": "session-a",
   "session_turn_index": 4,
   "session_tool_name": "exec_command",
-  "session_skill_name": "test-driven-development"
+  "session_skill_name": "test-driven-development",
+  "vector_point_id": "vpt-session-1",
+  "vector_namespace": "source:session",
+  "source_canonical_uri": "https://example.com/item",
+  "content_kind": "markdown",
+  "content_hash": "sha256:content-session",
+  "chunk_hash": "sha256:chunk-session"
 }

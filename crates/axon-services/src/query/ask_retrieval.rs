@@ -73,16 +73,57 @@ where
     }
 
     let ask_started = std::time::Instant::now();
+    let ask_ctx = retrieval_ask_context(ctx, cfg, question, "ask").await?;
+
+    let synth = match on_delta {
+        Some(cb) => {
+            ask_result_from_context_with_deltas(cfg, question, ask_ctx, ask_started, cb).await
+        }
+        None => ask_result_from_context(cfg, question, ask_ctx, ask_started).await,
+    };
+
+    synth.map_err(|e| -> Box<dyn Error> {
+        Box::new(ServiceError::new(format!(
+            "ask synthesis failed for {}: {e}",
+            question.chars().take(80).collect::<String>()
+        )))
+    })
+}
+
+/// Run the shared RAG-retrieval seam through `axon-retrieval` and format the
+/// hits into an [`AskContext`] ready for synthesis.
+///
+/// This is the exact retrieval + context-build step used by both `ask` (issue
+/// #298, PR #348) and `evaluate` (this slice): embed the question, hybrid-search
+/// (dense + bm42 RRF) via [`run_query`], and render the returned chunks into the
+/// `Sources:\n ## Top Chunk [S#]: …` context string. `label` disambiguates the
+/// log marker (`"ask"` / `"evaluate"`). Errors clearly when no read-plane
+/// runtime/config is available — never falls back to the legacy vector retrieval
+/// path.
+pub(crate) async fn retrieval_ask_context(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    label: &str,
+) -> Result<AskContext, Box<dyn Error>> {
+    if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
+        return Err(Box::new(ServiceError::new(format!(
+            "{label} requires both QDRANT_URL and TEI_URL to be configured for the retrieval engine"
+        ))));
+    }
+
+    let retrieval_started = std::time::Instant::now();
     let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg);
 
-    // The ask path fetches a wider candidate pool than plain `query` before
-    // trimming to the context entries synthesis will read. `ask_hybrid_candidates`
-    // (env `AXON_ASK_HYBRID_CANDIDATES`, default 150) is the fetch width;
-    // `ask_chunk_limit` (default 24) bounds the entries rendered into context.
+    // The ask/evaluate path fetches a wider candidate pool than plain `query`
+    // before trimming to the context entries synthesis will read.
+    // `ask_hybrid_candidates` (env `AXON_ASK_HYBRID_CANDIDATES`, default 150) is
+    // the fetch width; `ask_chunk_limit` (default 24) bounds the entries
+    // rendered into context.
     let fetch_limit = cfg.ask_hybrid_candidates.max(cfg.ask_chunk_limit).max(1) as u32;
 
     log_info(&format!(
-        "ask retrieval: axon-retrieval engine collection={} fetch_limit={} chunk_limit={}",
+        "{label} retrieval: axon-retrieval engine collection={} fetch_limit={} chunk_limit={}",
         cfg.collection, fetch_limit, cfg.ask_chunk_limit,
     ));
 
@@ -101,29 +142,17 @@ where
     .await
     .map_err(|e| -> Box<dyn Error> {
         Box::new(ServiceError::new(format!(
-            "ask retrieval failed for {}: {e}",
+            "{label} retrieval failed for {}: {e}",
             question.chars().take(80).collect::<String>()
         )))
     })?;
 
-    let retrieval_elapsed_ms = ask_started.elapsed().as_millis();
-    let candidate_count = result.hits.len();
-    let ask_ctx = build_ask_context_from_hits(cfg, result.hits, retrieval_elapsed_ms);
-
-    let synth = match on_delta {
-        Some(cb) => {
-            ask_result_from_context_with_deltas(cfg, question, ask_ctx, ask_started, cb).await
-        }
-        None => ask_result_from_context(cfg, question, ask_ctx, ask_started).await,
-    };
-    let _ = candidate_count;
-
-    synth.map_err(|e| -> Box<dyn Error> {
-        Box::new(ServiceError::new(format!(
-            "ask synthesis failed for {}: {e}",
-            question.chars().take(80).collect::<String>()
-        )))
-    })
+    let retrieval_elapsed_ms = retrieval_started.elapsed().as_millis();
+    Ok(build_ask_context_from_hits(
+        cfg,
+        result.hits,
+        retrieval_elapsed_ms,
+    ))
 }
 
 /// Assemble an [`AskContext`] from the retrieval hits, formatting the context

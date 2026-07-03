@@ -226,13 +226,21 @@ impl AxonMcpServer {
         // in the vector pipeline, making direct `.await` non-Send at this
         // boundary. Keep that non-Send implementation isolated from the MCP
         // tool future until the evaluate pipeline error type is widened.
+        //
+        // Issue #298: the RAG-retrieval half now runs through `axon-retrieval`
+        // inside `query_svc::evaluate`, so the read-plane `ServiceContext` is
+        // resolved here and moved into the isolated runtime (it is `Send`).
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| internal_error(format!("service context: {e}")))?;
         let query_for_task = query.clone();
         let result = tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
-            runtime.block_on(async { query_svc::evaluate(&cfg, &query_for_task).await })
+            runtime.block_on(async { query_svc::evaluate(&ctx, &cfg, &query_for_task).await })
         })
         .await
         .map_err(|e| {
