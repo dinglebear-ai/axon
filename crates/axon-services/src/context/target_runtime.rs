@@ -101,8 +101,11 @@ impl TargetLocalSourceRuntime {
         pool: SqlitePool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // The ledger binds to the SAME pool as the JobStore (one runtime DB), so
-        // `jobs.source_id` FKs to `sources(source_id)`. Tables are created by the
-        // shared pool's migration runner (axon-jobs 0017); no separate migration.
+        // `jobs.source_id` FKs to `sources(source_id)`. The contract tables are
+        // created by the composed cross-crate migration runner
+        // (`axon_jobs::migrations::apply_all_migrations`), which applies
+        // axon-ledger's own migration set FIRST against this pool; no separate
+        // migration here.
         let ledger = SqliteLedgerStore::from_pool(pool);
 
         let embedding_provider = TeiEmbeddingProvider::new(TeiEmbeddingConfig {

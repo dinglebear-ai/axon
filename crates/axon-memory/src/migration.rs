@@ -9,77 +9,36 @@
 //! `ensure_schema` is idempotent (`CREATE TABLE IF NOT EXISTS`) so it is safe to
 //! call on every store construction.
 
+use axon_api::migration::{MigrationSet, SqlMigration};
 use rusqlite::Connection;
 
 /// Schema version stamped into `PRAGMA user_version`.
 pub const SCHEMA_VERSION: i64 = 1;
 
-const SCHEMA_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS memory_records (
-    memory_id           TEXT PRIMARY KEY,
-    memory_type         TEXT NOT NULL,
-    status              TEXT NOT NULL,
-    body                TEXT NOT NULL,
-    title               TEXT,
-    confidence          REAL NOT NULL,
-    salience            REAL NOT NULL,
-    scope_kind          TEXT NOT NULL,
-    scope_value         TEXT NOT NULL,
-    decay_json          TEXT,
-    history_json        TEXT NOT NULL DEFAULT '[]',
-    embedding_refs_json TEXT NOT NULL DEFAULT '[]',
-    superseded_by       TEXT,
-    contradicts         TEXT,
-    created_at          TEXT NOT NULL,
-    updated_at          TEXT NOT NULL
-);
+/// Namespace under which the composed cross-crate runner tracks memory
+/// migrations.
+pub const MIGRATION_NAMESPACE: &str = "memory";
 
-CREATE INDEX IF NOT EXISTS idx_memory_records_status
-    ON memory_records(status);
-CREATE INDEX IF NOT EXISTS idx_memory_records_scope
-    ON memory_records(scope_kind, scope_value);
-CREATE INDEX IF NOT EXISTS idx_memory_records_type
-    ON memory_records(memory_type);
+/// The durable memory schema. Single source of truth shared by the rusqlite
+/// standalone path ([`ensure_schema`]) and the composed cross-crate SQLite
+/// runner in `axon-jobs` (via [`migration_set`]).
+const SCHEMA_SQL: &str = include_str!("migrations/0001_create_memory_tables.sql");
 
-CREATE TABLE IF NOT EXISTS memory_links (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    memory_id  TEXT NOT NULL,
-    link_type  TEXT NOT NULL,
-    target     TEXT NOT NULL,
-    confidence REAL NOT NULL,
-    evidence_json TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (memory_id) REFERENCES memory_records(memory_id) ON DELETE CASCADE
-);
+/// Ordered memory migration set for the composed cross-crate runner.
+///
+/// `SqliteMemoryStore::open`/`in_memory` still call [`ensure_schema`] against
+/// their own rusqlite connection, but the production runtime shares one SQLite
+/// pool and gets these tables from the unified runner over sqlx.
+pub const MIGRATIONS: &[SqlMigration] = &[SqlMigration {
+    version: 1,
+    name: "0001_create_memory_tables",
+    sql: SCHEMA_SQL,
+}];
 
-CREATE INDEX IF NOT EXISTS idx_memory_links_memory
-    ON memory_links(memory_id);
-
-CREATE TABLE IF NOT EXISTS memory_reinforcement (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    memory_id  TEXT NOT NULL,
-    amount     REAL NOT NULL,
-    reason     TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (memory_id) REFERENCES memory_records(memory_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_memory_reinforcement_memory
-    ON memory_reinforcement(memory_id);
-
-CREATE TABLE IF NOT EXISTS memory_reviews (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    memory_id   TEXT NOT NULL,
-    reason      TEXT,
-    resolved    INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL,
-    resolved_at TEXT,
-    FOREIGN KEY (memory_id) REFERENCES memory_records(memory_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_memory_reviews_open
-    ON memory_reviews(resolved);
-"#;
+/// The memory [`MigrationSet`] for composition into the unified runner.
+pub fn migration_set() -> MigrationSet {
+    MigrationSet::new(MIGRATION_NAMESPACE, MIGRATIONS)
+}
 
 /// Create all memory tables and indices if they do not exist, enable foreign
 /// keys, and stamp the schema version.

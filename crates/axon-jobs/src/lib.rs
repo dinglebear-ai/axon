@@ -10,6 +10,7 @@ mod fake_store;
 pub mod freshness;
 pub mod ingest;
 pub mod limits;
+pub mod migrations;
 pub mod ops;
 pub mod query;
 pub mod runtime;
