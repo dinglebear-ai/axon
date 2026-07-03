@@ -28,14 +28,12 @@ type RestRetrieveRequestSchema = Schemas['RestRetrieveRequest'];
 type RestAskRequestSchema = Schemas['RestAskRequest'];
 type RestEvaluateRequestSchema = Schemas['RestEvaluateRequest'];
 type RestSuggestRequestSchema = Schemas['RestSuggestRequest'];
-type RestScrapeRequestSchema = Schemas['RestScrapeRequest'];
+type SourceRequestSchema = Schemas['SourceRequest'];
+type SourceResultSchema = Schemas['SourceResult'];
 type RestMapRequestSchema = Schemas['RestMapRequest'];
 type RestSearchRequestSchema = Schemas['RestSearchRequest'];
 type RestResearchRequestSchema = Schemas['RestResearchRequest'];
-type RestCrawlRequestSchema = Schemas['RestCrawlRequest'];
-type RestEmbedRequestSchema = Schemas['RestEmbedRequest'];
 type RestExtractRequestSchema = Schemas['RestExtractRequest'];
-type RestIngestRequestSchema = Schemas['RestIngestRequest'];
 type AcceptedJobSchema = Schemas['AcceptedJob'];
 type WatchCreateRequestSchema = Schemas['WatchDefCreateRequest'];
 
@@ -65,18 +63,18 @@ export interface RetrieveRequest extends RestRetrieveRequestSchema {}
 export interface AskRequest extends RestAskRequestSchema {}
 export interface EvaluateRequest extends RestEvaluateRequestSchema {}
 export interface SuggestRequest extends RestSuggestRequestSchema {}
-export interface ScrapeRequest extends RestScrapeRequestSchema {}
+export interface SourceRequest extends SourceRequestSchema {}
+export interface SourceResult extends SourceResultSchema {}
 export interface MapRequest extends RestMapRequestSchema {}
 export interface SearchRequest extends RestSearchRequestSchema {}
 export interface ResearchRequest extends RestResearchRequestSchema {}
-export interface CrawlStartRequest extends RestCrawlRequestSchema {}
-export interface EmbedStartRequest extends RestEmbedRequestSchema {}
 export interface ExtractStartRequest extends RestExtractRequestSchema {}
-export interface IngestStartRequest extends RestIngestRequestSchema {}
 export interface AcceptedJob extends AcceptedJobSchema {}
 export interface WatchCreateRequest extends WatchCreateRequestSchema {}
 
-export type JobKind = 'crawl' | 'embed' | 'extract' | 'ingest';
+// Only the extract family retains dedicated async-job routes; crawl/embed/ingest
+// verb-jobs were removed in favor of the unified POST /v1/sources lifecycle.
+export type JobKind = 'extract';
 
 export class AxonClient {
   private readonly baseUrl: string;
@@ -131,8 +129,14 @@ export class AxonClient {
     return this.post('/v1/suggest', body);
   }
 
-  scrape(body: ScrapeRequest): Promise<unknown> {
-    return this.post('/v1/scrape', body);
+  /**
+   * Acquire/refresh a source through the unified pipeline — the canonical
+   * ingestion entrypoint. Replaces the removed scrape/crawl/embed/ingest verb
+   * routes; REST is a projection over the shared SourceRequest model
+   * (docs/pipeline-unification/surfaces/rest-contract.md).
+   */
+  submitSource(body: SourceRequest): Promise<SourceResult> {
+    return this.post('/v1/sources', body);
   }
 
   map(body: MapRequest): Promise<unknown> {
@@ -147,20 +151,8 @@ export class AxonClient {
     return this.post('/v1/research', body);
   }
 
-  startCrawl(body: CrawlStartRequest): Promise<AcceptedJob> {
-    return this.post('/v1/crawl', body);
-  }
-
-  startEmbed(body: EmbedStartRequest): Promise<AcceptedJob> {
-    return this.post('/v1/embed', body);
-  }
-
   startExtract(body: ExtractStartRequest): Promise<AcceptedJob> {
     return this.post('/v1/extract', body);
-  }
-
-  startIngest(body: IngestStartRequest): Promise<AcceptedJob> {
-    return this.post('/v1/ingest', body);
   }
 
   listJobs(kind: JobKind, params?: PaginationParams): Promise<unknown> {
