@@ -27,8 +27,8 @@ fn manifest_and_markdown_paths_derive_from_output_dir() {
         manifest,
         PathBuf::from("/data/domains/example.com/sync/manifest.jsonl")
     );
-    assert_eq!(
-        markdown,
-        PathBuf::from("/data/domains/example.com/sync/markdown")
-    );
+    // The base for the manifest's `relative_path` (which already includes the
+    // `markdown/` segment) is the output dir itself — NOT `<output_dir>/markdown`,
+    // which would double the segment when the adapter joins.
+    assert_eq!(markdown, PathBuf::from("/data/domains/example.com/sync"));
 }
