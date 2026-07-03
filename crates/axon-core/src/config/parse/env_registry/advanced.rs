@@ -45,7 +45,7 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_HTTP_PUBLISH",
+        "AXON_HTTP_PUBLISH",
         ComposeEnv,
         ComposeInterpolation,
         None,
@@ -277,7 +277,7 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_HTTP_HOST",
+        "AXON_HTTP_HOST",
         TrustedOperatorBootstrap,
         HostOnly,
         None,
@@ -285,7 +285,7 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_HTTP_PORT",
+        "AXON_HTTP_PORT",
         TrustedOperatorBootstrap,
         HostOnly,
         None,

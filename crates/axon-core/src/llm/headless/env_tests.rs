@@ -8,7 +8,7 @@ fn allowlist_excludes_common_secret_keys() {
         "OPENAI_BASE_URL",
         "AXON_OPENAI_API_KEY",
         "AXON_OPENAI_BASE_URL",
-        "AXON_MCP_HTTP_TOKEN",
+        "AXON_HTTP_TOKEN",
         "TAVILY_API_KEY",
         "GITHUB_TOKEN",
         "BEADS_DOLT_PASSWORD",

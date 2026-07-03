@@ -15,7 +15,7 @@ if ! command -v labby >/dev/null 2>&1; then
 fi
 
 if [[ ! -f "$HOME/.axon/.env" ]]; then
-  echo "Missing $HOME/.axon/.env; agent-os needs it for AXON_MCP_HTTP_TOKEN" >&2
+  echo "Missing $HOME/.axon/.env; agent-os needs it for AXON_HTTP_TOKEN" >&2
   exit 1
 fi
 
@@ -327,9 +327,9 @@ const fs = require('node:fs');
 const home = process.env.USERPROFILE;
 const extDir = home + '/axon-extension-current';
 const extIdExpectedUrl = ${JSON.stringify(expectedFinalUrl)};
-const tokenLine = fs.readFileSync(home + '/.axon/.env', 'utf8').split(/\\r?\\n/).find((line) => /^\\s*AXON_MCP_HTTP_TOKEN\\s*=/.test(line));
-if (!tokenLine) throw new Error('AXON_MCP_HTTP_TOKEN missing');
-const token = tokenLine.replace(/^\\s*AXON_MCP_HTTP_TOKEN\\s*=\\s*/, '').trim().replace(/^["']|["']$/g, '');
+const tokenLine = fs.readFileSync(home + '/.axon/.env', 'utf8').split(/\\r?\\n/).find((line) => /^\\s*AXON_HTTP_TOKEN\\s*=/.test(line));
+if (!tokenLine) throw new Error('AXON_HTTP_TOKEN missing');
+const token = tokenLine.replace(/^\\s*AXON_HTTP_TOKEN\\s*=\\s*/, '').trim().replace(/^["']|["']$/g, '');
 
 async function json(url, options) {
   const response = await fetch(url, options);

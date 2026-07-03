@@ -13,7 +13,7 @@ pub(super) fn authorize_mcp_http_request_with_token(
         WARNED.get_or_init(|| {
             tracing::warn!(
                 context = "mcp_auth",
-                "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
+                "AXON_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
             );
         });
     }

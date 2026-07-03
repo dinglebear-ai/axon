@@ -45,7 +45,7 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     let tei_url = resolve_tei_url(inputs.global, inputs.toml)?;
     let qdrant_url = resolve_qdrant_url(inputs.global, inputs.toml)?;
     let custom_headers = validate_custom_headers(inputs.global.custom_headers.clone())?;
-    let mcp_http_port = env_port("AXON_MCP_HTTP_PORT", 8001)?;
+    let mcp_http_port = env_port("AXON_HTTP_PORT", 8001)?;
 
     let mut cfg = Config::default();
     populate_identity_and_crawl(&mut cfg, &inputs);
@@ -274,7 +274,7 @@ fn populate_services_and_ask_basics(
         .map(|u| u.trim_end_matches('/').to_string())
         .unwrap_or_default();
     cfg.research_full_content = env_bool("AXON_RESEARCH_FULL_CONTENT", true);
-    cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
+    cfg.mcp_allowed_origins = env::var("AXON_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))
         .unwrap_or_default();
@@ -444,7 +444,7 @@ fn populate_misc(
         inputs.dispatched.mcp_transport_default,
     );
     cfg.mcp_transport = resolve_mcp_transport(mcp_transport, mcp_transport_default);
-    cfg.mcp_http_host = env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    cfg.mcp_http_host = env::var("AXON_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     cfg.mcp_http_port = mcp_http_port;
     cfg.custom_headers = custom_headers;
     cfg.warc_output = g.warc.clone();

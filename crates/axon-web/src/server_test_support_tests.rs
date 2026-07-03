@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
+const ENV_KEY: &str = "AXON_HTTP_TOKEN";
 
 pub(super) struct EnvGuard {
     key: &'static str,

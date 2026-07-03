@@ -9,7 +9,7 @@ use super::*;
 #[test]
 fn into_config_parses_mcp_origin_allowlist_from_env() {
     let _guard = ENV_LOCK.lock().unwrap();
-    const MCP: &str = "AXON_MCP_ALLOWED_ORIGINS";
+    const MCP: &str = "AXON_ALLOWED_ORIGINS";
 
     unsafe {
         env::set_var(MCP, " https://axon.example.com , http://localhost:49010 ");

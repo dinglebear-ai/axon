@@ -73,27 +73,27 @@ fn ensure_env_file_with_process(
     );
     insert_process_or_default(
         &mut env,
-        "AXON_MCP_HTTP_PUBLISH",
+        "AXON_HTTP_PUBLISH",
         "127.0.0.1:8001",
         &process_value,
     );
     insert_option_process_or_default(
         &mut env,
-        "AXON_MCP_HTTP_HOST",
+        "AXON_HTTP_HOST",
         options.mcp_host.as_deref(),
         "127.0.0.1",
         &process_value,
     );
     insert_option_process_or_default(
         &mut env,
-        "AXON_MCP_HTTP_PORT",
+        "AXON_HTTP_PORT",
         options.mcp_port.as_deref(),
         "8001",
         &process_value,
     );
     insert_option_process_or_default(
         &mut env,
-        "AXON_MCP_AUTH_MODE",
+        "AXON_AUTH_MODE",
         options.auth_mode.as_deref(),
         "bearer",
         &process_value,
@@ -116,31 +116,31 @@ fn ensure_env_file_with_process(
     );
     apply_optional_secret(
         &mut env,
-        "AXON_MCP_PUBLIC_URL",
+        "AXON_PUBLIC_URL",
         options.oauth_public_url.as_deref(),
     );
     apply_optional_secret(
         &mut env,
-        "AXON_MCP_GOOGLE_CLIENT_ID",
+        "AXON_GOOGLE_CLIENT_ID",
         options.google_client_id.as_deref(),
     );
     apply_optional_secret(
         &mut env,
-        "AXON_MCP_GOOGLE_CLIENT_SECRET",
+        "AXON_GOOGLE_CLIENT_SECRET",
         options.google_client_secret.as_deref(),
     );
     apply_optional_secret(
         &mut env,
-        "AXON_MCP_AUTH_ADMIN_EMAIL",
+        "AXON_AUTH_ADMIN_EMAIL",
         options.auth_admin_email.as_deref(),
     );
     if env
-        .get("AXON_MCP_AUTH_MODE")
+        .get("AXON_AUTH_MODE")
         .is_none_or(|value| !value.trim().eq_ignore_ascii_case("oauth"))
     {
         reconcile_mcp_http_token(&mut env, options.mcp_token.as_deref(), &process_value)?;
     } else if let Some(token) = options.mcp_token.as_deref() {
-        env.insert("AXON_MCP_HTTP_TOKEN".to_string(), token.to_string());
+        env.insert("AXON_HTTP_TOKEN".to_string(), token.to_string());
     }
     env.entry("TEI_EMBEDDING_MODEL".to_string())
         .or_insert_with(|| "Qwen/Qwen3-Embedding-0.6B".to_string());
@@ -208,14 +208,14 @@ pub(super) fn reconcile_mcp_http_token(
     process_value: impl Fn(&str) -> Option<String>,
 ) -> io::Result<()> {
     if let Some(token) = explicit_token.filter(|value| !value.trim().is_empty()) {
-        env.insert("AXON_MCP_HTTP_TOKEN".to_string(), token.trim().to_string());
-    } else if let Some(token) = process_value("AXON_MCP_HTTP_TOKEN") {
-        env.insert("AXON_MCP_HTTP_TOKEN".to_string(), token);
+        env.insert("AXON_HTTP_TOKEN".to_string(), token.trim().to_string());
+    } else if let Some(token) = process_value("AXON_HTTP_TOKEN") {
+        env.insert("AXON_HTTP_TOKEN".to_string(), token);
     } else if env
-        .get("AXON_MCP_HTTP_TOKEN")
+        .get("AXON_HTTP_TOKEN")
         .is_none_or(|value| value.trim().is_empty())
     {
-        env.insert("AXON_MCP_HTTP_TOKEN".to_string(), generate_token()?);
+        env.insert("AXON_HTTP_TOKEN".to_string(), generate_token()?);
     }
     Ok(())
 }

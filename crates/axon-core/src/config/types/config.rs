@@ -418,7 +418,7 @@ pub struct Config {
     pub research_full_content: bool,
 
     /// Allowed cross-origin browser origins for the MCP HTTP surface.
-    /// Env: `AXON_MCP_ALLOWED_ORIGINS` (comma-separated).
+    /// Env: `AXON_ALLOWED_ORIGINS` (comma-separated).
     pub mcp_allowed_origins: Vec<String>,
 
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
@@ -880,10 +880,10 @@ pub struct Config {
     /// `axon serve mcp` uses HTTP. Flag: `--transport`.
     pub mcp_transport: McpTransport,
 
-    /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `127.0.0.1`.
+    /// Host interface for MCP HTTP transport. Env: `AXON_HTTP_HOST`. Default: `127.0.0.1`.
     pub mcp_http_host: String,
 
-    /// Port for MCP HTTP transport. Env: `AXON_MCP_HTTP_PORT`. Default: `8001`.
+    /// Port for MCP HTTP transport. Env: `AXON_HTTP_PORT`. Default: `8001`.
     pub mcp_http_port: u16,
 
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.
