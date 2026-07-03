@@ -126,7 +126,15 @@ pub fn payload_text_typed(payload: &QdrantPayload) -> &str {
 }
 
 pub fn payload_url_typed(payload: &QdrantPayload) -> &str {
-    payload.url.as_str()
+    // Legacy points carry `url`; new unified-pipeline points carry
+    // `item_canonical_uri` instead. Fall back so retrieval does not skip
+    // new-pipeline content as url-less (build_candidates_from_hits drops
+    // url-empty hits). Prod points keep `url`, so this is a no-op for them.
+    if !payload.url.is_empty() {
+        payload.url.as_str()
+    } else {
+        payload.item_canonical_uri.as_str()
+    }
 }
 
 pub fn payload_url(payload: &serde_json::Value) -> String {
