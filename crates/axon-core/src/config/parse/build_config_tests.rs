@@ -86,39 +86,29 @@ fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {
             env::remove_var("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL");
             env::remove_var("AXON_CRAWL_MEMORY_ABORT_PERCENT");
 
+            // `extract` (the surviving URL command) defaults to the single-page cap.
             let default_extract = into_config_via_args(&["extract", "https://example.com/page"])
                 .expect("extract config should parse");
             assert_eq!(default_extract.max_pages, 1);
+            assert_eq!(
+                default_extract.max_page_bytes,
+                Some(crate::config::types::DEFAULT_MAX_PAGE_BYTES)
+            );
+            assert_eq!(
+                default_extract.crawl_broadcast_buffer_min,
+                crate::config::types::DEFAULT_CRAWL_BROADCAST_BUFFER_MIN
+            );
+            assert_eq!(
+                default_extract.crawl_broadcast_buffer_max,
+                crate::config::types::DEFAULT_CRAWL_BROADCAST_BUFFER_MAX
+            );
 
+            // An explicit `--max-pages 0` stays uncapped (the services layer fills
+            // in any crawl default; the parse layer treats `0` as "unspecified").
             let explicit_uncapped =
                 into_config_via_args(&["--max-pages", "0", "extract", "https://example.com/page"])
                     .expect("extract config with explicit max-pages should parse");
             assert_eq!(explicit_uncapped.max_pages, 0);
-
-            let default_crawl = into_config_via_args(&["crawl", "https://example.com"])
-                .expect("crawl config should parse");
-            // The crawl page-cap default no longer lives in the parse layer — `0`
-            // is the "unspecified" sentinel and the services layer
-            // (`axon_services::crawl::resolve_crawl_max_pages`) fills in the
-            // default, so CLI/MCP/HTTP all behave identically.
-            assert_eq!(default_crawl.max_pages, 0);
-            assert_eq!(
-                default_crawl.max_page_bytes,
-                Some(crate::config::types::DEFAULT_MAX_PAGE_BYTES)
-            );
-            assert_eq!(
-                default_crawl.crawl_broadcast_buffer_min,
-                crate::config::types::DEFAULT_CRAWL_BROADCAST_BUFFER_MIN
-            );
-            assert_eq!(
-                default_crawl.crawl_broadcast_buffer_max,
-                crate::config::types::DEFAULT_CRAWL_BROADCAST_BUFFER_MAX
-            );
-
-            let explicit_uncapped_crawl =
-                into_config_via_args(&["--max-pages", "0", "crawl", "https://example.com"])
-                    .expect("crawl config with explicit max-pages should parse");
-            assert_eq!(explicit_uncapped_crawl.max_pages, 0);
 
             let mut unlimited_toml = TempfileBuilder::new()
                 .suffix(".toml")
@@ -127,14 +117,15 @@ fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {
             writeln!(unlimited_toml, "[scrape]\nmax-page-bytes = 0")
                 .expect("write unlimited config");
             env::set_var("AXON_CONFIG_PATH", unlimited_toml.path());
-            let explicit_unlimited_bytes = into_config_via_args(&["crawl", "https://example.com"])
-                .expect("crawl config with explicit max-page-bytes should parse");
+            let explicit_unlimited_bytes =
+                into_config_via_args(&["extract", "https://example.com"])
+                    .expect("crawl config with explicit max-page-bytes should parse");
             assert_eq!(explicit_unlimited_bytes.max_page_bytes, None);
 
             env::set_var("AXON_CONFIG_PATH", default_toml.path());
             env::set_var("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL", "true");
             env::set_var("AXON_CRAWL_MEMORY_ABORT_PERCENT", "0");
-            let env_overrides = into_config_via_args(&["crawl", "https://example.com"])
+            let env_overrides = into_config_via_args(&["extract", "https://example.com"])
                 .expect("crawl config with env memory knobs should parse");
             assert!(env_overrides.allow_unbounded_broad_crawl);
             assert_eq!(env_overrides.crawl_memory_abort_percent, None);
@@ -197,7 +188,7 @@ fn skip_embed_flag_disables_default_embedding() {
 
     let cfg = into_config(cli_with_services(&[
         "--skip-embed",
-        "scrape",
+        "extract",
         "https://example.com",
     ]))
     .expect("--skip-embed should parse");
@@ -213,7 +204,7 @@ fn empty_output_dir_env_falls_through_to_default_data_dir_output() {
         env::set_var("AXON_OUTPUT_DIR", "");
         env::remove_var("AXON_DATA_DIR");
 
-        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+        let cfg = into_config(cli_with_services(&["extract", "https://example.com"]))
             .expect("empty AXON_OUTPUT_DIR should not fail clap/config parsing");
 
         assert_eq!(
@@ -231,7 +222,7 @@ fn empty_sqlite_path_env_falls_through_to_default_jobs_db() {
         env::set_var("AXON_SQLITE_PATH", "");
         env::remove_var("AXON_DATA_DIR");
 
-        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+        let cfg = into_config(cli_with_services(&["extract", "https://example.com"]))
             .expect("empty AXON_SQLITE_PATH should not produce an empty database path");
 
         assert_eq!(
@@ -248,7 +239,7 @@ fn nonempty_output_dir_env_overrides_default() {
     with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
         env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
 
-        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+        let cfg = into_config(cli_with_services(&["extract", "https://example.com"]))
             .expect("non-empty AXON_OUTPUT_DIR should parse");
 
         assert_eq!(cfg.output_dir, Path::new("/tmp/axon-output-from-env"));
@@ -265,7 +256,7 @@ fn output_dir_flag_wins_over_env() {
         let cfg = into_config(cli_with_services(&[
             "--output-dir",
             "/tmp/axon-output-from-flag",
-            "crawl",
+            "extract",
             "https://example.com",
         ]))
         .expect("--output-dir flag should parse");
@@ -285,7 +276,7 @@ fn explicit_default_output_dir_flag_wins_over_env() {
             cli_with_services_and_sources(&[
                 "--output-dir",
                 crate::config::cli::DEFAULT_OUTPUT_DIR,
-                "crawl",
+                "extract",
                 "https://example.com",
             ]);
         let cfg = into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
@@ -311,7 +302,7 @@ fn migrated_crawl_tuning_reads_from_toml() {
 
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
-        let cfg = into_config_via_args(&["crawl", "https://example.com"]).unwrap();
+        let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
 
         assert!(cfg.respect_robots);
         assert_eq!(cfg.min_markdown_chars, 777);
@@ -358,7 +349,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             env::set_var("AXON_OPENAI_EMBEDDING_MODEL", "from-env");
             env::set_var("AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC", "0");
 
-            let cfg = into_config_via_args(&["embed", "https://example.com"]).unwrap();
+            let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
 
             assert_eq!(cfg.embed_tei_max_concurrent, 7);
             assert_eq!(cfg.embed_tei_max_in_flight_inputs, 240);
@@ -394,7 +385,7 @@ fn openai_embed_model_toml_wins_over_vllm_fallback_env() {
             env::remove_var("AXON_OPENAI_EMBEDDING_MODEL");
             env::set_var("VLLM_SERVED_MODEL_NAME", "from-vllm");
 
-            let cfg = into_config_via_args(&["embed", "https://example.com"]).unwrap();
+            let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
 
             assert_eq!(cfg.openai_embed_model, "from-toml");
         },
@@ -414,7 +405,7 @@ fn parses_llms_txt_scrape_keys() {
 
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
-        let cfg = into_config_via_args(&["crawl", "https://example.com"]).unwrap();
+        let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
         assert!(!cfg.discover_llms_txt);
         assert_eq!(cfg.max_llms_txt_urls, 42);
     });
@@ -511,7 +502,7 @@ fn chrome_bootstrap_tuning_comes_from_toml() {
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", config.path());
 
-        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+        let cfg = into_config(cli_with_services(&["extract", "https://example.com"]))
             .expect("chrome bootstrap TOML config should parse");
 
         assert_eq!(cfg.chrome_bootstrap_timeout_ms, 250);
@@ -522,7 +513,7 @@ fn chrome_bootstrap_tuning_comes_from_toml() {
 #[test]
 fn crawl_cache_defaults_off() {
     let _guard = ENV_LOCK.lock().unwrap();
-    let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+    let cfg = into_config(cli_with_services(&["extract", "https://example.com"]))
         .expect("crawl config should parse");
     assert!(!cfg.cache, "crawl cache must be opt-in");
 }
@@ -534,7 +525,7 @@ fn etag_conditional_without_cache_is_rejected() {
         "--etag-conditional",
         "--cache",
         "false",
-        "crawl",
+        "extract",
         "https://example.com",
     ]));
     assert!(
@@ -555,7 +546,7 @@ fn etag_conditional_with_cache_true_is_valid() {
         "--etag-conditional",
         "--cache",
         "true",
-        "crawl",
+        "extract",
         "https://example.com",
     ]))
     .expect("--etag-conditional with explicit --cache true should be valid");

@@ -127,7 +127,7 @@ async fn wait_true_uses_manual_lease_and_does_not_double_fire() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut cfg = Config::test_default();
     cfg.sqlite_path = temp.path().join("jobs.db");
-    cfg.command = CommandKind::Embed;
+    cfg.command = CommandKind::Fresh;
     cfg.positional = vec!["fresh text".to_string()];
     cfg.wait = true;
     cfg.freshness = Some(FreshnessRequest {
@@ -157,7 +157,7 @@ async fn stored_freshness_intent_is_not_replayed_recursively() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut cfg = Config::test_default();
     cfg.sqlite_path = temp.path().join("jobs.db");
-    cfg.command = CommandKind::Embed;
+    cfg.command = CommandKind::Fresh;
     cfg.positional = vec!["fresh text".to_string()];
     cfg.freshness = Some(FreshnessRequest {
         command: FreshnessCommand::Embed,
@@ -179,7 +179,7 @@ async fn stored_freshness_intent_is_not_replayed_recursively() {
 #[tokio::test]
 async fn active_embed_job_is_recorded_as_skipped_without_duplicate_enqueue() {
     let mut cfg = Config::test_default();
-    cfg.command = CommandKind::Embed;
+    cfg.command = CommandKind::Fresh;
     let replay = safe_replay_snapshot(&cfg).expect("snapshot");
     let job_config_json =
         axon_jobs::config_snapshot::config_snapshot_json(&cfg).expect("job config");
@@ -216,7 +216,7 @@ async fn active_embed_job_is_recorded_as_skipped_without_duplicate_enqueue() {
 #[tokio::test]
 async fn active_embed_job_with_different_config_does_not_skip() {
     let mut cfg = Config::test_default();
-    cfg.command = CommandKind::Embed;
+    cfg.command = CommandKind::Fresh;
     cfg.collection = "fresh".to_string();
     let replay = safe_replay_snapshot(&cfg).expect("snapshot");
     let other_config = serde_json::json!({"config":{"collection":"other"},"version":2});

@@ -2,9 +2,7 @@ mod config_args;
 mod global_args;
 mod setup_args;
 
-use super::types::{
-    EvaluateResponsesMode, FreshDuration, MapFallback, McpTransport, RedditSort, RedditTime,
-};
+use super::types::{EvaluateResponsesMode, MapFallback, McpTransport};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
@@ -27,10 +25,6 @@ pub(super) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum CliCommand {
-    /// Scrape one or more URLs to markdown
-    Scrape(FreshScrapeArgs),
-    /// Full site crawl for one or more start URLs
-    Crawl(CrawlArgs),
     /// Manage recurring watch definitions and runs
     Watch(WatchArgs),
     /// Monitor job lifecycle events as a line-oriented stream
@@ -45,8 +39,6 @@ pub(super) enum CliCommand {
     Search(TextArg),
     /// Web research via SearXNG/Tavily with LLM synthesis and auto-indexing
     Research(TextArg),
-    /// Embed file, directory, or URL into Qdrant
-    Embed(EmbedArgs),
     /// Analyze a URL's brand identity: colors, fonts, logos, favicon
     Brand(ScrapeArgs),
     /// Run doctor diagnostics plus LLM-assisted troubleshooting
@@ -57,16 +49,6 @@ pub(super) enum CliCommand {
     Doctor(DoctorArgs),
     /// Semantic vector search over the Qdrant index
     Query(QueryArgs),
-    /// Semantic search over one local git checkout, refreshing changed source files first
-    CodeSearch(CodeSearchArgs),
-    /// Removed command tombstone.
-    #[command(
-        name = "code-search-watch",
-        hide = true,
-        arg_required_else_help = true,
-        about = "code-search-watch was removed; use `axon embed <path>` to register and watch local code indexing."
-    )]
-    CodeSearchWatchRemoved,
     /// Fetch stored document chunks from Qdrant by URL
     Retrieve(RetrieveArgs),
     /// RAG: retrieve relevant context, then answer with LLM
@@ -96,8 +78,6 @@ pub(super) enum CliCommand {
     Refresh(RefreshArgs),
     /// Manage embedding freshness schedules
     Fresh(FreshArgs),
-    /// Ingest external sources (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube)
-    Ingest(IngestArgs),
     /// Persistent agent memory: remember, list, search, show, link, supersede, or context memories
     Memory(MemoryArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
@@ -324,20 +304,6 @@ pub(super) struct SourceArgs {
     /// Local path to index. Only local paths are supported in this slice.
     #[arg(value_name = "PATH")]
     pub(super) path: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(super) struct FreshScrapeArgs {
-    #[arg(value_name = "URL")]
-    pub(super) positional_urls: Vec<String>,
-
-    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
-    #[arg(long, value_parser = parse_fresh_arg)]
-    pub(super) fresh: Option<FreshDuration>,
-}
-
-fn parse_fresh_arg(raw: &str) -> Result<FreshDuration, String> {
-    FreshDuration::parse(raw)
 }
 
 #[derive(Debug, Args)]
@@ -679,21 +645,6 @@ pub(super) struct QueryArgs {
 }
 
 #[derive(Debug, Args)]
-pub(super) struct CodeSearchArgs {
-    /// Working directory inside the git checkout to search. Defaults to the current directory.
-    #[arg(long, value_name = "PATH")]
-    pub(super) cwd: Option<std::path::PathBuf>,
-    /// Repository-relative path prefix to search, such as `src/vector`.
-    #[arg(long = "path-prefix", value_name = "PREFIX")]
-    pub(super) path_prefix: Option<String>,
-    /// Search the existing index without refreshing changed local files first.
-    #[arg(long = "no-freshness", action = ArgAction::SetTrue)]
-    pub(super) no_freshness: bool,
-    #[arg(value_name = "TEXT")]
-    pub(super) value: Vec<String>,
-}
-
-#[derive(Debug, Args)]
 pub(super) struct EvaluateArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) diagnostics: bool,
@@ -721,88 +672,11 @@ pub(super) struct TrainArgs {
 
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true)]
-pub(super) struct CrawlArgs {
-    #[command(subcommand)]
-    pub(super) job: Option<JobSubcommand>,
-    #[arg(value_name = "URL")]
-    pub(super) positional_urls: Vec<String>,
-    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
-    #[arg(long, value_parser = parse_fresh_arg)]
-    pub(super) fresh: Option<FreshDuration>,
-}
-
-#[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
 pub(super) struct ExtractArgs {
     #[command(subcommand)]
     pub(super) job: Option<JobSubcommand>,
     #[arg(value_name = "URL")]
     pub(super) positional_urls: Vec<String>,
-}
-
-#[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
-pub(super) struct EmbedArgs {
-    #[command(subcommand)]
-    pub(super) job: Option<JobSubcommand>,
-    #[arg(value_name = "INPUT")]
-    pub(super) input: Option<String>,
-    /// Force local code-index watch progress for local paths.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) watch: bool,
-    /// Run a one-shot local embed instead of the default local watch/index flow.
-    #[arg(long = "no-watch", action = ArgAction::SetTrue, conflicts_with = "watch")]
-    pub(super) no_watch: bool,
-    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
-    #[arg(long, value_parser = parse_fresh_arg)]
-    pub(super) fresh: Option<FreshDuration>,
-}
-
-#[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
-pub(super) struct IngestArgs {
-    #[command(subcommand)]
-    pub(super) job: Option<JobSubcommand>,
-
-    /// Ingest target: GitHub slug, GitLab/Gitea URL, git:https URL, YouTube URL/@handle, or Reddit target
-    #[arg(value_name = "TARGET")]
-    pub(super) target: Option<String>,
-
-    /// Create or update a recurring freshness schedule, e.g. --fresh 1d.
-    #[arg(long, value_parser = parse_fresh_arg)]
-    pub(super) fresh: Option<FreshDuration>,
-
-    /// Skip source code files when ingesting a Git repository (GitHub, GitLab, Gitea, or generic git).
-    /// By default source code is included. Has no effect on Reddit or YouTube targets.
-    #[arg(long = "no-source")]
-    pub(super) no_source: bool,
-    // ── GitHub-specific limits (ignored for Reddit / YouTube) ────────────
-    /// Maximum issues to fetch per repository (0 = unlimited, default 100)
-    #[arg(long = "max-issues", default_value_t = 100)]
-    pub(super) max_issues: usize,
-    /// Maximum pull requests to fetch per repository (0 = unlimited, default 100)
-    #[arg(long = "max-prs", default_value_t = 100)]
-    pub(super) max_prs: usize,
-
-    // ── Reddit-specific filters (ignored for GitHub / YouTube) ────────────
-    /// Subreddit sorting (hot, top, new, rising)
-    #[arg(long, value_enum, default_value_t = RedditSort::Hot)]
-    pub(super) sort: RedditSort,
-    /// Time range for top sort (hour, day, week, month, year, all)
-    #[arg(long, value_enum, default_value_t = RedditTime::Day)]
-    pub(super) time: RedditTime,
-    /// Maximum posts to fetch (0 for unlimited)
-    #[arg(long, default_value_t = 25)]
-    pub(super) max_posts: usize,
-    /// Minimum score threshold for posts and comments
-    #[arg(long, default_value_t = 0)]
-    pub(super) min_score: i32,
-    /// Comment traversal depth
-    #[arg(long, default_value_t = 2)]
-    pub(super) depth: usize,
-    /// Scrape content of linked URLs in link posts
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) scrape_links: bool,
 }
 
 #[derive(Debug, Args)]

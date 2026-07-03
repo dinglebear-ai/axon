@@ -6,13 +6,12 @@ use axon_core::config::{CommandKind, Config, parse_args};
 use axon_core::logging::{init_tracing, log_done, log_info, log_warn};
 use axon_services::context::ServiceContext;
 use commands::{
-    run_ask, run_brand, run_code_search, run_completions, run_config, run_crawl, run_debug,
-    run_dedupe, run_diff, run_doctor, run_domains, run_embed, run_endpoints, run_evaluate,
-    run_extract, run_fresh, run_ingest, run_map, run_mcp, run_memory, run_migrate, run_monitor,
-    run_palette, run_purge, run_query, run_refresh, run_research, run_retrieve, run_scrape,
-    run_screenshot, run_search, run_serve, run_sessions, run_setup, run_source, run_sources,
-    run_stats, run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
-    start_url_from_cfg,
+    run_ask, run_brand, run_completions, run_config, run_debug, run_dedupe, run_diff, run_doctor,
+    run_domains, run_endpoints, run_evaluate, run_extract, run_fresh, run_map, run_mcp, run_memory,
+    run_migrate, run_monitor, run_palette, run_purge, run_query, run_refresh, run_research,
+    run_retrieve, run_screenshot, run_search, run_serve, run_sessions, run_setup, run_source,
+    run_sources, run_stats, run_status, run_suggest, run_summarize, run_sync, run_train,
+    run_update, run_watch, start_url_from_cfg,
 };
 use std::error::Error;
 use std::sync::Arc;
@@ -34,21 +33,17 @@ async fn run_once(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     match cfg.command {
-        CommandKind::Scrape => run_scrape(cfg, service_context).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
         CommandKind::Endpoints => run_endpoints(cfg).await?,
-        CommandKind::Crawl => run_crawl(cfg, service_context).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Monitor => run_monitor(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg, service_context).await?,
-        CommandKind::Embed => run_embed(cfg, service_context).await?,
         CommandKind::Brand => run_brand(cfg).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Diff => run_diff(cfg).await?,
         CommandKind::Doctor => run_doctor(cfg).await?,
         CommandKind::Query => run_query(cfg).await?,
-        CommandKind::CodeSearch => run_code_search(cfg, service_context).await?,
         CommandKind::Retrieve => run_retrieve(cfg).await?,
         CommandKind::Ask => run_ask(cfg).await?,
         CommandKind::Summarize => run_summarize(cfg).await?,
@@ -63,7 +58,6 @@ async fn run_once(
         CommandKind::Purge => run_purge(cfg).await?,
         CommandKind::Refresh => run_refresh(cfg, service_context).await?,
         CommandKind::Fresh => run_fresh(cfg, service_context).await?,
-        CommandKind::Ingest => run_ingest(cfg, service_context).await?,
         CommandKind::Memory => run_memory(cfg, service_context).await?,
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,
         CommandKind::Source => run_source(cfg, service_context).await?,
@@ -86,10 +80,7 @@ async fn run_once(
 }
 
 fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
-    if !matches!(
-        cfg.command,
-        CommandKind::Crawl | CommandKind::Extract | CommandKind::Embed | CommandKind::Ingest
-    ) {
+    if !matches!(cfg.command, CommandKind::Extract) {
         return None;
     }
 
