@@ -714,461 +714,6 @@
         ]
       }
     },
-    "/v1/crawl": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "list_jobs",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Crawl jobs",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "start_crawl",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestCrawlRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Crawl job accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcceptedJob"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid crawl request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream crawl service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "clear_jobs",
-        "responses": {
-          "200": {
-            "description": "Crawl clear result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/crawl/cleanup": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cleanup_jobs",
-        "responses": {
-          "200": {
-            "description": "Crawl cleanup result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/crawl/recover": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "recover_jobs",
-        "responses": {
-          "200": {
-            "description": "Crawl recovery result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/crawl/{id}": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "job_status",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Crawl job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Crawl job status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Job not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/crawl/{id}/cancel": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cancel_job",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Crawl job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Crawl cancellation result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/dedupe": {
       "post": {
         "tags": [
@@ -1501,461 +1046,6 @@
           },
           "502": {
             "description": "Upstream vector service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/embed": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "list_embed_jobs",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Embed jobs",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "start_embed",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestEmbedRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Embed job accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcceptedJob"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid embed request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream embedding service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "clear_embed_jobs",
-        "responses": {
-          "200": {
-            "description": "Embed clear result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/embed/cleanup": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cleanup_embed_jobs",
-        "responses": {
-          "200": {
-            "description": "Embed cleanup result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/embed/recover": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "recover_embed_jobs",
-        "responses": {
-          "200": {
-            "description": "Embed recovery result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/embed/{id}": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "embed_job_status",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Embed job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Embed job status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Job not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/embed/{id}/cancel": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cancel_embed_job",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Embed job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Embed cancellation result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
             "content": {
               "application/json": {
                 "schema": {
@@ -2561,546 +1651,6 @@
         "responses": {
           "200": {
             "description": "Extract cancellation result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/ingest": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "list_ingest_jobs",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Ingest jobs",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "start_ingest",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestIngestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Ingest job accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcceptedJob"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid ingest request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream ingest service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "clear_ingest_jobs",
-        "responses": {
-          "200": {
-            "description": "Ingest clear result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/ingest/cleanup": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cleanup_ingest_jobs",
-        "responses": {
-          "200": {
-            "description": "Ingest cleanup result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/ingest/recover": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "recover_ingest_jobs",
-        "responses": {
-          "200": {
-            "description": "Ingest recovery result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/ingest/sessions/prepared": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "start_prepared_sessions_ingest",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/IngestSessionsPreparedRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Prepared sessions ingest job accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcceptedJob"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid prepared sessions request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream ingest service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/ingest/{id}": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "ingest_job_status",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Ingest job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Ingest job status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Job not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/ingest/{id}/cancel": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cancel_ingest_job",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Ingest job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Ingest cancellation result",
             "content": {
               "application/json": {
                 "schema": {}
@@ -4029,89 +2579,6 @@
         ]
       }
     },
-    "/v1/scrape": {
-      "post": {
-        "tags": [
-          "exploration"
-        ],
-        "operationId": "scrape",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestScrapeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Scraped document or batch scrape results",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid scrape request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream crawl or render service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/screenshot": {
       "post": {
         "tags": [
@@ -4365,6 +2832,89 @@
           },
           "502": {
             "description": "Upstream vector service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "operationId": "index_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Source indexing result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid source request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -5023,6 +3573,34 @@
           }
         }
       },
+      "AdapterOptions": {
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "properties": {
+          "values": {
+            "$ref": "#/components/schemas/MetadataMap"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdapterRef": {
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ArtifactHandle": {
         "type": "object",
         "required": [
@@ -5067,6 +3645,126 @@
             ]
           }
         }
+      },
+      "ArtifactId": {
+        "type": "string"
+      },
+      "ArtifactKind": {
+        "type": "string",
+        "enum": [
+          "raw_content",
+          "normalized_content",
+          "manifest",
+          "report",
+          "screenshot",
+          "warc",
+          "provider_trace"
+        ]
+      },
+      "ArtifactMode": {
+        "type": "string",
+        "enum": [
+          "none",
+          "on_large_output",
+          "always"
+        ]
+      },
+      "ArtifactRef": {
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "artifact_kind",
+          "uri",
+          "created_at"
+        ],
+        "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
+          },
+          "artifact_kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthorityEvidence": {
+        "type": "object",
+        "required": [
+          "evidence_kind",
+          "value",
+          "confidence"
+        ],
+        "properties": {
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "evidence_kind": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthorityHint": {
+        "type": "object",
+        "required": [
+          "authority",
+          "evidence"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityLevel"
+          },
+          "canonical_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityEvidence"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthorityLevel": {
+        "type": "string",
+        "enum": [
+          "official",
+          "verified",
+          "user_pinned",
+          "inferred",
+          "community",
+          "mirror",
+          "conflicting",
+          "unknown"
+        ]
       },
       "BrandColor": {
         "type": "object",
@@ -5153,6 +3851,92 @@
           "text",
           "accent",
           "unknown"
+        ]
+      },
+      "ContentRef": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inline_text"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "bytes_base64",
+              "mime_type",
+              "kind"
+            ],
+            "properties": {
+              "bytes_base64": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inline_bytes"
+                ]
+              },
+              "mime_type": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "artifact_id",
+              "kind"
+            ],
+            "properties": {
+              "artifact_id": {
+                "$ref": "#/components/schemas/ArtifactId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "artifact"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "uri",
+              "kind"
+            ],
+            "properties": {
+              "integrity": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "external"
+                ]
+              },
+              "uri": {
+                "type": "string"
+              }
+            }
+          }
         ]
       },
       "DedupeRequest": {
@@ -5542,29 +4326,134 @@
           "vertical_unsupported_url"
         ]
       },
-      "IngestSessionsPreparedRequest": {
+      "ExecutionMode": {
+        "type": "string",
+        "enum": [
+          "foreground",
+          "background",
+          "wait"
+        ]
+      },
+      "ExecutionPolicy": {
         "type": "object",
         "required": [
-          "docs"
+          "mode",
+          "priority",
+          "detached",
+          "heartbeat_interval_secs"
         ],
         "properties": {
-          "collection": {
+          "detached": {
+            "type": "boolean"
+          },
+          "heartbeat_interval_secs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ExecutionMode"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/JobPriority"
+          },
+          "wait_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphWriteSummary": {
+        "type": "object",
+        "required": [
+          "nodes_upserted",
+          "edges_upserted",
+          "evidence_records",
+          "degraded"
+        ],
+        "properties": {
+          "degraded": {
+            "type": "boolean"
+          },
+          "edges_upserted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "evidence_records": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "nodes_upserted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "InlineSourceResult": {
+        "type": "object",
+        "required": [
+          "metadata"
+        ],
+        "properties": {
+          "content": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ContentRef"
+              }
+            ]
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "summary": {
             "type": [
               "string",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobDescriptor": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "poll",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
           },
-          "docs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PreparedSessionDoc"
-            }
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
           },
-          "project": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "poll": {
+            "$ref": "#/components/schemas/PollDescriptor"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/Timestamp"
           }
         },
         "additionalProperties": false
@@ -5575,6 +4464,28 @@
           "embed",
           "extract",
           "ingest"
+        ]
+      },
+      "JobId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "JobKind": {
+        "type": "string",
+        "enum": [
+          "source",
+          "watch",
+          "map",
+          "extract",
+          "research",
+          "ask",
+          "query",
+          "retrieve",
+          "memory",
+          "graph",
+          "prune",
+          "provider_probe",
+          "reset"
         ]
       },
       "JobMetric": {
@@ -5602,6 +4513,16 @@
           "done",
           "failed",
           "canceled"
+        ]
+      },
+      "JobPriority": {
+        "type": "string",
+        "enum": [
+          "interactive",
+          "high",
+          "normal",
+          "background",
+          "maintenance"
         ]
       },
       "JobProgress": {
@@ -5663,6 +4584,57 @@
             ]
           }
         }
+      },
+      "LedgerSummary": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "generation",
+          "status",
+          "counts"
+        ],
+        "properties": {
+          "committed_generation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceGenerationId"
+              }
+            ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/SourceCounts"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/SourceGenerationId"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LifecycleStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "pending",
+          "running",
+          "waiting",
+          "blocked",
+          "canceling",
+          "completed",
+          "completed_degraded",
+          "failed",
+          "canceled",
+          "expired",
+          "skipped"
+        ]
       },
       "LinkEntry": {
         "type": "object",
@@ -5768,6 +4740,9 @@
             ]
           }
         }
+      },
+      "MetadataMap": {
+        "type": "object"
       },
       "MobileChatItem": {
         "type": "object",
@@ -5921,6 +4896,36 @@
           }
         }
       },
+      "OutputPolicy": {
+        "type": "object",
+        "required": [
+          "json",
+          "response_mode",
+          "inline_limit_bytes",
+          "artifact_mode",
+          "include_progress"
+        ],
+        "properties": {
+          "artifact_mode": {
+            "$ref": "#/components/schemas/ArtifactMode"
+          },
+          "include_progress": {
+            "type": "boolean"
+          },
+          "inline_limit_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "json": {
+            "type": "boolean"
+          },
+          "response_mode": {
+            "$ref": "#/components/schemas/ResponseMode"
+          }
+        },
+        "additionalProperties": false
+      },
       "PanelCollectionsResponse": {
         "type": "object",
         "required": [
@@ -5935,56 +4940,32 @@
           }
         }
       },
-      "PreparedSessionDoc": {
+      "PollDescriptor": {
         "type": "object",
         "required": [
-          "url",
-          "text",
-          "session_platform",
-          "session_file"
+          "status_url",
+          "suggested_interval_ms"
         ],
         "properties": {
-          "extra": {},
-          "session_date": {
+          "events_url": {
             "type": [
               "string",
               "null"
             ]
           },
-          "session_file": {
+          "status_url": {
             "type": "string"
           },
-          "session_platform": {
-            "type": "string"
-          },
-          "session_project": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "session_turn_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
+          "suggested_interval_ms": {
+            "type": "integer",
+            "format": "int64",
             "minimum": 0
-          },
-          "text": {
-            "type": "string"
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "url": {
-            "type": "string"
           }
         },
         "additionalProperties": false
+      },
+      "ProviderId": {
+        "type": "string"
       },
       "PurgeRequest": {
         "type": "object",
@@ -6289,112 +5270,6 @@
         },
         "additionalProperties": false
       },
-      "RestCrawlRequest": {
-        "type": "object",
-        "required": [
-          "urls"
-        ],
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "delay_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "discover_llms_txt": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "discover_sitemaps": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "headers": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "include_subdomains": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "max_depth": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "max_llms_txt_urls": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "max_pages": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          },
-          "max_sitemaps": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "render_mode": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RenderMode"
-              }
-            ]
-          },
-          "respect_robots": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "sitemap_since_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          },
-          "urls": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "additionalProperties": false
-      },
       "RestDiffRequest": {
         "type": "object",
         "required": [
@@ -6417,30 +5292,6 @@
           },
           "url_b": {
             "type": "string"
-          }
-        },
-        "additionalProperties": false
-      },
-      "RestEmbedRequest": {
-        "type": "object",
-        "required": [
-          "input"
-        ],
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "input": {
-            "type": "string"
-          },
-          "source_type": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         },
         "additionalProperties": false
@@ -6565,58 +5416,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "RestIngestRequest": {
-        "type": "object",
-        "properties": {
-          "include_source": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "sessions": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RestSessionsIngestOptions"
-              }
-            ]
-          },
-          "source_type": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RestIngestSourceType",
-                "description": "Source type for the ingest target. **Omit to auto-detect** from `target`\nvia the canonical shared classifier (`classify_target`) — the same path\nthe CLI uses, covering GitHub / GitLab / Gitea / generic-git / Reddit /\nYouTube / RSS. Set explicitly only to force a specific interpretation."
-              }
-            ]
-          },
-          "target": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "RestIngestSourceType": {
-        "type": "string",
-        "enum": [
-          "github",
-          "gitlab",
-          "gitea",
-          "git",
-          "reddit",
-          "youtube",
-          "rss",
-          "sessions"
-        ]
       },
       "RestMapRequest": {
         "type": "object",
@@ -6929,77 +5728,6 @@
         },
         "additionalProperties": false
       },
-      "RestScrapeRequest": {
-        "type": "object",
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "embed": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "exclude_selector": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "format": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ScrapeFormat"
-              }
-            ]
-          },
-          "headers": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "render_mode": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RenderMode"
-              }
-            ]
-          },
-          "root_selector": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "urls": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "additionalProperties": false
-      },
       "RestScreenshotRequest": {
         "type": "object",
         "required": [
@@ -7048,36 +5776,6 @@
             "type": "string"
           },
           "time_range": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "RestSessionsIngestOptions": {
-        "type": "object",
-        "properties": {
-          "claude": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "codex": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "gemini": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "project": {
             "type": [
               "string",
               "null"
@@ -7226,16 +5924,6 @@
           "sse"
         ]
       },
-      "ScrapeFormat": {
-        "type": "string",
-        "enum": [
-          "markdown",
-          "html",
-          "rawHtml",
-          "json",
-          "llm"
-        ]
-      },
       "ScreenshotResult": {
         "type": "object",
         "required": [
@@ -7306,6 +5994,470 @@
           }
         }
       },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "debug",
+          "info",
+          "warning",
+          "degraded",
+          "failed",
+          "fatal"
+        ]
+      },
+      "SourceCounts": {
+        "type": "object",
+        "required": [
+          "items_total",
+          "items_changed",
+          "documents_total",
+          "chunks_total",
+          "vector_points_total",
+          "bytes_total"
+        ],
+        "properties": {
+          "bytes_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "chunks_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "documents_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "items_changed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "items_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "vector_points_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceError": {
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "retryable"
+        ],
+        "properties": {
+          "cause": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "provider_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderId"
+              }
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "source_item_key": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceItemKey"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceGenerationId": {
+        "type": "string"
+      },
+      "SourceId": {
+        "type": "string"
+      },
+      "SourceIntent": {
+        "type": "string",
+        "enum": [
+          "acquire",
+          "refresh",
+          "watch",
+          "map"
+        ]
+      },
+      "SourceItemKey": {
+        "type": "string"
+      },
+      "SourceKind": {
+        "type": "string",
+        "enum": [
+          "web",
+          "local",
+          "git",
+          "registry",
+          "feed",
+          "reddit",
+          "youtube",
+          "session",
+          "cli_tool",
+          "mcp_tool",
+          "memory",
+          "upload"
+        ]
+      },
+      "SourceLimits": {
+        "type": "object",
+        "properties": {
+          "max_bytes_per_item": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "max_chunks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "max_depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_items": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "max_pages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "max_total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "provider_timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceRefreshPolicy": {
+        "type": "string",
+        "enum": [
+          "if_stale",
+          "force",
+          "never"
+        ]
+      },
+      "SourceRequest": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "adapter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authority_hint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuthorityHint"
+              }
+            ]
+          },
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embed": {
+            "type": "boolean"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/ExecutionPolicy"
+          },
+          "idempotency_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "intent": {
+            "$ref": "#/components/schemas/SourceIntent"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SourceLimits"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputPolicy"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/SourceRefreshPolicy"
+          },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "watch": {
+            "$ref": "#/components/schemas/SourceWatchPolicy"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceResult": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "source_id",
+          "canonical_uri",
+          "source_kind",
+          "adapter",
+          "scope",
+          "status",
+          "ledger",
+          "graph",
+          "counts",
+          "warnings",
+          "artifacts",
+          "errors"
+        ],
+        "properties": {
+          "adapter": {
+            "$ref": "#/components/schemas/AdapterRef"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            }
+          },
+          "canonical_uri": {
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/SourceCounts"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceError"
+            }
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphWriteSummary"
+          },
+          "inline": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InlineSourceResult"
+              }
+            ]
+          },
+          "job": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobDescriptor"
+              }
+            ]
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "ledger": {
+            "$ref": "#/components/schemas/LedgerSummary"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SourceScope"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          },
+          "watch": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WatchResult"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceScope": {
+        "type": "string",
+        "enum": [
+          "page",
+          "site",
+          "docs",
+          "repo",
+          "workspace",
+          "branch",
+          "org",
+          "package",
+          "version",
+          "feed",
+          "subreddit",
+          "thread",
+          "comment",
+          "video",
+          "playlist",
+          "channel",
+          "issue",
+          "pull_request",
+          "merge_request",
+          "release",
+          "wiki",
+          "file",
+          "directory",
+          "map",
+          "tool",
+          "script",
+          "api"
+        ]
+      },
+      "SourceWarning": {
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "retryable"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "source_item_key": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceItemKey"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceWatchPolicy": {
+        "type": "string",
+        "enum": [
+          "disabled",
+          "ensure",
+          "enabled"
+        ]
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time"
+      },
       "UpsertMobileSessionRequest": {
         "type": "object",
         "required": [
@@ -7367,6 +6519,98 @@
           }
         },
         "additionalProperties": false
+      },
+      "WatchId": {
+        "type": "string"
+      },
+      "WatchResult": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "source_id",
+          "canonical_uri",
+          "adapter",
+          "scope",
+          "enabled",
+          "schedule",
+          "warnings"
+        ],
+        "properties": {
+          "adapter": {
+            "$ref": "#/components/schemas/AdapterRef"
+          },
+          "canonical_uri": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "job": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobDescriptor"
+              }
+            ]
+          },
+          "latest_job": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobDescriptor"
+              }
+            ]
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/WatchSchedule"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SourceScope"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          },
+          "watch_id": {
+            "$ref": "#/components/schemas/WatchId"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchSchedule": {
+        "type": "object",
+        "required": [
+          "every_seconds"
+        ],
+        "properties": {
+          "cron": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "every_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {
@@ -7401,11 +6645,15 @@
     },
     {
       "name": "exploration",
-      "description": "Scrape, summarize, map, search, and research endpoints"
+      "description": "Summarize, map, search, and research endpoints"
+    },
+    {
+      "name": "sources",
+      "description": "Unified source indexing entrypoint"
     },
     {
       "name": "jobs",
-      "description": "Async crawl, embed, extract, and ingest job endpoints"
+      "description": "Async extract job endpoints"
     },
     {
       "name": "admin",

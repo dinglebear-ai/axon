@@ -16,7 +16,7 @@ use axon_services::types::ServiceJob;
 use axum::http::StatusCode;
 use serial_test::serial;
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::{OnceCell, oneshot};
 use uuid::Uuid;
 
@@ -44,123 +44,6 @@ fn extract_submit_body_accepts_cli_parity_knobs() {
 }
 
 #[test]
-fn scrape_body_accepts_embed_override() {
-    let body = serde_json::json!({
-        "url": "https://example.com",
-        "embed": false
-    });
-
-    let parsed: crate::server::handlers::rest::types::ScrapeBody =
-        serde_json::from_value(body).expect("parse scrape body");
-
-    assert_eq!(parsed.url, "https://example.com");
-    assert_eq!(parsed.embed, Some(false));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[serial]
-async fn v1_scrape_embed_true_runs_service_preparation_and_upsert() {
-    use axum::Json;
-    use axum::extract::State;
-    use httpmock::prelude::*;
-
-    let _loopback = axon_core::http::LoopbackGuard::allow();
-    let page = MockServer::start_async().await;
-    let tei = MockServer::start_async().await;
-    let qdrant = MockServer::start_async().await;
-    let collection = format!("rest_scrape_{}", Uuid::new_v4().simple());
-
-    page.mock_async(|when, then| {
-        when.method(GET).path("/doc");
-        then.status(200).body(format!(
-            "<html><head><title>Doc</title></head><body><main><h1>Doc</h1><p>{}</p></main></body></html>",
-            "REST scrape embed regression content. ".repeat(40)
-        ));
-    })
-    .await;
-    tei.mock_async(|when, then| {
-        when.method(POST).path("/embed");
-        then.status(200).json_body(serde_json::json!([[0.1, 0.2]]));
-    })
-    .await;
-    qdrant
-        .mock_async(|when, then| {
-            when.method(GET).path(format!("/collections/{collection}"));
-            then.status(200).json_body(serde_json::json!({
-                "result": {
-                    "config": {
-                        "params": {
-                            "vectors": {"size": 2}
-                        }
-                    },
-                    "payload_schema": {}
-                }
-            }));
-        })
-        .await;
-    qdrant
-        .mock_async(|when, then| {
-            when.method(PUT)
-                .path(format!("/collections/{collection}/index"));
-            then.status(200)
-                .json_body(serde_json::json!({"result": true}));
-        })
-        .await;
-    let upsert = qdrant
-        .mock_async(|when, then| {
-            when.method(PUT)
-                .path(format!("/collections/{collection}/points"));
-            then.status(200)
-                .json_body(serde_json::json!({"result": true}));
-        })
-        .await;
-    qdrant
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path(format!("/collections/{collection}/points/delete"));
-            then.status(200)
-                .json_body(serde_json::json!({"result": true}));
-        })
-        .await;
-
-    let mut cfg = axon_core::config::Config::test_default();
-    cfg.collection = collection;
-    cfg.tei_url = tei.base_url();
-    cfg.qdrant_url = qdrant.base_url();
-    cfg.render_mode = axon_core::config::RenderMode::Http;
-    cfg.embed = false;
-    let cfg = Arc::new(cfg);
-    let cell = Arc::new(OnceCell::new());
-    let state =
-        crate::server::handlers::rest::state::RestState::new(cfg, cell, &AuthPolicy::LoopbackDev);
-
-    let response = crate::server::handlers::rest::sync_post::v1_scrape(
-        State(state),
-        Json(crate::server::handlers::rest::types::ScrapeBody {
-            url: format!("{}/doc", page.base_url()),
-            embed: Some(true),
-        }),
-    )
-    .await;
-
-    let status = response.status();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("response body");
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "unexpected scrape response: {}",
-        String::from_utf8_lossy(&body)
-    );
-    assert_eq!(
-        upsert.calls_async().await,
-        1,
-        "REST scrape embed=true should prepare and upsert one scrape document"
-    );
-}
-
-#[test]
 fn async_lifecycle_routes_are_declared_for_extract() {
     let routes = crate::server::handlers::rest::documented_rest_paths_for_tests();
     assert!(routes.contains(&"GET /v1/extract".to_string()));
@@ -170,13 +53,9 @@ fn async_lifecycle_routes_are_declared_for_extract() {
 }
 
 #[test]
-fn crawl_submit_is_write_scope_across_surfaces() {
+fn sources_submit_is_write_scope() {
     assert_eq!(
-        axon_authz::http::scope_for_action("crawl", Some("start")),
-        Some("axon:write")
-    );
-    assert_eq!(
-        crate::server::handlers::rest::auth::scope_for_rest_route("POST", "/v1/crawl"),
+        crate::server::handlers::rest::auth::scope_for_rest_route("POST", "/v1/sources"),
         Some("axon:write")
     );
 }
@@ -217,78 +96,6 @@ impl ServiceJobRuntime for EmptyRuntime {
     }
     async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
         Err("not implemented".into())
-    }
-    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
-        Ok(None)
-    }
-    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
-        Ok(false)
-    }
-    async fn list_jobs(
-        &self,
-        _kind: JobKind,
-        _limit: i64,
-        _offset: i64,
-    ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
-        Ok(Vec::new())
-    }
-    async fn job_status(
-        &self,
-        _kind: JobKind,
-        _id: Uuid,
-    ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
-        Ok(None)
-    }
-    async fn cancel_job(
-        &self,
-        _kind: JobKind,
-        _id: Uuid,
-    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        Ok(false)
-    }
-    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-    async fn recover_jobs(
-        &self,
-        _kind: JobKind,
-        _stale_threshold_ms: i64,
-    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-    async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-
-    async fn count_jobs_by_status(
-        &self,
-        _kind: JobKind,
-    ) -> Result<
-        std::collections::HashMap<axon_jobs::status::JobStatus, i64>,
-        Box<dyn Error + Send + Sync>,
-    > {
-        Ok(std::collections::HashMap::new())
-    }
-}
-
-struct CaptureRuntime {
-    enqueued: Mutex<Vec<JobPayload>>,
-}
-
-#[async_trait]
-impl ServiceJobRuntime for CaptureRuntime {
-    fn mode_name(&self) -> &'static str {
-        "capture"
-    }
-    async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
-        self.enqueued.lock().expect("lock").push(payload);
-        Ok(Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("uuid"))
-    }
-    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
-        Ok("completed".to_string())
     }
     async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
         Ok(None)
@@ -414,6 +221,53 @@ async fn loopback_dev_read_routes_are_reachable_without_auth() {
     stop(shutdown, handle).await;
 }
 
+/// The legacy indexing routes (embed/ingest/scrape/crawl) were removed in
+/// favor of the unified `POST /v1/sources`. They must now 404, while the
+/// replacement `POST /v1/sources` route is mounted (never 404/405).
+#[tokio::test]
+#[serial]
+async fn legacy_indexing_routes_are_absent_and_sources_present() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    for path in ["/v1/embed", "/v1/ingest", "/v1/scrape", "/v1/crawl"] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("post {path}: {e}"));
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "removed route {path} should 404"
+        );
+    }
+
+    // POST /v1/sources is mounted: an empty body returns 400 (source required),
+    // never 404/405.
+    let response = client
+        .post(format!("{base}/v1/sources"))
+        .json(&serde_json::json!({ "source": "" }))
+        .send()
+        .await
+        .expect("sources request");
+    let status = response.status();
+    stop(shutdown, handle).await;
+    assert_ne!(
+        status,
+        StatusCode::NOT_FOUND,
+        "POST /v1/sources should be mounted"
+    );
+    assert_ne!(
+        status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "POST /v1/sources should be mounted"
+    );
+    assert_eq!(status, StatusCode::BAD_REQUEST, "empty source is a 400");
+}
+
 #[tokio::test]
 #[serial]
 async fn bearer_only_read_routes_require_auth() {
@@ -451,7 +305,7 @@ async fn sync_post_routes_reject_empty_required_fields() {
         ("/v1/map", serde_json::json!({ "url": "" })),
         ("/v1/search", serde_json::json!({ "query": "  " })),
         ("/v1/research", serde_json::json!({ "query": "" })),
-        ("/v1/scrape", serde_json::json!({ "url": "" })),
+        ("/v1/sources", serde_json::json!({ "source": "" })),
     ];
 
     for (path, body) in cases {
@@ -507,19 +361,7 @@ async fn async_submit_routes_reject_empty_required_fields() {
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    let cases = [
-        ("/v1/crawl", serde_json::json!({ "urls": [] })),
-        ("/v1/embed", serde_json::json!({ "input": "" })),
-        ("/v1/extract", serde_json::json!({ "urls": [] })),
-        (
-            "/v1/ingest",
-            serde_json::json!({
-                "source_type": "github",
-                "repo": "",
-                "include_source": false
-            }),
-        ),
-    ];
+    let cases = [("/v1/extract", serde_json::json!({ "urls": [] }))];
     for (path, body) in cases {
         let response = client
             .post(format!("{base}{path}"))
@@ -538,63 +380,15 @@ async fn async_submit_routes_reject_empty_required_fields() {
 
 #[tokio::test]
 #[serial]
-async fn async_ingest_rejects_remote_session_scan() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
-
-    for body in [
-        serde_json::json!({
-            "source_type": "sessions",
-            "sessions_claude": false,
-            "sessions_codex": true,
-            "sessions_gemini": false,
-            "sessions_project": "axon_rust"
-        }),
-        serde_json::json!({
-            "source_type": "prepared_sessions"
-        }),
-    ] {
-        let response = client
-            .post(format!("{base}/v1/ingest"))
-            .json(&body)
-            .send()
-            .await
-            .expect("request");
-        let status = response.status();
-        let response_body: serde_json::Value = response.json().await.expect("json body");
-
-        assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
-        assert_eq!(response_body["kind"], "bad_request", "body: {body}");
-        assert!(
-            response_body["message"]
-                .as_str()
-                .unwrap_or("")
-                .contains("/v1/ingest/sessions/prepared"),
-            "expected prepared sessions endpoint hint, got {response_body}"
-        );
-    }
-
-    stop(shutdown, handle).await;
-}
-
-#[tokio::test]
-#[serial]
 async fn async_submit_routes_reject_private_urls_before_enqueue() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    for (path, body) in [
-        (
-            "/v1/crawl",
-            serde_json::json!({ "urls": ["http://127.0.0.1/admin"] }),
-        ),
-        (
-            "/v1/extract",
-            serde_json::json!({ "urls": ["http://127.0.0.1/admin"] }),
-        ),
-    ] {
+    for (path, body) in [(
+        "/v1/extract",
+        serde_json::json!({ "urls": ["http://127.0.0.1/admin"] }),
+    )] {
         let response = client
             .post(format!("{base}{path}"))
             .json(&body)
@@ -610,136 +404,6 @@ async fn async_submit_routes_reject_private_urls_before_enqueue() {
     stop(shutdown, handle).await;
 }
 
-#[tokio::test]
-#[serial]
-async fn v1_embed_accepts_allowed_local_file_and_enqueues_canonical_path() {
-    let _env = EnvGuard::set(None);
-    let root = tempfile::tempdir().expect("root");
-    let file = root.path().join("doc.md");
-    std::fs::write(&file, "hello").expect("write");
-    let cfg = axon_core::config::Config {
-        mcp_embed_allowed_roots: vec![root.path().to_path_buf()],
-        ..axon_core::config::Config::default()
-    };
-    let runtime = Arc::new(CaptureRuntime {
-        enqueued: Mutex::new(Vec::new()),
-    });
-    let (base, shutdown, handle) =
-        spawn_with_runtime(AuthPolicy::LoopbackDev, Arc::new(cfg), runtime.clone()).await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/embed"))
-        .json(&serde_json::json!({ "input": file.to_string_lossy() }))
-        .send()
-        .await
-        .expect("request");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::ACCEPTED);
-    let payloads = runtime.enqueued.lock().expect("lock");
-    assert_eq!(payloads.len(), 1);
-    let JobPayload::Embed { input, .. } = &payloads[0] else {
-        panic!("expected embed payload");
-    };
-    assert_eq!(
-        input,
-        &std::fs::canonicalize(&file).unwrap().to_string_lossy()
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn v1_embed_rejects_existing_local_file_when_roots_empty_without_enqueue() {
-    let _env = EnvGuard::set(None);
-    let root = tempfile::tempdir().expect("root");
-    let file = root.path().join("doc.md");
-    std::fs::write(&file, "hello").expect("write");
-    let runtime = Arc::new(CaptureRuntime {
-        enqueued: Mutex::new(Vec::new()),
-    });
-    let (base, shutdown, handle) = spawn_with_runtime(
-        AuthPolicy::LoopbackDev,
-        Arc::new(axon_core::config::Config::default()),
-        runtime.clone(),
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/embed"))
-        .json(&serde_json::json!({ "input": file.to_string_lossy() }))
-        .send()
-        .await
-        .expect("request");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(runtime.enqueued.lock().expect("lock").is_empty());
-}
-
-#[tokio::test]
-#[serial]
-async fn v1_embed_rejects_missing_path_like_input_without_enqueue() {
-    let _env = EnvGuard::set(None);
-    let runtime = Arc::new(CaptureRuntime {
-        enqueued: Mutex::new(Vec::new()),
-    });
-    let (base, shutdown, handle) = spawn_with_runtime(
-        AuthPolicy::LoopbackDev,
-        Arc::new(axon_core::config::Config::default()),
-        runtime.clone(),
-    )
-    .await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/embed"))
-        .json(&serde_json::json!({ "input": "/definitely/missing/axon-doc.md" }))
-        .send()
-        .await
-        .expect("request");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(runtime.enqueued.lock().expect("lock").is_empty());
-}
-
-#[tokio::test]
-#[serial]
-async fn v1_embed_rejects_oversized_allowed_file_without_enqueue() {
-    let _env = EnvGuard::set(None);
-    let root = tempfile::tempdir().expect("root");
-    let file = root.path().join("big.md");
-    std::fs::write(&file, "hello").expect("write");
-    let cfg = axon_core::config::Config {
-        mcp_embed_allowed_roots: vec![root.path().to_path_buf()],
-        mcp_embed_max_local_bytes: 1,
-        ..axon_core::config::Config::default()
-    };
-    let runtime = Arc::new(CaptureRuntime {
-        enqueued: Mutex::new(Vec::new()),
-    });
-    let (base, shutdown, handle) =
-        spawn_with_runtime(AuthPolicy::LoopbackDev, Arc::new(cfg), runtime.clone()).await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/embed"))
-        .json(&serde_json::json!({ "input": file.to_string_lossy() }))
-        .send()
-        .await
-        .expect("request");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(runtime.enqueued.lock().expect("lock").is_empty());
-}
-
 /// F3 GET / cancel routes reject non-UUID :id with 400.
 #[tokio::test]
 #[serial]
@@ -748,12 +412,7 @@ async fn async_job_id_routes_reject_invalid_uuid() {
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    for path in [
-        "/v1/crawl/not-a-uuid",
-        "/v1/embed/not-a-uuid",
-        "/v1/extract/not-a-uuid",
-        "/v1/ingest/not-a-uuid",
-    ] {
+    for path in ["/v1/extract/not-a-uuid"] {
         let response = client
             .get(format!("{base}{path}"))
             .send()
@@ -762,12 +421,7 @@ async fn async_job_id_routes_reject_invalid_uuid() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
     }
 
-    for path in [
-        "/v1/crawl/not-a-uuid/cancel",
-        "/v1/embed/not-a-uuid/cancel",
-        "/v1/extract/not-a-uuid/cancel",
-        "/v1/ingest/not-a-uuid/cancel",
-    ] {
+    for path in ["/v1/extract/not-a-uuid/cancel"] {
         let response = client
             .post(format!("{base}{path}"))
             .send()
@@ -790,7 +444,7 @@ async fn async_status_returns_404_for_unknown_job() {
     let client = reqwest::Client::new();
     let unknown = "00000000-0000-0000-0000-000000000000";
 
-    for kind in ["crawl", "embed", "extract", "ingest"] {
+    for kind in ["extract"] {
         let response = client
             .get(format!("{base}/v1/{kind}/{unknown}"))
             .send()
@@ -839,7 +493,7 @@ async fn sync_post_rejects_unknown_fields() {
 
 /// Review-followup: scope discrimination. A token with only `axon:read`
 /// scope passes read-scope routes but is rejected on write-scope routes
-/// (e.g. /v1/scrape) with 403.
+/// (e.g. /v1/sources) with 403.
 ///
 /// Implementation note: in bearer-only mode the static AXON_MCP_HTTP_TOKEN
 /// is granted BOTH axon:read AND axon:write (see mcp::auth::build_auth_layer);
@@ -857,18 +511,18 @@ async fn bearer_token_passes_write_scope_guard() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/scrape"))
+        .post(format!("{base}/v1/sources"))
         .header("authorization", "Bearer secret")
-        .json(&serde_json::json!({ "url": "https://example.invalid/" }))
+        .json(&serde_json::json!({ "source": "https://example.invalid/" }))
         .send()
         .await
-        .expect("scrape request");
+        .expect("sources request");
     let status = response.status();
 
     stop(shutdown, handle).await;
-    // 200 (Qdrant/Chrome reachable, surprising), 502 (upstream not running),
-    // or 400 from URL validation — none of these are 401/403 which would mean
-    // the scope guard incorrectly blocked the valid write token.
+    // 200 (indexed / degraded SourceResult), 502 (upstream not running), or
+    // 400/500 — none of these are 401/403 which would mean the scope guard
+    // incorrectly blocked the valid write token.
     assert_ne!(status, StatusCode::UNAUTHORIZED, "valid bearer rejected");
     assert_ne!(status, StatusCode::FORBIDDEN, "valid bearer rejected");
 }
@@ -1317,19 +971,9 @@ async fn all_submit_routes_reject_unknown_fields() {
             serde_json::json!({ "query": "test", "_x": 1 }),
         ),
         (
-            "/v1/scrape",
+            "/v1/sources",
             "POST",
-            serde_json::json!({ "url": "https://example.com", "_x": 1 }),
-        ),
-        (
-            "/v1/crawl",
-            "POST",
-            serde_json::json!({ "urls": ["https://example.com"], "_x": 1 }),
-        ),
-        (
-            "/v1/embed",
-            "POST",
-            serde_json::json!({ "input": "https://example.com", "_x": 1 }),
+            serde_json::json!({ "source": "https://example.com", "_x": 1 }),
         ),
         (
             "/v1/extract",

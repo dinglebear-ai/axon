@@ -106,7 +106,7 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         .merge(ask_router::<ServeState>(cfg))
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
-        .route("/v1/scrape", post(handlers::exploration::scrape))
+        .route("/v1/sources", post(handlers::sources::index_source))
         .route("/v1/summarize", post(handlers::exploration::summarize))
         .route(
             "/v1/summarize/stream",
@@ -120,20 +120,8 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
             post(handlers::exploration::research_stream),
         )
         .nest(
-            "/v1/crawl",
-            handlers::async_jobs::crawl_router(Arc::clone(service_context)),
-        )
-        .nest(
-            "/v1/embed",
-            handlers::async_jobs::embed_router(Arc::clone(service_context)),
-        )
-        .nest(
             "/v1/extract",
             handlers::async_jobs::extract_router(Arc::clone(service_context)),
-        )
-        .nest(
-            "/v1/ingest",
-            handlers::async_jobs::ingest_router(Arc::clone(service_context)),
         )
         .route("/v1/dedupe", post(handlers::admin::dedupe))
         .route("/v1/purge", post(handlers::admin::purge))
@@ -147,12 +135,8 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
 
 /// Write-scoped routes whose payloads exceed the standard REST body cap
 /// (prepared session exports ship megabytes of transcript JSON).
-fn large_write_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
+fn large_write_routes(_service_context: &Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
-        .nest(
-            "/v1/ingest/sessions/prepared",
-            handlers::async_jobs::prepared_sessions_router(Arc::clone(service_context)),
-        )
         .route(
             "/v1/mobile/sessions/{id}",
             put(handlers::mobile_sessions::upsert_mobile_session)
@@ -306,6 +290,7 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
         && (path == "/v1/dedupe"
             || path == "/v1/purge"
+            || path == "/v1/sources"
             || path == "/v1/watch"
             || path.starts_with("/v1/watch/"))
     {
@@ -318,24 +303,17 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
         return true;
     }
 
-    for prefix in ["/v1/crawl", "/v1/embed", "/v1/extract", "/v1/ingest"] {
-        if path == prefix {
-            return *method == Method::POST || *method == Method::DELETE;
-        }
-        let Some(remainder) = path
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_prefix('/'))
-        else {
-            continue;
-        };
-        if *method == Method::POST && prefix == "/v1/ingest" {
-            return true;
-        }
-        if *method == Method::POST
-            && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
-        {
-            return true;
-        }
+    let prefix = "/v1/extract";
+    if path == prefix {
+        return *method == Method::POST || *method == Method::DELETE;
+    }
+    if let Some(remainder) = path
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix('/'))
+        && *method == Method::POST
+        && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
+    {
+        return true;
     }
     false
 }
