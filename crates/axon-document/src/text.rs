@@ -101,7 +101,13 @@ fn bounded_windows(text: &str, start: usize, end: usize) -> Vec<(usize, usize)> 
 }
 
 fn line_number_at(text: &str, byte: usize) -> u32 {
-    let capped = byte.min(text.len());
+    // `byte` may land mid-UTF-8-char (e.g. non-ASCII feed/web content), which
+    // would panic slicing `text[..capped]`. Back off to the nearest char
+    // boundary at or below the cap; newlines are ASCII so the count is exact.
+    let mut capped = byte.min(text.len());
+    while capped > 0 && !text.is_char_boundary(capped) {
+        capped -= 1;
+    }
     1 + text[..capped].bytes().filter(|b| *b == b'\n').count() as u32
 }
 
