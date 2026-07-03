@@ -47,7 +47,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:34fa1c95d9724ff84d40968e263de8a3c2b51d0e297cc60b3299f6d0fe048425",
+        "checksum": "sha256:8ea6658703cd2b26b31b80ce67091489bafb86c5ddabe25633064dff142a4530",
         "kind": "rust_directory",
         "path": "crates/axon-mcp/src"
       },

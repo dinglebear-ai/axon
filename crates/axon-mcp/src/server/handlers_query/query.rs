@@ -34,7 +34,11 @@ impl AxonMcpServer {
             ..ConfigOverrides::default()
         });
 
-        let result = query_svc::query(&cfg, &query, pagination)
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| internal_error(format!("service context: {e}")))?;
+        let result = query_svc::query(&ctx, &cfg, &query, pagination)
             .await
             .map_err(|e| logged_internal_error(&format!("query '{query}'"), e.as_ref()))?;
 

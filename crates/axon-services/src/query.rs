@@ -8,10 +8,11 @@ use axon_core::error::{ServiceError, diagnostics_from_error};
 use axon_vector::ops::commands::ask::{ask_result, ask_result_with_deltas};
 use axon_vector::ops::commands::discover_crawl_suggestions;
 use axon_vector::ops::commands::evaluate_result;
-use axon_vector::ops::commands::query_hits;
 use axon_vector::ops::qdrant::DirectRetrieveResult;
 use std::error::Error;
 use tokio::sync::mpsc;
+
+use crate::context::ServiceContext;
 
 pub(crate) use self::code_search::default_code_search_refresh_backend;
 pub use self::code_search::{
@@ -19,9 +20,11 @@ pub use self::code_search::{
     code_search_with_progress, refresh_code_search_index, refresh_code_search_index_with_backend,
     refresh_code_search_index_with_progress, resolve_code_search_project,
 };
+pub use self::retrieval::{query_via_retrieval, query_via_retrieval_with_cfg};
 pub use self::retrieve::retrieve;
 
 mod code_search;
+mod retrieval;
 mod retrieve;
 
 fn wrap_service_error(
@@ -136,22 +139,18 @@ pub fn map_suggest_payload(payload: &serde_json::Value) -> Result<SuggestResult,
 // ── Service functions (call-through wrappers) ────────────────────────────────
 
 /// Semantic vector search.
+///
+/// Routed through the new `axon-retrieval` engine (issue #298 cutover). The
+/// legacy `axon_vector::ops::commands::query_hits` path is no longer used by
+/// `query`; `ask`/`evaluate`/`retrieve` remain on the legacy path.
 #[must_use = "query returns a Result that should be handled"]
 pub async fn query(
+    ctx: &ServiceContext,
     cfg: &Config,
     text: &str,
     opts: Pagination,
 ) -> Result<QueryResult, Box<dyn Error>> {
-    let results = query_hits(cfg, text, opts.limit.max(1), opts.offset)
-        .await
-        .map_err(|e| -> Box<dyn Error> {
-            let message = format!(
-                "vector query failed for {}: {e}",
-                text.chars().take(80).collect::<String>()
-            );
-            wrap_service_error(message, e.as_ref())
-        })?;
-    Ok(QueryResult { results })
+    query_via_retrieval_with_cfg(ctx, cfg, text, opts).await
 }
 /// RAG ask: retrieve relevant context, then answer with LLM.
 ///
