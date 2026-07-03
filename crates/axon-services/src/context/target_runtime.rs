@@ -11,14 +11,53 @@ use std::time::Duration;
 
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
 use axon_core::config::Config;
+use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
 use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
+use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
 
 use super::TargetLocalSourceRuntime;
+
+/// Read-plane stores plus their provider identity, built from [`Config`].
+///
+/// This is the minimal seam the read/RAG path (`query`) needs — a vector store
+/// and an embedding provider — without the write-plane jobs/ledger wiring. The
+/// full [`TargetLocalSourceRuntime::from_config`] reuses the same constructors.
+pub struct TargetReadStores {
+    pub vector_store: Arc<dyn VectorStore>,
+    pub embedding_provider: Arc<dyn EmbeddingProvider>,
+    pub embedding_provider_id: ProviderId,
+    pub embedding_model: String,
+    pub embedding_dimensions: u32,
+}
+
+/// Build the read-plane stores (vector store + embedding provider) from
+/// [`Config`]. Constructors do not perform I/O; the endpoints are dialed lazily
+/// on first request.
+pub fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
+    let embedding_provider = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
+        endpoint: cfg.tei_url.clone(),
+        model: EMBEDDING_MODEL.to_string(),
+        dimensions: EMBEDDING_DIMENSIONS,
+        timeout: Duration::from_millis(cfg.tei_request_timeout_ms),
+        max_batch_inputs: cfg.tei_max_client_batch_size as u32,
+        max_input_tokens: MAX_INPUT_TOKENS,
+        max_batch_tokens: MAX_BATCH_TOKENS,
+        instruction_support: InstructionSupport::QueryAndDocument,
+    });
+    let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+    TargetReadStores {
+        vector_store: Arc::new(vector_store),
+        embedding_provider: Arc::new(embedding_provider),
+        embedding_provider_id: ProviderId::new(EMBEDDING_PROVIDER_ID),
+        embedding_model: EMBEDDING_MODEL.to_string(),
+        embedding_dimensions: EMBEDDING_DIMENSIONS,
+    }
+}
 
 /// Provider id for the target local-source embedding provider.
 const EMBEDDING_PROVIDER_ID: &str = "target-local-embed";

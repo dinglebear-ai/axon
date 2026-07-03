@@ -14,7 +14,7 @@ use axon_api::source::{
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_embedding::provider::{EmbeddingProvider, Result as EmbeddingProviderResult};
 use axon_vectors::store::{FakeVectorStore, VectorStore};
-use axon_vectors::testing::test_collection_spec;
+use axon_vectors::testing::test_collection_spec_hybrid;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -56,7 +56,7 @@ fn retrieval_plan_preserves_source_id_generation_visibility_and_namespace_filter
 async fn ranking_is_deterministic_with_fixed_fake_vector_search_results() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
 
@@ -90,7 +90,7 @@ async fn ranking_is_deterministic_with_fixed_fake_vector_search_results() {
             model: "fake-embedding".to_string(),
             dimensions: 4,
             sparse_vectors: None,
-            payload_indexes: test_collection_spec(4).payload_indexes,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
             points: vec![
                 point("point-a", "chunk-a", &query_vector, "Alpha chunk body"),
                 point(
@@ -125,7 +125,7 @@ async fn ranking_is_deterministic_with_fixed_fake_vector_search_results() {
 async fn retrieval_applies_all_namespace_filters() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
 
@@ -137,7 +137,7 @@ async fn retrieval_applies_all_namespace_filters() {
             model: "fake-embedding".to_string(),
             dimensions: 4,
             sparse_vectors: None,
-            payload_indexes: test_collection_spec(4).payload_indexes,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
             points: vec![
                 point_in_namespace(
                     "point-docs",
@@ -219,7 +219,7 @@ async fn retrieval_applies_all_namespace_filters() {
 async fn standard_retrieval_access_excludes_sensitive_and_redacted_chunks() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
     let provider = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
@@ -230,7 +230,7 @@ async fn standard_retrieval_access_excludes_sensitive_and_redacted_chunks() {
             model: "fake-embedding".to_string(),
             dimensions: 4,
             sparse_vectors: None,
-            payload_indexes: test_collection_spec(4).payload_indexes,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
             points: vec![
                 point_with_filters(
                     "point-internal",
@@ -285,7 +285,7 @@ async fn standard_retrieval_access_excludes_sensitive_and_redacted_chunks() {
 async fn standard_retrieval_access_excludes_non_clean_redaction_status() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
     let provider = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
@@ -306,7 +306,7 @@ async fn standard_retrieval_access_excludes_non_clean_redaction_status() {
             model: "fake-embedding".to_string(),
             dimensions: 4,
             sparse_vectors: None,
-            payload_indexes: test_collection_spec(4).payload_indexes,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
             points: vec![
                 point_in_namespace(
                     "point-clean",
@@ -332,7 +332,7 @@ async fn standard_retrieval_access_excludes_non_clean_redaction_status() {
 async fn retrieval_rejects_missing_query_vector_from_embedding_provider() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
     let provider = Arc::new(MalformedEmbeddingProvider::empty_vectors());
@@ -347,7 +347,7 @@ async fn retrieval_rejects_missing_query_vector_from_embedding_provider() {
 async fn retrieval_rejects_embedding_dimension_mismatch_before_search() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
     let provider = Arc::new(MalformedEmbeddingProvider::dimension_mismatch());
@@ -366,7 +366,7 @@ async fn retrieval_rejects_embedding_dimension_mismatch_before_search() {
 async fn retrieval_rejects_embedding_provider_and_model_mismatches_before_search() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
 
@@ -390,7 +390,7 @@ async fn retrieval_rejects_embedding_provider_and_model_mismatches_before_search
 async fn retrieval_rejects_context_budgets_that_admit_no_chunks() {
     let store = Arc::new(FakeVectorStore::new("fake-vectors"));
     store
-        .ensure_collection(test_collection_spec(4))
+        .ensure_collection(test_collection_spec_hybrid(4))
         .await
         .unwrap();
     let provider = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
@@ -401,7 +401,7 @@ async fn retrieval_rejects_context_budgets_that_admit_no_chunks() {
             model: "fake-embedding".to_string(),
             dimensions: 4,
             sparse_vectors: None,
-            payload_indexes: test_collection_spec(4).payload_indexes,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
             points: vec![point_in_namespace(
                 "point-budget",
                 "chunk-budget",
@@ -846,6 +846,17 @@ fn point_with_filters(
     payload.insert("payload_contract_version".to_string(), json!("2026-07-01"));
     payload.insert("collection".to_string(), json!("axon-test"));
     payload.insert("source_family".to_string(), json!("web"));
+    payload.insert("source_kind".to_string(), json!("web"));
+    payload.insert("source_adapter".to_string(), json!("web"));
+    payload.insert("source_scope".to_string(), json!("page"));
+    payload.insert(
+        "item_canonical_uri".to_string(),
+        json!(format!("https://example.com/{chunk_id}")),
+    );
+    payload.insert(
+        "source_item_key".to_string(),
+        json!(format!("https://example.com/{chunk_id}")),
+    );
     payload.insert("source_id".to_string(), json!(filters.source_id));
     payload.insert("source_generation".to_string(), json!(filters.generation));
     payload.insert(

@@ -15,6 +15,8 @@ use axon_vectors::store::VectorStore;
 
 mod target_runtime;
 
+pub use target_runtime::{TargetReadStores, build_read_stores_from_config};
+
 #[derive(Clone)]
 pub struct ServiceContext {
     pub cfg: Arc<Config>,

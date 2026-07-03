@@ -24,7 +24,7 @@ type WebState = (super::super::state::AppState, Arc<Config>);
     tag = "rag"
 )]
 pub(crate) async fn query(
-    State((_state, cfg)): State<WebState>,
+    State((state, cfg)): State<WebState>,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<services::types::QueryResult>, HttpError> {
     let query = required_text(&req.query, "query")?;
@@ -36,6 +36,7 @@ pub(crate) async fn query(
         req.hybrid_search,
     )?;
     services::query::query(
+        &state.service_context,
         &cfg,
         query,
         transport::pagination(req.limit, req.offset, cfg.search_limit),

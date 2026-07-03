@@ -21,6 +21,8 @@ use crate::store_helpers::{
 };
 use crate::validation::validate_upsert_batch;
 
+#[path = "store/arc_forward.rs"]
+mod arc_forward;
 #[path = "store/fake_capability.rs"]
 mod fake_capability;
 #[path = "store/fake_commit.rs"]

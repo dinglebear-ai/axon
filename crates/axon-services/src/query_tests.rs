@@ -90,59 +90,9 @@ fn map_query_results_rejects_missing_required_fields() {
     );
 }
 
-#[tokio::test]
-async fn query_reports_typed_diagnostics_payload_without_ask_diagnostics() {
-    use httpmock::Method::POST;
-    use httpmock::MockServer;
-
-    // TEI succeeds so query proceeds to vector mode probe.
-    let tei = MockServer::start_async().await;
-    tei.mock_async(|when, then| {
-        when.method(POST).path("/embed");
-        then.status(200)
-            .json_body(json!([[0.1_f32, 0.2_f32, 0.3_f32, 0.4_f32]]));
-    })
-    .await;
-
-    // Qdrant probe fails with 404, which should surface as structured diagnostics.
-    let qdrant = MockServer::start_async().await;
-    qdrant
-        .mock_async(|when, then| {
-            when.method(httpmock::Method::GET)
-                .path_matches(regex::Regex::new("/collections/").unwrap());
-            then.status(404);
-        })
-        .await;
-
-    let mut cfg = Config::test_default();
-    cfg.tei_url = tei.base_url();
-    cfg.qdrant_url = qdrant.base_url();
-    cfg.collection = "diag_test_collection".to_string();
-    cfg.ask_diagnostics = false;
-
-    let err = query(
-        &cfg,
-        "diagnostics regression test query",
-        Pagination {
-            limit: 5,
-            offset: 0,
-        },
-    )
-    .await
-    .expect_err("query should fail when collection is missing");
-
-    let diag = diagnostics_from_error(err.as_ref())
-        .expect("diagnostics payload should be attached without ask_diagnostics");
-    assert_eq!(diag["stage"], "query_vector_search_dispatch");
-    assert_eq!(diag["collection"], "diag_test_collection");
-    assert_eq!(
-        diag["qdrant_url"],
-        reqwest::Url::parse(&qdrant.base_url()).unwrap().to_string()
-    );
-    assert_eq!(diag["query_len"], "diagnostics regression test query".len());
-    assert_eq!(diag["mode"]["hybrid_search_enabled"], true);
-    assert_eq!(diag["search_context"]["command"], "query");
-    assert_eq!(diag["search_context"]["request_limit"], 80);
-    assert_eq!(diag["search_context"]["sparse_query_empty"], false);
-    assert!(diag["error"].as_str().unwrap_or("").contains("404"));
-}
+// NOTE: The legacy `query` diagnostics regression test
+// (`query_reports_typed_diagnostics_payload_without_ask_diagnostics`) was
+// removed in the #298 retrieval cutover: `query` now routes through
+// `axon-retrieval` (see `query/retrieval_tests.rs`), so the legacy
+// `query_vector_search_dispatch` diagnostics shape no longer applies to it.
+// `ask`/`evaluate` still exercise that path in their own tests.

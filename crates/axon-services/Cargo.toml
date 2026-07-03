@@ -22,6 +22,7 @@ axon-document = { path = "../axon-document" }
 axon-embedding = { path = "../axon-embedding" }
 axon-ledger = { path = "../axon-ledger" }
 axon-vectors = { path = "../axon-vectors" }
+axon-retrieval = { path = "../axon-retrieval" }
 anyhow = "1"
 async-trait = "0.1"
 base64 = "0.22"

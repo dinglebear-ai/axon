@@ -90,6 +90,11 @@ where
         let plan =
             RetrievalPlan::from_request(&request, self.config.access.allowed_visibility.clone());
         let dense_vector = self.embed_query(&request.query).await?;
+        // bm42 sparse arm: compute the query's sparse vector locally (Qdrant
+        // applies IDF server-side). An empty sparse vector (all-stopword / tiny
+        // query) contributes nothing to RRF, so hybrid stays safe to request.
+        let sparse_vector =
+            axon_vectors::bm42::compute_bm42_sparse(ChunkId::new("query"), &request.query);
         let search = self
             .store
             .search(VectorSearchRequest {
@@ -97,9 +102,9 @@ where
                 query: request.query,
                 limit: plan.limit,
                 dense_vector: Some(dense_vector),
-                sparse_vector: None,
+                sparse_vector: Some(sparse_vector),
                 filters: search_filters(&plan),
-                hybrid: Some(false),
+                hybrid: Some(true),
                 generation: plan.generation.clone(),
                 graph_refs: Vec::new(),
                 metadata: MetadataMap::new(),

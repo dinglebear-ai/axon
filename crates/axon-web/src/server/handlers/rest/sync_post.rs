@@ -62,7 +62,17 @@ pub(crate) async fn v1_query(
         Err(err) => return err.into_response(),
     };
     let opts = transport::pagination(req.limit, req.offset, cfg.search_limit);
-    match query_svc::query(&cfg, &req.query, opts).await {
+    let ctx = match state.service_context().await {
+        Ok(ctx) => ctx,
+        Err(err) => {
+            return rest_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                format!("service context: {err}"),
+            );
+        }
+    };
+    match query_svc::query(&ctx, &cfg, &req.query, opts).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

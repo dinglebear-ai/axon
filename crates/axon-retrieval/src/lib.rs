@@ -14,7 +14,10 @@ pub mod memory;
 pub mod plan;
 pub mod query;
 pub mod rank;
+pub mod service;
 pub(crate) mod testing;
+
+pub use service::{QueryServiceHit, QueryServiceRequest, QueryServiceResult, run_query};
 
 pub const CRATE_NAME: &str = "axon-retrieval";
 
