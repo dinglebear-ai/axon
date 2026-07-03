@@ -45,6 +45,7 @@ pub enum AxonRequest {
     Setup(SetupRequest),
     ElicitDemo(ElicitDemoRequest),
     VerticalScrape(VerticalScrapeRequest),
+    Source(SourceRequest),
 }
 
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]

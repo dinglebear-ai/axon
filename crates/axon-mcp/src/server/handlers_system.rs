@@ -228,7 +228,7 @@ fn help_payload() -> Value {
         "actions": {
             "status": [],
             "help": [],
-            "scrape": ["scrape"],
+            "source": ["source"],
             "summarize": ["summarize"],
             "research": ["research"],
             "ask": ["ask"],
@@ -236,13 +236,9 @@ fn help_payload() -> Value {
             "suggest": ["suggest"],
             "screenshot": ["screenshot"],
             "endpoints": ["endpoints"],
-            "crawl": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
             "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-            "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-            "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
             "memory": ["remember", "list", "search", "show", "link", "supersede", "context"],
             "query": ["query"],
-            "code_search": [],
             "retrieve": ["retrieve"],
             "search": ["search"],
             "map": ["map"],
@@ -253,7 +249,6 @@ fn help_payload() -> Value {
             "stats": ["stats"],
             "diff": ["diff"],
             "brand": ["brand"],
-            "vertical_scrape": ["list", "capabilities"],
             "elicit_demo": []
         },
         "resources": [

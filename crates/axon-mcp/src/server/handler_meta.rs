@@ -97,16 +97,14 @@ pub(super) fn get_info(_server: &AxonMcpServer) -> ServerInfo {
     tracing::info!("mcp_app get_info called — client connected");
     let mut info = ServerInfo::default();
     info.instructions = Some(concat!(
-        "Axon is a self-hosted RAG engine for web crawl, scrape, extract, embed, and semantic search.\n",
+        "Axon is a self-hosted RAG engine for source indexing, extraction, and semantic search.\n",
         "\n",
         "Use the single `axon` tool with `action`/`subaction` routing for all operations.\n",
         "Call `action:help` first to discover all available actions, subactions, and parameter defaults.\n",
         "\n",
         "Search for this server's tools when the user wants to:\n",
-        "- Crawl or scrape websites and index their content\n",
-        "- Embed documents or URLs into the vector knowledge base\n",
+        "- Index any source — a local path, git/web/feed/youtube/reddit/session/registry target — with `action:source`\n",
         "- Run semantic search or RAG queries over indexed content\n",
-        "- Ingest external sources (GitHub repos, Reddit threads/subreddits, YouTube videos/playlists)\n",
         "- Ask grounded questions against indexed docs (RAG with LLM synthesis)\n",
         "- Summarize one or more URLs from freshly scraped page context\n",
         "- Research topics via web search with automatic indexing\n",
@@ -115,10 +113,7 @@ pub(super) fn get_info(_server: &AxonMcpServer) -> ServerInfo {
         "- Take screenshots, map site URLs, retrieve stored documents\n",
         "\n",
         "Key capabilities:\n",
-        "- `crawl` — full-site async crawl with HTTP/Chrome auto-switch\n",
-        "- `scrape` — single-page markdown extraction\n",
-        "- `embed` — index file, directory, or URL into Qdrant\n",
-        "- `ingest` — GitHub/Reddit/YouTube source ingestion\n",
+        "- `source` — acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry) through the unified pipeline\n",
         "- `query` — dense + BM42 hybrid semantic search\n",
         "- `endpoints` — static endpoint discovery with optional verification\n",
         "- `ask` — RAG: retrieve context + LLM answer\n",
@@ -130,8 +125,8 @@ pub(super) fn get_info(_server: &AxonMcpServer) -> ServerInfo {
         "- `status` / `doctor` — job queue health and service diagnostics\n",
         "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
         "\n",
-        "Normal async operations (crawl, embed, ingest, extract) return a job_id. Poll the same action with `subaction:status` and the returned `job_id`.\n",
-        "Task-augmented calls are also supported for `crawl.start`, `extract.start`, `embed.start`, and `ingest.start`; use `tasks/get`, `tasks/result`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows."
+        "The `extract` async operation returns a job_id. Poll the same action with `subaction:status` and the returned `job_id`.\n",
+        "Task-augmented calls are also supported for `extract.start`; use `tasks/get`, `tasks/result`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows."
     ).into());
     info.capabilities = mcp_apps_server_capabilities();
     info

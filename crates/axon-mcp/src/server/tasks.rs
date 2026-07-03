@@ -1,22 +1,13 @@
 use super::AxonMcpServer;
-use super::common::{
-    apply_crawl_overrides, invalid_params, logged_internal_error,
-    validate_mcp_embed_input_with_config, validate_mcp_urls,
-};
+use super::common::{invalid_params, logged_internal_error, validate_mcp_urls};
 use super::server_authz;
 use super::task_id::{parse_task_id, task_id_for};
 use super::task_progress;
 use super::task_status::{task_from_job, task_result_payload};
-use crate::schema::{
-    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
-    parse_axon_request,
-};
+use crate::schema::{AxonRequest, ExtractSubaction, parse_axon_request};
 use axon_core::config::{ConfigOverrides, parse::tuning};
 use axon_jobs::backend::JobKind;
-use axon_services::crawl as crawl_svc;
-use axon_services::embed as embed_svc;
 use axon_services::extract as extract_svc;
-use axon_services::ingest as ingest_svc;
 use axon_services::types::ServiceJob;
 use rmcp::model::{
     CallToolRequestParams, CancelTaskParams, CancelTaskResult, CreateTaskResult, GetTaskInfoParams,
@@ -227,37 +218,6 @@ async fn enqueue_supported_start(
     request: AxonRequest,
 ) -> Result<(JobKind, Uuid), ErrorData> {
     match request {
-        AxonRequest::Crawl(req) if matches!(req.subaction, None | Some(CrawlSubaction::Start)) => {
-            let urls = req
-                .urls
-                .clone()
-                .ok_or_else(|| invalid_params("urls is required for crawl.start"))?;
-            if urls.len() != 1 {
-                return Err(invalid_params(
-                    "task-mode crawl.start accepts exactly one URL; send one task call per URL or use normal crawl.start for multiple URLs",
-                ));
-            }
-            validate_mcp_urls(&urls)?;
-            let base_cfg = server.cfg.apply_overrides(&ConfigOverrides {
-                wait: Some(false),
-                ..ConfigOverrides::default()
-            });
-            let cfg = apply_crawl_overrides(&base_cfg, &req);
-            let service_context = server
-                .service_context_for(cfg.clone())
-                .await
-                .map_err(|e| logged_internal_error("tasks.crawl.start.context", e.as_ref()))?;
-            let outcome = crawl_svc::crawl_start_with_context(&cfg, &urls, &service_context, None)
-                .await
-                .map_err(|e| logged_internal_error("tasks.crawl.start", e.as_ref()))?;
-            let job_id = outcome
-                .result
-                .job_ids
-                .first()
-                .ok_or_else(|| ErrorData::internal_error("crawl.start returned no job IDs", None))
-                .and_then(|raw| parse_uuid(raw))?;
-            Ok((JobKind::Crawl, job_id))
-        }
         AxonRequest::Extract(req)
             if matches!(req.subaction, None | Some(ExtractSubaction::Start)) =>
         {
@@ -288,54 +248,6 @@ async fn enqueue_supported_start(
             .await
             .map_err(|e| logged_internal_error("tasks.extract.start", e.as_ref()))?;
             Ok((JobKind::Extract, parse_uuid(&outcome.result.job_id)?))
-        }
-        AxonRequest::Embed(req) if matches!(req.subaction, None | Some(EmbedSubaction::Start)) => {
-            let input = req
-                .input
-                .ok_or_else(|| invalid_params("input is required for embed.start"))?;
-            let cfg = server.cfg.apply_overrides(&ConfigOverrides {
-                wait: Some(false),
-                ..ConfigOverrides::default()
-            });
-            let input = validate_mcp_embed_input_with_config(&cfg, &input)?;
-            // The task-augmented start path must return a queued job handle, but a
-            // local filesystem path can only be embedded in-process by a process
-            // that shares its filesystem — enqueuing it would let a worker that
-            // cannot see the path (e.g. the container) claim it. Reject it here and
-            // point callers at the normal (non-task) embed.start, which runs local
-            // paths in-process. Mirrors the guard in handle_embed_start.
-            if embed_svc::embed_input_is_local_path(&input) {
-                return Err(invalid_params(
-                    "embed.start of a local filesystem path is not supported via task-augmented \
-                     start (it must run in-process); call embed.start as a normal tool call instead",
-                ));
-            }
-            let service_context = server
-                .base_service_context()
-                .await
-                .map_err(|e| logged_internal_error("tasks.embed.start.context", e.as_ref()))?;
-            let outcome =
-                embed_svc::embed_start_with_context(&cfg, &input, &service_context, None, None)
-                    .await
-                    .map_err(|e| logged_internal_error("tasks.embed.start", e.as_ref()))?;
-            Ok((JobKind::Embed, parse_uuid(&outcome.result.job_id)?))
-        }
-        AxonRequest::Ingest(req)
-            if matches!(req.subaction, None | Some(IngestSubaction::Start)) =>
-        {
-            let cfg = server.cfg.apply_overrides(&ConfigOverrides {
-                wait: Some(false),
-                ..ConfigOverrides::default()
-            });
-            let source = ingest_svc::source_from_mcp_request(&req, &cfg).map_err(invalid_params)?;
-            let service_context = server
-                .base_service_context()
-                .await
-                .map_err(|e| logged_internal_error("tasks.ingest.start.context", e.as_ref()))?;
-            let outcome = ingest_svc::ingest_start_with_context(&cfg, source, &service_context)
-                .await
-                .map_err(|e| logged_internal_error("tasks.ingest.start", e.as_ref()))?;
-            Ok((JobKind::Ingest, parse_uuid(&outcome.result.job_id)?))
         }
         other => Err(unsupported_task_request(&other)),
     }
@@ -421,6 +333,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Stats(_) => ("stats", "None".to_string()),
         AxonRequest::Scrape(_) => ("scrape", "None".to_string()),
         AxonRequest::VerticalScrape(_) => ("vertical_scrape", "None".to_string()),
+        AxonRequest::Source(_) => ("source", "None".to_string()),
         AxonRequest::Research(_) => ("research", "None".to_string()),
         AxonRequest::Ask(_) => ("ask", "None".to_string()),
         AxonRequest::Summarize(_) => ("summarize", "None".to_string()),
@@ -436,7 +349,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Setup(_) => ("setup", "None".to_string()),
     };
     invalid_params(format!(
-        "task execution is supported only for crawl.start, extract.start, embed.start, and ingest.start; got {action}.{subaction}"
+        "task execution is supported only for extract.start; got {action}.{subaction}"
     ))
 }
 
