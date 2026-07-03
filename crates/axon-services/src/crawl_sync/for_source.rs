@@ -41,15 +41,18 @@ pub fn crawl_sync_output_dir(base_output_dir: &Path, start_url: &str) -> PathBuf
         .join("sync")
 }
 
-/// Map a crawl-sync output dir to its `manifest.jsonl` + `markdown/` paths.
+/// Map a crawl-sync output dir to its `manifest.jsonl` path + the base dir the
+/// manifest's `relative_path` entries resolve against.
 ///
-/// Pure helper so the path contract stays in one place and can be unit-tested
+/// The crawl writes manifest entries whose `relative_path` ALREADY includes the
+/// `markdown/` subdir (e.g. `"markdown/example-com-abc.md"`), and the web adapter
+/// does `safe_join(markdown_root, relative_path)`. So this base must be the crawl
+/// OUTPUT dir, NOT `<output_dir>/markdown` — otherwise the join doubles the
+/// segment (`.../markdown/markdown/...`) and every markdown read fails (os
+/// error 2). Pure helper so the path contract stays in one place, unit-testable
 /// without a live crawl.
 pub fn crawl_output_manifest_and_markdown(output_dir: &Path) -> (PathBuf, PathBuf) {
-    (
-        output_dir.join("manifest.jsonl"),
-        output_dir.join("markdown"),
-    )
+    (output_dir.join("manifest.jsonl"), output_dir.to_path_buf())
 }
 
 /// Crawl `start_url` to completion (embed disabled) and return the prepared

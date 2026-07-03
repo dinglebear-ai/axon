@@ -28,6 +28,22 @@ pub async fn index_web_source_with_job(
     let descriptor = jobs.create(job_create_request(&input)).await?;
     input.job_id = descriptor.job_id;
 
+    // Transition Queued -> Running before indexing; the state machine rejects a
+    // direct Queued -> Completed. The other families run through a JobProgressSink
+    // that performs this transition; the web bridge sets status directly, so do
+    // it explicitly here.
+    jobs.update_status(JobStatusUpdate {
+        job_id: input.job_id,
+        status: LifecycleStatus::Running,
+        phase: PipelinePhase::Preparing,
+        stage_id: None,
+        counts: None,
+        current: None,
+        message: Some("web source indexing".to_string()),
+        error: None,
+    })
+    .await?;
+
     match index_web_source(input.clone(), ledger, embedding_provider, vector_store).await {
         Ok(output) => {
             record_terminal_status(
