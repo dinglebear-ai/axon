@@ -32,6 +32,8 @@ pub mod rag;
 pub(crate) mod rest;
 #[path = "handlers/setup.rs"]
 pub mod setup;
+#[path = "handlers/sources.rs"]
+pub mod sources;
 
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;

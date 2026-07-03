@@ -299,7 +299,7 @@ fn openapi_job_list_pagination_uses_query_parameters() {
         .and_then(serde_json::Value::as_object)
         .expect("OpenAPI paths");
 
-    for path in ["/v1/crawl", "/v1/embed", "/v1/extract", "/v1/ingest"] {
+    for path in ["/v1/extract"] {
         let parameters = paths
             .get(path)
             .and_then(|path_item| path_item.get("get"))

@@ -3,16 +3,14 @@ use axon_core::http::{normalize_url, validate_url};
 use axon_services as services;
 use axon_services::client_contract::{
     RestBrandRequest as BrandRequest, RestDiffRequest as DiffRequest, RestMapRequest as MapRequest,
-    RestResearchRequest as ResearchRequest, RestScrapeRequest as ScrapeRequest,
-    RestScreenshotRequest as ScreenshotRequest, RestSearchRequest as SearchRequest,
-    RestSummarizeRequest as SummarizeRequest,
+    RestResearchRequest as ResearchRequest, RestScreenshotRequest as ScreenshotRequest,
+    RestSearchRequest as SearchRequest, RestSummarizeRequest as SummarizeRequest,
 };
 use axon_services::transport;
 use axon_services::types::SearchOptions;
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,39 +35,6 @@ pub(crate) struct EndpointsRequest {
     capture_network: Option<bool>,
     probe_rpc: Option<bool>,
     probe_rpc_subdomains: Option<bool>,
-}
-
-#[utoipa::path(
-    post,
-    path = "/v1/scrape",
-    request_body = ScrapeRequest,
-    responses(
-        (status = 200, description = "Scraped document or batch scrape results", body = serde_json::Value),
-        (status = 400, description = "Invalid scrape request", body = crate::server::error::ErrorBody),
-        (status = 502, description = "Upstream crawl or render service unavailable", body = crate::server::error::ErrorBody)
-    ),
-    tag = "exploration"
-)]
-pub(crate) async fn scrape(
-    State((_state, cfg)): State<WebState>,
-    Json(req): Json<ScrapeRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let urls = request_urls(&req)?;
-    let cfg = scrape_config(&cfg, &req)?;
-    let results = services::scrape::scrape_batch_with_optional_embed(&cfg, &urls, None)
-        .await
-        .map_err(HttpError::from_box)?;
-    if results.len() == 1 {
-        Ok(Json(serde_json::to_value(&results[0]).map_err(|err| {
-            HttpError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal",
-                err.to_string(),
-            )
-        })?))
-    } else {
-        Ok(Json(json!({ "results": results })))
-    }
 }
 
 #[utoipa::path(
@@ -319,46 +284,6 @@ pub(crate) async fn research(
     .map_err(|_| HttpError::new(StatusCode::GATEWAY_TIMEOUT, "timeout", "research timed out"))?
     .map(Json)
     .map_err(HttpError::from_box)
-}
-
-fn request_urls(req: &ScrapeRequest) -> Result<Vec<String>, HttpError> {
-    let urls: Vec<String> = req
-        .urls
-        .clone()
-        .unwrap_or_default()
-        .into_iter()
-        .chain(req.url.clone())
-        .map(|url| url.trim().to_string())
-        .filter(|url| !url.is_empty())
-        .collect();
-    if urls.is_empty() {
-        return Err(HttpError::bad_request("url or urls is required"));
-    }
-    let mut seen = HashSet::new();
-    Ok(urls
-        .into_iter()
-        .filter(|url| seen.insert(url.clone()))
-        .collect())
-}
-
-fn scrape_config(cfg: &Config, req: &ScrapeRequest) -> Result<Config, HttpError> {
-    validate_forwarded_headers(&req.headers)?;
-    let cfg = cfg.apply_overrides(&ConfigOverrides {
-        render_mode: req.render_mode,
-        format: req.format,
-        embed: req.embed,
-        collection: req.collection.clone(),
-        root_selector: req.root_selector.clone(),
-        exclude_selector: req.exclude_selector.clone(),
-        custom_headers: if req.headers.is_empty() {
-            None
-        } else {
-            Some(req.headers.clone())
-        },
-        ..ConfigOverrides::default()
-    });
-    super::rag::validate_collection_name(&cfg.collection)?;
-    Ok(cfg)
 }
 
 pub(super) fn summarize_request_urls(req: &SummarizeRequest) -> Result<Vec<String>, HttpError> {

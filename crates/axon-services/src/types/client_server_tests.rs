@@ -56,7 +56,7 @@ fn rest_capabilities_omit_legacy_action_contract() {
     assert!(info.supported_actions.is_empty());
     assert!(
         info.supported_routes
-            .contains(&"POST /v1/scrape".to_string())
+            .contains(&"POST /v1/sources".to_string())
     );
 
     let value = serde_json::to_value(&info).expect("serialize server info");
