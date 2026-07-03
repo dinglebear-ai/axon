@@ -187,7 +187,7 @@ impl VectorPointBatchBuilder {
                     chunk_id: chunk.chunk_id.clone(),
                 }
             })?;
-            let payload = build_payload(
+            let payload = match build_payload(
                 &self.collection,
                 &self.document,
                 chunk,
@@ -196,7 +196,30 @@ impl VectorPointBatchBuilder {
                 &provider_id,
                 &model,
                 &self.context,
-            )?;
+            ) {
+                Ok(payload) => payload,
+                // Secret-redaction rejection is a per-chunk concern, not fatal:
+                // skip the secret-bearing chunk (do NOT index secrets, per the
+                // redaction contract) and continue, rather than aborting the
+                // whole source. Arbitrary-content sources (reddit posts, AI
+                // session transcripts, crawled pages) legitimately contain
+                // dotenv-style lines or token-shaped strings; one such chunk
+                // must not fail the entire index. Every other payload validation
+                // error is a real defect and still propagates.
+                Err(VectorPointBatchBuildError::Payload { chunk_id, source })
+                    if matches!(
+                        source,
+                        crate::payload::VectorPayloadValidationError::ForbiddenValue { .. }
+                    ) =>
+                {
+                    tracing::warn!(
+                        chunk_id = %chunk_id.0,
+                        "skipping chunk with secret-redaction-forbidden payload value (not indexed)"
+                    );
+                    continue;
+                }
+                Err(err) => return Err(err),
+            };
             // Compute the bm42 sparse vector for hybrid (dense + sparse RRF)
             // retrieval. An all-stopword/tiny chunk yields no indexable terms →
             // a dense-only point (None), which hybrid RRF tolerates. Buckets are

@@ -6,7 +6,7 @@
 //! from npm/PyPI/crates.io is the bridge's job, mirroring how `web`/`local`
 //! separate acquisition planning from the pure adapter logic.
 
-mod dump;
+pub mod dump;
 mod metadata;
 mod options;
 

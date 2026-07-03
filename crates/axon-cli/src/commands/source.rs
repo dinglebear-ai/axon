@@ -28,6 +28,8 @@
 mod feed;
 mod git;
 mod reddit;
+mod registry;
+mod session;
 mod web;
 mod youtube;
 
@@ -67,6 +69,13 @@ enum SourceInputKind {
     /// An http/https URL that is not a git, feed, youtube, or reddit target —
     /// crawled + indexed.
     Web,
+    /// A `session:<provider>:<path>` selector (provider ∈ {claude,codex,gemini})
+    /// — a local AI session export indexed through the sessions bridge.
+    Session,
+    /// A `pkg:<registry>/<package>` target (registry ∈ {npm,pypi,crates}) —
+    /// package metadata fetched to a prepared dump + indexed through the registry
+    /// bridge.
+    Registry,
     /// None of the above — unsupported for this slice.
     Unsupported,
 }
@@ -99,6 +108,14 @@ pub async fn run_source(
             let runtime = require_data_plane(service_context)?;
             web::run_web_source(cfg, runtime, &input).await
         }
+        SourceInputKind::Session => {
+            let runtime = require_data_plane(service_context)?;
+            session::run_session_source(cfg, runtime, &input).await
+        }
+        SourceInputKind::Registry => {
+            let runtime = require_data_plane(service_context)?;
+            registry::run_registry_source(cfg, runtime, &input).await
+        }
         SourceInputKind::Unsupported => Err(unsupported_input_error(&input)),
     }
 }
@@ -122,6 +139,14 @@ pub async fn run_source(
 async fn classify_source_input(input: &str) -> SourceInputKind {
     if input_is_local_path(input).await {
         return SourceInputKind::Local;
+    }
+    // Explicit `session:`/`pkg:` prefix selectors are checked before the URL
+    // branches — they are not paths or URLs, so no other class can claim them.
+    if axon_services::is_session_selector(input) {
+        return SourceInputKind::Session;
+    }
+    if axon_services::is_registry_target(input) {
+        return SourceInputKind::Registry;
     }
     if input_is_git_target(input) {
         return SourceInputKind::Git;
@@ -224,8 +249,9 @@ fn unsupported_input_error(input: &str) -> Box<dyn Error> {
     format!(
         "axon source supports local paths, git repository URLs, feed URLs, youtube targets \
          (a video/playlist/channel URL, @handle, or 11-char video id), reddit targets \
-         (r/<name> or a reddit.com thread URL), and web URLs; {input} is none of these \
-         (sessions/registry acquisition is a P10 follow-up)"
+         (r/<name> or a reddit.com thread URL), web URLs, session selectors \
+         (session:<claude|codex|gemini>:<path>), and registry targets \
+         (pkg:<npm|pypi|crates>/<package>); {input} is none of these"
     )
     .into()
 }

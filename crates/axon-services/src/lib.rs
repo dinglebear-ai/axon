@@ -49,8 +49,13 @@ pub use reddit_source::{
 pub mod reddit_target;
 pub use reddit_target::is_reddit_target;
 pub mod refresh;
+pub mod registry_acquire;
+pub use registry_acquire::{fetch_registry_dump, is_registry_target, parse_registry_target};
 #[allow(dead_code)]
 pub(crate) mod registry_source;
+pub use registry_source::{
+    RegistrySourceIndexInput, RegistrySourceIndexOutput, index_registry_source_with_job,
+};
 pub mod runtime;
 pub mod scrape;
 pub mod screenshot;
@@ -59,6 +64,11 @@ pub mod search_crawl;
 pub mod sessions;
 #[allow(dead_code)]
 pub(crate) mod sessions_source;
+pub use sessions_source::{
+    SessionsSourceIndexInput, SessionsSourceIndexOutput, index_sessions_source_with_job,
+};
+pub mod sessions_target;
+pub use sessions_target::{SessionSelector, is_session_selector, parse_session_selector};
 pub mod setup;
 pub mod source_jobs;
 #[allow(dead_code)]
