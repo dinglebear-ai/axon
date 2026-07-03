@@ -2,6 +2,7 @@ use crate::commands::resolve_input_text;
 use axon_core::config::Config;
 use axon_core::paths::{axon_data_base_dir, ensure_private_dir};
 use axon_core::ui::{accent, muted, primary};
+use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
 use axon_services::types::{AskExplainCandidate, AskExplainFilterDecisionKind};
 use chrono::Utc;
@@ -11,7 +12,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-pub async fn run_train(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_train(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("train requires a query")?;
     let top_k = cfg.search_limit.clamp(2, 50);
 
@@ -19,7 +20,7 @@ pub async fn run_train(cfg: &Config) -> Result<(), Box<dyn Error>> {
     explain_cfg.ask_explain = true;
     explain_cfg.ask_diagnostics = true;
 
-    let result = query_svc::ask(&explain_cfg, &query, None).await?;
+    let result = query_svc::ask(ctx, &explain_cfg, &query, None).await?;
     let explain = result
         .explain
         .as_ref()

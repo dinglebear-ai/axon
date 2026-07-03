@@ -133,6 +133,57 @@ pub struct AskContext {
     pub explain: Option<AskExplainTrace>,
 }
 
+impl AskContext {
+    /// Build an [`AskContext`] from a context string produced by the new
+    /// `axon-retrieval` engine (issue #298 cutover).
+    ///
+    /// The caller in `axon-services` runs hybrid retrieval through
+    /// `axon_retrieval::run_query`, formats the returned hits into the same
+    /// `Sources:\n ## Top Chunk [S#]: …` context string the synthesis prompt
+    /// expects, and passes it here along with retrieval bookkeeping. The
+    /// resulting `AskContext` is then fed to
+    /// [`super::ask_result_from_context`], reusing the unchanged synthesis
+    /// pipeline. Full-doc / supplemental / rerank stages are not run on this
+    /// path, so their counts are zero and the fetch-skip reason is
+    /// `"retrieval_engine"`.
+    pub fn from_retrieval(
+        context: String,
+        candidate_count: usize,
+        chunks_selected: usize,
+        retrieval_elapsed_ms: u128,
+        top_domains: Vec<String>,
+        selected_urls: &[String],
+        warnings: Vec<String>,
+    ) -> AskContext {
+        let corpus_health =
+            classify_corpus_health(&top_domains, selected_urls, candidate_count, context.len());
+        AskContext {
+            context,
+            candidate_count,
+            reranked_count: candidate_count,
+            chunks_selected,
+            full_docs_selected: 0,
+            supplemental_count: 0,
+            retrieval_elapsed_ms,
+            context_elapsed_ms: 0,
+            diagnostic_sources: selected_urls.to_vec(),
+            top_domains,
+            authoritative_ratio: 0.0,
+            configured_authority_ratio: 0.0,
+            product_authority_ratio: 0.0,
+            corpus_health,
+            full_doc_fetch_skipped: true,
+            full_doc_fetch_skip_reason: "retrieval_engine",
+            full_doc_fetch_errors: Vec::new(),
+            detected_complexity: "simple",
+            resolved_full_docs: 0,
+            full_docs_source: "retrieval_engine",
+            warnings,
+            explain: None,
+        }
+    }
+}
+
 pub async fn build_ask_context(
     cfg: &Config,
     query: &str,

@@ -365,7 +365,11 @@ impl AxonMcpServer {
             },
         );
 
-        let result = query_svc::ask(&cfg, &query, None)
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| internal_error(format!("service context: {e}")))?;
+        let result = query_svc::ask(&ctx, &cfg, &query, None)
             .await
             .map_err(|e| logged_internal_error(&format!("ask '{query}'"), e.as_ref()))?;
 

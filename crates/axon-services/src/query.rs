@@ -5,7 +5,6 @@ use crate::types::{
 };
 use axon_core::config::Config;
 use axon_core::error::{ServiceError, diagnostics_from_error};
-use axon_vector::ops::commands::ask::{ask_result, ask_result_with_deltas};
 use axon_vector::ops::commands::discover_crawl_suggestions;
 use axon_vector::ops::commands::evaluate_result;
 use axon_vector::ops::qdrant::DirectRetrieveResult;
@@ -14,6 +13,7 @@ use tokio::sync::mpsc;
 
 use crate::context::ServiceContext;
 
+pub use self::ask_retrieval::ask_via_retrieval;
 pub(crate) use self::code_search::default_code_search_refresh_backend;
 pub use self::code_search::{
     CodeSearchProjectResult, CodeSearchRefreshBackend, CodeSearchRefreshResult, code_search,
@@ -23,10 +23,13 @@ pub use self::code_search::{
 pub use self::retrieval::{query_via_retrieval, query_via_retrieval_with_cfg};
 pub use self::retrieve::retrieve;
 
+mod ask_retrieval;
 mod code_search;
 mod retrieval;
 mod retrieve;
 
+/// Wrap a service error message, preserving upstream diagnostics when present.
+/// Used by the code-search path to surface retrieval diagnostics.
 fn wrap_service_error(
     message: String,
     err: &(dyn Error + 'static),
@@ -154,10 +157,17 @@ pub async fn query(
 }
 /// RAG ask: retrieve relevant context, then answer with LLM.
 ///
+/// The retrieval half is routed through the new `axon-retrieval` engine (issue
+/// #298 cutover) via [`ask_via_retrieval`]; the LLM synthesis half stays on the
+/// existing `axon_vector` pipeline. `ctx` supplies the read-plane runtime
+/// (preferring an attached local-source runtime, else building read stores from
+/// `cfg`).
+///
 /// When `cfg.ask_stream` is true and `tx` is `Some`, synthesis tokens are
 /// forwarded as `ServiceEvent::SynthesisDelta` events as they arrive.
 #[must_use = "ask returns a Result that should be handled"]
 pub async fn ask(
+    ctx: &ServiceContext,
     cfg: &Config,
     question: &str,
     tx: Option<mpsc::Sender<ServiceEvent>>,
@@ -201,25 +211,9 @@ pub async fn ask(
     )
     .await;
     let result = if cfg.ask_stream && tx.is_some() {
-        ask_result_with_deltas(cfg, question, ask_delta_handler(tx.clone()))
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                let message = format!(
-                    "ask failed for {}: {e}",
-                    question.chars().take(80).collect::<String>()
-                );
-                wrap_service_error(message, e.root_cause())
-            })?
+        ask_via_retrieval(ctx, cfg, question, Some(ask_delta_handler(tx.clone()))).await?
     } else {
-        ask_result(cfg, question)
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                let message = format!(
-                    "ask failed for {}: {e}",
-                    question.chars().take(80).collect::<String>()
-                );
-                wrap_service_error(message, e.as_ref())
-            })?
+        ask_via_retrieval(ctx, cfg, question, Option::<fn(&str)>::None).await?
     };
     if let Some(diagnostics) = &result.diagnostics {
         emit(
@@ -298,8 +292,12 @@ fn ask_delta_handler(tx: Option<mpsc::Sender<ServiceEvent>>) -> impl FnMut(&str)
 }
 
 /// RAG ask with token deltas emitted as the LLM streams.
+///
+/// Retrieval is routed through the new `axon-retrieval` engine (issue #298);
+/// synthesis stays on the existing LLM pipeline.
 #[must_use = "ask_stream returns a Result that should be handled"]
 pub async fn ask_stream<F>(
+    ctx: &ServiceContext,
     cfg: &Config,
     question: &str,
     on_delta: F,
@@ -307,15 +305,7 @@ pub async fn ask_stream<F>(
 where
     F: FnMut(&str) + Send,
 {
-    let result = ask_result_with_deltas(cfg, question, on_delta)
-        .await
-        .map_err(|e| -> Box<dyn Error> {
-            let message = format!(
-                "ask failed for {}: {e}",
-                question.chars().take(80).collect::<String>()
-            );
-            wrap_service_error(message, e.root_cause())
-        })?;
+    let result = ask_via_retrieval(ctx, cfg, question, Some(on_delta)).await?;
     Ok(result.answer)
 }
 

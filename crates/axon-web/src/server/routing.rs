@@ -103,7 +103,7 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         .route("/v1/brand", post(handlers::exploration::brand))
         .route("/v1/diff", post(handlers::exploration::diff))
         .route("/v1/screenshot", post(handlers::exploration::screenshot))
-        .merge(ask_router::<ServeState>(cfg))
+        .merge(ask_router::<ServeState>(cfg, Arc::clone(service_context)))
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/sources", post(handlers::sources::index_source))
@@ -208,7 +208,7 @@ async fn v1_migrate_not_exposed() -> HttpError {
     )
 }
 
-pub(crate) fn ask_router<S>(cfg: Arc<Config>) -> Router<S>
+pub(crate) fn ask_router<S>(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
@@ -218,6 +218,9 @@ where
         .route("/v1/chat", post(handlers::v1_chat))
         .route("/v1/chat/stream", post(handlers::v1_chat_stream))
         .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
+        // `ask`/`ask/stream` read the runtime through this Extension (issue #298
+        // retrieval cutover); `chat` handlers ignore it and use `cfg` only.
+        .layer(Extension(service_context))
         .layer(Extension(cfg))
 }
 

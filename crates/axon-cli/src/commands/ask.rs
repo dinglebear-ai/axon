@@ -3,6 +3,7 @@ use axon_core::config::Config;
 use axon_core::error::diagnostics_from_error;
 use axon_core::logging::{log_info, log_warn};
 use axon_core::ui::{muted, primary};
+use axon_services::context::ServiceContext;
 use axon_services::events::ServiceEvent;
 use axon_services::query as query_svc;
 use axon_services::types::AskResult;
@@ -13,7 +14,7 @@ use tokio::sync::mpsc;
 
 mod followup;
 
-pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_ask(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     if cfg.ask_list_sessions {
         return run_list_sessions(cfg);
     }
@@ -44,7 +45,7 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         println!("  {}", primary("Assistant:"));
     }
 
-    let mut result = run_in_process_ask(&ask_cfg, &effective_query).await?;
+    let mut result = run_in_process_ask(ctx, &ask_cfg, &effective_query).await?;
     result.query = query.clone();
     result.session = Some(active_session.clone());
 
@@ -252,7 +253,11 @@ fn print_ask_warnings(result: &AskResult) {
 /// Timeout for draining the streaming consumer after the ask call returns.
 const ASK_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
-async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<dyn Error>> {
+async fn run_in_process_ask(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    query: &str,
+) -> Result<AskResult, Box<dyn Error>> {
     let (event_tx, event_rx) = if cfg.ask_stream && !cfg.json_output {
         let (tx, rx) = mpsc::channel::<ServiceEvent>(256);
         (Some(tx), Some(rx))
@@ -279,7 +284,7 @@ async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<
         })
     });
 
-    let result = match query_svc::ask(cfg, query, event_tx).await {
+    let result = match query_svc::ask(ctx, cfg, query, event_tx).await {
         Ok(result) => Ok(result),
         Err(err) => {
             if cfg.ask_diagnostics

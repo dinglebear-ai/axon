@@ -1,6 +1,7 @@
 use super::super::error::HttpError;
 use axon_core::config::Config;
 use axon_services::client_contract::RestAskRequest as AskRequestBody;
+use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
 use axon_services::transport::{AskTransportOverrides, apply_ask_overrides};
 use axum::{Extension, Json, response::IntoResponse};
@@ -44,6 +45,7 @@ pub(super) fn ask_transport_overrides(req: &AskRequestBody) -> AskTransportOverr
 )]
 pub async fn v1_ask(
     Extension(cfg): Extension<Arc<Config>>,
+    Extension(ctx): Extension<Arc<ServiceContext>>,
     Json(req): Json<AskRequestBody>,
 ) -> impl IntoResponse {
     use super::super::types::ASK_QUERY_MAX_CHARS;
@@ -71,7 +73,7 @@ pub async fn v1_ask(
 
     let want_diagnostics = req_cfg.ask_diagnostics;
 
-    match query_svc::ask(&req_cfg, &req.query, None).await {
+    match query_svc::ask(&ctx, &req_cfg, &req.query, None).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => {
             HttpError::from_error_with_diagnostics(err.as_ref(), want_diagnostics).into_response()
