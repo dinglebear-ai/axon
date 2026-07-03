@@ -684,6 +684,11 @@ version = "6.2.1"
 dependencies = [
  "async-trait",
  "axon-api",
+ "axon-error",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
  "tokio",
  "uuid",
 ]
@@ -823,8 +828,10 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-error",
+ "rusqlite",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -857,6 +864,13 @@ dependencies = [
 [[package]]
 name = "axon-prune"
 version = "6.2.1"
+dependencies = [
+ "async-trait",
+ "axon-api",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "axon-retrieval"

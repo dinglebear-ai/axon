@@ -21,6 +21,33 @@ pub trait MemoryStore: Send + Sync {
         memory_id: MemoryId,
         signal: MemoryReinforcement,
     ) -> Result<MemoryResult>;
+
+    /// Replace `memory_id` with `replacement_id`: mark the old memory
+    /// `superseded`, point it at the replacement, and record history.
+    async fn supersede(&self, request: MemorySupersedeRequest) -> Result<MemoryResult> {
+        let _ = request;
+        Err(unsupported_option("supersede"))
+    }
+
+    /// Flag two memories as conflicting; both transition to `contradicted` and
+    /// enter the review queue.
+    async fn contradict(&self, request: MemoryContradictRequest) -> Result<MemoryResult> {
+        let _ = request;
+        Err(unsupported_option("contradict"))
+    }
+
+    /// Transition a memory to a new status (archive/forget/pin/review/etc.).
+    async fn set_status(&self, request: MemoryStatusRequest) -> Result<MemoryResult> {
+        let _ = request;
+        Err(unsupported_option("set_status"))
+    }
+
+    /// Return the current review queue.
+    async fn review(&self, request: MemoryReviewRequest) -> Result<MemoryReviewResult> {
+        let _ = request;
+        Err(unsupported_option("review"))
+    }
+
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<MemoryStoreCapability>;
 }
@@ -67,6 +94,8 @@ impl MemoryStore for FakeMemoryStore {
             links: request.links,
             decay: request.decay,
             embedding_refs: Vec::new(),
+            superseded_by: None,
+            contradicts: None,
         };
         let result = result_from_record(&record, memory_score(&record));
         state.records.insert(memory_id, record);

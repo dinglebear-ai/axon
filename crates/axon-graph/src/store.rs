@@ -194,30 +194,27 @@ impl GraphStore for FakeGraphStore {
         let mut resolved = Vec::new();
         let mut misses = Vec::new();
         for identifier in request.identifiers {
-            if let Some(node_id) = resolve_identifier(&state, &identifier) {
-                if let Some(node) = state.nodes_by_id.get(&node_id).cloned() {
-                    let edges = request
-                        .include_edges
-                        .then(|| {
-                            state
-                                .edges_by_id
-                                .values()
-                                .filter(|edge| {
-                                    edge.from_node_id == node_id || edge.to_node_id == node_id
-                                })
-                                .cloned()
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    resolved.push(GraphResolveMatch {
-                        identifier,
-                        node,
-                        confidence: 1.0,
-                        evidence: Vec::new(),
-                        edges,
-                    });
-                    continue;
-                }
+            if let Some(node_id) = resolve_identifier(&state, &identifier)
+                && let Some(node) = state.nodes_by_id.get(&node_id).cloned()
+            {
+                let edges = if request.include_edges {
+                    state
+                        .edges_by_id
+                        .values()
+                        .filter(|edge| edge.from_node_id == node_id || edge.to_node_id == node_id)
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                resolved.push(GraphResolveMatch {
+                    identifier,
+                    node,
+                    confidence: 1.0,
+                    evidence: Vec::new(),
+                    edges,
+                });
+                continue;
             }
             misses.push(GraphResolveMiss {
                 identifier,
