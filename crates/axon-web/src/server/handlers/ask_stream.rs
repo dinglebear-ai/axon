@@ -1,6 +1,7 @@
 use super::super::error::HttpError;
 use axon_core::config::Config;
 use axon_services::client_contract::RestAskRequest as AskRequestBody;
+use axon_services::context::ServiceContext;
 use axon_services::events::{LogLevel, ServiceEvent};
 use axon_services::query as query_svc;
 use axum::{
@@ -198,6 +199,7 @@ async fn emit_ask_stream_result(
 )]
 pub async fn v1_ask_stream(
     Extension(cfg): Extension<Arc<Config>>,
+    Extension(ctx): Extension<Arc<ServiceContext>>,
     Json(req): Json<AskRequestBody>,
 ) -> Response {
     use super::super::types::ASK_QUERY_MAX_CHARS;
@@ -227,6 +229,7 @@ pub async fn v1_ask_stream(
     req_cfg.ask_stream = true;
     req_cfg.json_output = false;
 
+    let service_context = Arc::clone(&ctx);
     let handle = tokio::spawn(async move {
         if !send_stream_event(
             &tx,
@@ -244,7 +247,7 @@ pub async fn v1_ask_stream(
         let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_task =
             spawn_service_event_forwarder(event_rx, tx.clone(), Arc::clone(&disconnected));
-        let result = query_svc::ask(&req_cfg, &req.query, Some(event_tx))
+        let result = query_svc::ask(&service_context, &req_cfg, &req.query, Some(event_tx))
             .await
             .map_err(|err| err.to_string());
         let _ = delta_task.await;
@@ -271,12 +274,6 @@ pub(super) fn bounded_stream_for_tests(
     handle: JoinHandle<()>,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
     AbortOnDropStream { rx, handle }
-}
-
-#[cfg(test)]
-pub(super) async fn v1_ask_stream_test_response(body: serde_json::Value) -> Response {
-    let req = serde_json::from_value::<AskRequestBody>(body).expect("valid ask request");
-    v1_ask_stream(Extension(Arc::new(Config::default())), Json(req)).await
 }
 
 #[cfg(test)]

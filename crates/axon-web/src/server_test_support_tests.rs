@@ -133,8 +133,13 @@ impl ServiceJobRuntime for EmptyRuntime {
 pub(super) async fn spawn_ask_test_server(
     auth_policy: AuthPolicy,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
+    let cfg = Arc::new(axon_core::config::Config::default());
+    let ctx = Arc::new(ServiceContext::from_runtime(
+        Arc::clone(&cfg),
+        Arc::new(EmptyRuntime),
+    ));
     let app = protect_routes(
-        ask_router::<()>(Arc::new(axon_core::config::Config::default())),
+        ask_router::<()>(cfg, ctx),
         &auth_policy,
         ScopeRequirement::Write,
     );

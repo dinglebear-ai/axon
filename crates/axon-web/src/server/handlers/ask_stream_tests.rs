@@ -1,5 +1,8 @@
+use crate::server::test_support::{spawn_ask_test_server, stop};
+use axon_authz::http::AuthPolicy;
 use axum::http::StatusCode;
 use axum::response::sse::Event;
+use serial_test::serial;
 use std::convert::Infallible;
 use std::sync::{
     Arc,
@@ -7,36 +10,49 @@ use std::sync::{
 };
 use tokio::sync::mpsc;
 
-#[tokio::test]
-async fn ask_stream_rejects_empty_query() {
-    let response = super::v1_ask_stream_test_response(serde_json::json!({
-        "query": ""
-    }))
-    .await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+/// POST `/v1/ask/stream` against a loopback-dev test server (no auth) and
+/// return the HTTP status. Exercises the same validation the handler runs
+/// before it reaches retrieval/synthesis.
+async fn ask_stream_status(body: serde_json::Value) -> StatusCode {
+    let (base, shutdown, handle) = spawn_ask_test_server(AuthPolicy::LoopbackDev).await;
+    let status = reqwest::Client::new()
+        .post(format!("{base}/v1/ask/stream"))
+        .json(&body)
+        .send()
+        .await
+        .expect("ask stream request")
+        .status();
+    stop(shutdown, handle).await;
+    StatusCode::from_u16(status.as_u16()).expect("status code")
 }
 
 #[tokio::test]
+#[serial]
+async fn ask_stream_rejects_empty_query() {
+    let status = ask_stream_status(serde_json::json!({ "query": "" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+#[serial]
 async fn ask_stream_rejects_explain_mode() {
-    let response = super::v1_ask_stream_test_response(serde_json::json!({
+    let status = ask_stream_status(serde_json::json!({
         "query": "why?",
         "explain": true
     }))
     .await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
+#[serial]
 async fn ask_stream_rejects_invalid_collection_before_sse() {
-    let response = super::v1_ask_stream_test_response(serde_json::json!({
+    let status = ask_stream_status(serde_json::json!({
         "query": "why?",
         "collection": "../secret"
     }))
     .await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[test]
