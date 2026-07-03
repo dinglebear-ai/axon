@@ -4,6 +4,13 @@ use serde::Deserialize;
 pub struct QdrantPayload {
     #[serde(default)]
     pub url: String,
+    /// New unified-pipeline points carry `item_canonical_uri` (the source
+    /// canonical URI) instead of a bare `url`. Retrieval falls back to this when
+    /// `url` is empty so new-pipeline content is not skipped as url-less. Legacy
+    /// points have `url` and no `item_canonical_uri`, so this stays empty for
+    /// them and behavior is unchanged.
+    #[serde(default)]
+    pub item_canonical_uri: String,
     #[serde(default)]
     pub chunk_text: String,
     #[serde(default)]
