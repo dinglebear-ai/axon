@@ -199,7 +199,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:7051c363e0a150abac53aa45ff5eeadb4a2c0d96055b9add31f76172625a6809",
+        "checksum": "sha256:06365c2f9deff8fc8f38feb277f630b9614027f0efd047da03791014d2c85984",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },

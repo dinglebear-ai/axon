@@ -5,6 +5,7 @@
 //! Existing public runtime paths remain in the legacy crates until a later
 //! cutover PR.
 
+pub mod bm42;
 pub mod collection;
 pub mod filter;
 pub mod health;

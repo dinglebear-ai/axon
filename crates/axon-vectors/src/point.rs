@@ -197,6 +197,12 @@ impl VectorPointBatchBuilder {
                 &model,
                 &self.context,
             )?;
+            // Compute the bm42 sparse vector for hybrid (dense + sparse RRF)
+            // retrieval. An all-stopword/tiny chunk yields no indexable terms →
+            // a dense-only point (None), which hybrid RRF tolerates. Buckets are
+            // FNV-1a-stable and must match the query-side computation.
+            let sparse = crate::bm42::compute_bm42_sparse(chunk.chunk_id.clone(), &chunk.content);
+            let sparse_vector = (!sparse.indices.is_empty()).then_some(sparse);
             points.push(VectorPoint {
                 point_id: stable_point_id(
                     &self.collection.collection,
@@ -207,7 +213,7 @@ impl VectorPointBatchBuilder {
                 ),
                 chunk_id: chunk.chunk_id.clone(),
                 vector: vector.values,
-                sparse_vector: None,
+                sparse_vector,
                 payload,
             });
         }
