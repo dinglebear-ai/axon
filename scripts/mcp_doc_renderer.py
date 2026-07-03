@@ -44,10 +44,12 @@ def generate_markdown(
     _emit_preferred_client_actions(emit, lifecycle_actions, direct_actions)
     _emit_response_policy(emit)
     _emit_direct_actions(emit, direct_actions, structs)
-    _emit_crawl_parameters(emit, structs)
+    if "crawl" in lifecycle_actions:
+        _emit_crawl_parameters(emit, structs)
     _emit_lifecycle_families(emit, lifecycle_actions, structs, enums)
-    _emit_ingest_source_types(emit, enums)
-    _emit_sessions_ingest_options(emit, structs)
+    if "ingest" in lifecycle_actions:
+        _emit_ingest_source_types(emit, enums)
+        _emit_sessions_ingest_options(emit, structs)
     _emit_enum_values(emit, enums)
     _emit_pagination(emit)
     _emit_mcp_resources(emit)
@@ -83,7 +85,7 @@ def _emit_contract(emit) -> None:
     emit("- Primary route field: `action`")
     emit("- Canonical route form: `action` + optional `subaction`")
     emit(
-        "- Response control field: `response_mode` (`path|inline|both|auto_inline`; omitted mode auto-inlines small non-document payloads and otherwise falls back to path metadata, while `scrape`/`retrieve` default to inline paged reads)"
+        "- Response control field: `response_mode` (`path|inline|both|auto_inline`; omitted mode auto-inlines small non-document payloads and otherwise falls back to path metadata, while `retrieve` defaults to inline paged reads)"
     )
     emit()
     emit("Code references:")
@@ -111,16 +113,13 @@ def _emit_task_augmented_calls(emit) -> None:
         "- Task-augmented calls use RMCP task lifecycle methods backed by the same durable SQLite job rows."
     )
     emit(
-        "- Supported task starts: `crawl.start`, `extract.start`, `embed.start`, and `ingest.start`."
+        "- Supported task starts: `extract.start`."
     )
     emit(
         "- Unsupported task action/subaction pairs return `invalid_params`; immediate actions such as `help`, `status`, and `query` remain normal calls."
     )
     emit(
         "- Task IDs are stable aliases over Axon job IDs: `axon:<kind>:<job_uuid>`."
-    )
-    emit(
-        "- Task-mode `crawl.start` accepts exactly one URL because one RMCP task maps to one Axon crawl job. Use normal non-task `crawl.start` for multi-URL crawl submissions."
     )
     emit(
         "- `tasks/get` and `tasks/cancel` return Task fields at top level; `tasks/result` waits until the job is terminal, then returns a compact sanitized payload instead of a raw `ServiceJob` row."
@@ -178,7 +177,7 @@ def _emit_parser_rules(emit) -> None:
     emit("- `action` is required and must match canonical schema names")
     emit(
         "- `subaction` is optional for lifecycle families "
-        "(`crawl|extract|embed|ingest`); when omitted, handlers default to `start`"
+        "(`extract`); when omitted, handlers default to `start`"
     )
     emit("- No fallback fields (`command`, `op`, `operation`)")
     emit("- No token normalization or case folding")
@@ -202,7 +201,7 @@ def _emit_preferred_client_actions(
     )
     emit()
     emit("```json")
-    emit('{ "action": "ingest", "subaction": "status", "job_id": "..." }')
+    emit('{ "action": "extract", "subaction": "status", "job_id": "..." }')
     emit("```")
     emit()
 
@@ -212,7 +211,7 @@ def _emit_response_policy(emit) -> None:
     emit(
         "- When `response_mode` is omitted, non-document actions auto-inline small payloads and fall back to artifact path metadata for larger payloads."
     )
-    emit("- `scrape` and `retrieve` are document-reading actions and default to inline-first paged responses.")
+    emit("- `retrieve` is a document-reading action and defaults to inline-first paged responses.")
     emit(
         "- `ask`, `research`, and `summarize` always write the full payload to an artifact and include the key answer/summary fields inline in the path-mode response."
     )

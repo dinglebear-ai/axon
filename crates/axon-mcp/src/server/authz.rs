@@ -74,16 +74,16 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "cheap",
     },
     McpActionSpec {
+        name: "source",
+        scope: ActionScope::Write,
+        description: "Acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry target) through the unified pipeline",
+        cost: "write",
+    },
+    McpActionSpec {
         name: "query",
         scope: ActionScope::Read,
         description: "Run semantic vector search over indexed content",
         cost: "cheap",
-    },
-    McpActionSpec {
-        name: "code_search",
-        scope: ActionScope::Write,
-        description: "Search a local allowed git checkout, refreshing changed source files first",
-        cost: "write",
     },
     McpActionSpec {
         name: "retrieve",
@@ -152,39 +152,15 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "write",
     },
     McpActionSpec {
-        name: "crawl",
-        scope: ActionScope::Write,
-        description: "Run or manage async site crawl jobs",
-        cost: "write",
-    },
-    McpActionSpec {
         name: "extract",
         scope: ActionScope::Write,
         description: "Run or manage async structured extraction jobs",
         cost: "write",
     },
     McpActionSpec {
-        name: "embed",
-        scope: ActionScope::Write,
-        description: "Run or manage async embedding jobs",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "ingest",
-        scope: ActionScope::Write,
-        description: "Run or manage async external-source ingestion jobs",
-        cost: "write",
-    },
-    McpActionSpec {
         name: "memory",
         scope: ActionScope::Write,
         description: "Remember, search, and show persistent agent memory",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "scrape",
-        scope: ActionScope::Write,
-        description: "Scrape one page to markdown, HTML, raw HTML, JSON, or LLM text",
         cost: "write",
     },
     McpActionSpec {
@@ -198,12 +174,6 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         scope: ActionScope::Write,
         description: "Discover and optionally verify static site endpoints",
         cost: "write",
-    },
-    McpActionSpec {
-        name: "vertical_scrape",
-        scope: ActionScope::Read,
-        description: "Discover vertical extractor capabilities; scraping routes through action=scrape",
-        cost: "cheap",
     },
     McpActionSpec {
         name: "elicit_demo",

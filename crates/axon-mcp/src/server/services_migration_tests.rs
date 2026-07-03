@@ -6,14 +6,14 @@
 fn migrated_mcp_handlers_do_not_import_jobs_layers_directly() {
     let checks = [
         (
-            "handlers_embed_ingest.rs",
-            include_str!("handlers_embed_ingest.rs"),
-            &["axon_jobs::embed", "axon_jobs::ingest"][..],
+            "handlers_source.rs",
+            include_str!("handlers_source.rs"),
+            &["axon_jobs::embed", "axon_jobs::ingest", "axon_jobs::crawl"][..],
         ),
         (
-            "handlers_crawl_extract.rs",
-            include_str!("handlers_crawl_extract.rs"),
-            &["axon_jobs::crawl", "axon_jobs::extract"][..],
+            "handlers_extract.rs",
+            include_str!("handlers_extract.rs"),
+            &["axon_jobs::extract"][..],
         ),
         (
             "handlers_system.rs",
@@ -39,44 +39,33 @@ fn migrated_mcp_handlers_do_not_import_jobs_layers_directly() {
 // the pub(super) handler methods on AxonMcpServer.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Comment #17 — ingest/start without source_type returns INVALID_PARAMS.
+/// The unified `source` dispatch rejects a missing input with INVALID_PARAMS.
 ///
-/// Calls the real handle_ingest dispatch with IngestSubaction::Start and no
-/// source_type, then verifies the returned error code.
+/// Calls the real `handle_source` dispatch with no `source`/`input` and
+/// verifies the returned error code — proving the action is wired.
 #[tokio::test]
-async fn ingest_start_missing_source_type_returns_invalid_params() {
-    use crate::schema::{IngestRequest, IngestSubaction};
+async fn source_start_missing_input_returns_invalid_params() {
+    use crate::schema::SourceRequest;
     use axon_core::config::Config;
 
     let server = super::AxonMcpServer::new(Config::default());
-    let req = IngestRequest {
-        subaction: Some(IngestSubaction::Start),
-        source_type: None, // intentionally omitted
-        target: None,
-        include_source: None,
-        sessions: None,
-        job_id: None,
-        limit: None,
-        offset: None,
-        response_mode: None,
-    };
-    let result = server.handle_ingest(req).await;
+    let req = SourceRequest::default();
+    let result = server.handle_source(req).await;
     assert!(
         result.is_err(),
-        "ingest/start without source_type must return an error"
+        "source without an input must return an error"
     );
     let err = result.unwrap_err();
     assert_eq!(
         err.code,
         rmcp::model::ErrorCode::INVALID_PARAMS,
-        "missing source_type must return INVALID_PARAMS, got: {:?}",
+        "missing source input must return INVALID_PARAMS, got: {:?}",
         err.code
     );
-    // Verify the error message is informative.
     let msg = err.message.to_lowercase();
     assert!(
-        msg.contains("source_type") || msg.contains("required"),
-        "error message should mention source_type; got: {msg}"
+        msg.contains("source") || msg.contains("input") || msg.contains("required"),
+        "error message should mention the missing source/input; got: {msg}"
     );
 }
 
@@ -234,7 +223,13 @@ fn dedicated_dashboard_tool_requires_read_scope() {
         Some("axon:read")
     );
     assert_eq!(
-        super::required_scope_for_tool("axon", "crawl", ""),
+        super::required_scope_for_tool("axon", "source", ""),
         Some("axon:write")
+    );
+    // Removed indexing actions are no longer in the allow-list — they resolve to
+    // the deny sentinel at the MCP boundary.
+    assert_eq!(
+        super::required_scope_for_tool("axon", "crawl", ""),
+        Some("__deny__")
     );
 }

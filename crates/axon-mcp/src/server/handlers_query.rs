@@ -1,25 +1,22 @@
 #[path = "handlers_query/brand_diff.rs"]
 mod brand_diff;
-#[path = "handlers_query/code_search.rs"]
-mod code_search;
 #[path = "handlers_query/query.rs"]
 mod query;
 
 use super::AxonMcpServer;
 use super::common::{
     InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
-    map_scrape_format, respond_with_mode, slugify, to_map_options, to_retrieve_options,
-    to_search_options, validate_mcp_collection, validate_mcp_url,
+    respond_with_mode, slugify, to_map_options, to_retrieve_options, to_search_options,
+    validate_mcp_collection, validate_mcp_url,
 };
 use crate::schema::{
     AskRequest, AxonToolResponse, EndpointsRequest, EvaluateRequest, MapRequest, ResearchRequest,
-    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest, SummarizeRequest,
+    RetrieveRequest, SearchRequest, SuggestRequest, SummarizeRequest,
 };
 use axon_core::config::ConfigOverrides;
-use axon_services::{document as document_svc, types::DocumentBackend};
 use axon_services::{
-    endpoints as endpoints_svc, map as map_svc, query as query_svc, scrape as scrape_svc,
-    search as search_svc, search_crawl as search_crawl_svc, summarize as summarize_svc,
+    endpoints as endpoints_svc, map as map_svc, query as query_svc, search as search_svc,
+    search_crawl as search_crawl_svc, summarize as summarize_svc,
 };
 use rmcp::ErrorData;
 
@@ -281,60 +278,6 @@ impl AxonMcpServer {
             serde_json::to_value(result)
                 .map_err(|e| internal_error(format!("serialize suggest result: {e}")))?,
             InlineHint::Default,
-        )
-        .await
-    }
-
-    pub(super) async fn handle_scrape(
-        &self,
-        req: ScrapeRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let url = req
-            .url
-            .ok_or_else(|| invalid_params("url is required for scrape"))?;
-        validate_mcp_url(&url)?;
-        let response_mode = req.response_mode;
-
-        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
-            render_mode: req.render_mode.map(map_render_mode),
-            format: req.format.map(map_scrape_format),
-            embed: req.embed,
-            root_selector: req.root_selector,
-            exclude_selector: req.exclude_selector,
-            ..ConfigOverrides::default()
-        });
-
-        let result = scrape_svc::scrape(&cfg, &url, None)
-            .await
-            .map_err(|e| logged_internal_error(&format!("scrape '{url}'"), e.as_ref()))?;
-        let page = document_svc::paginate_document(
-            &result.output,
-            req.cursor.as_deref(),
-            req.token_budget,
-            DocumentBackend::LiveScrape,
-        )
-        .map_err(|e| invalid_params(format!("invalid scrape pagination parameters: {e}")))?;
-        let payload = serde_json::json!({
-            "url": result.url,
-            "status_code": result.payload.get("status_code").cloned().unwrap_or(serde_json::Value::Null),
-            "title": result.payload.get("title").cloned().unwrap_or(serde_json::Value::Null),
-            "description": result.payload.get("description").cloned().unwrap_or(serde_json::Value::Null),
-            "content": page.content,
-            "truncated": page.truncated,
-            "token_estimate": page.token_estimate,
-            "next_cursor": page.next_cursor,
-            "remaining_tokens_estimate": page.remaining_tokens_estimate,
-            "backend": page.backend,
-            "content_format": format!("{:?}", cfg.format),
-            "artifact_handle": result.artifact_handle,
-        });
-        respond_with_mode(
-            "scrape",
-            "scrape",
-            response_mode,
-            &format!("scrape-{}", slugify(&url, 56)),
-            payload,
-            InlineHint::Document,
         )
         .await
     }

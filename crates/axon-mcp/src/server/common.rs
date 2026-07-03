@@ -1,8 +1,6 @@
-use crate::schema::{
-    CrawlRequest, ExtractRequest, McpRenderMode, McpScrapeFormat, SearchTimeRange,
-};
+use crate::schema::{ExtractRequest, McpRenderMode, SearchTimeRange};
 use axon_core::config::Config;
-use axon_core::config::{RenderMode, ScrapeFormat};
+use axon_core::config::RenderMode;
 use axon_core::error::taxonomy_from_error;
 use axon_services::transport;
 use axon_services::types::ServiceTimeRange;
@@ -91,14 +89,6 @@ pub(super) fn validate_mcp_collection(collection: &str) -> Result<String, ErrorD
     Ok(collection.to_string())
 }
 
-pub(super) fn validate_mcp_embed_input_with_config(
-    cfg: &Config,
-    input: &str,
-) -> Result<String, ErrorData> {
-    axon_services::embed::validate_server_embed_input_with_config(cfg, input)
-        .map_err(|err| invalid_params(err.to_string()))
-}
-
 // --- Param parsers ---
 
 pub(super) fn parse_job_id(job_id: Option<&str>) -> Result<Uuid, ErrorData> {
@@ -137,37 +127,6 @@ pub(super) fn map_render_mode(mode: McpRenderMode) -> RenderMode {
         McpRenderMode::Chrome => RenderMode::Chrome,
         McpRenderMode::AutoSwitch => RenderMode::AutoSwitch,
     }
-}
-
-pub(super) fn map_scrape_format(format: McpScrapeFormat) -> ScrapeFormat {
-    match format {
-        McpScrapeFormat::Markdown => ScrapeFormat::Markdown,
-        McpScrapeFormat::Html => ScrapeFormat::Html,
-        McpScrapeFormat::RawHtml => ScrapeFormat::RawHtml,
-        McpScrapeFormat::Json => ScrapeFormat::Json,
-        McpScrapeFormat::Llm => ScrapeFormat::Llm,
-    }
-}
-
-pub(super) fn apply_crawl_overrides(cfg: &Config, req: &CrawlRequest) -> Config {
-    transport::apply_crawl_overrides(
-        cfg,
-        &transport::CrawlTransportOverrides {
-            max_pages: req.max_pages,
-            max_depth: req.max_depth,
-            include_subdomains: req.include_subdomains,
-            respect_robots: req.respect_robots,
-            discover_sitemaps: req.discover_sitemaps,
-            max_sitemaps: req.max_sitemaps,
-            sitemap_since_days: req.sitemap_since_days,
-            discover_llms_txt: req.discover_llms_txt,
-            max_llms_txt_urls: req.max_llms_txt_urls,
-            render_mode: req.render_mode.map(map_render_mode),
-            delay_ms: req.delay_ms,
-            collection: None,
-            headers: Vec::new(),
-        },
-    )
 }
 
 pub(super) fn apply_extract_overrides(cfg: &Config, req: &ExtractRequest) -> Config {

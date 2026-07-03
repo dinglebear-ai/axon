@@ -19,22 +19,31 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         .expect("tools/list inputSchema publishes properties.action.enum");
 
     for action in [
-        "crawl",
-        "scrape",
-        "retrieve",
-        "ask",
-        "query",
-        "code_search",
-        "embed",
-        "ingest",
-        "status",
-        "memory",
+        "source", "extract", "retrieve", "ask", "query", "status", "memory",
     ] {
         assert!(
             action_enum
                 .iter()
                 .any(|value| value.as_str() == Some(action)),
             "action enum should include {action}"
+        );
+    }
+
+    // The legacy indexing actions were folded into `source` and must not appear
+    // anywhere in the published MCP schema.
+    for removed in [
+        "crawl",
+        "scrape",
+        "embed",
+        "ingest",
+        "code_search",
+        "vertical_scrape",
+    ] {
+        assert!(
+            !action_enum
+                .iter()
+                .any(|value| value.as_str() == Some(removed)),
+            "action enum must NOT include removed action {removed}"
         );
     }
 
@@ -49,7 +58,7 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
 }
 
 #[test]
-fn mcp_schema_includes_code_search() {
+fn mcp_schema_includes_source() {
     let schema = axon_input_schema();
     let action_enum = schema
         .pointer("/properties/action/enum")
@@ -58,32 +67,58 @@ fn mcp_schema_includes_code_search() {
     assert!(
         action_enum
             .iter()
-            .any(|value| value.as_str() == Some("code_search")),
-        "action enum should include code_search"
+            .any(|value| value.as_str() == Some("source")),
+        "action enum should include source"
     );
     let properties = schema
         .pointer("/properties")
         .and_then(serde_json::Value::as_object)
         .expect("tools/list inputSchema has top-level properties");
-    for field in ["cwd", "path_prefix", "no_freshness"] {
+    for field in ["source", "scope"] {
         assert!(
             properties.contains_key(field),
-            "top-level properties should include flattened code_search field `{field}`"
+            "top-level properties should include flattened source field `{field}`"
         );
     }
 }
 
 #[test]
-fn mcp_schema_documents_code_search_required_fields() {
+fn mcp_schema_documents_source_required_fields() {
     let schema = axon_input_schema();
     let required = schema
-        .pointer("/x-axon-required-fields/code_search")
+        .pointer("/x-axon-required-fields/source")
         .and_then(serde_json::Value::as_array)
-        .expect("code_search required field metadata is present");
-    for field in ["query", "cwd"] {
+        .expect("source required field metadata is present");
+    assert!(
+        required
+            .iter()
+            .any(|value| value.as_str() == Some("source")),
+        "source should document `source` as required"
+    );
+}
+
+#[test]
+fn mcp_schema_omits_removed_indexing_surface() {
+    // The whole serialized schema — action enum, oneOf branches, subaction
+    // metadata, lifted-field annotations — must be free of the removed action
+    // tokens. This mirrors the surface-removal-contract drift guard.
+    let schema = axon_input_schema();
+    let serialized = serde_json::to_string(&schema).expect("serialize schema");
+    for removed in ["\"code_search\"", "\"vertical_scrape\""] {
         assert!(
-            required.iter().any(|value| value.as_str() == Some(field)),
-            "code_search should document `{field}` as required"
+            !serialized.contains(removed),
+            "serialized MCP schema must not mention removed action {removed}"
+        );
+    }
+    // `x-axon-subactions` must no longer list crawl/embed/ingest/vertical_scrape.
+    let subactions = schema
+        .pointer("/x-axon-subactions")
+        .and_then(serde_json::Value::as_object)
+        .expect("subaction metadata present");
+    for removed in ["crawl", "embed", "ingest", "vertical_scrape"] {
+        assert!(
+            !subactions.contains_key(removed),
+            "subaction metadata must not list removed family {removed}"
         );
     }
 }
@@ -107,8 +142,8 @@ fn axon_tool_input_schema_flattens_per_action_fields_to_top_level() {
         "collection",
         "limit",
         "explain",
-        "source_type",
-        "target",
+        "source",
+        "scope",
     ] {
         assert!(
             properties.contains_key(field),
@@ -201,11 +236,9 @@ fn axon_tool_input_schema_documents_subaction_families() {
         .expect("tools/list inputSchema documents subaction families");
 
     for (family, expected) in [
-        ("crawl", "start"),
+        ("extract", "start"),
         ("extract", "status"),
-        ("embed", "cancel"),
-        ("ingest", "recover"),
-        ("vertical_scrape", "capabilities"),
+        ("extract", "recover"),
         ("memory", "remember"),
         ("memory", "list"),
         ("memory", "search"),
