@@ -54,7 +54,7 @@ pub(super) async fn stack_status(
     let server_host = browser_display_host(&cfg.mcp_http_host);
     let server_url = format!("http://{}:{}", server_host, cfg.mcp_http_port);
     let mcp_url = format!("{server_url}/mcp");
-    let public_url = std::env::var("AXON_MCP_PUBLIC_URL")
+    let public_url = std::env::var("AXON_PUBLIC_URL")
         .ok()
         .map(|value| value.trim().trim_end_matches('/').to_string())
         .filter(|value| !value.is_empty());
@@ -157,7 +157,7 @@ async fn url_checks(
         async {
             match public_ready_url.as_deref() {
                 Some(url) => http_url_check("Public URL", url, HttpExpectation::Success).await,
-                None => url_check("Public URL", "", "skipped", "AXON_MCP_PUBLIC_URL is unset"),
+                None => url_check("Public URL", "", "skipped", "AXON_PUBLIC_URL is unset"),
             }
         },
         http_url_check("Qdrant readyz", qdrant_ready_url, HttpExpectation::Success),
@@ -407,20 +407,20 @@ async fn gemini_check() -> StackCheck {
 
 fn token_check() -> StackCheck {
     if axon_authz::http::configured_mcp_http_token().is_some() {
-        check("MCP/API token", "ok", "AXON_MCP_HTTP_TOKEN configured")
+        check("MCP/API token", "ok", "AXON_HTTP_TOKEN configured")
     } else {
         check("MCP/API token", "warn", "loopback-only tokenless mode")
     }
 }
 
 fn oauth_check() -> StackCheck {
-    match std::env::var("AXON_MCP_AUTH_MODE") {
+    match std::env::var("AXON_AUTH_MODE") {
         Ok(value) if value.trim().eq_ignore_ascii_case("oauth") => {
             let missing: Vec<&str> = [
-                "AXON_MCP_PUBLIC_URL",
-                "AXON_MCP_GOOGLE_CLIENT_ID",
-                "AXON_MCP_GOOGLE_CLIENT_SECRET",
-                "AXON_MCP_AUTH_ADMIN_EMAIL",
+                "AXON_PUBLIC_URL",
+                "AXON_GOOGLE_CLIENT_ID",
+                "AXON_GOOGLE_CLIENT_SECRET",
+                "AXON_AUTH_ADMIN_EMAIL",
             ]
             .into_iter()
             .filter(|key| {

@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tokio::sync::{OnceCell, oneshot};
 use uuid::Uuid;
 
-const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
+const ENV_KEY: &str = "AXON_HTTP_TOKEN";
 
 #[test]
 fn extract_submit_body_accepts_cli_parity_knobs() {
@@ -495,7 +495,7 @@ async fn sync_post_rejects_unknown_fields() {
 /// scope passes read-scope routes but is rejected on write-scope routes
 /// (e.g. /v1/sources) with 403.
 ///
-/// Implementation note: in bearer-only mode the static AXON_MCP_HTTP_TOKEN
+/// Implementation note: in bearer-only mode the static AXON_HTTP_TOKEN
 /// is granted BOTH axon:read AND axon:write (see mcp::auth::build_auth_layer);
 /// to exercise the discrimination path against only read scope we would need
 /// an OAuth token, which the test harness does not currently provision.
@@ -711,7 +711,7 @@ async fn axon_write_token_satisfies_read_scope_route() {
     let status = response.status();
 
     stop(shutdown, handle).await;
-    // The static bearer token (AXON_MCP_HTTP_TOKEN) grants both axon:read
+    // The static bearer token (AXON_HTTP_TOKEN) grants both axon:read
     // AND axon:write per mcp/auth.rs:114-118. Asserting it is NOT 401/403
     // proves the scope guard did not block it. The route then calls a service
     // that needs Qdrant — 200 when reachable, 502 when not, both are fine.
