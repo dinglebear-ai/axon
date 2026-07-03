@@ -216,7 +216,7 @@ fn has_git_signal(input: &str) -> bool {
     false
 }
 
-/// Read the positional argument, mirroring how `run_embed` resolves input.
+/// Read the positional argument as the local source path to index.
 fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
     cfg.positional
         .first()

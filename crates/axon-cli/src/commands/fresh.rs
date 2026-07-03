@@ -18,38 +18,6 @@ pub async fn run_fresh(
     }
 }
 
-pub(crate) async fn create_schedule_from_command(
-    cfg: &Config,
-    service_context: &ServiceContext,
-) -> Result<(), Box<dyn Error>> {
-    let schedule = freshness_service::create_from_config(cfg, service_context)
-        .await
-        .map_err(|err| -> Box<dyn Error> { err })?;
-    if cfg.wait {
-        let run = freshness_service::run_now(service_context, schedule.id)
-            .await
-            .map_err(|err| -> Box<dyn Error> { err })?;
-        if cfg.json_output {
-            let mut value = serde_json::to_value(&schedule)?;
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("run".to_string(), serde_json::to_value(run)?);
-            }
-            println!("{}", serde_json::to_string_pretty(&value)?);
-        } else {
-            render_created(&schedule);
-            println!("  {} {}", primary("Run"), accent(&run.status));
-        }
-        return Ok(());
-    }
-
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&schedule)?);
-    } else {
-        render_created(&schedule);
-    }
-    Ok(())
-}
-
 async fn run_list(
     json: bool,
     cfg: &Config,
@@ -133,22 +101,6 @@ async fn run_history(
         println!("  {} total", runs.len());
     }
     Ok(())
-}
-
-fn render_created(schedule: &freshness_service::FreshnessCreated) {
-    println!(
-        "{} {}",
-        primary("Freshness Schedule"),
-        accent(&schedule.id.to_string())
-    );
-    println!("  {} {}", primary("Command:"), schedule.command);
-    println!("  {} {}", primary("Target:"), schedule.target);
-    println!(
-        "  {} every {}s",
-        primary("Interval:"),
-        schedule.every_seconds
-    );
-    println!("  {} {}", primary("Next run:"), schedule.next_run_at);
 }
 
 fn wants_json(action_json: bool, cfg: &Config) -> bool {

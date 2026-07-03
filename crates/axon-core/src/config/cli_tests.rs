@@ -43,28 +43,28 @@ fn parse_retrieve_max_points_flag() {
     );
 }
 
+/// The `scrape`, `crawl`, `embed`, `ingest`, `code-search`, and `code-search-watch`
+/// commands were removed in the pipeline-unification clean break (issue #298 P10).
+/// `axon source` / `axon query` are the canonical replacements. Each removed name
+/// must now fail to parse as an unknown subcommand.
 #[test]
-fn embed_accepts_watch_flag() {
-    let result = Cli::try_parse_from(["axon", "embed", "/tmp/project", "--watch"]);
-    assert!(result.is_ok(), "embed --watch should parse: {result:?}");
-}
-
-#[test]
-fn embed_accepts_no_watch_flag() {
-    let result = Cli::try_parse_from(["axon", "embed", "/tmp/project", "--no-watch"]);
-    assert!(result.is_ok(), "embed --no-watch should parse: {result:?}");
-}
-
-#[test]
-fn code_search_watch_returns_tombstone_error() {
-    let err = Cli::try_parse_from(["axon", "code-search-watch"]).unwrap_err();
-    assert!(err.to_string().contains("use `axon embed <path>`"), "{err}");
-}
-
-#[test]
-fn code_search_watch_rejects_extra_args_without_dispatch_panic() {
-    let err = Cli::try_parse_from(["axon", "code-search-watch", "anything"]).unwrap_err();
-    assert_eq!(err.kind(), ErrorKind::UnknownArgument);
+fn removed_commands_no_longer_parse() {
+    for name in [
+        "scrape",
+        "crawl",
+        "embed",
+        "ingest",
+        "code-search",
+        "code-search-watch",
+    ] {
+        let err = Cli::try_parse_from(["axon", name, "x"])
+            .expect_err(&format!("`axon {name}` must not parse after removal"));
+        assert_eq!(
+            err.kind(),
+            ErrorKind::InvalidSubcommand,
+            "`axon {name}` should be an unknown subcommand, got: {err}"
+        );
+    }
 }
 
 #[test]

@@ -185,12 +185,7 @@ pub fn start_url_from_cfg(cfg: &Config) -> String {
 
     if matches!(
         cfg.command,
-        CommandKind::Scrape
-            | CommandKind::Map
-            | CommandKind::Crawl
-            | CommandKind::Extract
-            | CommandKind::Embed
-            | CommandKind::Screenshot
+        CommandKind::Map | CommandKind::Extract | CommandKind::Screenshot
     ) {
         let selected = cfg
             .positional
@@ -205,20 +200,7 @@ pub fn start_url_from_cfg(cfg: &Config) -> String {
 
 fn is_guarded_start_url_subcommand(command: CommandKind, token: &str) -> bool {
     match command {
-        CommandKind::Crawl => matches!(
-            token,
-            "status"
-                | "cancel"
-                | "errors"
-                | "list"
-                | "cleanup"
-                | "clear"
-                | "worker"
-                | "recover"
-                | "audit"
-                | "diff"
-        ),
-        CommandKind::Extract | CommandKind::Embed => matches!(
+        CommandKind::Extract => matches!(
             token,
             "status" | "cancel" | "errors" | "list" | "cleanup" | "clear" | "worker" | "recover"
         ),

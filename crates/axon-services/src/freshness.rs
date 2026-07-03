@@ -2,7 +2,7 @@ use crate::context::ServiceContext;
 use crate::embed::validate_server_embed_input_with_config;
 use crate::ingest::{classify_target, validate_ingest_source};
 use axon_api::ingest::target_label;
-use axon_core::config::{CommandKind, Config, FreshnessCommand};
+use axon_core::config::{Config, FreshnessCommand};
 use axon_core::http::validate_url;
 use axon_core::redact::is_secret_like;
 use axon_jobs::config_snapshot::{apply_config_snapshot, config_snapshot_json};
@@ -210,9 +210,6 @@ fn request_payload_from_config(
 ) -> Result<(&'static str, String, FreshnessRequestPayload), FreshnessError> {
     match command {
         FreshnessCommand::Scrape => {
-            if cfg.command != CommandKind::Scrape {
-                return Err("freshness command mismatch: expected scrape".into());
-            }
             let url = cfg
                 .positional
                 .first()
@@ -225,9 +222,6 @@ fn request_payload_from_config(
             ))
         }
         FreshnessCommand::Crawl => {
-            if cfg.command != CommandKind::Crawl {
-                return Err("freshness command mismatch: expected crawl".into());
-            }
             if cfg.positional.is_empty() {
                 return Err("crawl freshness requires at least one URL".into());
             }
@@ -239,9 +233,6 @@ fn request_payload_from_config(
             ))
         }
         FreshnessCommand::Embed => {
-            if cfg.command != CommandKind::Embed {
-                return Err("freshness command mismatch: expected embed".into());
-            }
             let input = cfg.positional.first().cloned().unwrap_or_else(|| {
                 cfg.output_dir
                     .join("markdown")
@@ -255,9 +246,6 @@ fn request_payload_from_config(
             ))
         }
         FreshnessCommand::Ingest => {
-            if cfg.command != CommandKind::Ingest {
-                return Err("freshness command mismatch: expected ingest".into());
-            }
             let target = cfg
                 .positional
                 .first()

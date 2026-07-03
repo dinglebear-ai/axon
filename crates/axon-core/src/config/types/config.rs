@@ -35,29 +35,6 @@ pub struct Config {
     /// Maximum number of results returned by `query`/`search` commands. Flag: `--limit`.
     pub search_limit: usize,
 
-    /// Working directory for `code-search`; resolved to the containing git root.
-    /// Flag: `code-search --cwd`.
-    pub code_search_cwd: Option<PathBuf>,
-
-    /// Repository-relative path prefix filter for `code-search`.
-    /// Flag: `code-search --path-prefix`.
-    pub code_search_path_prefix: Option<String>,
-
-    /// Skip foreground freshness check for `code-search`.
-    /// Flag: `code-search --no-freshness`.
-    pub code_search_no_freshness: bool,
-
-    /// Local code-index watch options. `code-search-watch` is a tombstone;
-    /// supported foreground use is `axon embed <path>`.
-    pub code_search_watch: Option<super::session_watch::CodeSearchWatchConfig>,
-
-    /// Force foreground local code-index watch progress for `embed --watch`.
-    pub embed_watch: bool,
-
-    /// Force one-shot local embedding instead of the default local watch path.
-    /// Flag: `embed --no-watch`.
-    pub embed_no_watch: bool,
-
     /// Optional CLI intent to create or update a recurring freshness schedule.
     pub freshness: Option<super::freshness::FreshnessRequest>,
 

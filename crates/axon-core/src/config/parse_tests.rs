@@ -1,6 +1,6 @@
 use super::build_config::tests::{ENV_LOCK, with_env_saved};
 use super::docker::is_docker_service_host;
-use crate::config::types::{CommandKind, FreshnessCommand, McpTransport};
+use crate::config::types::{CommandKind, McpTransport};
 use clap::Parser;
 use std::env;
 
@@ -38,100 +38,31 @@ fn parse_watch_create_with_every_and_type() {
     );
 }
 
-#[allow(unsafe_code)]
+/// The removed source-family commands (`scrape`, `crawl`, `embed`, `ingest`,
+/// `code-search`, `code-search-watch`) must not appear anywhere in the rendered
+/// top-level help after the pipeline-unification clean break (#298 P10).
 #[test]
-fn parse_embed_watch_sets_embed_watch_mode() {
-    let _guard = ENV_LOCK.lock().unwrap();
-
-    let cli = super::Cli::parse_from([
-        "axon",
-        "--tei-url",
-        "http://127.0.0.1:52000",
-        "--qdrant-url",
-        "http://127.0.0.1:53333",
-        "embed",
-        "/workspace",
-        "--watch",
-    ]);
-    let cfg = super::build_config::into_config(cli).expect("embed --watch should parse");
-    assert!(matches!(cfg.command, CommandKind::Embed));
-    assert!(cfg.embed_watch);
-    assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
-}
-
-#[allow(unsafe_code)]
-#[test]
-fn parse_embed_no_watch_sets_embed_no_watch_mode() {
-    let _guard = ENV_LOCK.lock().unwrap();
-
-    let cli = super::Cli::parse_from([
-        "axon",
-        "--tei-url",
-        "http://127.0.0.1:52000",
-        "--qdrant-url",
-        "http://127.0.0.1:53333",
-        "embed",
-        "/workspace",
-        "--no-watch",
-    ]);
-    let cfg = super::build_config::into_config(cli).expect("embed --no-watch should parse");
-    assert!(matches!(cfg.command, CommandKind::Embed));
-    assert!(!cfg.embed_watch);
-    assert!(cfg.embed_no_watch);
-    assert_eq!(cfg.positional, vec!["/workspace".to_string()]);
-}
-
-#[test]
-fn help_mentions_embed_watch_not_code_search_watch() {
+fn help_omits_removed_source_commands() {
     let mut command = super::build_cli_command();
-    let top_help = command.render_long_help().to_string();
-    let embed_help = command
-        .find_subcommand_mut("embed")
-        .expect("embed subcommand")
-        .render_long_help()
-        .to_string();
-    let help = format!("{top_help}\n{embed_help}");
+    let help = command.render_long_help().to_string();
 
-    assert!(help.contains("embed"));
-    assert!(help.contains("--watch"));
-    assert!(help.contains("--no-watch"));
-    assert!(!help.contains("code-search-watch"));
-}
-
-#[allow(unsafe_code)]
-#[test]
-fn parse_scrape_fresh_sets_freshness_intent() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    let mut default_toml = tempfile::Builder::new()
-        .suffix(".toml")
-        .tempfile()
-        .expect("temp default config");
-    std::io::Write::write_all(&mut default_toml, b"\n").expect("write empty config");
-
-    let mut result = None;
-    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", default_toml.path());
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "scrape",
-            "https://example.com",
-            "--fresh",
-            "1d",
-        ]);
-        result = Some(super::build_config::into_config(cli));
-    });
-
-    let cfg = result
-        .expect("config result should be set")
-        .expect("scrape --fresh should parse");
-    assert!(matches!(cfg.command, CommandKind::Scrape));
-    let freshness = cfg.freshness.expect("freshness intent");
-    assert_eq!(freshness.command, FreshnessCommand::Scrape);
-    assert_eq!(freshness.every_seconds, 86_400);
+    for removed in [
+        "  scrape",
+        "  crawl",
+        "  embed",
+        "  ingest",
+        "  code-search",
+        "code-search-watch",
+    ] {
+        assert!(
+            !help.contains(removed),
+            "removed command `{}` still appears in help:\n{help}",
+            removed.trim()
+        );
+    }
+    // Canonical replacements remain.
+    assert!(help.contains("source"));
+    assert!(help.contains("query"));
 }
 
 #[test]
@@ -156,10 +87,10 @@ fn parse_max_profile_flows_to_crawl_subscribe_buffer() {
         "max",
         "--max-pages",
         "100000",
-        "crawl",
+        "extract",
         "https://example.com",
     ]);
-    let cfg = super::build_config::into_config(cli).expect("crawl config should parse");
+    let cfg = super::build_config::into_config(cli).expect("extract config should parse");
 
     assert_eq!(cfg.crawl_broadcast_buffer_min, 16_384);
     assert_eq!(cfg.crawl_broadcast_buffer_max, 65_536);
