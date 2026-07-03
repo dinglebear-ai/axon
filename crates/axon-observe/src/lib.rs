@@ -6,6 +6,7 @@ pub mod event;
 pub mod heartbeat;
 pub mod log;
 pub mod metric;
+pub mod migration;
 pub mod phase;
 pub mod progress;
 pub mod reservation;

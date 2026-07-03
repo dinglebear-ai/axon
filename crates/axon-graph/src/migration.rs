@@ -10,9 +10,31 @@
 //! contract requirement that "graph evidence always links back to
 //! source/item/document/chunk when available".
 
+use axon_api::migration::{MigrationSet, SqlMigration};
 use sqlx::SqlitePool;
 
 use crate::error::graph_storage_error;
+
+/// Namespace under which the composed cross-crate runner tracks graph
+/// migrations.
+pub const MIGRATION_NAMESPACE: &str = "graph";
+
+/// Ordered graph migration set for the composed cross-crate runner.
+///
+/// The `.sql` body is the durable projection of [`SCHEMA`]; both are idempotent
+/// (`CREATE ... IF NOT EXISTS`). The standalone `SqliteGraphStore::connect`
+/// path still calls [`ensure_schema`], but the production runtime shares one
+/// SQLite pool and gets these tables from the unified runner in `axon-jobs`.
+pub const MIGRATIONS: &[SqlMigration] = &[SqlMigration {
+    version: 1,
+    name: "0001_create_graph_tables",
+    sql: include_str!("migrations/0001_create_graph_tables.sql"),
+}];
+
+/// The graph [`MigrationSet`] for composition into the unified runner.
+pub fn migration_set() -> MigrationSet {
+    MigrationSet::new(MIGRATION_NAMESPACE, MIGRATIONS)
+}
 
 /// DDL for the graph store, run in order.
 const SCHEMA: &[&str] = &[

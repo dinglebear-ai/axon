@@ -31,11 +31,12 @@ impl SqliteLedgerStore {
     /// Bind the ledger to an already-open, already-migrated SQLite pool — the
     /// shared runtime pool that also backs `JobStore`. Per the storage contract
     /// (docs/pipeline-unification), the runtime uses ONE database so
-    /// `jobs.source_id` can FK to `sources(source_id)`; the ledger's tables are
-    /// created by that shared pool's migration runner (see
-    /// `axon-jobs/src/migrations/0017_source_ledger.sql`), so this constructor
-    /// does NOT run migrations. Use [`SqliteLedgerStore::connect`] only for a
-    /// standalone, ledger-only database (tests, tooling).
+    /// `jobs.source_id` can FK to `sources(source_id)`; the ledger's contract
+    /// tables are created by the composed cross-crate migration runner
+    /// (`axon-jobs/src/migrations.rs`), which applies THIS crate's
+    /// `migration_set()` against the shared pool, so this constructor does NOT
+    /// run migrations. Use [`SqliteLedgerStore::connect`] only for a standalone,
+    /// ledger-only database (tests, tooling).
     pub fn from_pool(pool: SqlitePool) -> Self {
         Self::new(pool)
     }

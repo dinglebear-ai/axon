@@ -37,27 +37,15 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
 }
 
 async fn open_sqlite_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
-    // Hardened connect + pragmas + after_release scrub live in axon-core; this
-    // crate owns the jobs migrations run on top.
+    // Hardened connect + pragmas + after_release scrub live in axon-core; the
+    // composed cross-crate migration runner (see `crate::migrations`) runs every
+    // crate's migration set — ledger, jobs, observe, graph, memory — against
+    // this ONE unified pool in dependency order. This is the single place the
+    // shared runtime DB is migrated; the ledger owns the contract tables so
+    // jobs migration 0017 no longer duplicates them.
     let pool = axon_core::sqlite::open_pool_unlocked(path).await?;
 
-    sqlx::migrate!("src/migrations")
-        .run(&pool)
-        .await
-        .map_err(|e| {
-            if matches!(e, sqlx::migrate::MigrateError::VersionMissing(_)) {
-                sqlx::Error::Configuration(
-                    format!(
-                        "{e}\n\nThe database was created by a newer version of axon that \
-                         this binary does not know about. Upgrade axon to match the \
-                         database, or delete the jobs database to start fresh."
-                    )
-                    .into(),
-                )
-            } else {
-                sqlx::Error::Configuration(e.into())
-            }
-        })?;
+    crate::migrations::apply_all_migrations(&pool).await?;
 
     Ok(pool)
 }

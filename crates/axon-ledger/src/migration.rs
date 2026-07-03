@@ -1,8 +1,29 @@
 //! SQLite migration helpers for the ledger store.
 
 use crate::store::Result;
+use axon_api::migration::{MigrationSet, SqlMigration};
 use axon_api::source::{ApiError, ErrorStage};
 use sqlx::{Executor, SqlitePool};
+
+/// Namespace under which the composed cross-crate runner tracks ledger
+/// migrations (see [`axon_api::migration`]).
+pub const MIGRATION_NAMESPACE: &str = "ledger";
+
+/// Ordered ledger migration set, exposed for the composed cross-crate runner in
+/// `axon-jobs`. The ledger owns the seven contract tables (`sources`,
+/// `source_generations`, `source_manifests`, `source_items`, `document_status`,
+/// `cleanup_debt`, `leases`) per the schema contract, so this is the SOLE
+/// creator of them in the unified pool.
+pub const MIGRATIONS: &[SqlMigration] = &[SqlMigration {
+    version: 1,
+    name: "0001_ledger_lifecycle",
+    sql: include_str!("migrations/0001_ledger_lifecycle.sql"),
+}];
+
+/// The ledger's [`MigrationSet`] for composition into the unified runner.
+pub fn migration_set() -> MigrationSet {
+    MigrationSet::new(MIGRATION_NAMESPACE, MIGRATIONS)
+}
 
 pub async fn migrate_ledger(pool: &SqlitePool) -> Result<()> {
     sqlx::migrate!("src/migrations")

@@ -1915,7 +1915,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:fbcaa00bb5f00c332ad8270bdc0dfd2c0738c78312d770a514566897fab39d63",
+        "checksum": "sha256:5a67b5718625acf2f998842015ee8be89b6cc81bac5a7e6b0a889358c8e0e9fb",
         "kind": "rust_directory",
         "path": "crates/axon-observe/src"
       },
