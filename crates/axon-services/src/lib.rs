@@ -70,6 +70,8 @@ pub use sessions_source::{
 pub mod sessions_target;
 pub use sessions_target::{SessionSelector, is_session_selector, parse_session_selector};
 pub mod setup;
+pub mod source;
+pub use source::index_source;
 pub mod source_jobs;
 #[allow(dead_code)]
 pub(crate) mod source_spike;

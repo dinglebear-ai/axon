@@ -78,6 +78,7 @@ impl Default for Config {
             purge_prefix: false,
             purge_dry_run: false,
             setup_method: None,
+            source_scope: None,
             color_choice: super::enums::ColorChoice::Auto,
             watch_mode: false,
             performance_profile: PerformanceProfile::HighStable,

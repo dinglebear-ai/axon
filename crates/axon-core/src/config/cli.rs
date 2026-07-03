@@ -301,9 +301,15 @@ pub(super) struct ScrapeArgs {
 
 #[derive(Debug, Args)]
 pub(super) struct SourceArgs {
-    /// Local path to index. Only local paths are supported in this slice.
-    #[arg(value_name = "PATH")]
+    /// Source to index: a local path, git URL, feed URL, youtube target, reddit
+    /// target, web URL, session selector, or registry target.
+    #[arg(value_name = "SOURCE")]
     pub(super) path: Option<String>,
+
+    /// Acquisition scope override (e.g. `page`, `site`). Adapter-specific; when
+    /// omitted the adapter's default scope is used.
+    #[arg(long, value_name = "SCOPE")]
+    pub(super) scope: Option<String>,
 }
 
 #[derive(Debug, Args)]

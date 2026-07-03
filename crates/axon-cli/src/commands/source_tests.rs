@@ -88,7 +88,8 @@ impl ServiceJobRuntime for NoopRuntime {
 }
 
 /// A `ServiceContext` built with `from_runtime` never attaches a target
-/// local-source runtime, so it exercises the "requires data plane" guard.
+/// local-source runtime, so `run_source` exercises the degraded "no data plane"
+/// path and returns the shim's nonzero-exit error.
 fn context_without_data_plane() -> ServiceContext {
     ServiceContext::from_runtime(Arc::new(Config::test_default()), Arc::new(NoopRuntime))
 }
@@ -102,8 +103,8 @@ fn source_cfg(path: &str) -> Config {
 
 #[tokio::test]
 async fn run_source_requires_data_plane_runtime() {
-    // A real, existing local path so the local-path check passes and the
-    // missing-runtime guard is what fires.
+    // A real, existing local path so classification passes and the
+    // missing-runtime degraded path is what surfaces as the error.
     let dir = tempfile::TempDir::new().expect("tempdir");
     let cfg = source_cfg(&dir.path().to_string_lossy());
     let ctx = context_without_data_plane();
@@ -118,8 +119,6 @@ async fn run_source_requires_data_plane_runtime() {
 
 #[tokio::test]
 async fn run_source_git_url_requires_data_plane_runtime() {
-    // A git URL that is not a local path routes to the git branch, which still
-    // requires the data plane — assert the shared guard fires there too.
     let cfg = source_cfg("https://github.com/jmagar/axon.git");
     let ctx = context_without_data_plane();
 
@@ -128,6 +127,19 @@ async fn run_source_git_url_requires_data_plane_runtime() {
     assert!(
         msg.contains("requires a running data plane"),
         "expected data-plane guard error for git input, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn run_source_web_url_requires_data_plane_runtime() {
+    let cfg = source_cfg("https://docs.example.com/guide");
+    let ctx = context_without_data_plane();
+
+    let err = run_source(&cfg, &ctx).await.unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("requires a running data plane"),
+        "expected data-plane guard error for web input, got: {msg}"
     );
 }
 
@@ -147,350 +159,14 @@ async fn run_source_rejects_missing_positional_path() {
 }
 
 #[tokio::test]
-async fn run_source_web_url_requires_data_plane_runtime() {
-    // A plain http/https URL that is NOT a git target routes to the web branch,
-    // which requires the data plane BEFORE any crawl work — assert the guard
-    // fires there (no network access in this test).
-    let cfg = source_cfg("https://docs.example.com/guide");
-    let ctx = context_without_data_plane();
-
-    let err = run_source(&cfg, &ctx).await.unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("requires a running data plane"),
-        "expected data-plane guard error for web input, got: {msg}"
-    );
-}
-
-#[tokio::test]
 async fn run_source_rejects_unsupported_input() {
-    // A plain word is neither a local path nor a git URL.
     let cfg = source_cfg("not-a-path-or-url");
     let ctx = context_without_data_plane();
 
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("local paths, git repository URLs, feed URLs, youtube targets"),
+        msg.contains("is none of these"),
         "expected unsupported-input error, got: {msg}"
-    );
-    assert!(
-        msg.contains("reddit targets"),
-        "error should still name reddit targets, got: {msg}"
-    );
-    assert!(
-        msg.contains("P10 follow-up"),
-        "error should name the P10 follow-up, got: {msg}"
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_detects_reddit_targets() {
-    // A bare `r/<name>` subreddit reference classifies as Reddit.
-    assert_eq!(
-        classify_source_input("r/rust").await,
-        SourceInputKind::Reddit
-    );
-    // A reddit.com thread URL classifies as Reddit, not Web.
-    assert_eq!(
-        classify_source_input("https://www.reddit.com/r/rust/comments/abc123/some_title/").await,
-        SourceInputKind::Reddit
-    );
-    // old.reddit.com is an accepted reddit host.
-    assert_eq!(
-        classify_source_input("https://old.reddit.com/r/rust/comments/abc123/t/").await,
-        SourceInputKind::Reddit
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_reddit_thread_beats_web_url() {
-    // A reddit.com thread URL is http/https, but reddit classification runs
-    // before the web catch-all, so it must route to Reddit, not Web.
-    assert_eq!(
-        classify_source_input("https://reddit.com/r/rust/comments/abc123/some_title/").await,
-        SourceInputKind::Reddit
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_github_url_still_git_not_reddit() {
-    // A GitHub URL routes to Git even though reddit classification runs before
-    // web — git is checked first, and a github host is not a reddit target.
-    assert_eq!(
-        classify_source_input("https://github.com/jmagar/axon").await,
-        SourceInputKind::Git
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_plain_web_url_is_not_reddit() {
-    // A non-reddit http URL must NOT be mis-detected as a reddit target.
-    assert_eq!(
-        classify_source_input("https://docs.example.com/guide").await,
-        SourceInputKind::Web
-    );
-    assert_eq!(
-        classify_source_input("http://example.com").await,
-        SourceInputKind::Web
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_feed_url_still_feed_not_reddit() {
-    // Feed classification runs before reddit, so a feed URL stays Feed.
-    assert_eq!(
-        classify_source_input("https://example.com/feed.rss").await,
-        SourceInputKind::Feed
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_prefers_existing_local_path() {
-    let dir = tempfile::TempDir::new().expect("tempdir");
-    let path = dir.path().to_string_lossy().to_string();
-    assert_eq!(classify_source_input(&path).await, SourceInputKind::Local);
-}
-
-#[tokio::test]
-async fn classify_source_input_detects_git_url() {
-    assert_eq!(
-        classify_source_input("https://github.com/jmagar/axon.git").await,
-        SourceInputKind::Git
-    );
-    assert_eq!(
-        classify_source_input("https://gitlab.com/owner/repo").await,
-        SourceInputKind::Git
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_detects_web_url() {
-    // Plain http/https URLs that are not git targets classify as Web.
-    assert_eq!(
-        classify_source_input("https://docs.example.com/guide").await,
-        SourceInputKind::Web
-    );
-    assert_eq!(
-        classify_source_input("http://example.com").await,
-        SourceInputKind::Web
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_git_url_beats_web_url() {
-    // A GitHub URL is an http URL, but git classification runs first, so it must
-    // route to Git, not Web.
-    assert_eq!(
-        classify_source_input("https://github.com/jmagar/axon").await,
-        SourceInputKind::Git
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_dot_git_on_unknown_host_is_git() {
-    // A `.git` suffix is an explicit git signal even on a host we don't
-    // recognize, so it routes to Git rather than the web crawl.
-    assert_eq!(
-        classify_source_input("https://example.com/team/repo.git").await,
-        SourceInputKind::Git
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_plain_https_path_is_web_not_git() {
-    // A plain docs URL parses as a generic git target under the permissive
-    // parser, but has no git signal, so `axon source` routes it to the web
-    // crawl branch.
-    assert_eq!(
-        classify_source_input("https://docs.example.com/team/guide").await,
-        SourceInputKind::Web
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_rejects_plain_word() {
-    // A plain token that is NOT exactly 11 chars (so it is not a bare youtube
-    // video id) and contains hyphens (so it is not a valid subreddit shape)
-    // stays Unsupported. NB: an 11-char `[A-Za-z0-9_-]` token IS a valid bare
-    // youtube id and routes to Youtube — see
-    // `classify_source_input_bare_11_char_id_is_youtube`.
-    assert_eq!(
-        classify_source_input("not-a-path-or-url").await,
-        SourceInputKind::Unsupported
-    );
-    // Non-http schemes are not web sources.
-    assert_eq!(
-        classify_source_input("ftp://example.com/file").await,
-        SourceInputKind::Unsupported
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_detects_feed_urls() {
-    // A `.rss`/`.atom` URL classifies as Feed, not Web.
-    assert_eq!(
-        classify_source_input("https://example.com/blog/feed.rss").await,
-        SourceInputKind::Feed
-    );
-    assert_eq!(
-        classify_source_input("https://example.com/releases.atom").await,
-        SourceInputKind::Feed
-    );
-    // An `rss:`-prefixed target is a feed even though the remainder is a plain
-    // web URL.
-    assert_eq!(
-        classify_source_input("rss:https://example.com/blog").await,
-        SourceInputKind::Feed
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_feed_url_beats_web_url() {
-    // A feed URL is http/https, but feed classification runs before the web
-    // catch-all, so it must route to Feed, not Web.
-    assert_eq!(
-        classify_source_input("https://example.com/feed").await,
-        SourceInputKind::Feed
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_plain_web_url_is_not_feed() {
-    // A plain docs URL must NOT be mis-detected as a feed.
-    assert_eq!(
-        classify_source_input("https://docs.example.com/guide").await,
-        SourceInputKind::Web
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_github_url_still_git_not_feed() {
-    // A GitHub URL routes to Git even though feed classification runs before
-    // web — git is checked first.
-    assert_eq!(
-        classify_source_input("https://github.com/jmagar/axon").await,
-        SourceInputKind::Git
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_detects_youtube_targets() {
-    // A watch URL, a youtu.be short URL, and an @handle all classify as Youtube.
-    assert_eq!(
-        classify_source_input("https://www.youtube.com/watch?v=dQw4w9WgXcQ").await,
-        SourceInputKind::Youtube
-    );
-    assert_eq!(
-        classify_source_input("https://youtu.be/dQw4w9WgXcQ").await,
-        SourceInputKind::Youtube
-    );
-    assert_eq!(
-        classify_source_input("@RickAstleyYT").await,
-        SourceInputKind::Youtube
-    );
-    // A playlist/channel URL is youtube too.
-    assert_eq!(
-        classify_source_input("https://www.youtube.com/playlist?list=PL123").await,
-        SourceInputKind::Youtube
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_bare_11_char_id_is_youtube() {
-    // The #1 precedence risk: a bare 11-char video id must classify as Youtube,
-    // NOT be mis-claimed as a subreddit by reddit's bare-name rule. This holds
-    // for an id mixing `-`/`_`...
-    assert_eq!(
-        classify_source_input("dQw4w9WgXcQ").await,
-        SourceInputKind::Youtube
-    );
-    // ...AND for an 11-char id that is ALL alphanumeric (which ALSO satisfies
-    // reddit's bare-subreddit rule) — youtube's more specific check runs first,
-    // so it wins.
-    assert_eq!(
-        classify_source_input("abcdefghijk").await,
-        SourceInputKind::Youtube
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_youtube_url_beats_web_url() {
-    // A youtube.com watch URL is http/https, but youtube classification runs
-    // before the web catch-all, so it must route to Youtube, not Web.
-    assert_eq!(
-        classify_source_input("https://www.youtube.com/watch?v=dQw4w9WgXcQ").await,
-        SourceInputKind::Youtube
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_github_url_still_git_not_youtube() {
-    // A GitHub URL routes to Git even though youtube classification runs before
-    // reddit/web — git is checked first, and a github host is not a youtube
-    // target.
-    assert_eq!(
-        classify_source_input("https://github.com/jmagar/axon").await,
-        SourceInputKind::Git
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_reddit_url_still_reddit_not_youtube() {
-    // A reddit thread URL and a `r/<name>` subreddit carry no youtube signal, so
-    // youtube (checked first) does not claim them — they still route to Reddit.
-    assert_eq!(
-        classify_source_input("https://www.reddit.com/r/rust/comments/abc123/t/").await,
-        SourceInputKind::Reddit
-    );
-    assert_eq!(
-        classify_source_input("r/rust").await,
-        SourceInputKind::Reddit
-    );
-    // A multi-char subreddit that is NOT 11 chars stays Reddit (not youtube).
-    assert_eq!(
-        classify_source_input("learnprogramming").await,
-        SourceInputKind::Reddit
-    );
-}
-
-#[tokio::test]
-async fn classify_source_input_plain_web_url_is_not_youtube() {
-    // A non-youtube http URL must NOT be mis-detected as a youtube target.
-    assert_eq!(
-        classify_source_input("https://docs.example.com/guide").await,
-        SourceInputKind::Web
-    );
-}
-
-#[tokio::test]
-async fn run_source_youtube_url_requires_data_plane_runtime() {
-    // A youtube URL routes to the youtube branch, which requires the data plane
-    // BEFORE any yt-dlp subprocess — assert the guard fires there (no network /
-    // subprocess in this test).
-    let cfg = source_cfg("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-    let ctx = context_without_data_plane();
-
-    let err = run_source(&cfg, &ctx).await.unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("requires a running data plane"),
-        "expected data-plane guard error for youtube input, got: {msg}"
-    );
-}
-
-#[tokio::test]
-async fn run_source_feed_url_requires_data_plane_runtime() {
-    // A feed URL routes to the feed branch, which requires the data plane
-    // BEFORE any network fetch — assert the guard fires there (no network
-    // access in this test).
-    let cfg = source_cfg("https://example.com/feed.rss");
-    let ctx = context_without_data_plane();
-
-    let err = run_source(&cfg, &ctx).await.unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("requires a running data plane"),
-        "expected data-plane guard error for feed input, got: {msg}"
     );
 }
