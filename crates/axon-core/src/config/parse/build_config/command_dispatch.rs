@@ -83,6 +83,8 @@ pub(super) struct DispatchOutput {
     pub purge_dry_run: bool,
     /// Binary acquisition method passed in by install.sh via `axon setup --method pull|build`
     pub setup_method: Option<String>,
+    /// `--scope` override for `axon <source>` / `axon source <input>`.
+    pub source_scope: Option<String>,
 }
 
 impl DispatchOutput {
@@ -140,6 +142,7 @@ impl DispatchOutput {
             purge_prefix: false,
             purge_dry_run: false,
             setup_method: None,
+            source_scope: None,
         }
     }
 }
@@ -469,6 +472,7 @@ fn apply_memory(out: &mut DispatchOutput, action: MemoryCliSubcommand) {
 fn apply_source(out: &mut DispatchOutput, args: SourceArgs) {
     out.command = CommandKind::Source;
     out.positional = args.path.into_iter().collect();
+    out.source_scope = args.scope;
 }
 
 fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {

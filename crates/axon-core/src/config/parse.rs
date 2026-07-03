@@ -27,7 +27,13 @@ pub fn build_cli_command() -> Command {
 
 pub fn parse_args() -> Config {
     maybe_print_top_level_help_and_exit();
-    let matches = Cli::command().get_matches();
+    // Route a bare leading source token (`axon https://x`, `axon ./dir`,
+    // `axon r/rust`, `axon pkg:npm/foo`) through the `source` subcommand before
+    // clap parses. Explicit subcommands and `axon source <x>` are untouched.
+    let command = Cli::command();
+    let routed_args =
+        super::source_routing::route_bare_source(std::env::args().collect(), &command);
+    let matches = command.get_matches_from(routed_args);
     let output_dir_was_explicit =
         matches.value_source("output_dir") == Some(ValueSource::CommandLine);
     let collection_was_explicit =

@@ -239,6 +239,10 @@ pub struct Config {
     /// `None` when setup is run directly (not via install.sh).
     pub setup_method: Option<String>,
 
+    /// Acquisition scope override for `axon <source>` / `axon source <input>`.
+    /// Flag: `--scope <page|site|...>`. `None` uses the adapter's default scope.
+    pub source_scope: Option<String>,
+
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
 
