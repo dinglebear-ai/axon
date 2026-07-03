@@ -9,6 +9,8 @@ pub mod metric;
 pub mod phase;
 pub mod progress;
 pub mod reservation;
+pub mod sequence;
+pub mod sink;
 pub mod span;
 pub mod testing;
 

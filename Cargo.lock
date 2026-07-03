@@ -835,8 +835,12 @@ dependencies = [
  "axon-api",
  "axon-error",
  "chrono",
+ "serde",
  "serde_json",
+ "sqlx",
+ "tempfile",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

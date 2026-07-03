@@ -133,7 +133,11 @@ fn base_event(
     let now = Timestamp::from(Utc::now());
     axon_api::source::SourceProgressEvent {
         event_id: format!("evt_{}", Uuid::new_v4()),
-        sequence: 1,
+        // `0` is the "unassigned" sentinel. The pure builders cannot own
+        // monotonic sequence state, so the emitting sink stamps the real,
+        // strictly-increasing per-`job_id` sequence at emit time via
+        // `crate::sequence::SequenceRegistry`. See `crate::sink`.
+        sequence: 0,
         job_id,
         attempt: 1,
         stage_id: None,
