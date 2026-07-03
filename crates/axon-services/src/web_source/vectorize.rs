@@ -86,7 +86,10 @@ pub(super) fn collection_spec(input: &WebSourceIndexInput) -> CollectionSpec {
             payload_index("document_id"),
             payload_index("chunk_id"),
         ],
-        sparse: None,
+        sparse: Some(SparseVectorConfig {
+            name: "bm42".to_string(),
+            modifier: SparseVectorModifier::Idf,
+        }),
         aliases: Vec::new(),
         distance: Some(VectorDistance::Cosine),
         metadata,

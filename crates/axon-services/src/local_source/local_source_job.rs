@@ -91,12 +91,17 @@ fn terminal_source_error(err: &anyhow::Error, root: &Path) -> SourceError {
     }
 }
 
-fn job_create_request(input: &LocalSourceIndexInput, source_id: SourceId) -> JobCreateRequest {
+fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> JobCreateRequest {
     JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
         job_intent: JobIntent::Run,
-        source_id: Some(source_id),
+        // The job is created BEFORE the source row exists in `sources` (the
+        // ledger upserts it during the run), so we cannot set source_id here —
+        // `jobs.source_id` FKs to `sources(source_id)` and would fail at INSERT.
+        // The column is nullable by contract; linking the job to its source
+        // after `upsert_source` is a follow-up (see bd unified-sqlite bug).
+        source_id: None,
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,

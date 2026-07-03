@@ -5,7 +5,7 @@ CREATE TABLE jobs (
     status TEXT NOT NULL CHECK (status IN ('queued', 'pending', 'running', 'waiting', 'blocked', 'canceling', 'completed', 'completed_degraded', 'failed', 'canceled', 'expired', 'skipped')),
     phase TEXT NOT NULL CHECK (phase IN ('queued', 'requested', 'resolving', 'routing', 'authorizing', 'planning', 'leasing', 'discovering', 'diffing', 'fetching', 'rendering', 'enriching', 'normalizing', 'parsing', 'graphing', 'preparing', 'batching', 'embedding', 'vectorizing', 'upserting', 'retrieving', 'synthesizing', 'evaluating', 'publishing', 'cleaning', 'complete', 'canceled')),
     priority TEXT NOT NULL CHECK (priority IN ('interactive', 'high', 'normal', 'background', 'maintenance')),
-    source_id TEXT REFERENCES axon_source_sources(source_id) ON DELETE SET NULL,
+    source_id TEXT REFERENCES sources(source_id) ON DELETE SET NULL,
     watch_id TEXT REFERENCES axon_watch_defs(id) ON DELETE SET NULL,
     parent_job_id TEXT REFERENCES jobs(job_id) ON DELETE SET NULL,
     root_job_id TEXT REFERENCES jobs(job_id) ON DELETE SET NULL,

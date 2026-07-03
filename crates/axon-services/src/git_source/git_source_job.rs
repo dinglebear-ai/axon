@@ -84,12 +84,15 @@ fn terminal_source_error(err: &anyhow::Error, repo_root: &Path) -> SourceError {
     }
 }
 
-fn job_create_request(input: &GitSourceIndexInput, source_id: SourceId) -> JobCreateRequest {
+fn job_create_request(input: &GitSourceIndexInput, _source_id: SourceId) -> JobCreateRequest {
     JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
         job_intent: JobIntent::Run,
-        source_id: Some(source_id),
+        // Source row is upserted by the ledger DURING the run, AFTER this job is created;
+        // jobs.source_id FKs to sources(source_id) and would fail at INSERT. The column is
+        // nullable by contract; linking post-upsert is a follow-up.
+        source_id: None,
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,

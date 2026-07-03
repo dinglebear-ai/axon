@@ -4512,7 +4512,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:decf7f92843c93b4fe20297140008e9c9377d312dbeb3254f082b1b90bc3ef58",
+        "checksum": "sha256:c45d15256126fd9634455e327fd8f35448f00d41c64882e4022346bd864aa177",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },

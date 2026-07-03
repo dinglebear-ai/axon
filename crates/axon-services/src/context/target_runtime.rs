@@ -16,6 +16,7 @@ use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
 use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
+use sqlx::SqlitePool;
 
 use super::TargetLocalSourceRuntime;
 
@@ -58,10 +59,12 @@ impl TargetLocalSourceRuntime {
     pub async fn from_config(
         cfg: &Config,
         jobs: Arc<dyn JobStore>,
+        pool: SqlitePool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let ledger = SqliteLedgerStore::connect(&ledger_connect_str(cfg))
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+        // The ledger binds to the SAME pool as the JobStore (one runtime DB), so
+        // `jobs.source_id` FKs to `sources(source_id)`. Tables are created by the
+        // shared pool's migration runner (axon-jobs 0017); no separate migration.
+        let ledger = SqliteLedgerStore::from_pool(pool);
 
         let embedding_provider = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
             endpoint: cfg.tei_url.clone(),
@@ -113,21 +116,6 @@ fn reservation_config(
         cooldown_after_failures: RESERVATION_COOLDOWN_AFTER_FAILURES,
         cooldown_secs: RESERVATION_COOLDOWN_SECS,
     }
-}
-
-/// Derive the ledger SQLite connect string as a sibling of the jobs DB.
-///
-/// Mirrors the jobs-DB path derivation (`AXON_SQLITE_PATH` / `$AXON_DATA_DIR`)
-/// by reusing `cfg.sqlite_path`'s parent directory and pointing at `ledger.db`.
-/// The `sqlite://…?mode=rwc` form creates the file if missing (matching the
-/// jobs pool), whereas a bare filesystem path would fail to auto-create.
-fn ledger_connect_str(cfg: &Config) -> String {
-    let ledger_path = cfg
-        .sqlite_path
-        .parent()
-        .map(|parent| parent.join("ledger.db"))
-        .unwrap_or_else(|| std::path::PathBuf::from("ledger.db"));
-    format!("sqlite://{}?mode=rwc", ledger_path.display())
 }
 
 #[cfg(test)]

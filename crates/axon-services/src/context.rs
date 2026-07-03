@@ -123,7 +123,7 @@ impl ServiceContext {
         let store: Arc<dyn JobStore> = Arc::new(axon_jobs::unified::SqliteUnifiedJobStore::new(
             (*pool).clone(),
         ));
-        match TargetLocalSourceRuntime::from_config(cfg, store).await {
+        match TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await {
             Ok(runtime) => Some(Arc::new(runtime)),
             Err(err) => {
                 tracing::warn!(
