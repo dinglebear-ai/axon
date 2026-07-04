@@ -94,8 +94,8 @@ async fn fake_graph_store_upserts_candidates_and_resolves_nodes() {
         .unwrap();
     assert_eq!(written.source_id, SourceId::new("src_a"));
     assert_eq!(written.candidates_seen, 2);
-    assert_eq!(written.nodes_upserted, 5);
-    assert_eq!(written.edges_upserted, 3);
+    assert_eq!(written.nodes_upserted, 3);
+    assert_eq!(written.edges_upserted, 2);
     assert_eq!(written.evidence_records, 2);
 
     let resolved = graph
@@ -205,4 +205,61 @@ async fn fake_graph_store_honors_direction_and_depth() {
         .unwrap();
     assert_eq!(both.edges.len(), 2);
     assert_eq!(both.nodes.len(), 3);
+}
+
+#[tokio::test]
+async fn fake_graph_store_merges_evidence_for_existing_edge() {
+    let graph = FakeGraphStore::new();
+    let mut first = candidate();
+    first.evidence[0].evidence_id = "ev-first".to_string();
+    let mut second = candidate();
+    second.candidate_id = "cand-second".to_string();
+    second.evidence[0].evidence_id = "ev-second".to_string();
+    second.evidence[0].quote = Some("tokio = { version = \"1\" }".to_string());
+
+    graph.upsert_candidates(vec![first]).await.unwrap();
+    graph.upsert_candidates(vec![second]).await.unwrap();
+
+    let result = graph
+        .query(GraphQueryRequest {
+            start: graph_identifier("pkg:axon"),
+            edges: vec!["depends_on".to_string()],
+            direction: GraphDirection::Out,
+            depth: 1,
+            filters: None,
+            limit: 10,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.edges.len(), 1);
+    assert_eq!(result.evidence.len(), 2);
+    assert!(
+        result
+            .evidence
+            .iter()
+            .any(|evidence| evidence.evidence_id == "ev-second")
+    );
+}
+
+#[tokio::test]
+async fn fake_graph_store_warns_on_node_kind_conflict() {
+    let graph = FakeGraphStore::new();
+    let mut first = candidate();
+    first.nodes[0].node_kind = "package".to_string();
+    let mut conflicting = candidate();
+    conflicting.candidate_id = "cand-conflict".to_string();
+    conflicting.nodes[0].node_kind = "service".to_string();
+
+    graph.upsert_candidates(vec![first]).await.unwrap();
+    let written = graph.upsert_candidates(vec![conflicting]).await.unwrap();
+
+    assert!(
+        written
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "graph.node_kind_conflict"),
+        "graph fake should expose conflicts instead of silently replacing node identity"
+    );
 }

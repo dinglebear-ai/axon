@@ -1,64 +1,1773 @@
 {
+  "$defs": {
+    "CredentialProviderCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "auth_schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "redaction_policy": {
+          "$ref": "#/$defs/CredentialProviderCapability_RedactionPolicy"
+        }
+      },
+      "required": [
+        "auth_schemes",
+        "redaction_policy"
+      ],
+      "title": "CredentialProviderCapability",
+      "type": "object"
+    },
+    "CredentialProviderCapability_RedactionPolicy": {
+      "enum": [
+        "none",
+        "display_safe",
+        "strict",
+        "opaque"
+      ],
+      "type": "string"
+    },
+    "DegradedMode": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "read_only",
+        "no_streaming",
+        "no_structured_output",
+        "no_tool_use",
+        "snippet_only",
+        "http_only",
+        "no_javascript",
+        "no_sparse_vectors",
+        "no_hybrid_search",
+        "no_delete_by_filter",
+        "lower_concurrency",
+        "retry_only"
+      ],
+      "title": "DegradedMode",
+      "type": "string"
+    },
+    "EmbeddingProviderCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "batch_limits": {
+          "$ref": "#/$defs/EmbeddingProviderCapability_BatchLimits"
+        },
+        "dimensions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "instruction_support": {
+          "$ref": "#/$defs/EmbeddingProviderCapability_InstructionSupport"
+        },
+        "max_batch_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_input_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "sparse_output": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_id",
+        "dimensions",
+        "max_input_tokens",
+        "max_batch_tokens",
+        "instruction_support",
+        "sparse_output",
+        "batch_limits"
+      ],
+      "title": "EmbeddingProviderCapability",
+      "type": "object"
+    },
+    "EmbeddingProviderCapability_BatchLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_items",
+        "max_tokens"
+      ],
+      "type": "object"
+    },
+    "EmbeddingProviderCapability_InstructionSupport": {
+      "enum": [
+        "none",
+        "query_only",
+        "document_only",
+        "query_and_document"
+      ],
+      "type": "string"
+    },
+    "FetchProviderCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "header_policy": {
+          "$ref": "#/$defs/FetchProviderCapability_HeaderPolicy"
+        },
+        "redirect_policy": {
+          "$ref": "#/$defs/FetchProviderCapability_RedirectPolicy"
+        },
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemes",
+        "redirect_policy",
+        "header_policy"
+      ],
+      "title": "FetchProviderCapability",
+      "type": "object"
+    },
+    "FetchProviderCapability_HeaderPolicy": {
+      "enum": [
+        "none",
+        "allowlist",
+        "passthrough",
+        "redacted_passthrough"
+      ],
+      "type": "string"
+    },
+    "FetchProviderCapability_RedirectPolicy": {
+      "enum": [
+        "none",
+        "same_origin",
+        "same_site",
+        "any"
+      ],
+      "type": "string"
+    },
+    "LlmProviderCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "context_window": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "json_schema": {
+          "type": "boolean"
+        },
+        "max_output_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "structured_output": {
+          "type": "boolean"
+        },
+        "tool_use": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_id",
+        "context_window",
+        "streaming",
+        "json_schema",
+        "tool_use",
+        "structured_output",
+        "max_output_tokens"
+      ],
+      "title": "LlmProviderCapability",
+      "type": "object"
+    },
+    "ProviderCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cooldown_until": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cost_class": {
+          "$ref": "#/$defs/ProviderCapability_ProviderCostClass"
+        },
+        "credential": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_CredentialProviderCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "degraded_modes": {
+          "items": {
+            "$ref": "#/$defs/ProviderCapability_DegradedMode"
+          },
+          "type": "array"
+        },
+        "embedding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_EmbeddingProviderCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fake_overrides_supported": {
+          "type": "boolean"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fetch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_FetchProviderCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "health": {
+          "$ref": "#/$defs/ProviderCapability_HealthStatus"
+        },
+        "implementation": {
+          "type": "string"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_ApiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limits": {
+          "$ref": "#/$defs/ProviderCapability_ProviderLimits"
+        },
+        "llm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_LlmProviderCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_id": {
+          "$ref": "#/$defs/ProviderCapability_ProviderId"
+        },
+        "provider_kind": {
+          "$ref": "#/$defs/ProviderCapability_ProviderKind"
+        },
+        "render": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_RenderProviderCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reservation_policy": {
+          "$ref": "#/$defs/ProviderCapability_ReservationPolicy"
+        },
+        "reservation_state": {
+          "$ref": "#/$defs/ProviderCapability_ReservationStateSnapshot"
+        },
+        "vector_store": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderCapability_VectorStoreCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider_id",
+        "provider_kind",
+        "implementation",
+        "version",
+        "health",
+        "limits",
+        "features",
+        "reservation_policy",
+        "reservation_state",
+        "cost_class",
+        "degraded_modes",
+        "fake_overrides_supported"
+      ],
+      "title": "ProviderCapability",
+      "type": "object"
+    },
+    "ProviderCapability_ApiError": {
+      "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
+      "properties": {
+        "chunk_id": {
+          "description": "Chunk id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "$ref": "#/$defs/ProviderCapability_ErrorCode",
+          "description": "Stable machine code (e.g. `provider.unavailable`)."
+        },
+        "cooldown_until": {
+          "description": "Provider/job cooling timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Redacted structured context (safe key/value pairs only).",
+          "type": "object"
+        },
+        "document_id": {
+          "description": "Document id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "description": "Job correlation id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Redacted human-readable message.",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider that failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Suggested retry delay, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/ProviderCapability_ErrorSeverity",
+          "description": "Severity classification."
+        },
+        "source_id": {
+          "description": "Source id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_item_key": {
+          "description": "Item/file/page key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/ProviderCapability_ErrorStage",
+          "description": "Pipeline/transport stage."
+        },
+        "visibility": {
+          "$ref": "#/$defs/ProviderCapability_ErrorVisibility",
+          "description": "Where this error may be surfaced."
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "retryable",
+        "severity",
+        "visibility",
+        "details"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_BatchLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_items",
+        "max_tokens"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_BrowserPoolLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_browsers": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_page_lifetime_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_pages_per_browser": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_browsers",
+        "max_pages_per_browser",
+        "max_page_lifetime_ms"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_CredentialProviderCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "auth_schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "redaction_policy": {
+          "$ref": "#/$defs/ProviderCapability_RedactionPolicy"
+        }
+      },
+      "required": [
+        "auth_schemes",
+        "redaction_policy"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_DegradedMode": {
+      "enum": [
+        "read_only",
+        "no_streaming",
+        "no_structured_output",
+        "no_tool_use",
+        "snippet_only",
+        "http_only",
+        "no_javascript",
+        "no_sparse_vectors",
+        "no_hybrid_search",
+        "no_delete_by_filter",
+        "lower_concurrency",
+        "retry_only"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_EmbeddingProviderCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "batch_limits": {
+          "$ref": "#/$defs/ProviderCapability_BatchLimits"
+        },
+        "dimensions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "instruction_support": {
+          "$ref": "#/$defs/ProviderCapability_InstructionSupport"
+        },
+        "max_batch_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_input_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "sparse_output": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_id",
+        "dimensions",
+        "max_input_tokens",
+        "max_batch_tokens",
+        "instruction_support",
+        "sparse_output",
+        "batch_limits"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_ErrorCode": {
+      "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
+      "type": "string"
+    },
+    "ProviderCapability_ErrorSeverity": {
+      "description": "How severe an error is and whether it terminates the item/job.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "Informational event; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "warning",
+          "description": "Non-fatal issue, full behavior preserved; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Behavior reduced but acceptable by policy; may or may not be terminal.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Required work failed; terminal for the affected item/job.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "Cannot continue safely; terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProviderCapability_ErrorStage": {
+      "description": "Pipeline/transport stage an error is attributed to.",
+      "oneOf": [
+        {
+          "const": "parsing",
+          "description": "CLI/MCP/REST request parse, removed command/action.",
+          "type": "string"
+        },
+        {
+          "const": "validation",
+          "description": "Missing fields, bad types, unsupported flags.",
+          "type": "string"
+        },
+        {
+          "const": "resolving",
+          "description": "Source resolution, canonical URI, authority.",
+          "type": "string"
+        },
+        {
+          "const": "routing",
+          "description": "Adapter/scope/provider selection.",
+          "type": "string"
+        },
+        {
+          "const": "authorizing",
+          "description": "Auth, credentials, execution policy.",
+          "type": "string"
+        },
+        {
+          "const": "planning",
+          "description": "Source plan, prune plan.",
+          "type": "string"
+        },
+        {
+          "const": "leasing",
+          "description": "Job/watch/source lease.",
+          "type": "string"
+        },
+        {
+          "const": "discovering",
+          "description": "Manifest/map discovery.",
+          "type": "string"
+        },
+        {
+          "const": "diffing",
+          "description": "Manifest diff.",
+          "type": "string"
+        },
+        {
+          "const": "fetching",
+          "description": "HTTP/git/package/local/MCP/CLI fetch.",
+          "type": "string"
+        },
+        {
+          "const": "rendering",
+          "description": "Browser/CDP/render provider.",
+          "type": "string"
+        },
+        {
+          "const": "normalizing",
+          "description": "SourceDocument creation.",
+          "type": "string"
+        },
+        {
+          "const": "parsing_content",
+          "description": "Parser facts/chunk parser (serialized as `parsing_content`).",
+          "type": "string"
+        },
+        {
+          "const": "graphing",
+          "description": "Graph writes/merge/conflict.",
+          "type": "string"
+        },
+        {
+          "const": "preparing",
+          "description": "Chunking/PreparedDocument.",
+          "type": "string"
+        },
+        {
+          "const": "embedding",
+          "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "upserting",
+          "description": "VectorStore writes.",
+          "type": "string"
+        },
+        {
+          "const": "publishing",
+          "description": "Generation publish.",
+          "type": "string"
+        },
+        {
+          "const": "cleaning",
+          "description": "Cleanup/prune/dedupe.",
+          "type": "string"
+        },
+        {
+          "const": "retrieving",
+          "description": "Query/retrieve context.",
+          "type": "string"
+        },
+        {
+          "const": "synthesizing",
+          "description": "LLM synthesis.",
+          "type": "string"
+        },
+        {
+          "const": "observing",
+          "description": "Progress/log/status emit.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProviderCapability_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProviderCapability_FetchProviderCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "header_policy": {
+          "$ref": "#/$defs/ProviderCapability_HeaderPolicy"
+        },
+        "redirect_policy": {
+          "$ref": "#/$defs/ProviderCapability_RedirectPolicy"
+        },
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemes",
+        "redirect_policy",
+        "header_policy"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_HeaderPolicy": {
+      "enum": [
+        "none",
+        "allowlist",
+        "passthrough",
+        "redacted_passthrough"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_HealthStatus": {
+      "enum": [
+        "healthy",
+        "degraded",
+        "unavailable",
+        "cooling",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_InstructionSupport": {
+      "enum": [
+        "none",
+        "query_only",
+        "document_only",
+        "query_and_document"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_LlmProviderCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "context_window": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "json_schema": {
+          "type": "boolean"
+        },
+        "max_output_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "structured_output": {
+          "type": "boolean"
+        },
+        "tool_use": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_id",
+        "context_window",
+        "streaming",
+        "json_schema",
+        "tool_use",
+        "structured_output",
+        "max_output_tokens"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_ProviderCostClass": {
+      "enum": [
+        "free",
+        "low",
+        "standard",
+        "high",
+        "premium",
+        "internal",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_ProviderId": {
+      "type": "string"
+    },
+    "ProviderCapability_ProviderKind": {
+      "enum": [
+        "llm",
+        "embedding",
+        "vector",
+        "search",
+        "fetch",
+        "render",
+        "network_capture",
+        "artifact",
+        "ledger",
+        "graph",
+        "memory",
+        "job",
+        "watch",
+        "config",
+        "credential",
+        "cache",
+        "security",
+        "rate_limiter",
+        "health_probe"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_ProviderLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "background_max_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "interactive_reserved_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maintenance_max_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_batch_size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_input_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_queue_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rate_limit_per_minute": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ProviderCapability_QueuePolicy": {
+      "enum": [
+        "fifo",
+        "priority",
+        "fair_by_job",
+        "drop_when_full"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_RedactionPolicy": {
+      "enum": [
+        "none",
+        "display_safe",
+        "strict",
+        "opaque"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_RedirectPolicy": {
+      "enum": [
+        "none",
+        "same_origin",
+        "same_site",
+        "any"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_RenderMode": {
+      "enum": [
+        "http",
+        "chrome",
+        "auto_switch"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_RenderProviderCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "browser_pool_limits": {
+          "$ref": "#/$defs/ProviderCapability_BrowserPoolLimits"
+        },
+        "render_modes": {
+          "items": {
+            "$ref": "#/$defs/ProviderCapability_RenderMode"
+          },
+          "type": "array"
+        },
+        "script_support": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "render_modes",
+        "browser_pool_limits",
+        "script_support"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_ReservationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "cooldown_after_failures": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cooldown_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "interactive_reserve": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queue_policy": {
+          "$ref": "#/$defs/ProviderCapability_QueuePolicy"
+        },
+        "retry_backoff_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "supports_reservations": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "supports_reservations",
+        "queue_policy",
+        "interactive_reserve",
+        "cooldown_after_failures",
+        "cooldown_secs"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_ReservationState": {
+      "enum": [
+        "requested",
+        "queued",
+        "granted",
+        "active",
+        "released",
+        "expired",
+        "canceled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_ReservationStateSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "available_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "oldest_queued_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "priority_breakdown": {
+          "additionalProperties": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "queued": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/ProviderCapability_ReservationState"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "queued",
+        "active",
+        "available_units",
+        "priority_breakdown",
+        "states"
+      ],
+      "type": "object"
+    },
+    "ProviderCapability_VectorConsistency": {
+      "enum": [
+        "strong",
+        "eventual",
+        "tunable",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ProviderCapability_VectorStoreCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_aliases": {
+          "type": "boolean"
+        },
+        "consistency": {
+          "$ref": "#/$defs/ProviderCapability_VectorConsistency"
+        },
+        "delete_by_filter": {
+          "type": "boolean"
+        },
+        "dense": {
+          "type": "boolean"
+        },
+        "generation_publish": {
+          "type": "boolean"
+        },
+        "hybrid": {
+          "type": "boolean"
+        },
+        "payload_filters": {
+          "type": "boolean"
+        },
+        "payload_indexes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sparse": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dense",
+        "sparse",
+        "hybrid",
+        "payload_filters",
+        "payload_indexes",
+        "delete_by_filter",
+        "generation_publish",
+        "collection_aliases",
+        "consistency"
+      ],
+      "type": "object"
+    },
+    "ProviderCostClass": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "free",
+        "low",
+        "standard",
+        "high",
+        "premium",
+        "internal",
+        "unknown"
+      ],
+      "title": "ProviderCostClass",
+      "type": "string"
+    },
+    "ProviderLimits": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "background_max_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "interactive_reserved_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maintenance_max_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_batch_size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_input_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_queue_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rate_limit_per_minute": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "ProviderLimits",
+      "type": "object"
+    },
+    "RenderProviderCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "browser_pool_limits": {
+          "$ref": "#/$defs/RenderProviderCapability_BrowserPoolLimits"
+        },
+        "render_modes": {
+          "items": {
+            "$ref": "#/$defs/RenderProviderCapability_RenderMode"
+          },
+          "type": "array"
+        },
+        "script_support": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "render_modes",
+        "browser_pool_limits",
+        "script_support"
+      ],
+      "title": "RenderProviderCapability",
+      "type": "object"
+    },
+    "RenderProviderCapability_BrowserPoolLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_browsers": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_page_lifetime_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_pages_per_browser": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_browsers",
+        "max_pages_per_browser",
+        "max_page_lifetime_ms"
+      ],
+      "type": "object"
+    },
+    "RenderProviderCapability_RenderMode": {
+      "enum": [
+        "http",
+        "chrome",
+        "auto_switch"
+      ],
+      "type": "string"
+    },
+    "ReservationPolicy": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cooldown_after_failures": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cooldown_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "interactive_reserve": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queue_policy": {
+          "$ref": "#/$defs/ReservationPolicy_QueuePolicy"
+        },
+        "retry_backoff_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "supports_reservations": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "supports_reservations",
+        "queue_policy",
+        "interactive_reserve",
+        "cooldown_after_failures",
+        "cooldown_secs"
+      ],
+      "title": "ReservationPolicy",
+      "type": "object"
+    },
+    "ReservationPolicy_QueuePolicy": {
+      "enum": [
+        "fifo",
+        "priority",
+        "fair_by_job",
+        "drop_when_full"
+      ],
+      "type": "string"
+    },
+    "ReservationStateSnapshot": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "available_units": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "oldest_queued_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "priority_breakdown": {
+          "additionalProperties": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "queued": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/ReservationStateSnapshot_ReservationState"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "queued",
+        "active",
+        "available_units",
+        "priority_breakdown",
+        "states"
+      ],
+      "title": "ReservationStateSnapshot",
+      "type": "object"
+    },
+    "ReservationStateSnapshot_ReservationState": {
+      "enum": [
+        "requested",
+        "queued",
+        "granted",
+        "active",
+        "released",
+        "expired",
+        "canceled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "VectorStoreCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection_aliases": {
+          "type": "boolean"
+        },
+        "consistency": {
+          "$ref": "#/$defs/VectorStoreCapability_VectorConsistency"
+        },
+        "delete_by_filter": {
+          "type": "boolean"
+        },
+        "dense": {
+          "type": "boolean"
+        },
+        "generation_publish": {
+          "type": "boolean"
+        },
+        "hybrid": {
+          "type": "boolean"
+        },
+        "payload_filters": {
+          "type": "boolean"
+        },
+        "payload_indexes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sparse": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dense",
+        "sparse",
+        "hybrid",
+        "payload_filters",
+        "payload_indexes",
+        "delete_by_filter",
+        "generation_publish",
+        "collection_aliases",
+        "consistency"
+      ],
+      "title": "VectorStoreCapability",
+      "type": "object"
+    },
+    "VectorStoreCapability_VectorConsistency": {
+      "enum": [
+        "strong",
+        "eventual",
+        "tunable",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "enums": {
+      "CleanupDebtKind": {
+        "enum": [
+          "vector_delete",
+          "artifact_delete",
+          "ledger_prune",
+          "graph_prune",
+          "memory_prune",
+          "job_retention",
+          "cache_prune"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "CleanupDebtKind"
+        }
+      },
+      "DocumentLifecycleStatus": {
+        "enum": [
+          "discovered",
+          "fetched",
+          "normalized",
+          "enriched",
+          "parsed",
+          "prepared",
+          "embedded",
+          "vectorized",
+          "published",
+          "cleaned",
+          "degraded",
+          "failed",
+          "skipped"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "DocumentLifecycleStatus"
+        }
+      },
+      "JobKind": {
+        "enum": [
+          "source",
+          "watch",
+          "map",
+          "extract",
+          "research",
+          "ask",
+          "query",
+          "retrieve",
+          "memory",
+          "graph",
+          "prune",
+          "provider_probe",
+          "reset"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "JobKind"
+        }
+      },
+      "LifecycleStatus": {
+        "enum": [
+          "queued",
+          "pending",
+          "running",
+          "waiting",
+          "blocked",
+          "canceling",
+          "completed",
+          "completed_degraded",
+          "failed",
+          "canceled",
+          "expired",
+          "skipped"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "LifecycleStatus"
+        }
+      },
+      "PipelinePhase": {
+        "enum": [
+          "queued",
+          "requested",
+          "resolving",
+          "routing",
+          "authorizing",
+          "planning",
+          "leasing",
+          "discovering",
+          "diffing",
+          "fetching",
+          "rendering",
+          "enriching",
+          "normalizing",
+          "parsing",
+          "graphing",
+          "preparing",
+          "batching",
+          "embedding",
+          "vectorizing",
+          "upserting",
+          "retrieving",
+          "synthesizing",
+          "evaluating",
+          "publishing",
+          "cleaning",
+          "complete",
+          "canceled"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "PipelinePhase"
+        }
+      },
+      "PublishState": {
+        "enum": [
+          "planning",
+          "writing",
+          "publishing",
+          "committed",
+          "cleanup_pending",
+          "cleaning",
+          "cleaned"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "PublishState"
+        }
+      },
+      "SourceIntent": {
+        "enum": [
+          "acquire",
+          "refresh",
+          "watch",
+          "map"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "SourceIntent"
+        }
+      },
+      "SourceKind": {
+        "enum": [
+          "web",
+          "local",
+          "git",
+          "registry",
+          "feed",
+          "reddit",
+          "youtube",
+          "session",
+          "cli_tool",
+          "mcp_tool",
+          "memory",
+          "upload"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "SourceKind"
+        }
+      }
+    }
+  },
   "$id": "https://axon.local/schemas/runtime/provider-capabilities.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "properties": {
-    "providers": {
-      "items": {
-        "additionalProperties": true,
-        "required": [
-          "provider_kind",
-          "health",
-          "limits",
-          "reservation_policy",
-          "degraded_modes",
-          "capabilities"
-        ],
-        "type": "object"
-      },
-      "type": "array"
-    }
-  },
-  "providers": [
-    {
-      "capabilities": [
-        "embed",
-        "rerank",
-        "synthesize"
-      ],
-      "degraded_modes": "required",
-      "health": "required",
-      "limits": "required",
-      "provider_kind": "ProviderCapability",
-      "reservation_policy": "required"
-    }
-  ],
-  "required": [
-    "providers"
-  ],
+  "description": "Generated Axon schema contract artifact.",
   "title": "AxonProviderCapabilitySchema",
   "type": "object",
   "x-axon": {
+    "clean_break": true,
     "contract_version": "2026-06-30",
     "generated_by": "cargo xtask schemas providers",
     "owner_crates": [
       "axon-api",
       "axon-embedding",
-      "axon-llm"
+      "axon-llm",
+      "axon-vectors",
+      "axon-adapters",
+      "axon-core",
+      "axon-authz",
+      "axon-observe"
     ],
-    "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f",
+        "checksum": "sha256:ae232f6479f56b8051fce765d263de93a0787a469cc43531148960e8a9e9b06f",
         "kind": "rust_module",
-        "path": "crates/axon-api/src/schema_registry.rs"
+        "path": "crates/axon-adapters/src/boundary.rs"
+      },
+      {
+        "checksum": "sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/capability.rs"
+      },
+      {
+        "checksum": "sha256:27590ae1e1ecfde070df97bf3d67b362ad08d4e5d499d7d19baa64e2d1519ac3",
+        "kind": "rust_module",
+        "path": "crates/axon-authz/src/policy.rs"
+      },
+      {
+        "checksum": "sha256:cdf5d490a8b2eb0d697fbad7e1b3ed6d0da128c7ad433fd133ef98f83f01bd9f",
+        "kind": "rust_module",
+        "path": "crates/axon-core/src/boundary.rs"
+      },
+      {
+        "checksum": "sha256:0a7f6c9f4936ea017c78273c8ce43c93952c9ea147f34439429149b4c89d6e80",
+        "kind": "rust_module",
+        "path": "crates/axon-embedding/src/fake.rs"
+      },
+      {
+        "checksum": "sha256:6ea8b3fc76cae8f4aef0eb1a9602e4f3dc7cb7b2c9cf22ce2c5a050adee767ba",
+        "kind": "rust_module",
+        "path": "crates/axon-embedding/src/provider.rs"
+      },
+      {
+        "checksum": "sha256:434f6306076a521876554880cc676663e7cd94b3998e4c80422f263df3d92a06",
+        "kind": "rust_module",
+        "path": "crates/axon-llm/src/fake.rs"
+      },
+      {
+        "checksum": "sha256:a1600254dc8b409227437eff91ec012a17adb0ee42766564bd7431036b2ed359",
+        "kind": "rust_module",
+        "path": "crates/axon-llm/src/provider.rs"
+      },
+      {
+        "checksum": "sha256:508c71fd4073569d1bd1f272d0d827cd63990ba16db5a202017b7664e06920df",
+        "kind": "rust_module",
+        "path": "crates/axon-observe/src/reservation.rs"
+      },
+      {
+        "checksum": "sha256:07bde62482e684f9745e8d5c795bad7c60ef17c90ea915bfd58ddb32139177a6",
+        "kind": "rust_module",
+        "path": "crates/axon-vectors/src/store.rs"
+      },
+      {
+        "checksum": "sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/runtime/provider-contract.md"
       },
       {
         "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/provider-capability-schema.md"
       }
-    ],
-    "status": "RegistryBacked"
+    ]
   }
 }

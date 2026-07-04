@@ -50,30 +50,53 @@ impl GraphStore for FakeGraphStore {
         let mut nodes_upserted = 0;
         let mut edges_upserted = 0;
         let mut evidence_records = 0;
+        let mut warnings = Vec::new();
 
         for candidate in candidates {
-            evidence_records += candidate.evidence.len() as u64;
             for node in candidate.nodes {
                 let node_id = GraphNodeId::new(node.stable_key.clone());
+                if let Some(existing) = state.nodes_by_id.get(&node_id)
+                    && existing.kind != node.node_kind
+                {
+                    warnings.push(SourceWarning {
+                        code: "graph.node_kind_conflict".to_string(),
+                        message: format!(
+                            "graph node {} was previously kind {} but candidate {} reported {}",
+                            node_id.0, existing.kind, candidate.candidate_id, node.node_kind
+                        ),
+                        severity: Severity::Warning,
+                        source_item_key: Some(candidate.source_item_key.clone()),
+                        retryable: false,
+                    });
+                    continue;
+                }
                 state
                     .node_id_by_key
                     .insert(node.stable_key, node_id.clone());
-                state.nodes_by_id.insert(
-                    node_id.clone(),
-                    GraphNode {
-                        node_id,
-                        kind: node.node_kind,
-                        canonical_uri: format!("graph://{}", node.label),
-                        display_name: node.label,
-                        authority: AuthorityLevel::Inferred,
-                        confidence: candidate.confidence,
-                        metadata: node.properties,
-                        source_ids: vec![candidate.source_id.clone()],
-                        created_at: Some(timestamp()),
-                        updated_at: Some(timestamp()),
-                    },
-                );
-                nodes_upserted += 1;
+                if let Some(existing) = state.nodes_by_id.get_mut(&node_id) {
+                    existing.confidence = existing.confidence.max(candidate.confidence);
+                    if !existing.source_ids.contains(&candidate.source_id) {
+                        existing.source_ids.push(candidate.source_id.clone());
+                    }
+                    existing.updated_at = Some(timestamp());
+                } else {
+                    state.nodes_by_id.insert(
+                        node_id.clone(),
+                        GraphNode {
+                            node_id,
+                            kind: node.node_kind,
+                            canonical_uri: format!("graph://{}", node.label),
+                            display_name: node.label,
+                            authority: AuthorityLevel::Inferred,
+                            confidence: candidate.confidence,
+                            metadata: node.properties,
+                            source_ids: vec![candidate.source_id.clone()],
+                            created_at: Some(timestamp()),
+                            updated_at: Some(timestamp()),
+                        },
+                    );
+                    nodes_upserted += 1;
+                }
             }
 
             for edge in candidate.edges {
@@ -89,20 +112,34 @@ impl GraphStore for FakeGraphStore {
                     "{}:{}:{}",
                     edge.edge_kind, from_node_id.0, to_node_id.0
                 ));
-                state.edges_by_id.insert(
-                    edge_id.clone(),
-                    GraphEdge {
-                        edge_id,
-                        kind: edge.edge_kind,
-                        from_node_id,
-                        to_node_id,
-                        authority: AuthorityLevel::Inferred,
-                        confidence: candidate.confidence,
-                        evidence: candidate.evidence.clone(),
-                        metadata: edge.properties,
-                    },
-                );
-                edges_upserted += 1;
+                let new_edge = GraphEdge {
+                    edge_id: edge_id.clone(),
+                    kind: edge.edge_kind,
+                    from_node_id,
+                    to_node_id,
+                    authority: AuthorityLevel::Inferred,
+                    confidence: candidate.confidence,
+                    evidence: candidate.evidence.clone(),
+                    metadata: edge.properties,
+                };
+
+                if let Some(existing) = state.edges_by_id.get_mut(&edge_id) {
+                    for evidence in new_edge.evidence {
+                        if !existing
+                            .evidence
+                            .iter()
+                            .any(|stored| stored.evidence_id == evidence.evidence_id)
+                        {
+                            existing.evidence.push(evidence);
+                            evidence_records += 1;
+                        }
+                    }
+                    existing.confidence = existing.confidence.max(new_edge.confidence);
+                } else {
+                    evidence_records += new_edge.evidence.len() as u64;
+                    state.edges_by_id.insert(edge_id, new_edge);
+                    edges_upserted += 1;
+                }
             }
         }
 
@@ -113,7 +150,7 @@ impl GraphStore for FakeGraphStore {
             nodes_upserted,
             edges_upserted,
             evidence_records,
-            warnings: Vec::new(),
+            warnings,
         })
     }
 
