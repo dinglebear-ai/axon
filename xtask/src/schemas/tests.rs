@@ -7,221 +7,13 @@ use super::*;
 
 mod generated_contract_tests;
 
-const PHASE_1_REQUIRED_API_DEFS: &[&str] = &[
-    "SuccessEnvelope",
-    "ErrorEnvelope",
-    "Page",
-    "PollDescriptor",
-    "JobDescriptor",
-    "SourceRequest",
-    "ResolvedSource",
-    "RoutePlan",
-    "SourcePlan",
-    "SourceResult",
-    "SourceManifest",
-    "ManifestItem",
-    "SourceManifestDiff",
-    "SourceGeneration",
-    "CleanupDebt",
-    "SourceDocument",
-    "PreparedDocument",
-    "PreparedChunk",
-    "DocumentStatus",
-    "SourceParseFacts",
-    "GraphCandidate",
-    "GraphNode",
-    "GraphEdge",
-    "GraphEvidence",
-    "EmbeddingBatch",
-    "EmbeddingResult",
-    "VectorPointBatch",
-    "VectorSearchRequest",
-    "VectorSearchResult",
-    "SearchRequest",
-    "SearchResult",
-    "JobSummary",
-    "JobEventPage",
-    "WatchRequest",
-    "WatchResult",
-    "WatchDescriptor",
-    "SourceProgressEvent",
-    "TraceContext",
-    "ArtifactRef",
-    "ArtifactListRequest",
-    "ArtifactResult",
-    "UploadCreateRequest",
-    "UploadResult",
-    "PruneRequest",
-    "PruneExecuteRequest",
-    "PrunePlan",
-    "PruneResult",
-    "CollectionListRequest",
-    "CollectionResult",
-    "ProviderCapability",
-    "HealthReport",
-    "ApiError",
-    "SourceError",
-    "SourceWarning",
-];
-
-const PHASE_1_DEFERRED_API_DEFS: &[(&str, &str, &str)] = &[
-    (
-        "QueryRequest",
-        "phase-3b-security-error-memory.md",
-        "needs request/action auth policy and retrieval filter bounds",
-    ),
-    (
-        "QueryResult",
-        "phase-3b-security-error-memory.md",
-        "needs bounded result content policy",
-    ),
-    (
-        "RetrievalRequest",
-        "phase-3b-security-error-memory.md",
-        "needs retrieval filter and content reference policy",
-    ),
-    (
-        "RetrievalResult",
-        "phase-3b-security-error-memory.md",
-        "needs artifact-backed content policy",
-    ),
-    (
-        "AskRequest",
-        "phase-3b-security-error-memory.md",
-        "needs bounded prompt and synthesis policy",
-    ),
-    (
-        "AskResult",
-        "phase-3b-security-error-memory.md",
-        "needs artifact-backed answer/context policy",
-    ),
-    (
-        "ChatRequest",
-        "phase-3b-security-error-memory.md",
-        "needs closed ChatRole and prompt/content policy",
-    ),
-    (
-        "ChatResult",
-        "phase-3b-security-error-memory.md",
-        "needs tool-call and content redaction policy",
-    ),
-    (
-        "EvaluationRequest",
-        "phase-3b-security-error-memory.md",
-        "needs closed evaluation input and auth policy",
-    ),
-    (
-        "EvaluationResult",
-        "phase-3b-security-error-memory.md",
-        "needs closed EvaluationVerdict",
-    ),
-    (
-        "SuggestRequest",
-        "phase-9-source-families.md",
-        "needs source-family discovery contract",
-    ),
-    (
-        "SuggestResult",
-        "phase-9-source-families.md",
-        "needs source-family discovery contract",
-    ),
-    (
-        "ResearchRequest",
-        "phase-7-parser-metadata-graph.md",
-        "needs bounded synthesis/source content policy",
-    ),
-    (
-        "ResearchResult",
-        "phase-7-parser-metadata-graph.md",
-        "needs artifact-backed answer policy",
-    ),
-    (
-        "SummarizeRequest",
-        "phase-7-parser-metadata-graph.md",
-        "needs closed SummaryFormat and content bounds",
-    ),
-    (
-        "SummarizeResult",
-        "phase-7-parser-metadata-graph.md",
-        "needs artifact-backed summary policy",
-    ),
-    (
-        "EndpointDiscoveryRequest",
-        "phase-9-source-families.md",
-        "needs source-family discovery contract",
-    ),
-    (
-        "EndpointDiscoveryResult",
-        "phase-9-source-families.md",
-        "needs source-family discovery contract",
-    ),
-    (
-        "BrandRequest",
-        "phase-5a-surface-drift-generated-artifacts.md",
-        "needs generated route policy",
-    ),
-    (
-        "BrandResult",
-        "phase-5a-surface-drift-generated-artifacts.md",
-        "needs artifact/redaction policy",
-    ),
-    (
-        "DiffRequest",
-        "phase-5a-surface-drift-generated-artifacts.md",
-        "needs closed DiffMode and generated route policy",
-    ),
-    (
-        "DiffResult",
-        "phase-5a-surface-drift-generated-artifacts.md",
-        "needs artifact-backed diff policy",
-    ),
-    (
-        "ScreenshotRequest",
-        "phase-5a-surface-drift-generated-artifacts.md",
-        "needs generated route policy",
-    ),
-    (
-        "ScreenshotResult",
-        "phase-5a-surface-drift-generated-artifacts.md",
-        "needs artifact-only screenshot policy",
-    ),
-    (
-        "ExtractRequest",
-        "phase-7-parser-metadata-graph.md",
-        "needs explicit extract policy and prompt bounds",
-    ),
-    (
-        "ExtractResult",
-        "phase-7-parser-metadata-graph.md",
-        "needs structured output artifact/redaction policy",
-    ),
-    (
-        "DedupeRequest",
-        "phase-5b-reset-preflight.md",
-        "needs current destructive-operation contract",
-    ),
-    (
-        "DedupeResult",
-        "phase-5b-reset-preflight.md",
-        "needs current destructive-operation contract",
-    ),
-    (
-        "PurgeRequest",
-        "phase-5b-reset-preflight.md",
-        "needs prune/reset cutover contract without legacy target/prefix",
-    ),
-    (
-        "PurgeResult",
-        "phase-5b-reset-preflight.md",
-        "needs prune/reset cutover contract",
-    ),
-];
-
 pub(super) fn fixture_repo() -> TempDir {
     let tmp = TempDir::new().unwrap();
     for path in [
         "crates/axon-api/src/source.rs",
         "crates/axon-api/src/source/boundary.rs",
+        "crates/axon-api/src/source/common.rs",
+        "crates/axon-api/src/source/capability.rs",
         "crates/axon-api/src/source/document.rs",
         "crates/axon-api/src/source/lifecycle.rs",
         "crates/axon-api/src/source/listing.rs",
@@ -229,11 +21,12 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/job.rs",
+        "crates/axon-api/src/source/provider_io.rs",
+        "crates/axon-api/src/source/prune.rs",
         "crates/axon-api/src/source/stage.rs",
         "crates/axon-api/src/source/state.rs",
         "crates/axon-api/src/source/status.rs",
         "crates/axon-api/src/source/vector.rs",
-        "crates/axon-api/src/source/capability.rs",
         "crates/axon-error/src/lib.rs",
         "crates/axon-error/src/api_error.rs",
         "crates/axon-error/src/code.rs",
@@ -249,6 +42,9 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-vectors/src/lib.rs",
         "crates/axon-vectors/src/payload.rs",
         "crates/axon-vectors/src/point.rs",
+        "xtask/src/schemas/api_defs.rs",
+        "xtask/src/schemas/registry.rs",
+        "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
         "docs/pipeline-unification/runtime/error-handling.md",
         "docs/pipeline-unification/surfaces/command-contract.md",
@@ -389,7 +185,7 @@ fn api_schema_contains_phase_1_required_defs() {
         .and_then(|value| value.as_object())
         .expect("generated API schema has $defs object");
 
-    for name in PHASE_1_REQUIRED_API_DEFS {
+    for name in families::api_defs::PHASE_1_REQUIRED_API_DEFS {
         assert!(
             defs.contains_key(*name),
             "missing API schema $defs entry: {name}"
@@ -399,7 +195,7 @@ fn api_schema_contains_phase_1_required_defs() {
 
 #[test]
 fn phase_1_deferred_api_defs_are_documented() {
-    for (name, owner, reason) in PHASE_1_DEFERRED_API_DEFS {
+    for (name, owner, reason) in families::api_defs::PHASE_1_DEFERRED_API_DEFS {
         assert!(!name.is_empty(), "deferred API def must have a name");
         assert!(
             !owner.is_empty(),
@@ -410,6 +206,30 @@ fn phase_1_deferred_api_defs_are_documented() {
             "deferred API def {name} must have a reason"
         );
     }
+}
+
+#[test]
+fn api_request_dtos_have_scope_entries() {
+    assert_eq!(
+        families::api_defs::request_scope_for("ArtifactListRequest", "artifact.list"),
+        Some("read")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("UploadCreateRequest", "upload.create"),
+        Some("write")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("PruneExecuteRequest", "prune.execute"),
+        Some("admin")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("CollectionListRequest", "collection.list"),
+        Some("read")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("UnknownRequest", "unknown.action"),
+        None
+    );
 }
 
 #[test]
