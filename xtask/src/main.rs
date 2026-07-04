@@ -101,6 +101,20 @@ enum Command {
         #[arg(long)]
         output: String,
     },
+    /// Apply release-please postprocessing for files it cannot update directly.
+    ReleasePleaseFixups {
+        #[arg(long)]
+        component: String,
+        #[arg(long)]
+        version: String,
+    },
+    /// Print the artifact workflow dispatch plan from release-please outputs.
+    ReleasePleaseDispatchPlan {
+        #[arg(long)]
+        paths_released: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Benchmark embedding a local corpus through axon, TEI, and Qdrant.
     BenchEmbed {
         /// File or directory to embed.
@@ -190,6 +204,18 @@ fn main() -> Result<()> {
         Command::RegenChangelog { component, output } => Ok(
             checks::release_versions::regen_changelog(&root, &component, &output)?,
         ),
+        Command::ReleasePleaseFixups { component, version } => Ok(
+            checks::release_versions::release_please_fixups(&root, &component, &version)?,
+        ),
+        Command::ReleasePleaseDispatchPlan {
+            paths_released,
+            json,
+        } => {
+            let items =
+                checks::release_versions::release_please_dispatch_plan(&root, &paths_released)?;
+            checks::release_versions::print_release_please_dispatch_plan(&items, json)?;
+            Ok(())
+        }
         Command::BenchEmbed {
             corpus,
             axon_bin,
