@@ -285,7 +285,8 @@ async fn bearer_only_read_routes_require_auth() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body["kind"], "unauthorized");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "auth.missing");
 }
 
 /// F2 sync POST routes return 400 when the required string field is empty
@@ -318,7 +319,10 @@ async fn sync_post_routes_reject_empty_required_fields() {
         let status = response.status();
         assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
         let body: serde_json::Value = response.json().await.expect("json body");
-        assert_eq!(body["kind"], "bad_request", "{path} kind");
+        assert_eq!(
+            body["error"]["code"], "route.validation.invalid_field",
+            "{path} code"
+        );
     }
 
     stop(shutdown, handle).await;
@@ -343,8 +347,9 @@ async fn sync_post_search_rejects_invalid_time_range() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["ok"], false);
     assert!(
-        body["message"]
+        body["error"]["message"]
             .as_str()
             .unwrap_or("")
             .contains("time_range"),
@@ -372,7 +377,10 @@ async fn async_submit_routes_reject_empty_required_fields() {
         let status = response.status();
         assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
         let body: serde_json::Value = response.json().await.expect("json body");
-        assert_eq!(body["kind"], "bad_request", "{path} kind");
+        assert_eq!(
+            body["error"]["code"], "route.validation.invalid_field",
+            "{path} code"
+        );
     }
 
     stop(shutdown, handle).await;
@@ -398,7 +406,10 @@ async fn async_submit_routes_reject_private_urls_before_enqueue() {
         let status = response.status();
         let body: serde_json::Value = response.json().await.expect("json body");
         assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
-        assert_eq!(body["kind"], "invalid_url", "{path} kind");
+        assert_eq!(
+            body["error"]["code"], "source.resolve.invalid_uri",
+            "{path} code"
+        );
     }
 
     stop(shutdown, handle).await;
@@ -453,7 +464,10 @@ async fn async_status_returns_404_for_unknown_job() {
         let status = response.status();
         let body: serde_json::Value = response.json().await.expect("json body");
         assert_eq!(status, StatusCode::NOT_FOUND, "{kind} expected 404");
-        assert_eq!(body["kind"], "not_found", "{kind} kind");
+        assert_eq!(
+            body["error"]["code"], "source.acquire.not_found",
+            "{kind} code"
+        );
     }
 
     stop(shutdown, handle).await;
@@ -553,9 +567,9 @@ async fn admin_routes_accept_valid_bearer() {
         StatusCode::BAD_REQUEST,
         "should reach handler, got {status}"
     );
-    assert_eq!(body["kind"], "bad_request");
+    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
     assert!(
-        body["message"]
+        body["error"]["message"]
             .as_str()
             .unwrap_or("")
             .contains("collection"),
@@ -582,7 +596,8 @@ async fn admin_dedupe_rejects_body_without_json_content_type() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    assert_eq!(body["kind"], "unsupported_media_type");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "route.validation.unsupported_media");
 }
 
 /// F4: POST /v1/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
@@ -777,7 +792,8 @@ async fn watch_create_rejects_empty_name() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["kind"], "bad_request");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
 }
 
 /// POST /v1/watch with every_seconds=0 returns 400.
@@ -863,9 +879,12 @@ async fn watch_create_requires_non_empty_url_array() {
         let status = response.status();
         let body: serde_json::Value = response.json().await.expect("json body");
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(body["kind"], "bad_request");
+        assert_eq!(body["error"]["code"], "route.validation.invalid_field");
         assert!(
-            body["message"].as_str().unwrap_or("").contains("urls"),
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("urls"),
             "expected urls error, got {body}"
         );
     }

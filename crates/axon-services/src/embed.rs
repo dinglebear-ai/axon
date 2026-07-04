@@ -11,7 +11,6 @@ use crate::types::{
 use axon_core::config::Config;
 use axon_jobs::backend::{JobKind, JobPayload};
 use axon_jobs::config_snapshot::config_snapshot_json;
-use axon_source_ledger::{RefreshPreflight, SourceIdentity, SourceKind, SourceLedgerStore};
 use axon_vector::ops::input::classify::path_extension;
 use axon_vector::ops::input::select;
 use axon_vector::ops::{embed_path_native, embed_path_native_with_progress};
@@ -176,28 +175,6 @@ pub async fn embed_now_with_source(
     })))
 }
 
-pub async fn refresh_local_source_with_ledger(
-    cfg: &Config,
-    store: &SourceLedgerStore,
-    source_id: &str,
-) -> Result<i64, Box<dyn Error + Send + Sync>> {
-    match store.preflight_refresh(source_id, now_ms()).await? {
-        RefreshPreflight::Ready => {}
-        RefreshPreflight::BackingOff {
-            until_ms,
-            dependency,
-            message,
-        } => {
-            return Err(format!(
-                "local source {source_id} is backing off until {until_ms} after {dependency}: {message}"
-            )
-            .into());
-        }
-    }
-    let source = SourceIdentity::new(source_id, SourceKind::LocalCode, cfg.collection.clone(), 1);
-    Ok(store.begin_generation(&source).await?)
-}
-
 /// Validate embed input shared by REST and MCP-like server surfaces.
 ///
 /// URL and free-text inputs are allowed. Existing local files/directories must
@@ -286,13 +263,6 @@ fn validate_server_embed_input_with_roots(
         })?;
     validate_local_embed_entry(path, &canonical, &root, limits)?;
     Ok(canonical.to_string_lossy().to_string())
-}
-
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
 }
 
 fn embed_validation_error(message: impl Into<String>) -> EmbedValidationError {

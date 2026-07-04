@@ -21,9 +21,10 @@ async fn dedupe_rejects_invalid_collection_before_work() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["kind"], "bad_request");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
     assert!(
-        body["message"]
+        body["error"]["message"]
             .as_str()
             .unwrap_or_default()
             .contains("collection"),
@@ -49,5 +50,6 @@ async fn dedupe_rejects_body_without_json_content_type() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    assert_eq!(body["kind"], "unsupported_media_type");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "route.validation.unsupported_media");
 }

@@ -2,7 +2,6 @@ use super::*;
 use crate::runtime::ServiceJobRuntime;
 use async_trait::async_trait;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
-use axon_source_ledger::{SourceKind, SourcePhase, SourceStatus};
 use std::error::Error;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -24,38 +23,6 @@ fn status_payload_includes_expected_keys() {
             .map(Vec::len),
         Some(0)
     );
-}
-
-#[tokio::test]
-async fn source_status_redacts_headers_and_local_paths() {
-    for sensitive in [
-        "Authorization: Bearer secret",
-        "authorization: Bearer secret",
-        "Cookie: sid=abc",
-        "cookie: sid=abc",
-        "failed at /home/jmagar/private/repo",
-        "failed at C:\\Users\\Jacob\\private\\repo",
-    ] {
-        let status = SourceStatus {
-            source_id: "local-code".to_string(),
-            source_kind: SourceKind::LocalCode,
-            phase: SourcePhase::BackingOff,
-            committed_generation: 7,
-            active_generation: Some(8),
-            backoff_until_ms: Some(123_456),
-            last_error: Some(sensitive.to_string()),
-            cleanup_debt_count: 2,
-            updated_at_ms: 123_400,
-        };
-
-        let body = serde_json::to_string(&status).unwrap();
-
-        assert!(!body.contains("Bearer secret"), "{body}");
-        assert!(!body.contains("sid=abc"), "{body}");
-        assert!(!body.contains("/home/"), "{body}");
-        assert!(!body.contains("C:\\Users"), "{body}");
-        assert!(body.contains("[redacted]"), "{body}");
-    }
 }
 
 struct CountFailRuntime;

@@ -68,8 +68,6 @@ async fn fresh_db_migrates_all_namespaces() {
         // jobs tables
         "jobs",
         "axon_crawl_jobs",
-        // legacy axon_source_* kept during cutover
-        "axon_source_sources",
         // observe / graph / memory
         "axon_observe_events",
         "axon_observe_provider_health",

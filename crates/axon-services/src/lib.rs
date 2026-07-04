@@ -73,8 +73,6 @@ pub mod setup;
 pub mod source;
 pub use source::index_source;
 pub mod source_jobs;
-#[allow(dead_code)]
-pub(crate) mod source_spike;
 pub mod summarize;
 pub mod sync;
 pub mod system;
