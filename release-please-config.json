@@ -1,0 +1,90 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
+  "always-update": true,
+  "packages": {
+    ".": {
+      "component": "axon",
+      "release-type": "rust",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "generic",
+          "path": "README.md"
+        },
+        {
+          "type": "json",
+          "path": "apps/web/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/web/openapi/axon.json",
+          "jsonpath": "$.info.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/web/package-lock.json",
+          "jsonpath": "$.packages[''].version"
+        }
+      ]
+    },
+    "apps/palette-tauri": {
+      "component": "palette",
+      "release-type": "simple",
+      "include-v-in-tag": true,
+      "tag-separator": "-",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "apps/palette-tauri/src-tauri/tauri.conf.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/palette-tauri/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "apps/palette-tauri/src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        }
+      ]
+    },
+    "apps/android": {
+      "component": "android",
+      "release-type": "simple",
+      "include-v-in-tag": true,
+      "tag-separator": "-",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "apps/android/app/build.gradle.kts"
+        }
+      ]
+    },
+    "apps/chrome-extension": {
+      "component": "chrome-ext",
+      "release-type": "simple",
+      "include-v-in-tag": true,
+      "tag-separator": "-",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "apps/chrome-extension/manifest.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}
