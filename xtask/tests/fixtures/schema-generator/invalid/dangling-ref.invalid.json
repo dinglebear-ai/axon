@@ -1,0 +1,4 @@
+{
+  "ref": "#/$defs/DoesNotExist",
+  "expected_error": "dangling-ref"
+}

@@ -24,6 +24,7 @@ pub mod migration;
 pub mod purge;
 pub mod reset;
 pub mod result;
+pub mod schema_registry;
 pub mod service_job;
 pub mod source;
 

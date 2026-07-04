@@ -11,9 +11,7 @@ pub(super) fn spec_for(family: SchemaFamily) -> FamilySpec {
         SchemaFamily::Graph => graph_spec(),
         SchemaFamily::VectorPayload => vector_payload_spec(),
         SchemaFamily::Providers => providers_spec(),
-        SchemaFamily::Api | SchemaFamily::Errors | SchemaFamily::Adapters => {
-            unreachable!("real generator")
-        }
+        SchemaFamily::Api | SchemaFamily::Errors => unreachable!("real generator"),
     }
 }
 
@@ -23,8 +21,8 @@ fn cli_spec() -> FamilySpec {
         title: "AxonCliSchema",
         owner_crates: &["axon-cli", "axon-api"],
         source_paths: &[
-            "crates/axon-cli/src",
-            "docs/pipeline-unification/surfaces/command-contract.md",
+            "crates/axon-cli/src/schema_registry.rs",
+            "docs/pipeline-unification/schemas/cli-schema.md",
         ],
         json_path: "docs/reference/cli/commands.json",
         extra_json: None,
@@ -39,8 +37,8 @@ fn openapi_spec() -> FamilySpec {
         title: "AxonOpenApiSchema",
         owner_crates: &["axon-web", "axon-api"],
         source_paths: &[
-            "crates/axon-web/src",
-            "docs/pipeline-unification/surfaces/rest-contract.md",
+            "crates/axon-web/src/schema_registry.rs",
+            "docs/pipeline-unification/schemas/openapi-schema.md",
         ],
         json_path: "docs/reference/rest/openapi.json",
         extra_json: None,
@@ -55,8 +53,8 @@ fn mcp_spec() -> FamilySpec {
         title: "AxonMcpToolSchema",
         owner_crates: &["axon-mcp", "axon-api"],
         source_paths: &[
-            "crates/axon-mcp/src",
-            "docs/pipeline-unification/surfaces/tool-contract.md",
+            "crates/axon-mcp/src/schema_registry.rs",
+            "docs/pipeline-unification/schemas/mcp-tool-schema.md",
         ],
         json_path: "docs/reference/mcp/tool-schema.json",
         extra_json: Some(ExtraJsonSpec {
@@ -75,8 +73,8 @@ fn config_spec() -> FamilySpec {
         title: "AxonConfigSchema",
         owner_crates: &["axon-core"],
         source_paths: &[
-            "crates/axon-core/src/config",
-            "docs/pipeline-unification/configuration/config-contract.md",
+            "crates/axon-core/src/config/schema_registry.rs",
+            "docs/pipeline-unification/schemas/config-schema.md",
         ],
         json_path: "docs/reference/config/config.schema.json",
         extra_json: Some(ExtraJsonSpec {
@@ -95,8 +93,8 @@ fn events_spec() -> FamilySpec {
         title: "AxonEventSchema",
         owner_crates: &["axon-observe"],
         source_paths: &[
-            "crates/axon-observe/src",
-            "docs/pipeline-unification/runtime/observability-contract.md",
+            "crates/axon-observe/src/schema_registry.rs",
+            "docs/pipeline-unification/schemas/event-schema.md",
         ],
         json_path: "docs/reference/runtime/events.schema.json",
         extra_json: None,
@@ -113,7 +111,7 @@ fn database_spec() -> FamilySpec {
         source_paths: &[
             "crates/axon-jobs/src/migrations",
             "crates/axon-ledger/src/migrations",
-            "docs/pipeline-unification/runtime/schema-contract.md",
+            "docs/pipeline-unification/schemas/database-schema.md",
         ],
         json_path: "docs/reference/runtime/database-schema.json",
         extra_json: None,
@@ -128,8 +126,8 @@ fn graph_spec() -> FamilySpec {
         title: "AxonGraphSchema",
         owner_crates: &["axon-graph", "axon-parse"],
         source_paths: &[
-            "crates/axon-graph/src/lib.rs",
-            "docs/pipeline-unification/sources/source-graph.md",
+            "crates/axon-graph/src/schema_registry.rs",
+            "docs/pipeline-unification/schemas/graph-schema.md",
         ],
         json_path: "docs/reference/sources/graph.schema.json",
         extra_json: None,
@@ -160,8 +158,8 @@ fn providers_spec() -> FamilySpec {
         title: "AxonProviderCapabilitySchema",
         owner_crates: &["axon-api", "axon-embedding", "axon-llm"],
         source_paths: &[
-            "crates/axon-api/src/source/capability.rs",
-            "docs/pipeline-unification/runtime/provider-contract.md",
+            "crates/axon-api/src/schema_registry.rs",
+            "docs/pipeline-unification/schemas/provider-capability-schema.md",
         ],
         json_path: "docs/reference/runtime/provider-capabilities.schema.json",
         extra_json: None,
