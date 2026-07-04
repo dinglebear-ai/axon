@@ -288,10 +288,10 @@ pub fn release_please_fixups(root: &Path, component_id: &str, version: &str) -> 
 
 pub fn release_please_dispatch_plan(
     root: &Path,
-    paths_released: &str,
+    release_outputs: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
     let manifest = load_manifest(root)?;
-    release_please_dispatch_items(root, &manifest.components, paths_released)
+    release_please_dispatch_items(root, &manifest.components, release_outputs)
 }
 
 pub fn print_release_please_dispatch_plan(

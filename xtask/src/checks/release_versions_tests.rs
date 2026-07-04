@@ -1017,8 +1017,12 @@ fn release_please_manifest_matches_component_versions() {
 #[test]
 fn release_please_dispatch_plan_uses_manifest_metadata() {
     let fixture = Fixture::new();
-    let items =
-        release_please_dispatch_plan(fixture.root(), r#"[".", "apps/palette-tauri"]"#).unwrap();
+    let release_outputs = r#"{
+  "paths_released": "[\".\", \"apps/palette-tauri\"]",
+  "cli_tag": "v1.0.0",
+  "palette_tag": "palette-v5.10.2"
+}"#;
+    let items = release_please_dispatch_plan(fixture.root(), release_outputs).unwrap();
     assert_eq!(
         items,
         vec![

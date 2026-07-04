@@ -111,7 +111,7 @@ enum Command {
     /// Print the artifact workflow dispatch plan from release-please outputs.
     ReleasePleaseDispatchPlan {
         #[arg(long)]
-        paths_released: String,
+        release_outputs: String,
         #[arg(long)]
         json: bool,
     },
@@ -208,11 +208,11 @@ fn main() -> Result<()> {
             checks::release_versions::release_please_fixups(&root, &component, &version)?,
         ),
         Command::ReleasePleaseDispatchPlan {
-            paths_released,
+            release_outputs,
             json,
         } => {
             let items =
-                checks::release_versions::release_please_dispatch_plan(&root, &paths_released)?;
+                checks::release_versions::release_please_dispatch_plan(&root, &release_outputs)?;
             checks::release_versions::print_release_please_dispatch_plan(&items, json)?;
             Ok(())
         }

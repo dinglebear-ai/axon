@@ -2,26 +2,20 @@ name: chrome-extension-release
 
 # Releases the Chrome extension independently of the main axon `v*` releases.
 #
-# Triggered by pushing a Chrome-extension tag whose version matches
-# apps/chrome-extension/manifest.json, e.g.:
-#
-#   git tag chrome-ext-v0.1.0 && git push origin chrome-ext-v0.1.0
-#
+# Run by release-please after it creates a Chrome-extension tag whose version
+# matches apps/chrome-extension/manifest.json.
 # Builds the distributable zip (real files, no symlinks), checksums it, and
 # publishes a GitHub Release with the zip + SHA256 attached.
 #
 # Manual workflow_dispatch builds the zip and uploads it to the run as an
 # artifact for inspection, but does NOT create a Release unless explicitly
-# called with publish=true on a chrome-ext-v* tag. auto-tag.yml dispatches this
-# workflow with publish=true after creating a new chrome-ext-v* tag, because
-# tags pushed with GITHUB_TOKEN do not trigger tag-push workflows.
+# called with publish=true on a chrome-ext-v* tag. release-please.yml dispatches
+# this workflow after release-please creates the GitHub Release.
 on:
-  push:
-    tags: ["chrome-ext-v*"]
   workflow_dispatch:
     inputs:
       publish:
-        description: "Create the GitHub Release when running on a chrome-ext-v* tag"
+        description: "Attach artifacts to an existing release-please chrome-ext-v* release"
         type: boolean
         default: false
 
@@ -79,14 +73,12 @@ jobs:
           if-no-files-found: error
 
       - name: Attach artifacts to release
-        # Create a release on real tag pushes; workflow_dispatch is a dry-run
-        # unless explicitly called with publish=true on a chrome-ext-v* tag.
+        # Attach artifacts only when release-please dispatches this workflow on
+        # an existing chrome-ext-v* release tag.
         if: >-
           startsWith(github.ref, 'refs/tags/chrome-ext-v') &&
-          (
-            github.event_name == 'push' ||
-            (github.event_name == 'workflow_dispatch' && inputs.publish)
-          )
+          github.event_name == 'workflow_dispatch' &&
+          inputs.publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
