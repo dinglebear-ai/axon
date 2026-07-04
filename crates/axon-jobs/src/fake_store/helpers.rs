@@ -201,34 +201,43 @@ pub(super) fn new_job_descriptor(
     timestamp: Timestamp,
 ) -> JobDescriptor {
     JobDescriptor {
-        job_id,
         kind,
+        id: job_id,
+        status_url: format!("/v1/jobs/{job_id}", job_id = job_id.0),
+        events_url: format!("/v1/jobs/{job_id}/events", job_id = job_id.0),
+        stream_url: format!("/v1/jobs/{job_id}/stream", job_id = job_id.0),
+        poll_after_ms: 1000,
+        cancel_url: Some(format!("/v1/jobs/{job_id}/cancel", job_id = job_id.0)),
+        retry_url: Some(format!("/v1/jobs/{job_id}/retry", job_id = job_id.0)),
+        job_id,
         status: LifecycleStatus::Queued,
-        poll: PollDescriptor {
-            status_url: format!("/v1/jobs/{job_id}", job_id = job_id.0),
-            events_url: Some(format!("/v1/jobs/{job_id}/events", job_id = job_id.0)),
-            suggested_interval_ms: 1000,
-        },
-        created_at: timestamp.clone(),
-        updated_at: timestamp,
+        poll: None,
+        created_at: Some(timestamp.clone()),
+        updated_at: Some(timestamp),
     }
 }
 
 pub(super) fn descriptor(summary: &JobSummary) -> JobDescriptor {
     JobDescriptor {
-        job_id: summary.job_id,
         kind: summary.kind,
+        id: summary.job_id,
+        status_url: format!("/v1/jobs/{job_id}", job_id = summary.job_id.0),
+        events_url: format!("/v1/jobs/{job_id}/events", job_id = summary.job_id.0),
+        stream_url: format!("/v1/jobs/{job_id}/stream", job_id = summary.job_id.0),
+        poll_after_ms: 1000,
+        cancel_url: Some(format!(
+            "/v1/jobs/{job_id}/cancel",
+            job_id = summary.job_id.0
+        )),
+        retry_url: Some(format!(
+            "/v1/jobs/{job_id}/retry",
+            job_id = summary.job_id.0
+        )),
+        job_id: summary.job_id,
         status: summary.status,
-        poll: PollDescriptor {
-            status_url: format!("/v1/jobs/{job_id}", job_id = summary.job_id.0),
-            events_url: Some(format!(
-                "/v1/jobs/{job_id}/events",
-                job_id = summary.job_id.0
-            )),
-            suggested_interval_ms: 1000,
-        },
-        created_at: summary.created_at.clone(),
-        updated_at: summary.updated_at.clone(),
+        poll: None,
+        created_at: Some(summary.created_at.clone()),
+        updated_at: Some(summary.updated_at.clone()),
     }
 }
 

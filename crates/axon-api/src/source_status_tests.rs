@@ -174,7 +174,7 @@ fn watch_and_listing_dtos_are_contract_shaped() {
         items: vec![summary],
         limit: 50,
         next_cursor: None,
-        total: Some(1),
+        total: None,
     };
 
     let value = serde_json::to_value(&request).expect("watch request");
@@ -222,9 +222,12 @@ fn source_job_and_watch_management_dtos_round_trip() {
         },
         created_at: now.clone(),
         updated_at: now.clone(),
+        graph_node_ids: Vec::new(),
         tags: vec!["code".to_string()],
         watch_id: Some(WatchId::from("watch_1")),
         last_job_id: Some(job_id),
+        last_refreshed_at: None,
+        user_label: None,
     };
     let detail = SourceDetail {
         summary,
@@ -234,13 +237,13 @@ fn source_job_and_watch_management_dtos_round_trip() {
             items: Vec::new(),
             limit: 50,
             next_cursor: None,
-            total: Some(0),
+            total: None,
         },
         documents: Page {
             items: Vec::new(),
             limit: 50,
             next_cursor: None,
-            total: Some(0),
+            total: None,
         },
         graph_refs: Vec::new(),
         metadata: MetadataMap::default(),
@@ -274,7 +277,7 @@ fn source_job_and_watch_management_dtos_round_trip() {
             watch_id: None,
             parent_job_id: None,
             root_job_id: None,
-            attempt: 1,
+            attempt: 0,
             priority: JobPriority::Normal,
             counts: Some(counts.clone()),
             current: None,
@@ -288,7 +291,7 @@ fn source_job_and_watch_management_dtos_round_trip() {
             items: vec![job_event],
             limit: 50,
             next_cursor: None,
-            total: Some(1),
+            total: None,
         },
         artifacts: Vec::new(),
         metadata: MetadataMap::default(),

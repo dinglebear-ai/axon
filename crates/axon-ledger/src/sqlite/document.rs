@@ -19,6 +19,14 @@ pub(super) async fn update_document_status(
     if exists.is_none() {
         return Err(source_missing_error(&status.source_id));
     }
+    let generation = status.generation.clone().ok_or_else(|| {
+        ApiError::new(
+            "source.ledger.generation_required",
+            ErrorStage::Planning,
+            "document status writes require a source generation",
+        )
+        .with_source_id(status.source_id.0.clone())
+    })?;
     let item_exists: Option<i64> = sqlx::query_scalar(
         r#"
         SELECT 1
@@ -27,7 +35,7 @@ pub(super) async fn update_document_status(
         "#,
     )
     .bind(&status.source_id.0)
-    .bind(&status.generation.0)
+    .bind(&generation.0)
     .bind(&status.source_item_key.0)
     .fetch_optional(&store.pool)
     .await
@@ -38,7 +46,7 @@ pub(super) async fn update_document_status(
             ErrorStage::Planning,
             format!(
                 "source item {} does not exist in generation {}",
-                status.source_item_key.0, status.generation.0
+                status.source_item_key.0, generation.0
             ),
         )
         .with_source_id(status.source_id.0.clone()));
@@ -69,7 +77,7 @@ pub(super) async fn update_document_status(
     .bind(&status.document_id.0)
     .bind(&status.source_id.0)
     .bind(&status.source_item_key.0)
-    .bind(&status.generation.0)
+    .bind(&generation.0)
     .bind(enum_wire_value(status.status)?)
     .bind(status_json)
     .bind(&status.updated_at.0)

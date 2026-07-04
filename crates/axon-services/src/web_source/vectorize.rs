@@ -410,7 +410,7 @@ fn document_status(
         document_id: document.document_id.clone(),
         source_id: document.source_id.clone(),
         source_item_key: document.source_item_key.clone(),
-        generation: document.generation.clone(),
+        generation: Some(document.generation.clone()),
         status,
         updated_at: timestamp(),
         chunk_count: document.chunks.len() as u32,

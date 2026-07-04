@@ -156,40 +156,84 @@ pub struct JobRecoveryRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<JobKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_before: Option<Timestamp>,
+    pub limit: Option<u32>,
+    #[serde(skip)]
     pub older_than_seconds: Option<u64>,
-    #[serde(default)]
+    #[serde(skip)]
     pub dry_run: bool,
-    #[serde(default)]
+    #[serde(skip)]
     pub allow_without_cutoff: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobRecoveryResult {
-    pub jobs_scanned: u64,
-    pub jobs_requeued: u64,
-    pub jobs_failed: u64,
+    pub recovered: u64,
+    pub job_ids: Vec<JobId>,
     pub warnings: Vec<SourceWarning>,
+    #[serde(skip)]
+    pub jobs_scanned: u64,
+    #[serde(skip)]
+    pub jobs_requeued: u64,
+    #[serde(skip)]
+    pub jobs_failed: u64,
 }
+
+pub type JobRecoverRequest = JobRecoveryRequest;
+pub type JobRecoverResult = JobRecoveryResult;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobCleanupRequest {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub older_than_seconds: Option<u64>,
-    #[serde(default)]
     pub dry_run: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<JobKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub older_than: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<LifecycleStatus>,
+    pub limit: Option<u32>,
+    #[serde(skip)]
+    pub older_than_seconds: Option<u64>,
+    #[serde(skip)]
     pub confirm_all_terminal: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobCleanupResult {
+    pub matched: u64,
+    pub deleted: u64,
+    pub dry_run: bool,
+    pub warnings: Vec<SourceWarning>,
+    #[serde(skip)]
     pub jobs_pruned: u64,
+    #[serde(skip)]
     pub events_pruned: u64,
+    #[serde(skip)]
     pub heartbeats_pruned: u64,
+    #[serde(skip)]
     pub artifacts_pruned: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobClearRequest {
+    pub status: LifecycleStatus,
+    pub confirm: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<JobKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub older_than: Option<Timestamp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobClearResult {
+    pub deleted: u64,
+    pub status: LifecycleStatus,
+    pub warnings: Vec<SourceWarning>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

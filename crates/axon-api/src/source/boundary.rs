@@ -6,8 +6,9 @@ use super::common::*;
 use super::document::SourceDocument;
 use super::enums::*;
 use super::ids::*;
+use super::job_listing::{JobSummary, WatchSummary};
 use super::lifecycle::JobDescriptor;
-use super::listing::{JobSummary, Page, WatchSummary};
+use super::listing::Page;
 use super::vector::CollectionSpec;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -257,13 +258,16 @@ pub struct WatchHistoryRequest {
     pub watch_id: WatchId,
     pub limit: Option<u32>,
     pub cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<LifecycleStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WatchHistoryResult {
-    pub runs: Vec<JobDescriptor>,
-    pub warnings: Vec<SourceWarning>,
+    pub watch_id: WatchId,
+    pub jobs: Vec<JobDescriptor>,
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

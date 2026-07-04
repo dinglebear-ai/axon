@@ -54,6 +54,14 @@ pub const REMOVED_SURFACE_RULES: &[RemovedSurfaceRule] = &[
     config("\"AXON_WATCH_LEASE_SECS\""),
 ];
 
+pub const REMOVED_API_DTO_DEFS: &[&str] = &[
+    "EmbedRequest",
+    "IngestRequest",
+    "CrawlRequest",
+    "ScrapeRequest",
+    "CodeSearchRequest",
+];
+
 const fn cli(token: &'static str) -> RemovedSurfaceRule {
     RemovedSurfaceRule {
         token,
@@ -229,14 +237,8 @@ fn check_removed_api_dto_shapes(artifact: &SchemaArtifact) -> Result<()> {
         return Ok(());
     };
 
-    for removed_def in [
-        "EmbedRequest",
-        "IngestRequest",
-        "CrawlRequest",
-        "ScrapeRequest",
-        "CodeSearchRequest",
-    ] {
-        if defs.contains_key(removed_def) {
+    for removed_def in REMOVED_API_DTO_DEFS {
+        if defs.contains_key(*removed_def) {
             bail!(
                 "{} contains removed API DTO definition {removed_def}",
                 artifact.path.display()
