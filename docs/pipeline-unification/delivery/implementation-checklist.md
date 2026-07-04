@@ -83,19 +83,30 @@ Exit criteria:
 - `docs/reference/runtime/provider-capabilities.schema.json` is not a skeleton artifact
 - source routing, URL normalization, authority entrypoints, and adapter registry work remain owned by Phase 4
 
-## Phase 4: Source Routing And Acquisition
+## Phase 4: Source Resolver, Router, And Route-Time Adapter Registry
 
-- [ ] implement `SourceResolver`
-- [ ] implement `SourceRouter`
-- [ ] implement adapter registry
-- [ ] port web/local/git/registry/reddit/youtube/rss/session/CLI/MCP sources
-- [ ] declare scopes per adapter
-- [ ] normalize URL/authority/alias behavior
+- [x] implement `SourceResolver`
+- [x] implement `SourceRouter`
+- [x] implement route-time adapter registry
+- [x] declare scopes per route-time adapter
+- [x] normalize URL/authority/alias behavior
+- [x] route the live `index_source` entrypoint through `SourceResolver` and `SourceRouter`
+- [x] reject unsupported scopes before data-plane checks or acquisition
 
 Exit criteria:
 
-- every source emits `SourceDocument`
-- no adapter writes vectors or commits generations directly
+- every source request reaches `SourceRouter` before acquisition dispatch
+- route metadata supplies source kind, adapter, canonical URI, and scope in `SourceResult`
+- broad source-family acquisition ports remain tracked by the planned PR 12-16 checklist
+
+Source-family acquisition ports are not Phase 4 exit criteria. They remain
+tracked by the planned source-family PRs:
+
+- PR12: web page/site/docs crawl port
+- PR13: Git provider port
+- PR14: feeds/video/social port
+- PR15: sessions + registry/package sources port
+- PR16: CLI tools/scripts + MCP tool-call sources
 
 ## Phase 5: Parse, Graph, Document, And Index Pipeline
 

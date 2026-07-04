@@ -126,6 +126,8 @@ Tasks:
 - Implement adapter capability/scopes registry.
 - Normalize URI/URL/path/package/repo/session/tool inputs.
 - Add authority mapping and URL entrypoint resolution.
+- Wire the live `axon-services::source::index_source` entrypoint through
+  `SourceResolver` and `SourceRouter` before any acquisition dispatch.
 - Keep `map` as a first-class action/route.
 
 Proof:
@@ -134,6 +136,9 @@ Proof:
   shorthand, full git URLs, registry package IDs, Reddit, YouTube, RSS, session
   exports, CLI tools, and MCP tools
 - ambiguous inputs return reason/confidence and warnings
+- `axon-services` route-first tests prove unsupported scopes fail before the
+  data plane or acquisition
+- `index_source` result metadata comes from `RoutePlan`, not family defaults
 
 ## Phase 5: One Source Vertical Spike
 
