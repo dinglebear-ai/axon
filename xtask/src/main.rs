@@ -84,23 +84,6 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Bump all version-bearing files for one component. Level is auto-derived
-    /// from conventional commits (via git-cliff) when omitted.
-    BumpVersion {
-        component: String,
-        #[arg(value_enum)]
-        level: Option<checks::release_versions::BumpLevel>,
-        /// Skip git-cliff changelog generation (stamp an empty heading instead).
-        #[arg(long)]
-        skip_changelog: bool,
-    },
-    /// Regenerate a component's full changelog from scoped git history.
-    RegenChangelog {
-        component: String,
-        /// Output path for the changelog file.
-        #[arg(long)]
-        output: String,
-    },
     /// Apply release-please postprocessing for files it cannot update directly.
     ReleasePleaseFixups {
         #[arg(long)]
@@ -198,19 +181,6 @@ fn main() -> Result<()> {
             checks::release_versions::print_plans(&plans, json)?;
             Ok(())
         }
-        Command::BumpVersion {
-            component,
-            level,
-            skip_changelog,
-        } => Ok(checks::release_versions::bump(
-            &root,
-            &component,
-            level,
-            skip_changelog,
-        )?),
-        Command::RegenChangelog { component, output } => Ok(
-            checks::release_versions::regen_changelog(&root, &component, &output)?,
-        ),
         Command::ReleasePleaseFixups { component, version } => Ok(
             checks::release_versions::release_please_fixups(&root, &component, &version)?,
         ),

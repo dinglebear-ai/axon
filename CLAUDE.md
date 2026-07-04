@@ -886,9 +886,9 @@ git tag chrome-ext-vX.Y.Z && git push origin chrome-ext-vX.Y.Z  # chrome
 
 ### Version bumping rules
 
-Do not run `cargo xtask bump-version` for normal releases during the
-release-please trial. The old git-cliff-backed command remains only as a
-rollback tool until one release-please release succeeds end-to-end.
+Release-please is the only supported release PR, version bump, changelog, tag,
+and GitHub Release path. Do not run or reintroduce git-cliff-backed release
+bumping.
 
 Release-please determines the bump type from conventional commits:
 
@@ -900,12 +900,6 @@ Release-please determines the bump type from conventional commits:
 - `chore`, `ci`, `docs`, `test`, `build`, and `style` are hidden from
   generated release notes by `release-please-config.json` so non-user-facing
   maintenance commits do not bury the release signal.
-
-The rollback command `cargo xtask bump-version <component>` derives the level
-from the conventional commits touching that component's shipping paths since
-its last tag; pass an explicit `patch|minor|major` to override. It bumps from
-`max(version_source, latest tag)` so a worktree that lags `main` cannot collide
-with an existing tag.
 
 **CLI component — all of these MUST move together (Cargo.toml is the source of truth):**
 - `Cargo.toml` — `version = "X.Y.Z"` in `[package]` (Cargo.lock follows on next build)
@@ -929,23 +923,20 @@ versioned by the marketplace, not the manifest.
 `apps/android/CHANGELOG.md`, `apps/chrome-extension/CHANGELOG.md`).
 Release-please owns normal changelog updates and uses the native
 `changelog-sections` policy in `release-please-config.json` to mirror Axon's old
-git-cliff release-note shape: user-facing `feat`, `fix`, `perf`, and `refactor`
+release-note shape: user-facing `feat`, `fix`, `perf`, and `refactor`
 entries are shown; routine maintenance types are hidden. Release PRs also carry
 release-please labels and a PR header/footer explaining that CI may append
 derived-file fixups before merge.
 
-The old `bump-version` path remains only as rollback tooling. In that mode it
-prepends a real section via git-cliff, scoped to the component's shipping paths +
-tag prefix (config in `cliff.toml`). **`git-cliff` must be installed where you run
-`bump-version`** (`mise use -g git-cliff`); the CI gate
-(`check-release-versions`) does **not** require it. Use `--skip-changelog` to fall
-back to an empty heading in an emergency, or
-`cargo xtask regen-changelog <component> --output <path>` to rebuild a changelog
-from full history. **Editing a `CHANGELOG.md` never triggers a release** — change
-detection ignores it, so documenting a release can't recursively cut another.
+`xtask` remains only as a validation and release-please postprocessing helper:
+`check-release-versions` verifies component parity and changed shipping paths,
+`release-please-fixup-plan`/`release-please-fixups` handle derived files
+release-please cannot update directly, and `release-please-dispatch-plan`
+translates release-please outputs into artifact workflow dispatches. **Editing a
+`CHANGELOG.md` never triggers a release** — change detection ignores it, so
+documenting a release can't recursively cut another.
 
-Use `cargo xtask bump-version <component> [patch|minor|major]` only for rollback
-to the old manual flow. The PR gate is:
+The PR gate is:
 
 ```bash
 cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
