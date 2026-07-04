@@ -21,7 +21,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # required to upload release artifacts
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always

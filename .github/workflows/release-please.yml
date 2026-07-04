@@ -71,22 +71,12 @@ jobs:
             files="$(jq -r '.files[]?' <<<"$pr")"
             git fetch origin "$branch"
             git checkout "$branch"
-            if grep -Eq '^(CHANGELOG.md|Cargo.toml|README.md|apps/web/package.json|apps/web/openapi/axon.json)$' <<<"$files"; then
-              version="$(jq -r '."."' .release-please-manifest.json)"
-              cargo xtask release-please-fixups --component cli --version "$version"
-            fi
-            if grep -qx 'apps/palette-tauri/CHANGELOG.md' <<<"$files"; then
-              version="$(jq -r '."apps/palette-tauri"' .release-please-manifest.json)"
-              cargo xtask release-please-fixups --component palette --version "$version"
-            fi
-            if grep -qx 'apps/android/CHANGELOG.md' <<<"$files"; then
-              version="$(jq -r '."apps/android"' .release-please-manifest.json)"
-              cargo xtask release-please-fixups --component android --version "$version"
-            fi
-            if grep -qx 'apps/chrome-extension/CHANGELOG.md' <<<"$files"; then
-              version="$(jq -r '."apps/chrome-extension"' .release-please-manifest.json)"
-              cargo xtask release-please-fixups --component chrome --version "$version"
-            fi
+            cargo xtask release-please-fixup-plan --files "$files" --json > fixup-plan.json
+            while read -r fixup; do
+              component="$(jq -r '.id' <<<"$fixup")"
+              version="$(jq -r '.version' <<<"$fixup")"
+              cargo xtask release-please-fixups --component "$component" --version "$version"
+            done < <(jq -c '.[]' fixup-plan.json)
             cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
             if ! git diff --quiet; then
               git add Cargo.lock apps/palette-tauri/src-tauri/Cargo.lock apps/android/app/build.gradle.kts

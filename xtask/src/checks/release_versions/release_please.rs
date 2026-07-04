@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use super::{
-    Component, ReleaseContext, ReleaseResult, VersionFile, VersionKind, read_version,
+    Component, ReleaseContext, ReleaseResult, VersionKind, read_version,
     replace_gradle_version_name,
 };
 use crate::checks::release_versions::files::{
@@ -16,6 +16,52 @@ pub struct ReleasePleaseDispatchItem {
     pub id: String,
     pub workflow: String,
     pub tag: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReleasePleaseFixupItem {
+    pub id: String,
+    pub version: String,
+}
+
+pub(super) fn print_fixup_plan(items: &[ReleasePleaseFixupItem], json: bool) -> ReleaseResult<()> {
+    print_items(
+        items,
+        json,
+        "failed to serialize release-please fixup plan",
+        |item| println!("{} version={}", item.id, item.version),
+    )
+}
+
+pub(super) fn print_dispatch_plan(
+    items: &[ReleasePleaseDispatchItem],
+    json: bool,
+) -> ReleaseResult<()> {
+    print_items(
+        items,
+        json,
+        "failed to serialize release-please dispatch plan",
+        |item| println!("{} workflow={} tag={}", item.id, item.workflow, item.tag),
+    )
+}
+
+fn print_items<T: Serialize>(
+    items: &[T],
+    json: bool,
+    json_error: &str,
+    print_text: impl Fn(&T),
+) -> ReleaseResult<()> {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(items).release_context(json_error)?
+        );
+    } else {
+        for item in items {
+            print_text(item);
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn check_manifest_versions(
@@ -69,8 +115,44 @@ pub(super) fn fixups(
     }
 }
 
+pub(super) fn fixup_items(
+    root: &Path,
+    components: &[Component],
+    files: &str,
+) -> ReleaseResult<Vec<ReleasePleaseFixupItem>> {
+    let changed_files = files.lines().collect::<BTreeSet<_>>();
+    let versions = read_release_please_manifest(root)?;
+    let mut items = Vec::new();
+
+    for component in components {
+        let release_please_touched_component = component.version_files.iter().any(|file| {
+            !matches!(
+                file.kind,
+                VersionKind::CargoLockPackage | VersionKind::JsonNoVersion
+            ) && changed_files.contains(file.path.as_str())
+        });
+        if !release_please_touched_component {
+            continue;
+        }
+
+        let version = versions
+            .get(&component.release_please_path)
+            .with_release_context(|| {
+                format!(
+                    ".release-please-manifest.json is missing path {}",
+                    component.release_please_path
+                )
+            })?;
+        items.push(ReleasePleaseFixupItem {
+            id: component.id.clone(),
+            version: version.clone(),
+        });
+    }
+
+    Ok(items)
+}
+
 pub(super) fn release_please_dispatch_items(
-    _root: &Path,
     components: &[Component],
     release_outputs: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
@@ -172,14 +254,19 @@ fn parse_paths_released(paths_released: &str) -> ReleaseResult<BTreeSet<String>>
                     .release_context("paths_released array entries must be strings")
             })
             .collect::<ReleaseResult<_>>()?,
-        serde_json::Value::Object(paths) => paths
-            .into_iter()
-            .filter_map(|(path, released)| released.as_bool().unwrap_or(false).then_some(path))
-            .collect(),
+        serde_json::Value::Object(paths) => {
+            let mut released_paths = BTreeSet::new();
+            for (path, released) in paths {
+                let released = released.as_bool().with_release_context(|| {
+                    format!("paths_released object value for {path} must be a boolean")
+                })?;
+                if released {
+                    released_paths.insert(path);
+                }
+            }
+            released_paths
+        }
         _ => release_bail!("paths_released must be a JSON array or object"),
     };
     Ok(paths)
 }
-
-#[allow(dead_code)]
-fn _assert_version_file_send_sync(_: &VersionFile) {}

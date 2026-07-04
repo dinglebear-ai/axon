@@ -20,7 +20,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -59,8 +59,9 @@ jobs:
             exit 1
           fi
 
-          # On a real tag push, the tag version must match tauri.conf.json so a
-          # release can never ship a binary the tag disagrees with.
+          # On release-please dispatch, the tag version must match
+          # tauri.conf.json so a release can never ship a binary the tag
+          # disagrees with.
           if [[ "${GITHUB_REF}" == refs/tags/palette-v* ]]; then
             tag_version="${GITHUB_REF#refs/tags/palette-v}"
             if [[ "$tag_version" != "$version" ]]; then
