@@ -311,6 +311,7 @@ impl MemoryStore for FakeMemoryStore {
         let mut skipped_cursor = request.cursor.is_none();
         let mut memories = Vec::new();
         let mut next_cursor = None;
+        let mut last_returned_id = None;
 
         for (memory_id, record) in &state.records {
             if !skipped_cursor {
@@ -339,10 +340,11 @@ impl MemoryStore for FakeMemoryStore {
                 continue;
             }
             if memories.len() >= limit {
-                next_cursor = Some(memory_id.0.clone());
+                next_cursor = last_returned_id;
                 break;
             }
             memories.push(record.clone());
+            last_returned_id = Some(memory_id.0.clone());
         }
 
         Ok(MemoryReviewResult {
