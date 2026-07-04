@@ -36,6 +36,7 @@ pub use listing::*;
 pub use llm::*;
 pub use memory::*;
 pub use provider_io::*;
+pub use prune::*;
 pub use stage::*;
 pub use state::*;
 pub use status::*;

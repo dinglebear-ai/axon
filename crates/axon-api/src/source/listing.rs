@@ -444,3 +444,15 @@ pub struct WatchArtifactListRequest {
     pub limit: Option<u32>,
     pub cursor: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WatchDescriptor {
+    pub watch_id: WatchId,
+    pub source_id: SourceId,
+    pub enabled: bool,
+    pub schedule: WatchSchedule,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_job: Option<super::lifecycle::JobDescriptor>,
+    pub warnings: Vec<SourceWarning>,
+}

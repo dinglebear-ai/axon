@@ -344,3 +344,43 @@ fn management_dtos_reject_unknown_fields() {
     });
     assert!(serde_json::from_value::<WatchUpdateRequest>(bad_watch).is_err());
 }
+
+#[test]
+fn phase_1_operation_dtos_reject_unknown_fields() {
+    let upload_err = serde_json::from_value::<UploadCreateRequest>(serde_json::json!({
+        "filename": "notes.md",
+        "content_type": "text/markdown",
+        "size_bytes": 12,
+        "purpose": "source_artifact",
+        "legacy": true
+    }))
+    .expect_err("upload request must reject unknown fields");
+    assert!(
+        upload_err.to_string().contains("unknown field"),
+        "{upload_err}"
+    );
+
+    let watch_err = serde_json::from_value::<WatchDescriptor>(serde_json::json!({
+        "watch_id": "watch_1",
+        "source_id": "src_1",
+        "enabled": true,
+        "schedule": { "every_seconds": 3600 },
+        "warnings": [],
+        "legacy": true
+    }))
+    .expect_err("watch descriptor must reject unknown fields");
+    assert!(
+        watch_err.to_string().contains("unknown field"),
+        "{watch_err}"
+    );
+
+    let collection_err = serde_json::from_value::<CollectionListRequest>(serde_json::json!({
+        "prefix": "axon",
+        "legacy": true
+    }))
+    .expect_err("collection list request must reject unknown fields");
+    assert!(
+        collection_err.to_string().contains("unknown field"),
+        "{collection_err}"
+    );
+}
