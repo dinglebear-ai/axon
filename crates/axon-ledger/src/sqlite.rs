@@ -81,6 +81,14 @@ impl LedgerStore for SqliteLedgerStore {
         manifest::put_manifest(self, manifest).await
     }
 
+    async fn get_manifest(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<SourceManifest>> {
+        manifest::read_manifest(self, &source_id, &generation).await
+    }
+
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
         manifest::diff_manifest(self, manifest).await
     }

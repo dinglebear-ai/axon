@@ -155,6 +155,20 @@ impl LedgerStore for FakeLedgerStore {
         Ok(())
     }
 
+    async fn get_manifest(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<SourceManifest>> {
+        Ok(self
+            .state
+            .lock()
+            .await
+            .manifests
+            .get(&(source_id, generation))
+            .cloned())
+    }
+
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
         let state = self.state.lock().await;
         let previous_generation = state.committed.get(&manifest.source_id).cloned();

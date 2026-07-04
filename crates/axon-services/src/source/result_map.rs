@@ -8,8 +8,8 @@
 //! one mapping instead of hand-building the DTO.
 
 use axon_api::source::{
-    AdapterRef, JobId, LedgerSummary, LifecycleStatus, SourceCounts, SourceGenerationId, SourceId,
-    SourceKind, SourceResult, SourceScope,
+    AdapterRef, GraphWriteSummary, JobId, LedgerSummary, LifecycleStatus, SourceCounts,
+    SourceGenerationId, SourceId, SourceKind, SourceResult, SourceScope,
 };
 
 /// The normalized numeric shape shared by every `*SourceIndexOutput`.
@@ -30,15 +30,17 @@ pub struct IndexCounts {
 /// Build a [`SourceResult`] from a family's normalized index output.
 ///
 /// `kind`/`adapter`/`scope` identify the routed family; `counts` carries the
-/// bridge's numeric result. Status is always `Completed` here — the bridges
-/// return `Ok(..)` only after a committed generation, and any acquisition or
-/// data-plane failure is surfaced as an `Err` before this is reached.
+/// bridge's numeric result; `graph` is the summary of the baseline source-graph
+/// write. Status is always `Completed` here — the bridges return `Ok(..)` only
+/// after a committed generation, and any acquisition or data-plane failure is
+/// surfaced as an `Err` before this is reached.
 pub fn to_source_result(
     kind: SourceKind,
     adapter: AdapterRef,
     scope: SourceScope,
     canonical_uri: String,
     counts: IndexCounts,
+    graph: GraphWriteSummary,
 ) -> SourceResult {
     let source_counts = SourceCounts {
         items_total: counts.documents_prepared,
@@ -66,7 +68,7 @@ pub fn to_source_result(
         scope,
         status: LifecycleStatus::Completed,
         ledger,
-        graph: default_graph_summary(),
+        graph,
         counts: source_counts,
         warnings: Vec::new(),
         inline: None,
@@ -74,17 +76,6 @@ pub fn to_source_result(
         watch: None,
         artifacts: Vec::new(),
         errors: Vec::new(),
-    }
-}
-
-/// A no-graph-write summary. Source indexing does not currently emit graph
-/// facts through this path, so all counts are zero and `degraded` is false.
-fn default_graph_summary() -> axon_api::source::GraphWriteSummary {
-    axon_api::source::GraphWriteSummary {
-        nodes_upserted: 0,
-        edges_upserted: 0,
-        evidence_records: 0,
-        degraded: false,
     }
 }
 

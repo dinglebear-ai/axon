@@ -915,6 +915,7 @@ dependencies = [
  "axon-document",
  "axon-embedding",
  "axon-extract",
+ "axon-graph",
  "axon-ingest",
  "axon-jobs",
  "axon-ledger",

@@ -14,6 +14,16 @@ pub trait LedgerStore: Send + Sync {
     async fn upsert_source(&self, source: SourceSummary) -> Result<()>;
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>>;
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()>;
+    /// Read the stored manifest for a specific `(source_id, generation)`.
+    ///
+    /// Returns `None` when no manifest was written for that generation. Used by
+    /// the source orchestrator to build the baseline source graph from the
+    /// real per-document manifest items after indexing.
+    async fn get_manifest(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<SourceManifest>>;
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff>;
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration>;
     async fn committed_generation(&self, source_id: SourceId)
