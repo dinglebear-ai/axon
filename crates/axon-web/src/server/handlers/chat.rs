@@ -1,6 +1,6 @@
 use super::super::error::HttpError;
 use axon_core::config::Config;
-use axon_core::llm::{self, CompletionRequest, LlmModelPurpose};
+use axon_llm::{self as llm, CompletionRequest, LlmModelPurpose};
 use axon_services::client_contract::{RestChatRequest, RestChatResponse};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
 use std::sync::Arc;

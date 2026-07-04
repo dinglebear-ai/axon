@@ -1,0 +1,26 @@
+[package]
+name = "axon-adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+axon-api = { path = "../axon-api" }
+axon-error = { path = "../axon-error" }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+feed-rs = "2"
+globset = "0.4"
+ignore = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

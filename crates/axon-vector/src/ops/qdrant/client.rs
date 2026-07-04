@@ -11,10 +11,12 @@ pub mod delete;
 pub mod facets;
 pub mod retrieve;
 pub mod scroll;
-mod source_publish;
 
 // Re-exports for convenience (public API)
 pub use delete::CleanupSelectorV1;
+#[cfg(any(test, feature = "test-util"))]
+pub use delete::local_code_batch_delete_body_for_test;
+pub use delete::qdrant_delete_by_url_filter;
 pub use delete::{
     QdrantDeleteByUrlResult, qdrant_delete_by_url, qdrant_delete_local_code_files_for_generation,
     qdrant_delete_local_file_fragments, qdrant_delete_points, qdrant_delete_repo_file_fragments,
@@ -25,14 +27,9 @@ pub use facets::{qdrant_domain_facets, qdrant_facet, qdrant_facet_filtered, qdra
 pub use retrieve::{
     qdrant_batch_retrieve_by_urls, qdrant_retrieve_by_url, qdrant_retrieve_by_url_details,
 };
+#[cfg(test)]
+pub use scroll::qdrant_scroll_pages;
 pub use scroll::{
     qdrant_domain_has_indexed_url, qdrant_indexed_urls, qdrant_scroll_pages_selective,
     qdrant_urls_for_domain, qdrant_urls_for_domain_limited, qdrant_urls_for_domain_page,
 };
-pub use source_publish::qdrant_publish_source_generation;
-
-#[cfg(any(test, feature = "test-util"))]
-pub use delete::local_code_batch_delete_body_for_test;
-pub use delete::qdrant_delete_by_url_filter;
-#[cfg(test)]
-pub use scroll::qdrant_scroll_pages;

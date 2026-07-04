@@ -1,6 +1,32 @@
 use serde::{Deserialize, Serialize};
 
 use super::requests::{McpRenderMode, ResponseMode, SearchTimeRange};
+use crate::source::SourceScope;
+
+/// Request parameters for the unified `source` action.
+///
+/// `source` is the single indexing entrypoint that replaces the removed
+/// `embed` / `ingest` / `scrape` / `crawl` / `code_search` / `vertical_scrape`
+/// MCP actions. The handler maps this onto [`crate::source::SourceRequest`] and
+/// calls `axon_services::index_source`, which classifies the input (local path,
+/// git URL, feed URL, youtube/reddit target, web URL, session selector, or
+/// registry target), acquires it, and indexes it through the unified pipeline.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SourceRequest {
+    /// Source input string: a local path, git repository URL, feed URL,
+    /// youtube target, reddit target, web URL, session selector
+    /// (`session:<claude|codex|gemini>:<path>`), or registry target
+    /// (`pkg:<npm|pypi|crates>/<package>`). Accepts the `input` alias.
+    #[serde(alias = "input")]
+    pub source: Option<String>,
+    /// Optional acquisition scope override (e.g. `page`, `site`, `repo`).
+    /// When omitted, the classified family's default scope is used.
+    pub scope: Option<SourceScope>,
+    /// Qdrant collection to index into. Defaults to the server's configured collection.
+    pub collection: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

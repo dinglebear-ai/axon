@@ -1174,7 +1174,7 @@ fn high_context_models_floor_full_docs_at_4() {
 #[test]
 fn gpt_models_are_high_context_for_full_doc_selection() {
     let cfg = Config {
-        llm_backend: axon_core::llm::LlmBackendKind::OpenAiCompat,
+        llm_backend: axon_llm::LlmBackendKind::OpenAiCompat,
         openai_model: "gpt-5.4-mini".to_string(),
         ..Default::default()
     };
@@ -1185,7 +1185,7 @@ fn gpt_models_are_high_context_for_full_doc_selection() {
 #[test]
 fn high_context_detection_uses_codex_model_name() {
     let cfg = Config {
-        llm_backend: axon_core::llm::LlmBackendKind::CodexAppServer,
+        llm_backend: axon_llm::LlmBackendKind::CodexAppServer,
         codex_model: "gpt-5.5".to_string(),
         ask_max_context_chars: 50_000,
         ..Default::default()
@@ -1197,7 +1197,7 @@ fn high_context_detection_uses_codex_model_name() {
 #[test]
 fn high_context_detection_uses_codex_backend_without_explicit_model() {
     let cfg = Config {
-        llm_backend: axon_core::llm::LlmBackendKind::CodexAppServer,
+        llm_backend: axon_llm::LlmBackendKind::CodexAppServer,
         codex_model: String::new(),
         ask_max_context_chars: 50_000,
         ..Default::default()

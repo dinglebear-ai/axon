@@ -67,9 +67,14 @@ async fn codex_usage_limit_response_contract_is_rate_limited() {
         .await
         .expect("error body");
     let body: Value = serde_json::from_slice(&body).expect("json error body");
-    assert_eq!(body["kind"], "rate_limited");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "provider.rate_limited");
+    assert_eq!(body["error"]["stage"], "fetching");
+    assert_eq!(body["error"]["retryable"], true);
+    assert_eq!(body["error"]["severity"], "failed");
+    assert_eq!(body["error"]["visibility"], "public");
     assert_eq!(
-        body["message"],
+        body["error"]["message"],
         "crawl suggestion discovery failed: codex app-server error: You've hit your usage limit"
     );
 }
@@ -91,9 +96,11 @@ async fn llm_completion_response_contract_is_upstream() {
         .await
         .expect("error body");
     let body: Value = serde_json::from_slice(&body).expect("json error body");
-    assert_eq!(body["kind"], "upstream");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "provider.unavailable");
+    assert_eq!(body["error"]["stage"], "fetching");
     assert_eq!(
-        body["message"],
+        body["error"]["message"],
         "crawl suggestion discovery failed: llm completion failed"
     );
 }

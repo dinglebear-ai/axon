@@ -1,7 +1,7 @@
 use super::*;
 use axon_core::config::Config;
 use axon_core::http::http_client;
-use axon_core::llm::{CompletionRequest, CompletionRunner, CompletionTurnResult};
+use axon_llm::{CompletionRequest, CompletionRunner, CompletionTurnResult};
 use std::sync::{Arc, Mutex};
 
 use super::super::super::streaming::{

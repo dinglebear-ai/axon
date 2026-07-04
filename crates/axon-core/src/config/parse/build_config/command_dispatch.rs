@@ -6,19 +6,18 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    FreshSubcommand, IngestArgs, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs,
+    FreshSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ResetArgs, ServeArgs,
     ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs,
-    SetupAuthMode, SetupInitArgs, SetupSubcommand, SyncSubcommand, UpdateArgs,
+    SetupAuthMode, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
-    CodeSearchWatchConfig, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport,
-    RedditSort, RedditTime, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
+    SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
 };
-use super::super::super::types::{FreshAction, FreshDuration, FreshnessCommand, FreshnessRequest};
+use super::super::super::types::{FreshAction, FreshnessRequest};
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
-use std::path::PathBuf;
 use std::time::Duration;
 
 fn env_usize_or(var: &str, default: usize) -> usize {
@@ -41,12 +40,6 @@ pub(super) struct DispatchOutput {
     pub ask_reset_session: bool,
     pub ask_new_session: bool,
     pub ask_list_sessions: bool,
-    pub code_search_cwd: Option<PathBuf>,
-    pub code_search_path_prefix: Option<String>,
-    pub code_search_no_freshness: bool,
-    pub code_search_watch: Option<CodeSearchWatchConfig>,
-    pub embed_watch: bool,
-    pub embed_no_watch: bool,
     pub freshness: Option<FreshnessRequest>,
     pub fresh_action: Option<FreshAction>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
@@ -90,6 +83,12 @@ pub(super) struct DispatchOutput {
     pub purge_dry_run: bool,
     /// Binary acquisition method passed in by install.sh via `axon setup --method pull|build`
     pub setup_method: Option<String>,
+    /// `--scope` override for `axon <source>` / `axon source <input>`.
+    pub source_scope: Option<String>,
+    /// `--stores` selection for `axon reset` (empty = all stores).
+    pub reset_stores: Vec<String>,
+    /// `--dry-run` pin for `axon reset`.
+    pub reset_dry_run: bool,
 }
 
 impl DispatchOutput {
@@ -105,12 +104,6 @@ impl DispatchOutput {
             ask_reset_session: false,
             ask_new_session: false,
             ask_list_sessions: false,
-            code_search_cwd: None,
-            code_search_path_prefix: None,
-            code_search_no_freshness: false,
-            code_search_watch: None,
-            embed_watch: false,
-            embed_no_watch: false,
             freshness: None,
             fresh_action: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
@@ -153,6 +146,9 @@ impl DispatchOutput {
             purge_prefix: false,
             purge_dry_run: false,
             setup_method: None,
+            source_scope: None,
+            reset_stores: Vec::new(),
+            reset_dry_run: false,
         }
     }
 }
@@ -163,20 +159,6 @@ impl DispatchOutput {
 pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
     let mut out = DispatchOutput::defaults();
     match cli_command {
-        CliCommand::Scrape(args) => {
-            out.command = CommandKind::Scrape;
-            out.positional = args.positional_urls;
-            out.freshness = freshness_request(args.fresh, FreshnessCommand::Scrape);
-        }
-        CliCommand::Crawl(args) => {
-            out.command = CommandKind::Crawl;
-            out.freshness = freshness_request(args.fresh, FreshnessCommand::Crawl);
-            out.positional = if let Some(job) = args.job {
-                positional_from_job(job)
-            } else {
-                args.positional_urls
-            };
-        }
         CliCommand::Watch(args) => {
             out.command = CommandKind::Watch;
             out.positional = if let Some(action) = args.action {
@@ -216,17 +198,6 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Search(args) => set_simple(&mut out, CommandKind::Search, args.value),
         CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
-        CliCommand::Embed(args) => {
-            out.command = CommandKind::Embed;
-            out.embed_watch = args.watch;
-            out.embed_no_watch = args.no_watch;
-            out.freshness = freshness_request(args.fresh, FreshnessCommand::Embed);
-            out.positional = if let Some(job) = args.job {
-                positional_from_job(job)
-            } else {
-                args.input.into_iter().collect()
-            };
-        }
         CliCommand::Brand(args) => {
             out.command = CommandKind::Brand;
             out.positional = args.positional_urls;
@@ -247,16 +218,6 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.ask_diagnostics = args.diagnostics;
             set_simple(&mut out, CommandKind::Query, args.value);
         }
-        CliCommand::CodeSearch(args) => {
-            out.command = CommandKind::CodeSearch;
-            out.positional = args.value;
-            out.code_search_cwd = args.cwd;
-            out.code_search_path_prefix = args.path_prefix;
-            out.code_search_no_freshness = args.no_freshness;
-        }
-        CliCommand::CodeSearchWatchRemoved => unreachable!(
-            "code-search-watch tombstone uses arg_required_else_help and should not dispatch"
-        ),
         CliCommand::Retrieve(args) => {
             out.retrieve_max_points = args.max_points;
             set_simple(
@@ -325,9 +286,9 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.command = CommandKind::Fresh;
             out.fresh_action = Some(fresh_action_from_subcommand(args.action));
         }
-        CliCommand::Ingest(args) => apply_ingest(&mut out, args),
         CliCommand::Memory(args) => apply_memory(&mut out, args.action),
         CliCommand::Sessions(args) => apply_sessions(&mut out, args),
+        CliCommand::Source(args) => apply_source(&mut out, args),
         CliCommand::Screenshot(args) => {
             out.command = CommandKind::Screenshot;
             out.positional = args.positional_urls;
@@ -343,6 +304,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             ];
         }
         CliCommand::Serve(args) => apply_serve(&mut out, args),
+        CliCommand::Reset(args) => apply_reset(&mut out, args),
         CliCommand::Preflight => out.command = CommandKind::Preflight,
         CliCommand::Smoke => out.command = CommandKind::Smoke,
         CliCommand::Compose(args) => apply_compose(&mut out, args),
@@ -372,16 +334,6 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
 fn set_simple(out: &mut DispatchOutput, kind: CommandKind, positional: Vec<String>) {
     out.command = kind;
     out.positional = positional;
-}
-
-fn freshness_request(
-    duration: Option<FreshDuration>,
-    command: FreshnessCommand,
-) -> Option<FreshnessRequest> {
-    duration.map(|fresh| FreshnessRequest {
-        command,
-        every_seconds: fresh.seconds,
-    })
 }
 
 fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
@@ -524,26 +476,10 @@ fn apply_memory(out: &mut DispatchOutput, action: MemoryCliSubcommand) {
     }
 }
 
-fn apply_ingest(out: &mut DispatchOutput, args: IngestArgs) {
-    // --no-source overrides the default (true). --include-source is now a no-op.
-    if args.no_source {
-        out.github_include_source = false;
-    }
-    out.github_max_issues = args.max_issues;
-    out.github_max_prs = args.max_prs;
-    out.reddit_sort = args.sort;
-    out.reddit_time = args.time;
-    out.reddit_max_posts = args.max_posts;
-    out.reddit_min_score = args.min_score;
-    out.reddit_depth = args.depth;
-    out.reddit_scrape_links = args.scrape_links;
-    out.command = CommandKind::Ingest;
-    out.freshness = freshness_request(args.fresh, FreshnessCommand::Ingest);
-    out.positional = if let Some(job) = args.job {
-        positional_from_job(job)
-    } else {
-        args.target.into_iter().collect()
-    };
+fn apply_source(out: &mut DispatchOutput, args: SourceArgs) {
+    out.command = CommandKind::Source;
+    out.positional = args.path.into_iter().collect();
+    out.source_scope = args.scope;
 }
 
 fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {
@@ -618,6 +554,17 @@ fn apply_serve(out: &mut DispatchOutput, args: ServeArgs) {
             out.command = CommandKind::Serve;
         }
     }
+}
+
+fn apply_reset(out: &mut DispatchOutput, args: ResetArgs) {
+    out.command = CommandKind::Reset;
+    out.reset_stores = args
+        .stores
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    out.reset_dry_run = args.dry_run;
 }
 
 fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {

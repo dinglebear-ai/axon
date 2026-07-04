@@ -1,5 +1,5 @@
 use axon_core::config::Config;
-use axon_core::llm::{self, CompletionRequest, CompletionResponse};
+use axon_llm::{self as llm, CompletionRequest, CompletionResponse};
 use axon_services::client_contract::RestChatRequest;
 use axum::{
     Extension, Json,

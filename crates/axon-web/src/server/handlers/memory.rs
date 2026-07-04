@@ -2,10 +2,11 @@ use axon_core::config::Config;
 use axon_services as services;
 use axon_services::client_contract::RestMemoryRequest as MemoryRequest;
 use axon_services::types::ClientActionError;
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode};
 use std::sync::Arc;
 
 use super::super::error::HttpError;
+use super::super::json::Json;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 

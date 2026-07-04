@@ -3,10 +3,14 @@ use axum::Router;
 use std::sync::Arc;
 
 // Module declarations
+#[path = "server/api_error.rs"]
+mod api_error;
 #[path = "server/error.rs"]
 mod error;
 #[path = "server/handlers.rs"]
 mod handlers;
+#[path = "server/json.rs"]
+mod json;
 #[path = "server/openapi.rs"]
 mod openapi;
 #[path = "server/openapi_jobs.rs"]

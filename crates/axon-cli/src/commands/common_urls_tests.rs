@@ -65,11 +65,11 @@ fn expands_url_glob_range_stops_on_overflow() {
 }
 
 #[test]
-fn start_url_from_cfg_guards_crawl_audit_tokens() {
+fn start_url_from_cfg_guards_extract_job_subcommand_tokens() {
     let cfg = Config {
-        command: CommandKind::Crawl,
+        command: CommandKind::Extract,
         start_url: "https://fallback.example".to_string(),
-        positional: vec!["audit".to_string(), "https://target.example".to_string()],
+        positional: vec!["list".to_string()],
         ..Config::default()
     };
 

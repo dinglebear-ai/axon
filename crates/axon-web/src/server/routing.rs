@@ -57,7 +57,12 @@ pub(super) fn router(
         .merge(super::openapi::docs_router())
         .merge(panel_routes())
         .merge(rest_routes)
-        .fallback(super::super::static_assets::serve_static)
+        // Unknown paths: API prefixes get the contract `ErrorEnvelope` 404;
+        // everything else falls through to the SPA static-asset server.
+        .fallback(api_aware_not_found)
+        // Known path, wrong method → enveloped 405 (axum otherwise returns an
+        // empty-body 405).
+        .method_not_allowed_fallback(super::json::method_not_allowed_fallback)
         .layer(middleware::from_fn(security_headers))
         .with_state((state, Arc::clone(&cfg)))
 }
@@ -103,10 +108,10 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         .route("/v1/brand", post(handlers::exploration::brand))
         .route("/v1/diff", post(handlers::exploration::diff))
         .route("/v1/screenshot", post(handlers::exploration::screenshot))
-        .merge(ask_router::<ServeState>(cfg))
+        .merge(ask_router::<ServeState>(cfg, Arc::clone(service_context)))
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
-        .route("/v1/scrape", post(handlers::exploration::scrape))
+        .route("/v1/sources", post(handlers::sources::index_source))
         .route("/v1/summarize", post(handlers::exploration::summarize))
         .route(
             "/v1/summarize/stream",
@@ -120,20 +125,8 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
             post(handlers::exploration::research_stream),
         )
         .nest(
-            "/v1/crawl",
-            handlers::async_jobs::crawl_router(Arc::clone(service_context)),
-        )
-        .nest(
-            "/v1/embed",
-            handlers::async_jobs::embed_router(Arc::clone(service_context)),
-        )
-        .nest(
             "/v1/extract",
             handlers::async_jobs::extract_router(Arc::clone(service_context)),
-        )
-        .nest(
-            "/v1/ingest",
-            handlers::async_jobs::ingest_router(Arc::clone(service_context)),
         )
         .route("/v1/dedupe", post(handlers::admin::dedupe))
         .route("/v1/purge", post(handlers::admin::purge))
@@ -147,12 +140,8 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
 
 /// Write-scoped routes whose payloads exceed the standard REST body cap
 /// (prepared session exports ship megabytes of transcript JSON).
-fn large_write_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
+fn large_write_routes(_service_context: &Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
-        .nest(
-            "/v1/ingest/sessions/prepared",
-            handlers::async_jobs::prepared_sessions_router(Arc::clone(service_context)),
-        )
         .route(
             "/v1/mobile/sessions/{id}",
             put(handlers::mobile_sessions::upsert_mobile_session)
@@ -208,6 +197,20 @@ pub(super) async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::rest_capabilities())
 }
 
+/// Router fallback for unrouted paths.
+///
+/// API surfaces (`/v1/*`, `/api/*`) return the contract `ErrorEnvelope` 404 so
+/// clients never receive the SPA `index.html` for a mistyped API route. All
+/// other paths fall through to the static-asset SPA server (which itself serves
+/// `index.html` for client-side routing).
+async fn api_aware_not_found(uri: axum::http::Uri) -> Response {
+    let path = uri.path();
+    if path.starts_with("/v1/") || path.starts_with("/api/") {
+        return super::json::not_found_fallback().await;
+    }
+    super::super::static_assets::serve_static(uri).await
+}
+
 async fn v1_actions_removed() -> HttpError {
     HttpError::new(
         StatusCode::NOT_FOUND,
@@ -224,7 +227,7 @@ async fn v1_migrate_not_exposed() -> HttpError {
     )
 }
 
-pub(crate) fn ask_router<S>(cfg: Arc<Config>) -> Router<S>
+pub(crate) fn ask_router<S>(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
@@ -234,6 +237,9 @@ where
         .route("/v1/chat", post(handlers::v1_chat))
         .route("/v1/chat/stream", post(handlers::v1_chat_stream))
         .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
+        // `ask`/`ask/stream` read the runtime through this Extension (issue #298
+        // retrieval cutover); `chat` handlers ignore it and use `cfg` only.
+        .layer(Extension(service_context))
         .layer(Extension(cfg))
 }
 
@@ -274,9 +280,21 @@ where
 }
 
 async fn jsonize_auth_error(request: Request<Body>, next: middleware::Next) -> Response {
-    let response = next.run(request).await;
+    let mut response = next.run(request).await;
     let status = response.status();
     if status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN {
+        return response;
+    }
+    // A response our own error boundary already built (handler `HttpError`,
+    // per-source `auth.forbidden`, scope-guard) carries the envelope marker and
+    // must NOT be flattened into a generic `{unauthorized|forbidden}` — that
+    // would drop richer detail like `required_scope`. Only bare auth-layer
+    // 401/403s (which lack the marker) get normalized here.
+    if response
+        .headers_mut()
+        .remove(super::api_error::ERROR_ENVELOPE_MARKER)
+        .is_some()
+    {
         return response;
     }
     let kind = if status == StatusCode::UNAUTHORIZED {
@@ -306,6 +324,7 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
         && (path == "/v1/dedupe"
             || path == "/v1/purge"
+            || path == "/v1/sources"
             || path == "/v1/watch"
             || path.starts_with("/v1/watch/"))
     {
@@ -318,24 +337,17 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
         return true;
     }
 
-    for prefix in ["/v1/crawl", "/v1/embed", "/v1/extract", "/v1/ingest"] {
-        if path == prefix {
-            return *method == Method::POST || *method == Method::DELETE;
-        }
-        let Some(remainder) = path
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_prefix('/'))
-        else {
-            continue;
-        };
-        if *method == Method::POST && prefix == "/v1/ingest" {
-            return true;
-        }
-        if *method == Method::POST
-            && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
-        {
-            return true;
-        }
+    let prefix = "/v1/extract";
+    if path == prefix {
+        return *method == Method::POST || *method == Method::DELETE;
+    }
+    if let Some(remainder) = path
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix('/'))
+        && *method == Method::POST
+        && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
+    {
+        return true;
     }
     false
 }
@@ -387,6 +399,12 @@ async fn require_scope(
 
 async fn security_headers(request: Request<Body>, next: middleware::Next) -> Response {
     let mut response = next.run(request).await;
+    // Strip the internal error-envelope marker so it never reaches clients.
+    // `jsonize_auth_error` already removes it on the auth paths it touches; this
+    // is the catch-all for every other enveloped error response.
+    response
+        .headers_mut()
+        .remove(super::api_error::ERROR_ENVELOPE_MARKER);
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_SECURITY_POLICY,

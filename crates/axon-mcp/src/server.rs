@@ -4,20 +4,18 @@ pub(super) mod artifacts;
 pub mod common;
 #[path = "server/handler_meta.rs"]
 mod handler_meta;
-#[path = "server/handlers_crawl_extract.rs"]
-mod handlers_crawl_extract;
 #[path = "server/handlers_elicit.rs"]
 mod handlers_elicit;
-#[path = "server/handlers_embed_ingest.rs"]
-mod handlers_embed_ingest;
+#[path = "server/handlers_extract.rs"]
+mod handlers_extract;
 #[path = "server/handlers_memory.rs"]
 mod handlers_memory;
 #[path = "server/handlers_query.rs"]
 mod handlers_query;
+#[path = "server/handlers_source.rs"]
+mod handlers_source;
 #[path = "server/handlers_system.rs"]
 mod handlers_system;
-#[path = "server/handlers_vertical_scrape.rs"]
-mod handlers_vertical_scrape;
 #[path = "server/http.rs"]
 mod http;
 #[path = "server/authz.rs"]
@@ -127,24 +125,13 @@ impl AxonMcpServer {
             .await
             .map(Arc::clone)
     }
-
-    pub(super) async fn service_context_for(
-        &self,
-        cfg: Config,
-    ) -> Result<ServiceContext, Box<dyn std::error::Error + Send + Sync>> {
-        let base = self.base_service_context().await?;
-        Ok(ServiceContext::from_runtime(
-            Arc::new(cfg),
-            Arc::clone(&base.jobs),
-        ))
-    }
 }
 
 #[tool_router]
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, memory, query, code_search, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, scrape, research, ask, summarize, screenshot, elicit_demo, brand, diff, purge, vertical_scrape.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, source, extract, memory, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, research, ask, summarize, screenshot, elicit_demo, brand, diff, purge. The single `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target (replaces the former embed/ingest/scrape/crawl/code_search/vertical_scrape actions).",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -173,13 +160,10 @@ impl AxonMcpServer {
         })?;
         let response = match request {
             AxonRequest::Status(req) => self.handle_status(req).await?,
-            AxonRequest::Crawl(req) => self.handle_crawl(req).await?,
+            AxonRequest::Source(req) => self.handle_source(req).await?,
             AxonRequest::Extract(req) => self.handle_extract(req).await?,
-            AxonRequest::Embed(req) => self.handle_embed(req).await?,
-            AxonRequest::Ingest(req) => self.handle_ingest(req).await?,
             AxonRequest::Memory(req) => self.handle_memory(req).await?,
             AxonRequest::Query(req) => self.handle_query(req).await?,
-            AxonRequest::CodeSearch(req) => self.handle_code_search(req).await?,
             AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
             AxonRequest::Search(req) => self.handle_search(req).await?,
             AxonRequest::Map(req) => self.handle_map(req).await?,
@@ -192,8 +176,6 @@ impl AxonMcpServer {
             AxonRequest::Stats(req) => self.handle_stats(req).await?,
             AxonRequest::Help(req) => self.handle_help(req).await?,
             AxonRequest::ElicitDemo(req) => handlers_elicit::handle_elicit_demo(&peer, req).await?,
-            AxonRequest::Scrape(req) => self.handle_scrape(req).await?,
-            AxonRequest::VerticalScrape(req) => self.handle_vertical_scrape(req).await?,
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
@@ -201,6 +183,23 @@ impl AxonMcpServer {
             AxonRequest::Diff(req) => self.handle_diff(req).await?,
             AxonRequest::Brand(req) => self.handle_brand(req).await?,
             AxonRequest::Purge(req) => self.handle_purge(req).await?,
+            // Removed indexing actions: `embed`, `ingest`, `scrape`, `crawl`,
+            // `code_search`, and `vertical_scrape` are folded into `source`.
+            // These variants remain on the shared `AxonRequest` for the REST
+            // surface, but the MCP authz allow-list rejects them before
+            // dispatch; the arm here keeps the match exhaustive and gives a
+            // clear message if one is ever reached.
+            AxonRequest::Embed(_)
+            | AxonRequest::Ingest(_)
+            | AxonRequest::Scrape(_)
+            | AxonRequest::Crawl(_)
+            | AxonRequest::CodeSearch(_)
+            | AxonRequest::VerticalScrape(_) => {
+                return Err(invalid_params(
+                    "this action was removed from MCP; use action=source to index any local path, \
+                     git/web/feed/youtube/reddit/session/registry target",
+                ));
+            }
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
             | AxonRequest::Migrate(_)

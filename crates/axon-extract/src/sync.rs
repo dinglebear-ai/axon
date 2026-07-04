@@ -151,7 +151,8 @@ fn build_extract_web_config(cfg: &Config, url: String, prompt: &str) -> ExtractW
         start_url: url,
         prompt: prompt.to_string(),
         limit: cfg.max_pages,
-        llm_backend: axon_core::llm::LlmBackendConfig::from_config(cfg),
+        llm_backend: axon_llm::LlmBackendConfig::from_config(cfg),
+        completer: axon_llm::backend_text_completer(),
         custom_headers: cfg.custom_headers.clone(),
         render_mode: cfg.render_mode,
         chrome_remote_url: cfg.chrome_remote_url.clone(),
@@ -178,7 +179,7 @@ fn build_extract_summary(
     Ok(serde_json::json!({
         "urls": urls,
         "prompt": prompt,
-        "model": axon_core::llm::configured_model_from_config(cfg),
+        "model": axon_llm::configured_model_from_config(cfg),
         "pages_visited": agg.pages_visited,
         "pages_with_data": agg.pages_with_data,
         "deterministic_pages": agg.deterministic_pages,

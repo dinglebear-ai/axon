@@ -3,18 +3,19 @@ use crate::commands::resolve_input_text;
 use axon_core::config::{Config, EvaluateResponsesMode};
 use axon_core::logging::log_info;
 use axon_core::ui::{accent, muted, primary};
+use axon_services::context::ServiceContext;
 use axon_services::query as query_service;
 use std::error::Error;
 use std::fmt;
 
 /// CLI shim for the evaluate command.
-pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_evaluate(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let question = resolve_input_text(cfg).ok_or("evaluate requires a question")?;
     if !cfg.quiet && !cfg.json_output {
         log_info(&format!("command=evaluate query_len={}", question.len()));
     }
 
-    let result = query_service::evaluate(cfg, &question)
+    let result = query_service::evaluate(ctx, cfg, &question)
         .await
         .map_err(|err| -> Box<dyn Error> { Box::new(EvaluateCliError(err)) })?;
 

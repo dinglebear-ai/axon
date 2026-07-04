@@ -231,6 +231,55 @@ fn render_browser_runtime_section(report: &serde_json::Value) {
     );
 }
 
+fn render_cutover_stores_section(report: &serde_json::Value) {
+    let sqlite_non_empty =
+        report_bool(report, &["cutover_stores", "stores", "sqlite", "non_empty"]);
+    let vectors_non_empty = report_bool(
+        report,
+        &["cutover_stores", "stores", "vectors", "non_empty"],
+    );
+    let vectors_incompatible = report_bool(
+        report,
+        &["cutover_stores", "stores", "vectors", "schema_incompatible"],
+    );
+    let reset_recommended = report_bool(report, &["reset_recommended"]);
+
+    println!("{}", primary("Cutover Stores"));
+    let empty_status = |non_empty: bool, extra: &str| {
+        if non_empty {
+            format!("non-empty{extra}")
+        } else {
+            "empty/fresh".to_string()
+        }
+    };
+    println!(
+        "  {} sqlite {}",
+        symbol_for_status(status_from_bool(!sqlite_non_empty)),
+        muted(&empty_status(sqlite_non_empty, "")),
+    );
+    let vectors_extra = if vectors_incompatible {
+        " (old payload schema)"
+    } else {
+        ""
+    };
+    println!(
+        "  {} vectors {}",
+        symbol_for_status(status_from_bool(
+            !vectors_non_empty && !vectors_incompatible
+        )),
+        muted(&empty_status(
+            vectors_non_empty || vectors_incompatible,
+            vectors_extra
+        )),
+    );
+    if reset_recommended {
+        let guidance = report_text(report, &["cutover_stores", "guidance"], "run `axon reset`");
+        println!("  {} {}", muted("⚠"), muted(&guidance));
+    } else {
+        println!("  {} stores are empty/fresh — no reset needed", muted("·"));
+    }
+}
+
 pub(crate) fn render_doctor_report_human(report: &serde_json::Value) {
     let all_ok = report_bool(report, &["all_ok"]);
 
@@ -242,6 +291,9 @@ pub(crate) fn render_doctor_report_human(report: &serde_json::Value) {
     render_pipelines_section(report);
 
     render_stale_jobs_section(report);
+
+    println!();
+    render_cutover_stores_section(report);
 
     println!();
     render_browser_runtime_section(report);

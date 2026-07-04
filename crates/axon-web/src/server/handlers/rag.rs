@@ -5,10 +5,11 @@ use axon_services::client_contract::{
     RestRetrieveRequest as RetrieveRequest, RestSuggestRequest as SuggestRequest,
 };
 use axon_services::transport;
-use axum::{Json, extract::State};
+use axum::extract::State;
 use std::sync::Arc;
 
 use super::super::error::HttpError;
+use super::super::json::Json;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 
@@ -24,7 +25,7 @@ type WebState = (super::super::state::AppState, Arc<Config>);
     tag = "rag"
 )]
 pub(crate) async fn query(
-    State((_state, cfg)): State<WebState>,
+    State((state, cfg)): State<WebState>,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<services::types::QueryResult>, HttpError> {
     let query = required_text(&req.query, "query")?;
@@ -36,6 +37,7 @@ pub(crate) async fn query(
         req.hybrid_search,
     )?;
     services::query::query(
+        &state.service_context,
         &cfg,
         query,
         transport::pagination(req.limit, req.offset, cfg.search_limit),
@@ -84,7 +86,7 @@ pub(crate) async fn retrieve(
     tag = "rag"
 )]
 pub(crate) async fn evaluate(
-    State((_state, cfg)): State<WebState>,
+    State((state, cfg)): State<WebState>,
     Json(req): Json<EvaluateRequest>,
 ) -> Result<Json<services::types::EvaluateResult>, HttpError> {
     let question = required_text(&req.question, "question")?;
@@ -101,7 +103,7 @@ pub(crate) async fn evaluate(
     if let Some(retrieval_ab) = req.retrieval_ab {
         cfg.evaluate_retrieval_ab = retrieval_ab;
     }
-    services::query::evaluate(&cfg, question)
+    services::query::evaluate(&state.service_context, &cfg, question)
         .await
         .map(Json)
         .map_err(HttpError::from_box_send_sync)

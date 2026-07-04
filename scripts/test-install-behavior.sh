@@ -131,7 +131,7 @@ test_success_delegates_to_setup_without_logging_token() {
   log="$work/axon.log"
   mkdir -p "$tmp"
   make_fake_bin "$fake"
-  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_PREFIX="$work/prefix" AXON_INSTALL_TMPDIR="$tmp" AXON_TEST_LOG="$log" AXON_MCP_HTTP_TOKEN="secret-token"; then
+  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_PREFIX="$work/prefix" AXON_INSTALL_TMPDIR="$tmp" AXON_TEST_LOG="$log" AXON_HTTP_TOKEN="secret-token"; then
     fail "install with setup should succeed"
   fi
   assert_contains "$log" "setup"

@@ -1,8 +1,8 @@
 use axon_api::AskResult;
 use axon_core::ask_explain::{CorpusHealthDiagnostic, CorpusHealthKind};
 use axon_core::config::Config;
-use axon_core::llm;
 use axon_core::logging::{log_info, log_warn};
+use axon_llm as llm;
 
 mod assemble;
 mod context;
@@ -26,7 +26,8 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
     let backend = llm::LlmBackendConfig::from_config(cfg);
     match backend.kind {
         llm::LlmBackendKind::GeminiHeadless => {
-            llm::headless::gemini::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
+            llm::runtime::headless::gemini::validate_config(&backend)
+                .map_err(|e| anyhow::anyhow!("{e}"))
         }
         llm::LlmBackendKind::OpenAiCompat => {
             backend
@@ -46,7 +47,8 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
             Ok(())
         }
         llm::LlmBackendKind::CodexAppServer => {
-            llm::codex_app_server::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
+            llm::runtime::codex_app_server::validate_config(&backend)
+                .map_err(|e| anyhow::anyhow!("{e}"))
         }
     }
 }
@@ -89,10 +91,53 @@ where
     ask_result_with_delta_handler(cfg, query, Some(on_delta)).await
 }
 
+/// Synthesize an `ask` answer from a **prebuilt** [`AskContext`] (no streaming).
+///
+/// Entry point for the #298 retrieval cutover: the caller (`axon-services`)
+/// produces the SEARCH + CONTEXT half through the new `axon-retrieval` engine
+/// and hands the assembled [`AskContext`] here, which runs the unchanged
+/// synthesis / prompt / citation-validation / assemble pipeline. `ask_started`
+/// should be captured just before retrieval so total-elapsed timing includes it.
+pub async fn ask_result_from_context(
+    cfg: &Config,
+    query: &str,
+    ctx: AskContext,
+    ask_started: std::time::Instant,
+) -> anyhow::Result<AskResult> {
+    let diagnostics_enabled = cfg.ask_diagnostics || cfg.ask_explain;
+    let timing = AskTiming::new(diagnostics_enabled, ask_started);
+    synthesize_ask_from_context(
+        cfg,
+        query,
+        ctx,
+        Option::<fn(&str)>::None,
+        timing,
+        ask_started,
+    )
+    .await
+}
+
+/// Streaming variant of [`ask_result_from_context`]: forwards synthesis token
+/// deltas to `on_delta` as the LLM streams.
+pub async fn ask_result_from_context_with_deltas<F>(
+    cfg: &Config,
+    query: &str,
+    ctx: AskContext,
+    ask_started: std::time::Instant,
+    on_delta: F,
+) -> anyhow::Result<AskResult>
+where
+    F: FnMut(&str) + Send,
+{
+    let diagnostics_enabled = cfg.ask_diagnostics || cfg.ask_explain;
+    let timing = AskTiming::new(diagnostics_enabled, ask_started);
+    synthesize_ask_from_context(cfg, query, ctx, Some(on_delta), timing, ask_started).await
+}
+
 async fn ask_result_with_delta_handler<F>(
     cfg: &Config,
     query: &str,
-    mut on_delta: Option<F>,
+    on_delta: Option<F>,
 ) -> anyhow::Result<AskResult>
 where
     F: FnMut(&str) + Send,
@@ -120,6 +165,33 @@ where
         }
         Err(err) => return Err(err),
     };
+    synthesize_ask_from_context(cfg, query, ctx, on_delta, timing, ask_started).await
+}
+
+/// Run the synthesis half of `ask` over an already-built [`AskContext`].
+///
+/// This is the seam the #298 retrieval cutover targets: the SEARCH + CONTEXT
+/// half can be produced by the new `axon-retrieval` engine (in `axon-services`)
+/// and handed here as a prebuilt [`AskContext`], so the EXISTING synthesis /
+/// prompt / citation-validation / assemble pipeline runs unchanged. The legacy
+/// `ask_result_with_delta_handler` uses this same path after
+/// `build_ask_context`.
+///
+/// `timing` carries whatever retrieval/context sub-stage timings the caller
+/// recorded; `ask_started` anchors total-elapsed and streaming TTFT. Diagnostics
+/// are enabled when `cfg.ask_diagnostics || cfg.ask_explain`.
+async fn synthesize_ask_from_context<F>(
+    cfg: &Config,
+    query: &str,
+    ctx: AskContext,
+    mut on_delta: Option<F>,
+    mut timing: AskTiming,
+    ask_started: std::time::Instant,
+) -> anyhow::Result<AskResult>
+where
+    F: FnMut(&str) + Send,
+{
+    let diagnostics_enabled = cfg.ask_diagnostics || cfg.ask_explain;
     log_info(&format!(
         "ask context ready candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} retrieval_ms={} context_ms={}",
         ctx.candidate_count,

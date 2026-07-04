@@ -28,6 +28,10 @@ pub struct ExtractWebConfig {
     pub prompt: String,
     pub limit: u32,
     pub llm_backend: crate::llm::LlmBackendConfig,
+    /// Backend-dispatching text completer injected by the caller (`axon-llm`).
+    /// `axon-core` owns the extraction pipeline but not the LLM backends, so the
+    /// LLM fallback executes through this boundary to avoid a crate cycle.
+    pub completer: Arc<dyn crate::llm::TextCompleter>,
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
     // ── Rendering / Chrome ──────────────────────────────────────────────────
@@ -46,6 +50,7 @@ pub struct ExtractWebConfig {
 }
 
 struct FallbackConfig {
+    completer: Arc<dyn crate::llm::TextCompleter>,
     llm_backend: crate::llm::LlmBackendConfig,
     prompt_text: String,
     has_fallback: bool,
@@ -88,6 +93,7 @@ fn queue_fallback_extraction(
 ) {
     let llm_backend_c = cfg.llm_backend.clone();
     let prompt_c = cfg.prompt_text.clone();
+    let completer_c = Arc::clone(&cfg.completer);
     fallback_tasks.spawn(async move {
         let _permit = permit;
         // Run CPU-bound HTML→markdown conversion via spawn_blocking BEFORE
@@ -102,9 +108,16 @@ fn queue_fallback_extraction(
                 );
             }
         };
-        let res = extract_items_fallback(&client, llm_backend_c, &prompt_c, &page_url, &markdown)
-            .await
-            .map_err(|e| e.to_string());
+        let res = extract_items_fallback(
+            &client,
+            completer_c.as_ref(),
+            llm_backend_c,
+            &prompt_c,
+            &page_url,
+            &markdown,
+        )
+        .await
+        .map_err(|e| e.to_string());
         (page_url, res)
     });
 }
@@ -273,6 +286,7 @@ async fn run_single_url_extract(
         let markdown = to_markdown(&html, None);
         match extract_items_fallback(
             &client,
+            cfg.completer.as_ref(),
             cfg.llm_backend.clone(),
             &cfg.prompt_text,
             url,
@@ -319,6 +333,7 @@ pub async fn run_extract_with_engine(
     let start_url = wcfg.start_url.clone();
 
     let fallback_cfg = FallbackConfig {
+        completer: Arc::clone(&wcfg.completer),
         llm_backend: wcfg.llm_backend.clone(),
         prompt_text: wcfg.prompt.clone(),
         has_fallback,

@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "SchemaFamilyContract": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "mcp"
+        },
+        "future_registry": {
+          "type": "string"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "skeleton"
+        }
+      },
+      "required": [
+        "family",
+        "status",
+        "owner_crates"
+      ],
+      "type": "object",
+      "x-axon": {
+        "replaced_by": "crate-owned registry generator in the matching implementation PR",
+        "skeleton": true
+      }
+    }
+  },
+  "$id": "https://axon.local/schemas/mcp/tool.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon schema contract artifact.",
+  "title": "AxonMcpToolSchema",
+  "type": "object",
+  "x-axon": {
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas mcp",
+    "owner_crates": [
+      "axon-mcp",
+      "axon-api"
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:023982562822f2420c3636425ee9bf7eb64f3a9163074c4d763d8be175ade953",
+        "kind": "rust_directory",
+        "path": "crates/axon-mcp/src"
+      },
+      {
+        "checksum": "sha256:036271e18b7f24775b942409638b76563841d87fce1a66e63dd146d33844fc8f",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/surfaces/tool-contract.md"
+      }
+    ]
+  }
+}

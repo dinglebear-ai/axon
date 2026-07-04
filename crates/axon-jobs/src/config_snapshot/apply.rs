@@ -24,7 +24,7 @@ impl ConfigSnapshot {
         cfg: &mut Config,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(value) = self.llm_backend.take() {
-            let kind = axon_core::llm::LlmBackendKind::parse(&value).map_err(|err| {
+            let kind = axon_llm::LlmBackendKind::parse(&value).map_err(|err| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("invalid llm_backend in config snapshot {value:?}: {err}"),

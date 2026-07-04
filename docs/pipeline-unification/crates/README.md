@@ -13,9 +13,11 @@ traits/DTOs/services, dependencies, generated artifacts, fixtures, tests, and
 acceptance criteria.
 
 When the real crate exists, `crates/<crate>/src/CLAUDE.md` is the agent
-source-of-truth maintenance contract. The README must be generated from or
-checked against `src/CLAUDE.md` plus rustdoc so human docs and agent docs cannot
-drift.
+source-of-truth maintenance contract. The desired end state is that each README
+is generated from or checked against `src/CLAUDE.md` plus rustdoc so human docs
+and agent docs cannot drift. PR0 enforces only the skeleton crate/module matrix
+with `cargo xtask check-repo-structure`; the generated-doc freshness check is a
+later docs-tooling implementation task.
 
 These docs are intentionally under `docs/pipeline-unification/crates/` to avoid
 confusion with the real repo `crates/` source directory.

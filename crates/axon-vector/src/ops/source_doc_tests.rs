@@ -1,5 +1,6 @@
 use super::{
-    SourceDocument, SourceOrigin, prepare_source_document, structured_payload_from_vertical_summary,
+    LedgerPayload, SourceDocument, SourceOrigin, prepare_source_document,
+    structured_payload_from_vertical_summary, target_vector_payload_fixture_for_chunk,
 };
 use crate::ops::input::chunk_markdown_with_offsets;
 use crate::ops::tei::StructuredPayload;
@@ -167,6 +168,195 @@ async fn file_source_attaches_existing_code_keys_and_new_locator_keys() {
 }
 
 #[tokio::test]
+async fn file_source_target_payload_fixture_validates_without_legacy_unknown_fields() {
+    let source = SourceDocument::try_new_file(
+        SourceOrigin::GitFile,
+        "https://github.com/owner/repo/blob/main/src/lib.rs".to_string(),
+        "src/lib.rs".to_string(),
+        "rs".to_string(),
+        "pub fn bridge_payload() {}\n".repeat(80),
+        "github",
+        Some("src/lib.rs".to_string()),
+        Some(serde_json::json!({
+            "provider": "github",
+            "git_owner": "owner",
+            "git_repo": "repo",
+            "git_content_kind": "file",
+            "code_file_path": "src/lib.rs",
+            "code_language": "rust",
+            "code_is_test": false
+        })),
+    )
+    .expect("source doc");
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+    let payload =
+        target_vector_payload_fixture_for_chunk(&prepared, 0, "axon").expect("target payload");
+
+    assert_eq!(payload["collection"], "axon");
+    assert_eq!(payload["source_family"], "code");
+    assert!(
+        payload["source_id"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("legacy-vector:fnv1a64:"))
+    );
+    assert_eq!(payload["source_item_key"], prepared.url());
+    assert_eq!(payload["source_generation"], "legacy-vector:gen-1");
+    assert!(
+        payload["document_id"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("legacy-vector:fnv1a64:"))
+    );
+    assert!(
+        payload["chunk_id"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("chunk_"))
+    );
+    assert!(
+        payload["chunk_text"]
+            .as_str()
+            .is_some_and(|value| value.contains("bridge_payload"))
+    );
+    assert!(payload["chunk_key"].as_str().is_some());
+    assert!(
+        payload["content_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("fnv1a64:"))
+    );
+    assert_eq!(payload["code_language"], "rust");
+    assert!(payload.get("provider").is_none());
+    assert!(payload.get("git_owner").is_none());
+}
+
+#[tokio::test]
+async fn web_source_target_payload_fixture_uses_web_family_fields() {
+    let source = SourceDocument::try_new_web_markdown(
+        "https://example.com/docs/install".to_string(),
+        "# Install\n\nRun the installer.".to_string(),
+        "scrape",
+        Some("Example Docs".to_string()),
+        Some(serde_json::json!({
+            "web_title": "Example Docs",
+            "web_domain": "example.com",
+            "web_status_code": 200,
+            "web_depth": 1
+        })),
+        None,
+        None,
+    )
+    .expect("source doc");
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+    let payload =
+        target_vector_payload_fixture_for_chunk(&prepared, 0, "axon").expect("target payload");
+
+    assert_eq!(payload["source_family"], "web");
+    assert_eq!(payload["web_title"], "Example Docs");
+    assert_eq!(payload["web_domain"], "example.com");
+}
+
+#[tokio::test]
+async fn target_payload_fixture_does_not_copy_absolute_local_paths() {
+    let source = SourceDocument::try_new_file(
+        SourceOrigin::LocalFile,
+        "file:///home/jmagar/workspace/axon/src/lib.rs".to_string(),
+        "/home/jmagar/workspace/axon/src/lib.rs".to_string(),
+        "rs".to_string(),
+        "pub fn local() {}\n".repeat(80),
+        "local_code",
+        Some("/home/jmagar/workspace/axon/src/lib.rs".to_string()),
+        Some(serde_json::json!({
+            "code_language": "rust"
+        })),
+    )
+    .expect("source doc");
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+    let payload =
+        target_vector_payload_fixture_for_chunk(&prepared, 0, "axon").expect("target payload");
+    let serialized = serde_json::to_string(&payload).unwrap();
+
+    assert!(!serialized.contains("/home/jmagar"));
+    assert!(payload["chunk_locator"].is_object());
+    assert!(
+        payload["chunk_locator"]["canonical_uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("file://")
+    );
+    assert!(
+        payload["chunk_locator"]["path"]
+            .as_str()
+            .unwrap()
+            .starts_with("file://")
+    );
+}
+
+#[tokio::test]
+async fn target_payload_fixture_scrubs_non_home_absolute_local_paths() {
+    let source = SourceDocument::try_new_file(
+        SourceOrigin::LocalFile,
+        "file:///tmp/axon/src/lib.rs".to_string(),
+        "/tmp/axon/src/lib.rs".to_string(),
+        "rs".to_string(),
+        "pub fn temp_local() {}\n".repeat(80),
+        "local_code",
+        Some("/tmp/axon/src/lib.rs".to_string()),
+        Some(serde_json::json!({
+            "code_language": "rust"
+        })),
+    )
+    .expect("source doc");
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+    let payload =
+        target_vector_payload_fixture_for_chunk(&prepared, 0, "axon").expect("target payload");
+    let serialized = serde_json::to_string(&payload).unwrap();
+
+    assert!(!serialized.contains("/tmp/axon"));
+    let source_item_key = payload["source_item_key"].as_str().unwrap();
+    assert!(source_item_key.starts_with("file://local/fnv1a64:"));
+    assert!(source_item_key.ends_with("/lib.rs"));
+    assert_ne!(source_item_key, "file://local/lib.rs");
+}
+
+#[tokio::test]
+async fn target_payload_fixture_scrubs_ledger_item_key_local_paths() {
+    let ledger = LedgerPayload::try_new(
+        "src_local".to_string(),
+        "local_code",
+        3,
+        "/tmp/axon/src/lib.rs".to_string(),
+        1,
+    )
+    .expect("ledger");
+    let source = SourceDocument::try_new_file(
+        SourceOrigin::LocalFile,
+        "file:///tmp/axon/src/lib.rs".to_string(),
+        "/tmp/axon/src/lib.rs".to_string(),
+        "rs".to_string(),
+        "pub fn ledger_temp_local() {}\n".repeat(80),
+        "local_code",
+        Some("/tmp/axon/src/lib.rs".to_string()),
+        Some(serde_json::json!({
+            "code_language": "rust"
+        })),
+    )
+    .expect("source doc")
+    .with_ledger_payload(ledger);
+
+    let prepared = prepare_source_document(source).await.expect("prepared doc");
+    let payload =
+        target_vector_payload_fixture_for_chunk(&prepared, 0, "axon").expect("target payload");
+    let serialized = serde_json::to_string(&payload).unwrap();
+
+    assert!(!serialized.contains("/tmp/axon"));
+    let source_item_key = payload["source_item_key"].as_str().unwrap();
+    assert!(source_item_key.starts_with("file://local/fnv1a64:"));
+    assert!(source_item_key.ends_with("/lib.rs"));
+}
+
+#[tokio::test]
 async fn markdown_file_source_marks_chunks_as_markdown_not_code() {
     let source = SourceDocument::try_new_file(
         SourceOrigin::GitFile,
@@ -244,7 +434,32 @@ async fn memory_source_is_atomic_and_preserves_point_id() {
     assert_eq!(prepared.content_type, "text");
     assert_eq!(prepared.chunks, vec!["Important memory text".to_string()]);
     assert_eq!(prepared.chunk_point_ids, vec![point_id]);
+    let payload =
+        target_vector_payload_fixture_for_chunk(&prepared, 0, "axon").expect("target payload");
+    assert_eq!(payload["source_family"], "memory");
+    assert_eq!(payload["source_item_key"], url);
+    assert_eq!(
+        payload["chunk_id"].as_str().unwrap(),
+        prepared.chunk_extra[0]["prepared_chunk_id"]
+            .as_str()
+            .unwrap()
+    );
     assert_eq!(prepared.chunk_extra[0]["chunk_content_kind"], "plain_text");
+    assert!(
+        prepared.chunk_extra[0]["prepared_chunk_id"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("chunk_"))
+    );
+    assert!(
+        prepared.chunk_extra[0]["prepared_chunk_key"]
+            .as_str()
+            .is_some_and(|value| value.contains("atomic_metadata"))
+    );
+    assert!(
+        prepared.chunk_extra[0]["prepared_content_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("fnv1a64:"))
+    );
     assert_eq!(
         prepared.chunk_extra[0]["chunk_locator"],
         format!("{url}#chunk-0")

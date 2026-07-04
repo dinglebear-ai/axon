@@ -7,6 +7,12 @@ description = "Axon OAuth scope constants and satisfaction logic"
 license = "MIT"
 
 [dependencies]
+async-trait = "0.1"
+axon-api = { path = "../axon-api" }
+axon-error = { path = "../axon-error" }
 axum = { version = "0.8", features = ["ws"] }
 lab-auth = { git = "https://github.com/jmagar/lab.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }
 tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

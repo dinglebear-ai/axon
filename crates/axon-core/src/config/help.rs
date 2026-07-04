@@ -10,8 +10,6 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Web And Extraction",
         &[
-            "scrape",
-            "crawl",
             "map",
             "endpoints",
             "search",
@@ -25,9 +23,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Vector And RAG",
         &[
-            "embed",
             "query",
-            "code-search",
             "retrieve",
             "ask",
             "evaluate",
@@ -46,7 +42,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Jobs And Imports",
         &[
-            "status", "ingest", "sessions", "watch", "monitor", "sync", "refresh", "fresh",
+            "status", "source", "sessions", "watch", "monitor", "sync", "refresh", "fresh",
         ],
     ),
     (
@@ -80,26 +76,6 @@ const VECTOR_OPTIONS: &[(&str, &str)] = &[
         "Filter to content indexed on or before this date",
     ),
     ("--no-hybrid-search", "Force dense-only retrieval"),
-    ("--json", "Output machine-readable JSON"),
-];
-
-const EMBED_OPTIONS: &[(&str, &str)] = &[
-    ("--collection <name>", "Qdrant collection name"),
-    ("--wait <bool>", "Block until the embed job completes"),
-    (
-        "--batch-concurrency <n>",
-        "Concurrent embed batch operations",
-    ),
-    (
-        "--watch",
-        "Force foreground local code-index watch progress for local paths",
-    ),
-    (
-        "--no-watch",
-        "Run one-shot local embedding instead of watching",
-    ),
-    ("--tei-url <url>", "Text Embeddings Inference endpoint"),
-    ("--qdrant-url <url>", "Qdrant endpoint"),
     ("--json", "Output machine-readable JSON"),
 ];
 
@@ -235,8 +211,8 @@ fn print_top_level_help() {
 
     println!("  {}", p.section("Quick Start"));
     for example in [
-        format!("{bin} scrape https://example.com --wait true --skip-embed"),
-        format!("{bin} crawl https://docs.rs/spider --wait false"),
+        format!("{bin} source /path/to/local/checkout"),
+        format!("{bin} ask \"how does the crawl engine work\""),
         format!("{bin} query \"embedding pipeline\" --collection axon"),
     ] {
         println!("  {}", p.dim(&example));
@@ -408,10 +384,7 @@ fn local_subcommands(command: &Command) -> Vec<(String, String)> {
 }
 
 fn subcommand_description(parent_name: &str, command: &Command) -> String {
-    if matches!(
-        parent_name,
-        "crawl" | "extract" | "embed" | "ingest" | "sessions"
-    ) {
+    if matches!(parent_name, "extract" | "sessions") {
         return match command.get_name() {
             "status" => "Show a queued job".to_string(),
             "cancel" => "Cancel a queued or running job".to_string(),
@@ -443,7 +416,7 @@ fn subcommand_description(parent_name: &str, command: &Command) -> String {
 
 fn subcommand_name(parent_name: &str, command: &Command) -> String {
     match (parent_name, command.get_name()) {
-        ("crawl" | "extract" | "embed" | "ingest" | "sessions", "status" | "cancel" | "errors") => {
+        ("extract" | "sessions", "status" | "cancel" | "errors") => {
             format!("{} <job_id>", command.get_name())
         }
         _ => command.get_name().to_string(),
@@ -479,7 +452,7 @@ fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, St
         return Vec::new();
     }
     let specs: &[(&str, &str)] = match command_name {
-        "scrape" | "crawl" | "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
+        "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
         "search" => SEARCH_OPTIONS,
         "research" => &[
             ("--limit <n>", "Maximum number of search results"),
@@ -494,11 +467,10 @@ fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, St
             ("--skip-embed", "Queue crawls without indexing into Qdrant"),
             ("--json", "Output machine-readable JSON"),
         ],
-        "embed" => EMBED_OPTIONS,
         "query" | "retrieve" | "ask" | "evaluate" | "train" | "sources" | "domains" | "stats"
         | "dedupe" | "migrate" | "suggest" => VECTOR_OPTIONS,
         "status" => JOB_VIEW_OPTIONS,
-        "ingest" | "sessions" | "watch" => &[
+        "sessions" | "watch" => &[
             ("--wait <bool>", "Block until async jobs complete"),
             ("--active", "Show only active jobs"),
             ("--recent", "Show active and completed jobs"),

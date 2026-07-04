@@ -29,8 +29,22 @@ enum Command {
     CheckUnwraps,
     /// Verify AGENTS.md/GEMINI.md symlinks next to CLAUDE.md files.
     CheckClaudeSymlinks,
+    /// Verify target pipeline crate skeleton structure.
+    CheckRepoStructure,
     /// Fail if any symlink in the worktree points to a non-existent target.
     CheckBrokenSymlinks,
+    /// Fail if any relative markdown link in docs/reference points to a missing file.
+    CheckDocLinks,
+    /// Fail if generated reference docs reference a removed public surface.
+    CheckDocContracts,
+    /// Verify the crate dependency-graph snapshot is in sync and acyclic.
+    CheckDepGraph,
+    /// Regenerate docs/reference/crate-dependency-graph.md.
+    GenDepGraph,
+    /// Verify the per-crate public-API surface snapshot is in sync.
+    CheckPublicApi,
+    /// Regenerate docs/reference/public-api-surface.md.
+    GenPublicApi,
     /// Verify SQLite job migrations are append-only and checksum-pinned.
     CheckSqliteMigrations,
     /// Regenerate the SQLite job migration checksum manifest after adding a migration.
@@ -46,6 +60,8 @@ enum Command {
     CheckAndroidApiContract,
     /// Run the path-aware local pre-push router.
     PrePush(pre_push::PrePushArgs),
+    /// Generate/check clean-break pipeline schema artifacts.
+    Schemas(schemas::SchemasArgs),
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
     CheckReleaseVersions {
         #[arg(long)]
@@ -123,7 +139,14 @@ fn main() -> Result<()> {
         Command::CheckEnvStaged => checks::env_staged::check(&root),
         Command::CheckUnwraps => checks::unwraps::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
+        Command::CheckRepoStructure => checks::repo_structure::check(&root),
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
+        Command::CheckDocLinks => checks::doc_links::check(&root),
+        Command::CheckDocContracts => checks::doc_contracts::check(&root),
+        Command::CheckDepGraph => checks::dep_graph::check(&root),
+        Command::GenDepGraph => checks::dep_graph::write(&root),
+        Command::CheckPublicApi => checks::public_api::check(&root),
+        Command::GenPublicApi => checks::public_api::write(&root),
         Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
         Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
         Command::CheckSecrets => checks::secrets::check(&root),
@@ -131,6 +154,7 @@ fn main() -> Result<()> {
         Command::CheckOpenapiDrift => checks::openapi_drift::check(&root),
         Command::CheckAndroidApiContract => checks::android_api_contract::check(&root),
         Command::PrePush(args) => pre_push::run(&root, args),
+        Command::Schemas(args) => schemas::run(&root, args),
         Command::CheckReleaseVersions {
             base,
             head,
@@ -192,3 +216,4 @@ fn main() -> Result<()> {
 mod bench_embed;
 mod checks;
 mod pre_push;
+pub mod schemas;

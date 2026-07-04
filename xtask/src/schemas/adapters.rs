@@ -1,0 +1,225 @@
+use std::path::Path;
+
+use anyhow::Result;
+use axon_route::{AdapterDefinition, AdapterRegistry};
+use serde::Serialize;
+use serde_json::{Value, json};
+
+use super::artifact::SchemaArtifact;
+use super::rel;
+use super::schema_json::json_string;
+use super::source_input::{SourceInput, source_inputs};
+
+pub fn adapter_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let inputs = source_inputs(
+        root,
+        &[
+            "crates/axon-route/src/capability.rs",
+            "crates/axon-adapters/src/web.rs",
+            "docs/pipeline-unification/sources/adapter-scopes.md",
+        ],
+    )?;
+    let registry = AdapterRegistry::target_defaults();
+    let adapters = registry
+        .definitions()
+        .iter()
+        .map(adapter_json)
+        .collect::<Result<Vec<_>>>()?;
+    let schema = schema_bundle(&inputs, adapters.clone());
+
+    Ok(vec![
+        SchemaArtifact::new(
+            rel("docs/reference/sources/adapter-scopes.json"),
+            json_string(&schema)?,
+        ),
+        SchemaArtifact::new(
+            rel("docs/reference/sources/adapter-scopes.md"),
+            markdown(&inputs, registry.definitions())?,
+        ),
+    ])
+}
+
+fn schema_bundle(inputs: &[SourceInput], adapters: Vec<Value>) -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://axon.local/schemas/sources/adapter-scopes.json",
+        "title": "AxonAdapterScopeRegistry",
+        "description": "Generated route-time adapter scope and capability registry.",
+        "type": "object",
+        "required": ["x-axon"],
+        "properties": envelope_properties(),
+        "additionalProperties": false,
+        "$defs": adapter_defs(),
+        "x-axon": {
+            "contract_version": "2026-06-30",
+            "generated_by": "cargo xtask schemas adapters",
+            "owner_crates": ["axon-route", "axon-adapters"],
+            "source_inputs": inputs,
+            "clean_break": true,
+            "registry_status": "route-time implemented subset",
+            "adapters": adapters
+        }
+    })
+}
+
+fn envelope_properties() -> Value {
+    json!({
+        "x-axon": {
+            "type": "object",
+            "required": [
+                "contract_version",
+                "generated_by",
+                "owner_crates",
+                "source_inputs",
+                "clean_break",
+                "registry_status",
+                "adapters"
+            ],
+            "properties": {
+                "contract_version": { "type": "string" },
+                "generated_by": { "const": "cargo xtask schemas adapters" },
+                "owner_crates": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "source_inputs": {
+                    "type": "array",
+                    "items": { "type": "object" }
+                },
+                "clean_break": { "const": true },
+                "registry_status": { "type": "string" },
+                "adapters": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/AdapterCapability" }
+                }
+            },
+            "additionalProperties": false
+        }
+    })
+}
+
+fn adapter_defs() -> Value {
+    json!({
+        "AdapterCapability": {
+            "type": "object",
+            "required": [
+                "name",
+                "version",
+                "source_kind",
+                "default_scope",
+                "supported_scopes",
+                "watch_supported",
+                "refresh_supported"
+            ],
+            "properties": adapter_properties(),
+            "additionalProperties": true
+        }
+    })
+}
+
+fn adapter_properties() -> Value {
+    json!({
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "source_kind": { "type": "string" },
+        "default_scope": { "type": "string" },
+        "supported_scopes": {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "safety_class": { "type": "string" },
+        "execution_affinity": { "type": "string" },
+        "provider_requirements": {
+            "type": "array",
+            "items": { "type": "object" }
+        },
+        "credential_requirements": {
+            "type": "array",
+            "items": { "type": "object" }
+        },
+        "option_schema_id": { "type": "string" },
+        "allowed_option_keys": {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "chunking_hints": {
+            "type": "array",
+            "items": { "type": "object" }
+        },
+        "parser_hints": {
+            "type": "array",
+            "items": { "type": "object" }
+        },
+        "watch_supported": { "type": "boolean" },
+        "refresh_supported": { "type": "boolean" }
+    })
+}
+
+fn adapter_json(adapter: &AdapterDefinition) -> Result<Value> {
+    Ok(json!({
+        "name": adapter.adapter.name,
+        "version": adapter.adapter.version,
+        "source_kind": wire(adapter.source_kind)?,
+        "default_scope": wire(adapter.default_scope)?,
+        "supported_scopes": wire_list(&adapter.supported_scopes)?,
+        "safety_class": wire(adapter.safety_class)?,
+        "execution_affinity": wire(adapter.execution_affinity)?,
+        "provider_requirements": adapter.provider_requirements,
+        "credential_requirements": adapter.credential_requirements,
+        "option_schema_id": adapter.option_schema_id,
+        "allowed_option_keys": adapter.allowed_option_keys,
+        "chunking_hints": adapter.chunking_hints,
+        "parser_hints": adapter.parser_hints,
+        "watch_supported": adapter.watch_supported,
+        "refresh_supported": adapter.refresh_supported,
+    }))
+}
+
+fn markdown(inputs: &[SourceInput], adapters: &[AdapterDefinition]) -> Result<String> {
+    let mut out = String::from(
+        "# adapters Schema Reference\n\nGenerated by `cargo xtask schemas adapters`.\n\n",
+    );
+    out.push_str("## Route-Time Adapter Registry\n\n");
+    out.push_str("| Adapter | Source Kind | Default Scope | Supported Scopes | Watch | Refresh | Credentials |\n");
+    out.push_str("|---|---|---|---|---:|---:|---|\n");
+    for adapter in adapters {
+        let scopes = wire_list(&adapter.supported_scopes)?.join("`, `");
+        let credentials = adapter
+            .credential_requirements
+            .iter()
+            .map(|requirement| wire(requirement.credential_kind))
+            .collect::<Result<Vec<_>>>()?
+            .join("`, `");
+        out.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} | {} | {} |\n",
+            adapter.adapter.name,
+            wire(adapter.source_kind)?,
+            wire(adapter.default_scope)?,
+            scopes,
+            adapter.watch_supported,
+            adapter.refresh_supported,
+            if credentials.is_empty() {
+                "none".to_string()
+            } else {
+                format!("`{credentials}`")
+            }
+        ));
+    }
+
+    out.push_str("\n## Source Inputs\n\n| Path | SHA-256 |\n|---|---|\n");
+    for input in inputs {
+        out.push_str(&format!("| `{}` | `{}` |\n", input.path, input.checksum));
+    }
+    Ok(out)
+}
+
+fn wire<T: Serialize>(value: T) -> Result<String> {
+    Ok(serde_json::to_value(value)?
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string())
+}
+
+fn wire_list<T: Serialize + Copy>(values: &[T]) -> Result<Vec<String>> {
+    values.iter().copied().map(wire).collect()
+}

@@ -1,18 +1,17 @@
 //! Shared error mapping for REST handlers.
 
-use axum::{Json, http::StatusCode, response::IntoResponse, response::Response};
-use serde::Serialize;
+use crate::server::api_error::{api_error_from_status_kind, error_envelope_response_with_status};
+use axum::{http::StatusCode, response::Response};
 use std::error::Error;
 
-/// Wire-format error body used by every dedicated REST route.
-#[derive(Serialize)]
-pub(crate) struct RestErrorBody {
-    pub kind: &'static str,
-    pub message: String,
-}
-
+/// Render a `(status, kind, message)` triple as the contract `ErrorEnvelope`.
+///
+/// The legacy `(status, kind)` classification is projected onto the shared
+/// `axon_api::ApiError` taxonomy so this boundary emits the same envelope shape
+/// as [`crate::server::error::HttpError`].
 pub(crate) fn rest_error(status: StatusCode, kind: &'static str, message: String) -> Response {
-    (status, Json(RestErrorBody { kind, message })).into_response()
+    let api_error = api_error_from_status_kind(status, kind, message);
+    error_envelope_response_with_status(api_error, status)
 }
 
 /// Classify a service error to (status, kind) using narrow message heuristics.

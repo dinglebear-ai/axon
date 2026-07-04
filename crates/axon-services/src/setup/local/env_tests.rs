@@ -6,13 +6,13 @@ fn env_file_preserves_existing_secrets_and_adds_missing_runtime_keys() {
     let env_path = dir.path().join(".env");
     std::fs::write(
         &env_path,
-        "AXON_MCP_HTTP_TOKEN=keep-me\nTAVILY_API_KEY=also-keep\n",
+        "AXON_HTTP_TOKEN=keep-me\nTAVILY_API_KEY=also-keep\n",
     )
     .unwrap();
 
     ensure_env_file(&env_path).unwrap();
     let raw = std::fs::read_to_string(&env_path).unwrap();
-    assert!(raw.contains("AXON_MCP_HTTP_TOKEN=keep-me"));
+    assert!(raw.contains("AXON_HTTP_TOKEN=keep-me"));
     assert!(raw.contains("TAVILY_API_KEY=also-keep"));
     assert!(raw.contains("TEI_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B"));
 }
@@ -21,12 +21,12 @@ fn env_file_preserves_existing_secrets_and_adds_missing_runtime_keys() {
 fn env_file_repairs_blank_token() {
     let dir = tempfile::tempdir().unwrap();
     let env_path = dir.path().join(".env");
-    std::fs::write(&env_path, "AXON_MCP_HTTP_TOKEN=   \n").unwrap();
+    std::fs::write(&env_path, "AXON_HTTP_TOKEN=   \n").unwrap();
 
     ensure_env_file(&env_path).unwrap();
     let raw = std::fs::read_to_string(&env_path).unwrap();
-    assert!(!raw.contains("AXON_MCP_HTTP_TOKEN=   "));
-    assert!(raw.contains("AXON_MCP_HTTP_TOKEN="));
+    assert!(!raw.contains("AXON_HTTP_TOKEN=   "));
+    assert!(raw.contains("AXON_HTTP_TOKEN="));
 }
 
 #[test]
@@ -38,9 +38,9 @@ fn parse_env_file_ignores_comments_and_empty_lines() {
 
 #[test]
 fn parse_env_file_decodes_quoted_oauth_mode_like_runtime() {
-    let parsed = parse_env_file("AXON_MCP_AUTH_MODE=\"oauth\"\n").unwrap();
+    let parsed = parse_env_file("AXON_AUTH_MODE=\"oauth\"\n").unwrap();
     assert_eq!(
-        parsed.get("AXON_MCP_AUTH_MODE").map(String::as_str),
+        parsed.get("AXON_AUTH_MODE").map(String::as_str),
         Some("oauth")
     );
 }
@@ -74,22 +74,22 @@ fn explicit_process_token_replaces_existing_env_token_only() {
     let env_path = dir.path().join(".env");
     std::fs::write(
         &env_path,
-        "AXON_MCP_HTTP_TOKEN=old-token\nTAVILY_API_KEY=keep-this\n",
+        "AXON_HTTP_TOKEN=old-token\nTAVILY_API_KEY=keep-this\n",
     )
     .unwrap();
 
     let result = ensure_env_file_with_process(
         &env_path,
-        |key| (key == "AXON_MCP_HTTP_TOKEN").then(|| "plugin-token".to_string()),
+        |key| (key == "AXON_HTTP_TOKEN").then(|| "plugin-token".to_string()),
         &EnvSetupOptions::default(),
     )
     .unwrap();
     let raw = std::fs::read_to_string(&env_path).unwrap();
     assert_eq!(
-        result.values.get("AXON_MCP_HTTP_TOKEN").map(String::as_str),
+        result.values.get("AXON_HTTP_TOKEN").map(String::as_str),
         Some("plugin-token")
     );
-    assert!(raw.contains("AXON_MCP_HTTP_TOKEN=plugin-token"));
+    assert!(raw.contains("AXON_HTTP_TOKEN=plugin-token"));
     assert!(!raw.contains("old-token"));
     assert!(raw.contains("TAVILY_API_KEY=keep-this"));
     assert!(!result.phase.detail.contains("plugin-token"));

@@ -1,13 +1,13 @@
 use crate::ops::{input, qdrant};
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
-use axon_core::llm::{self, CompletionRequest};
+use axon_llm::{self as llm, CompletionRequest};
 use spider::url::Url;
 use std::collections::HashSet;
 use std::error::Error;
 
 #[cfg(test)]
-use axon_core::llm::CompletionRunner;
+use axon_llm::CompletionRunner;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Suggestion {

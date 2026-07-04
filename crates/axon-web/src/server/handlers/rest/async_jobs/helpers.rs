@@ -63,11 +63,3 @@ pub(super) fn validate_urls(urls: &[String]) -> Result<(), String> {
     }
     Ok(())
 }
-
-pub(super) fn validate_embed_input(
-    cfg: &axon_core::config::Config,
-    input: &str,
-) -> Result<String, String> {
-    axon_services::embed::validate_server_embed_input_with_config(cfg, input)
-        .map_err(|err| err.to_string())
-}

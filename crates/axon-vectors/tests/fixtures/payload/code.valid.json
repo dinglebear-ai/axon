@@ -1,0 +1,45 @@
+{
+  "payload_contract_version": "2026-07-01",
+  "collection": "axon",
+  "source_family": "code",
+  "source_id": "src-code",
+  "source_generation": "gen_7",
+  "committed_generation": "gen_7",
+  "document_id": "doc-code",
+  "chunk_id": "chunk-code-1",
+  "chunk_text": "fixture chunk text",
+  "chunk_locator": {
+    "canonical_uri": "src/lib.rs#L10-L20",
+    "path": "src/lib.rs#L10-L20",
+    "heading_path": [],
+    "symbol": null,
+    "range": {
+      "line_start": 1,
+      "line_end": 2
+    }
+  },
+  "source_range": {
+    "line_start": 1,
+    "line_end": 2
+  },
+  "visibility": "internal",
+  "redaction_status": "redacted",
+  "job_id": "00000000-0000-0000-0000-000000000001",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000042",
+  "document_status": "ready",
+  "embedding_model": "text-embedding-test",
+  "embedding_dimensions": 1024,
+  "embedding_provider": "tei",
+  "embedding_profile": "document",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "code_language": "rust",
+  "code_symbol_name": "VectorPayload",
+  "code_symbol_kind": "struct",
+  "code_file_type": "source",
+  "vector_point_id": "vpt-code-1",
+  "vector_namespace": "source:code",
+  "source_canonical_uri": "https://example.com/item",
+  "content_kind": "markdown",
+  "content_hash": "sha256:content-code",
+  "chunk_hash": "sha256:chunk-code"
+}

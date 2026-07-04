@@ -69,13 +69,13 @@ pub(super) async fn check_gemini_cli() -> LocalSetupPhase {
 
 pub(super) fn check_oauth_config(env_values: Option<&BTreeMap<String, String>>) -> LocalSetupPhase {
     let timer = PhaseTimer::start("oauth");
-    match setup_env_value(env_values, "AXON_MCP_AUTH_MODE") {
+    match setup_env_value(env_values, "AXON_AUTH_MODE") {
         Some(value) if value.trim().eq_ignore_ascii_case("oauth") => {
             let missing: Vec<&str> = [
-                "AXON_MCP_PUBLIC_URL",
-                "AXON_MCP_GOOGLE_CLIENT_ID",
-                "AXON_MCP_GOOGLE_CLIENT_SECRET",
-                "AXON_MCP_AUTH_ADMIN_EMAIL",
+                "AXON_PUBLIC_URL",
+                "AXON_GOOGLE_CLIENT_ID",
+                "AXON_GOOGLE_CLIENT_SECRET",
+                "AXON_AUTH_ADMIN_EMAIL",
             ]
             .into_iter()
             .filter(|key| {

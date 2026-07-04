@@ -5,7 +5,7 @@ use super::normalize::{
 use super::validate_ask_llm_config;
 use axon_api::AskResult;
 use axon_core::config::Config;
-use axon_core::llm::LlmBackendKind;
+use axon_llm::LlmBackendKind;
 
 fn cfg() -> Config {
     Config::default()

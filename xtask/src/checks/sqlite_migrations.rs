@@ -6,8 +6,25 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MIGRATIONS_DIR: &str = "crates/axon-jobs/src/migrations";
-const CHECKSUMS_FILE: &str = "crates/axon-jobs/src/migration-checksums.txt";
+const MIGRATION_MANIFESTS: &[MigrationManifest] = &[
+    MigrationManifest {
+        label: "SQLite job migrations",
+        migrations_dir: "crates/axon-jobs/src/migrations",
+        checksums_file: "crates/axon-jobs/src/migration-checksums.txt",
+    },
+    MigrationManifest {
+        label: "SQLite ledger migrations",
+        migrations_dir: "crates/axon-ledger/src/migrations",
+        checksums_file: "crates/axon-ledger/src/migration-checksums.txt",
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+struct MigrationManifest {
+    label: &'static str,
+    migrations_dir: &'static str,
+    checksums_file: &'static str,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MigrationEntry {
@@ -18,33 +35,44 @@ struct MigrationEntry {
 pub fn check(root: &Path) -> Result<()> {
     let entries = check_inner(root)?;
     println!(
-        "OK: SQLite job migrations are sequential and checksum-pinned ({} migrations).",
+        "OK: SQLite migrations are sequential and checksum-pinned ({} migrations).",
         entries
     );
     Ok(())
 }
 
 pub fn update(root: &Path) -> Result<()> {
-    let migrations = list_migrations(&root.join(MIGRATIONS_DIR))?;
-    validate_sequence(&migrations)?;
-    let entries = checksum_entries(root, &migrations)?;
-    fs::write(root.join(CHECKSUMS_FILE), render_manifest(&entries))
-        .with_context(|| format!("failed to write {}", root.join(CHECKSUMS_FILE).display()))?;
+    for manifest in MIGRATION_MANIFESTS {
+        let migrations = list_migrations(&root.join(manifest.migrations_dir))?;
+        validate_sequence(&migrations)?;
+        let entries = checksum_entries(root, manifest, &migrations)?;
+        fs::write(
+            root.join(manifest.checksums_file),
+            render_manifest(manifest, &entries),
+        )
+        .with_context(|| {
+            format!(
+                "failed to write {}",
+                root.join(manifest.checksums_file).display()
+            )
+        })?;
+    }
     check_inner(root)?;
-    println!(
-        "Updated {CHECKSUMS_FILE} with {} migrations.",
-        entries.len()
-    );
+    println!("Updated SQLite migration checksum manifests.");
     Ok(())
 }
 
 fn check_inner(root: &Path) -> Result<usize> {
-    let migrations = list_migrations(&root.join(MIGRATIONS_DIR))?;
-    validate_sequence(&migrations)?;
-    let expected = read_checksum_manifest(&root.join(CHECKSUMS_FILE))?;
-    validate_manifest_matches_files(&migrations, &expected)?;
-    validate_checksums(root, &migrations, &expected)?;
-    Ok(migrations.len())
+    let mut total = 0;
+    for manifest in MIGRATION_MANIFESTS {
+        let migrations = list_migrations(&root.join(manifest.migrations_dir))?;
+        validate_sequence(&migrations)?;
+        let expected = read_checksum_manifest(&root.join(manifest.checksums_file))?;
+        validate_manifest_matches_files(&migrations, &expected)?;
+        validate_checksums(root, manifest, &migrations, &expected)?;
+        total += migrations.len();
+    }
+    Ok(total)
 }
 
 fn list_migrations(dir: &Path) -> Result<Vec<String>> {
@@ -162,12 +190,13 @@ fn validate_manifest_matches_files(
 
 fn validate_checksums(
     root: &Path,
+    manifest: &MigrationManifest,
     migrations: &[String],
     expected: &BTreeMap<String, String>,
 ) -> Result<()> {
     let mut mismatches = Vec::new();
     for name in migrations {
-        let path = root.join(MIGRATIONS_DIR).join(name);
+        let path = root.join(manifest.migrations_dir).join(name);
         let actual = sha384_file(&path)?;
         let expected_checksum = expected
             .get(name)
@@ -192,18 +221,23 @@ fn validate_checksums(
         }
         eprintln!();
         eprintln!(
-            "Migrations are append-only after merge. Add a new migration instead of editing an applied one."
+            "{} are append-only after merge. Add a new migration instead of editing an applied one.",
+            manifest.label
         );
         bail!("SQLite migration checksum drift");
     }
     Ok(())
 }
 
-fn checksum_entries(root: &Path, migrations: &[String]) -> Result<Vec<MigrationEntry>> {
+fn checksum_entries(
+    root: &Path,
+    manifest: &MigrationManifest,
+    migrations: &[String],
+) -> Result<Vec<MigrationEntry>> {
     migrations
         .iter()
         .map(|name| {
-            let path = root.join(MIGRATIONS_DIR).join(name);
+            let path = root.join(manifest.migrations_dir).join(name);
             Ok(MigrationEntry {
                 name: name.clone(),
                 checksum: sha384_file(&path)?,
@@ -212,12 +246,13 @@ fn checksum_entries(root: &Path, migrations: &[String]) -> Result<Vec<MigrationE
         .collect()
 }
 
-fn render_manifest(entries: &[MigrationEntry]) -> String {
-    let mut output = String::from(
-        "# SHA-384 checksums for SQLite job migrations.\n\
+fn render_manifest(manifest: &MigrationManifest, entries: &[MigrationEntry]) -> String {
+    let mut output = format!(
+        "# SHA-384 checksums for {}.\n\
          #\n\
-         # Migrations are append-only once merged because SQLx stores the checksum in\n\
-         # each live jobs.db. To change an applied migration, add a new migration instead.\n",
+         # Migrations are append-only once merged because SQLx stores checksums in\n\
+         # live SQLite databases. To change an applied migration, add a new migration instead.\n",
+        manifest.label
     );
     for entry in entries {
         output.push_str(&format!("{} {}\n", entry.name, entry.checksum));

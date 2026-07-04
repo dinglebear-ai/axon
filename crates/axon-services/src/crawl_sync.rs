@@ -5,7 +5,12 @@
 //! All business logic lives here; the CLI command is a thin formatting wrapper.
 
 pub mod chrome_fallback;
-mod source_ledger;
+mod for_source;
+
+pub use for_source::{
+    CrawlForSourceResult, crawl_for_source, crawl_output_manifest_and_markdown,
+    crawl_sync_output_dir,
+};
 
 use crate::types::CrawlSyncResult;
 use axon_core::config::{Config, ScrapeFormat};
@@ -20,11 +25,6 @@ use axon_crawl::manifest::{
     write_audit_diff,
 };
 use chrome_fallback::maybe_chrome_fallback;
-use source_ledger::embed_and_commit_sync_crawl_manifest_to_ledger;
-#[cfg(test)]
-pub(crate) use source_ledger::{
-    crawl_changed_manifest_keys, crawl_manifest_to_ledger_items, crawl_source_identity,
-};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -271,12 +271,17 @@ async fn finalize_crawl(
     final_summary: &CrawlSummary,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.embed {
-        let markdown_dir = cfg.output_dir.join("markdown");
-        let input = markdown_dir.to_string_lossy().to_string();
-        let spinner = Spinner::new("embedding crawl output");
-        embed_and_commit_sync_crawl_manifest_to_ledger(cfg, start_url, manifest_path, &input)
-            .await?;
-        spinner.finish("embedded into Qdrant");
+        // The sync-crawl path no longer embeds. The only caller
+        // (`crawl_for_source`) sets `cfg.embed = false` because the `axon source`
+        // web bridge owns vectorization against axon-ledger. The retired
+        // `axon-source-ledger` commit path that lived here was removed with the
+        // legacy source ledger (bead 5mlrh); crawl-then-embed is not a supported
+        // standalone operation.
+        return Err(
+            "crawl_sync no longer embeds crawl output; embedding is owned by the \
+             axon source pipeline"
+                .into(),
+        );
     }
 
     let current_urls = read_manifest_urls(manifest_path).await?;

@@ -7,12 +7,13 @@ description = "Axon transport-neutral API contract and result DTOs shared across
 license = "MIT"
 
 [dependencies]
+axon-error = { path = "../axon-error" }
 serde = { version = "1", features = ["derive"] }
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 percent-encoding = "2"
 serde_json = "1"
 similar = "2"
-schemars = "1"
+schemars = { version = "1", features = ["chrono04", "uuid1"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 tracing = "0.1"

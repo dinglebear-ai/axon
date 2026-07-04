@@ -274,21 +274,21 @@ fn oauth_metadata_base_keeps_mcp_as_canonical_resource_audience() {
         .default_scope("axon:read axon:write")
         .static_token_scopes(vec!["axon:read".into(), "axon:write".into()])
         .build_from_sources([
-            ("AXON_MCP_AUTH_MODE".to_string(), "oauth".to_string()),
+            ("AXON_AUTH_MODE".to_string(), "oauth".to_string()),
             (
-                "AXON_MCP_PUBLIC_URL".to_string(),
+                "AXON_PUBLIC_URL".to_string(),
                 "https://axon.example.com".to_string(),
             ),
             (
-                "AXON_MCP_GOOGLE_CLIENT_ID".to_string(),
+                "AXON_GOOGLE_CLIENT_ID".to_string(),
                 "client-id".to_string(),
             ),
             (
-                "AXON_MCP_GOOGLE_CLIENT_SECRET".to_string(),
+                "AXON_GOOGLE_CLIENT_SECRET".to_string(),
                 "client-secret".to_string(),
             ),
             (
-                "AXON_MCP_AUTH_ADMIN_EMAIL".to_string(),
+                "AXON_AUTH_ADMIN_EMAIL".to_string(),
                 "admin@example.com".to_string(),
             ),
         ])
@@ -319,21 +319,21 @@ fn oauth_metadata_base_keeps_mcp_as_canonical_resource_audience() {
 #[test]
 fn build_auth_policy_oauth_configures_admin_email_and_full_oauth_scopes() {
     let config = build_oauth_auth_config_from_sources(vec![
-        ("AXON_MCP_AUTH_MODE".to_string(), "oauth".to_string()),
+        ("AXON_AUTH_MODE".to_string(), "oauth".to_string()),
         (
-            "AXON_MCP_PUBLIC_URL".to_string(),
+            "AXON_PUBLIC_URL".to_string(),
             "https://axon.example.com".to_string(),
         ),
         (
-            "AXON_MCP_GOOGLE_CLIENT_ID".to_string(),
+            "AXON_GOOGLE_CLIENT_ID".to_string(),
             "client-id".to_string(),
         ),
         (
-            "AXON_MCP_GOOGLE_CLIENT_SECRET".to_string(),
+            "AXON_GOOGLE_CLIENT_SECRET".to_string(),
             "client-secret".to_string(),
         ),
         (
-            "AXON_MCP_AUTH_ADMIN_EMAIL".to_string(),
+            "AXON_AUTH_ADMIN_EMAIL".to_string(),
             "Admin@Example.COM".to_string(),
         ),
     ])

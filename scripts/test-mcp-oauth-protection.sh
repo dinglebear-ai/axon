@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PORT="${AXON_MCP_HTTP_PORT:-38001}"
-HOST="${AXON_MCP_HTTP_HOST:-127.0.0.1}"
+PORT="${AXON_HTTP_PORT:-38001}"
+HOST="${AXON_HTTP_HOST:-127.0.0.1}"
 BASE_URL="http://${HOST}:${PORT}"
 
 LOG_FILE="$(mktemp)"
@@ -15,7 +15,7 @@ RESP3_HEADERS="$(mktemp)"
 RESP3_BODY="$(mktemp)"
 RESP4_HEADERS="$(mktemp)"
 RESP4_BODY="$(mktemp)"
-TOKEN="${AXON_MCP_HTTP_TOKEN:-ci-mcp-token}"
+TOKEN="${AXON_HTTP_TOKEN:-ci-mcp-token}"
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
@@ -78,9 +78,9 @@ assert_not_status_code() {
   GOOGLE_OAUTH_CLIENT_SECRET="ci-smoke-secret" \
   GOOGLE_OAUTH_ALLOWED_EMAILS="ci@example.com" \
   GOOGLE_OAUTH_REDIRECT_HOST="localhost" \
-  AXON_MCP_HTTP_HOST="${HOST}" \
-  AXON_MCP_HTTP_PORT="${PORT}" \
-  AXON_MCP_HTTP_TOKEN="${TOKEN}" \
+  AXON_HTTP_HOST="${HOST}" \
+  AXON_HTTP_PORT="${PORT}" \
+  AXON_HTTP_TOKEN="${TOKEN}" \
   cargo run --quiet --bin axon -- mcp --transport http
 ) >"${LOG_FILE}" 2>&1 &
 SERVER_PID=$!
@@ -99,4 +99,4 @@ assert_not_status_code "401" "${STATUS3}" "Valid bearer token /mcp request reach
 STATUS4="$(curl -sS -D "${RESP4_HEADERS}" -o "${RESP4_BODY}" -H "x-api-key: ${TOKEN}" -w '%{http_code}' "${BASE_URL}/mcp")"
 assert_not_status_code "401" "${STATUS4}" "Valid x-api-key token /mcp request reaches MCP handler"
 
-echo "OK: /mcp enforces AXON_MCP_HTTP_TOKEN (missing/invalid rejected; bearer and x-api-key accepted)"
+echo "OK: /mcp enforces AXON_HTTP_TOKEN (missing/invalid rejected; bearer and x-api-key accepted)"

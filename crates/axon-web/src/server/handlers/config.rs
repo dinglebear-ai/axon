@@ -253,18 +253,19 @@ pub async fn panel_command(
     }
 
     match parse_panel_command(command) {
-        Ok(ParsedPanelCommand::Ask { query }) => match query_service::ask(&cfg, &query, None).await
-        {
-            Ok(result) => Json(PanelCommandResponse {
-                command: command.to_string(),
-                action: serde_json::json!({ "action": "ask", "query": query }),
-                result: serde_json::to_value(result).unwrap_or_else(
-                    |err| serde_json::json!({ "serialization_error": err.to_string() }),
-                ),
-            })
-            .into_response(),
-            Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
-        },
+        Ok(ParsedPanelCommand::Ask { query }) => {
+            match query_service::ask(&state.service_context, &cfg, &query, None).await {
+                Ok(result) => Json(PanelCommandResponse {
+                    command: command.to_string(),
+                    action: serde_json::json!({ "action": "ask", "query": query }),
+                    result: serde_json::to_value(result).unwrap_or_else(
+                        |err| serde_json::json!({ "serialization_error": err.to_string() }),
+                    ),
+                })
+                .into_response(),
+                Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+            }
+        }
         Ok(ParsedPanelCommand::Action(action)) => {
             let action_json = serde_json::to_value(&action).unwrap_or_else(
                 |err| serde_json::json!({ "serialization_error": err.to_string() }),

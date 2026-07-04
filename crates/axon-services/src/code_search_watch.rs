@@ -2,6 +2,7 @@ mod event;
 mod roots;
 use crate::context::ServiceContext;
 use crate::query;
+use crate::query::CodeSearchRefreshBackend;
 use crate::types::CodeSearchCaller;
 use anyhow::Result;
 use axon_core::config::CodeSearchWatchConfig;
@@ -165,15 +166,13 @@ async fn refresh_due_roots(
     }
     let due = due_dirty_roots(dirty, refresh_delay);
     for root in due {
-        if let Err(error) = refresh_code_search_watch_root(ctx, events, &root, "file_change").await
+        if refresh_code_search_watch_root(ctx, events, &root, "file_change")
+            .await
+            .is_err()
         {
             if let Some(state) = dirty.get_mut(&root) {
                 state.since = Instant::now();
             }
-            events.emit(CodeSearchWatchEvent::RefreshFailed {
-                root,
-                error: error.to_string(),
-            });
         } else {
             dirty.remove(&root);
         }
@@ -206,22 +205,41 @@ async fn refresh_code_search_watch_root(
         reason,
     });
     let progress = WatchProgressSink { events };
-    match query::refresh_code_search_index_with_progress(
+    let backend = query::default_code_search_refresh_backend(ctx);
+    let target_refresh = matches!(backend, CodeSearchRefreshBackend::TargetLocalSource);
+    let refresh = query::refresh_code_search_index_with_backend(
         ctx,
         Some(root),
         CodeSearchCaller::Cli,
+        backend,
         Some(&progress),
     )
-    .await
-    {
+    .await;
+    match refresh {
         Ok(result) => {
             let status = result.freshness.status;
             let warning = result.freshness.warning;
             let indexed_files = result.freshness.indexed_files;
             let removed_files = result.freshness.removed_files;
-            let generation = result.generation;
-            let failed_initial = reason == "initial" && (status != "fresh" || warning.is_some());
+            let generation = result.legacy_code_index_generation;
+            let target_source_generation = result.target_source_generation;
+            let failed_refresh = status != "fresh" || warning.is_some();
+            let failed_initial = reason == "initial" && failed_refresh;
+            let failed_target_refresh = target_refresh && failed_refresh;
             let warning_message = warning.clone();
+            if failed_initial || failed_target_refresh {
+                let error = format!(
+                    "local code index refresh failed for {}: {}",
+                    root.display(),
+                    warning_message
+                        .unwrap_or_else(|| "refresh did not produce a fresh index".to_string())
+                );
+                events.emit(CodeSearchWatchEvent::RefreshFailed {
+                    root: root.to_path_buf(),
+                    error: error.clone(),
+                });
+                return Err(anyhow::anyhow!(error));
+            }
             events.emit(CodeSearchWatchEvent::RefreshFinished {
                 root: root.to_path_buf(),
                 status,
@@ -229,15 +247,8 @@ async fn refresh_code_search_watch_root(
                 indexed_files,
                 removed_files,
                 generation,
+                target_source_generation,
             });
-            if failed_initial {
-                return Err(anyhow::anyhow!(
-                    "initial local code index refresh failed for {}: {}",
-                    root.display(),
-                    warning_message
-                        .unwrap_or_else(|| "refresh did not produce a fresh index".to_string())
-                ));
-            }
             Ok(())
         }
         Err(error) => {
@@ -284,22 +295,5 @@ async fn shutdown_signal() {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn watcher_event_storm_coalesces_to_one_refresh() {
-        let root = PathBuf::from("/workspace/repo");
-        let mut dirty = BTreeMap::new();
-        let old_enough = Instant::now() - Duration::from_secs(5);
-
-        for _ in 0..100 {
-            mark_dirty_root(&mut dirty, root.clone(), old_enough);
-        }
-
-        let refreshes_started = due_dirty_roots(&dirty, Duration::from_secs(1)).len();
-
-        assert_eq!(refreshes_started, 1);
-        assert_eq!(dirty.get(&root).map(|state| state.paths), Some(100));
-    }
-}
+#[path = "code_search_watch_tests.rs"]
+mod tests;

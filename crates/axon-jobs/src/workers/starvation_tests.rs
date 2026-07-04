@@ -133,3 +133,29 @@ async fn disabled_when_threshold_is_zero() {
     let alarms = detect_and_recover_starvation(&pool, &test_notifies(), 0).await;
     assert!(alarms.is_empty(), "threshold 0 disables the detector");
 }
+
+#[test]
+fn starvation_alarm_projects_to_structured_warning_event() {
+    let job_id = JobId::new(uuid::Uuid::new_v4());
+    let event = StarvationAlarm {
+        kind: JobKind::Embed,
+        pending: 3,
+        oldest_age_ms: 180_000,
+    }
+    .to_progress_event(job_id, 9, Timestamp("2026-07-01T00:00:00Z".to_string()));
+
+    assert_eq!(event.job_id, job_id);
+    assert_eq!(event.sequence, 9);
+    assert_eq!(event.phase, PipelinePhase::Leasing);
+    assert_eq!(event.status, LifecycleStatus::Waiting);
+    assert_eq!(event.severity, Severity::Warning);
+    assert_eq!(event.counts.items_total, Some(3));
+    assert_eq!(
+        event.warning.as_ref().map(|warning| warning.code.as_str()),
+        Some("worker.starvation")
+    );
+    assert_eq!(
+        event.dedupe_key.as_deref(),
+        Some("starvation:axon_embed_jobs")
+    );
+}

@@ -35,29 +35,6 @@ pub struct Config {
     /// Maximum number of results returned by `query`/`search` commands. Flag: `--limit`.
     pub search_limit: usize,
 
-    /// Working directory for `code-search`; resolved to the containing git root.
-    /// Flag: `code-search --cwd`.
-    pub code_search_cwd: Option<PathBuf>,
-
-    /// Repository-relative path prefix filter for `code-search`.
-    /// Flag: `code-search --path-prefix`.
-    pub code_search_path_prefix: Option<String>,
-
-    /// Skip foreground freshness check for `code-search`.
-    /// Flag: `code-search --no-freshness`.
-    pub code_search_no_freshness: bool,
-
-    /// Local code-index watch options. `code-search-watch` is a tombstone;
-    /// supported foreground use is `axon embed <path>`.
-    pub code_search_watch: Option<super::session_watch::CodeSearchWatchConfig>,
-
-    /// Force foreground local code-index watch progress for `embed --watch`.
-    pub embed_watch: bool,
-
-    /// Force one-shot local embedding instead of the default local watch path.
-    /// Flag: `embed --no-watch`.
-    pub embed_no_watch: bool,
-
     /// Optional CLI intent to create or update a recurring freshness schedule.
     pub freshness: Option<super::freshness::FreshnessRequest>,
 
@@ -262,6 +239,18 @@ pub struct Config {
     /// `None` when setup is run directly (not via install.sh).
     pub setup_method: Option<String>,
 
+    /// Acquisition scope override for `axon <source>` / `axon source <input>`.
+    /// Flag: `--scope <page|site|...>`. `None` uses the adapter's default scope.
+    pub source_scope: Option<String>,
+
+    /// Stores selected for `axon reset` (`jobs`/`ledger`/`graph`/`memory`/
+    /// `vectors`/`artifacts`). Empty = every store. Flag: `reset --stores a,b`.
+    pub reset_stores: Vec<String>,
+
+    /// Force `axon reset` to stay a dry-run plan even under `--yes`. Flag:
+    /// `reset --dry-run`. Reset is dry-run by default regardless; this pins it.
+    pub reset_dry_run: bool,
+
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
 
@@ -437,7 +426,7 @@ pub struct Config {
     pub research_full_content: bool,
 
     /// Allowed cross-origin browser origins for the MCP HTTP surface.
-    /// Env: `AXON_MCP_ALLOWED_ORIGINS` (comma-separated).
+    /// Env: `AXON_ALLOWED_ORIGINS` (comma-separated).
     pub mcp_allowed_origins: Vec<String>,
 
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
@@ -899,10 +888,10 @@ pub struct Config {
     /// `axon serve mcp` uses HTTP. Flag: `--transport`.
     pub mcp_transport: McpTransport,
 
-    /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `127.0.0.1`.
+    /// Host interface for MCP HTTP transport. Env: `AXON_HTTP_HOST`. Default: `127.0.0.1`.
     pub mcp_http_host: String,
 
-    /// Port for MCP HTTP transport. Env: `AXON_MCP_HTTP_PORT`. Default: `8001`.
+    /// Port for MCP HTTP transport. Env: `AXON_HTTP_PORT`. Default: `8001`.
     pub mcp_http_port: u16,
 
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.

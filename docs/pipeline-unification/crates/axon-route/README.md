@@ -42,12 +42,15 @@ testing.rs
 - `SourceResolver`
 - `SourceRouter`
 - `ResolvedSource`
+- `RoutePlan`
 - `RouteDecision`
 - `CanonicalUri`
 - `SourceId`
 - `SourceScope`
 - `AuthorityRecord`
 - `AliasRecord`
+- `AdapterDefinition`
+- `AdapterRegistry`
 - `AdapterMatch`
 
 ## Dependencies Allowed

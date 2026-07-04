@@ -62,7 +62,7 @@ fn write_remote_runtime_env_does_not_write_service_urls_to_toml() {
     }
     std::fs::write(
         &env_path,
-        "TAVILY_API_KEY='secret value'\nAXON_MCP_HTTP_TOKEN=token\nCUSTOM_VALUE=\"value with spaces\"\n",
+        "TAVILY_API_KEY='secret value'\nAXON_HTTP_TOKEN=token\nCUSTOM_VALUE=\"value with spaces\"\n",
     )
     .unwrap();
 
@@ -80,7 +80,7 @@ fn write_remote_runtime_env_does_not_write_service_urls_to_toml() {
     assert!(env_raw.contains("TEI_URL=http://127.0.0.1:52000"));
     assert!(env_raw.contains("AXON_CHROME_REMOTE_URL=http://127.0.0.1:6000"));
     assert!(env_raw.contains("TAVILY_API_KEY='secret value'"));
-    assert!(env_raw.contains("AXON_MCP_HTTP_TOKEN=token"));
+    assert!(env_raw.contains("AXON_HTTP_TOKEN=token"));
     assert!(env_raw.contains("CUSTOM_VALUE='value with spaces'"));
 
     let config_raw = std::fs::read_to_string(&config_path).unwrap_or_default();

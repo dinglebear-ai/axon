@@ -4,8 +4,9 @@
 #     misbehaving check can't wedge a commit indefinitely.
 #     Anything that requires a workspace compile (clippy, test) belongs on
 #     pre-push so it runs once before publishing, not on every WIP commit.
-#   pre-push — path-aware fast confidence checks. Full local validation is
-#     opt-in via AXON_FULL_PRE_PUSH=1; CI remains the authoritative merge gate.
+#   pre-push — temporary pipeline-unification guardrail only. Keep this under
+#     one minute while the refactor is landing; run heavier validation
+#     explicitly when a slice needs it.
 #
 # Regressions are enforced two ways:
 #   - lefthook-speed hook below + scripts/check_lefthook_pre_commit_speed.py
@@ -20,19 +21,21 @@ pre-commit:
       glob: "{docker-compose,compose}*.{yaml,yml}"
       run: scripts/with_timeout.sh 30 -- python3 scripts/check_compose_port_bindings.py --staged
     xtask-check:
-      # Prefer the pre-built binary (no artifact-lock contention under
-      # parallel cargo lanes); fall back to `cargo xtask check` only when
-      # the binary is absent (fresh checkout, clean target/).
-      # Each sub-check inside xtask is staged-file-aware so combined wall
-      # time is ~0.3s warm. `glob: "**/*"` makes lefthook skip empty commits.
+      # Keep pre-commit to fast structural checks. Full aggregate
+      # `xtask check` can regenerate artifacts and exceed the hook budget during
+      # broad refactors, so it belongs in explicit verification/CI instead.
       glob: "**/*"
       run: >
         scripts/with_timeout.sh 60 --
         bash -c '
           if [ -x "./target/debug/xtask" ]; then
-            ./target/debug/xtask check;
+            ./target/debug/xtask check-no-mod-rs;
+            ./target/debug/xtask check-layering;
+            ./target/debug/xtask check-claude-symlinks;
           else
-            cargo xtask check;
+            cargo xtask check-no-mod-rs;
+            cargo xtask check-layering;
+            cargo xtask check-claude-symlinks;
           fi
         '
     skills-ref:
@@ -82,5 +85,17 @@ pre-commit:
 pre-push:
   parallel: false
   commands:
-    pre-push-router:
-      run: cargo xtask pre-push
+    structural-checks:
+      run: >
+        scripts/with_timeout.sh 60 --
+        bash -c '
+          if [ -x "./target/debug/xtask" ]; then
+            ./target/debug/xtask check-no-mod-rs;
+            ./target/debug/xtask check-layering;
+            ./target/debug/xtask check-claude-symlinks;
+          else
+            cargo xtask check-no-mod-rs;
+            cargo xtask check-layering;
+            cargo xtask check-claude-symlinks;
+          fi
+        '
