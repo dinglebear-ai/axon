@@ -87,6 +87,7 @@ fn render_source_result(cfg: &Config, result: &SourceResult) {
                 "chunks_prepared": result.counts.chunks_total,
                 "vector_points_written": result.counts.vector_points_total,
                 "collection": cfg.collection,
+                "graph": result.graph,
                 "warnings": result.warnings,
             })
         );
@@ -110,6 +111,13 @@ fn render_source_result(cfg: &Config, result: &SourceResult) {
             result.counts.documents_total,
             result.counts.chunks_total,
             result.counts.vector_points_total,
+        ))
+    );
+    println!(
+        "  {}",
+        muted(&format!(
+            "Graph: {} nodes  {} edges  {} evidence",
+            result.graph.nodes_upserted, result.graph.edges_upserted, result.graph.evidence_records,
         ))
     );
     for warning in &result.warnings {

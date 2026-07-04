@@ -22,6 +22,7 @@
 
 pub mod classify;
 pub mod dispatch;
+pub mod graph;
 pub mod result_map;
 
 use axon_api::source::{
@@ -82,12 +83,26 @@ pub async fn index_source(
 
     let counts = dispatch_kind(kind, ctx.cfg(), runtime, &input, &collection, owner_id).await?;
 
+    // Write the baseline source graph (source container + document nodes +
+    // containment edges) from the just-published manifest. A missing pool or a
+    // graph-store error degrades to a zero-count summary rather than failing the
+    // already-committed index.
+    let graph = graph::write_baseline_graph(
+        kind,
+        ctx.jobs.sqlite_pool(),
+        runtime.ledger.as_ref(),
+        &counts,
+        &input,
+    )
+    .await;
+
     Ok(to_source_result(
         source_kind_for(kind),
         adapter_ref(adapter_name_for(kind)),
         request.scope.unwrap_or_else(|| default_scope_for(kind)),
         input,
         counts,
+        graph,
     ))
 }
 
