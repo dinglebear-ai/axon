@@ -23,6 +23,7 @@
 pub mod classify;
 pub mod dispatch;
 pub mod graph;
+pub mod prune;
 pub mod result_map;
 
 use axon_api::source::{
@@ -93,6 +94,19 @@ pub async fn index_source(
         runtime.ledger.as_ref(),
         &counts,
         &input,
+    )
+    .await;
+
+    // Drain cleanup debt: after the new generation is committed, the ledger has
+    // recorded superseded-item vector deletes for the prior generation. Run the
+    // prune executor to perform those generation-fenced deletes and mark the
+    // debt resolved. Failures degrade gracefully — the index is already
+    // published, so a cleanup problem must not fail acquisition.
+    let _drain = prune::drain_cleanup_debt(
+        runtime.ledger.as_ref(),
+        runtime.vector_store.as_ref(),
+        &collection,
+        &counts,
     )
     .await;
 

@@ -8,15 +8,20 @@ acquire. Full contract (owns / API / deps / tests):
 · chunking profile registry:
 [../../../docs/pipeline-unification/sources/chunking-contract.md](../../../docs/pipeline-unification/sources/chunking-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 7**,
-decomposed out of `axon-vector`'s existing chunk-preparation logic. Do not add
-embedding-provider calls, vector writes, or acquisition behavior here.
+## Status — Phase 7 (wired)
+`DocumentPreparer` is live and now activates `axon-parse` on the acquisition
+path: when a caller supplies no `parse_facts`, `parse.rs` runs the shared
+`axon-parse` production registry over each `SourceDocument`, flowing real
+`parse_facts`/`graph_candidates` into `PreparedDocument` and using the selected
+parser to inform chunk routing (code → `CodeSymbol`, manifest → `CodeManifest`,
+schema → `ApiSchema`, …). Do not add embedding-provider calls, vector writes, or
+acquisition behavior here.
 
 ## Module map
 | File | Owns |
 |---|---|
 | `preparer.rs` | `DocumentPreparer` — the one boundary that emits `PreparedDocument` |
+| `parse.rs` | parse bridge — runs `axon-parse`'s production registry on each document (when the caller supplies no facts), stamping real `parse_facts`/`graph_candidates` and a parser-driven profile override onto the request |
 | `chunk_router.rs` | `ChunkRouter` — routes source-kind/content-kind to a profile |
 | `profile.rs` | `ChunkingProfile` — per-content-kind chunking strategy |
 | `prepared.rs` | `PreparedDocument`, `PreparedChunk` construction helpers |

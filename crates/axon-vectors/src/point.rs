@@ -470,8 +470,16 @@ fn insert_default_string(metadata: &mut MetadataMap, field: &str, value: &str) {
     }
 }
 
-const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] =
-    &["chunking_profile", "chunking_method", "preparer_version"];
+const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] = &[
+    "chunking_profile",
+    "chunking_method",
+    "preparer_version",
+    // Parser provenance stamped by axon-document's parse bridge. Kept as a
+    // preparer-internal diagnostic (like `chunking_profile`) rather than a
+    // strict vector-payload field, so it does not expand the payload contract.
+    "parser_id",
+    "parser_version",
+];
 
 fn stable_point_id(
     collection: &str,

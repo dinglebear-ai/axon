@@ -1,7 +1,49 @@
+use std::sync::Arc;
+
 use axon_api::source::*;
+use tokio::sync::Mutex;
 
 use super::FakeLedgerState;
+use crate::store::Result;
 use crate::store::util::{keyed_manifest_items, manifest_item_changed, timestamp};
+
+/// Pending (unresolved) cleanup debt for a source, oldest first. A debt is
+/// pending while `completed_at` is unset. Mirrors the SQLite ordering.
+pub(in crate::store) async fn list_pending_cleanup_debt(
+    state: &Arc<Mutex<FakeLedgerState>>,
+    source_id: &SourceId,
+) -> Result<Vec<CleanupDebt>> {
+    let state = state.lock().await;
+    let mut pending: Vec<CleanupDebt> = state
+        .cleanup_debt
+        .values()
+        .filter(|debt| &debt.source_id == source_id && debt.completed_at.is_none())
+        .cloned()
+        .collect();
+    pending.sort_by(|a, b| {
+        a.created_at
+            .0
+            .cmp(&b.created_at.0)
+            .then_with(|| a.debt_id.0.cmp(&b.debt_id.0))
+    });
+    Ok(pending)
+}
+
+/// Mark a debt resolved (`Completed` + `completed_at`). Idempotent: unknown or
+/// already-resolved ids are a no-op.
+pub(in crate::store) async fn resolve_cleanup_debt(
+    state: &Arc<Mutex<FakeLedgerState>>,
+    debt_id: &CleanupDebtId,
+) -> Result<()> {
+    let mut state = state.lock().await;
+    if let Some(debt) = state.cleanup_debt.get_mut(debt_id)
+        && debt.completed_at.is_none()
+    {
+        debt.status = LifecycleStatus::Completed;
+        debt.completed_at = Some(timestamp());
+    }
+    Ok(())
+}
 
 pub(super) fn record_removed_item_cleanup_debt(
     state: &mut FakeLedgerState,

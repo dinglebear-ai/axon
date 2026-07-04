@@ -24,6 +24,7 @@ axon-embedding = { path = "../axon-embedding" }
 axon-ledger = { path = "../axon-ledger" }
 axon-graph = { path = "../axon-graph" }
 axon-vectors = { path = "../axon-vectors" }
+axon-prune = { path = "../axon-prune" }
 axon-retrieval = { path = "../axon-retrieval" }
 anyhow = "1"
 async-trait = "0.1"
