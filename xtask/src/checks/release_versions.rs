@@ -10,8 +10,6 @@ macro_rules! release_bail {
     };
 }
 
-mod bump;
-mod cliff;
 mod error;
 mod files;
 mod git;
@@ -28,10 +26,8 @@ use release_please::{
 use manifest::same_version_file;
 
 use files::{
-    check_component_parity, ensure_changelog_heading, increment_gradle_version_code, read_version,
-    read_workspace_package_version, replace_cargo_lock_package_version,
-    replace_cargo_package_version, replace_gradle_version_name, replace_json_version,
-    replace_npm_package_lock_version, replace_readme_version_line,
+    check_component_parity, read_version, read_workspace_package_version,
+    replace_gradle_version_name,
 };
 use git::{
     check_gradle_version_code_increased, compare_ref_for_component, component_changed_since_ref,
@@ -40,8 +36,9 @@ use git::{
 
 #[cfg(test)]
 use files::{
-    read_cargo_lock_package_version, read_cargo_package_version, read_gradle_version_code,
-    read_gradle_version_name, read_json_version, read_npm_package_lock_version,
+    increment_gradle_version_code, read_cargo_lock_package_version, read_cargo_package_version,
+    read_gradle_version_code, read_gradle_version_name, read_json_version,
+    read_npm_package_lock_version,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -100,13 +97,6 @@ enum VersionKind {
     NpmPackageLock,
     GradleVersionName,
     GradleVersionCode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum BumpLevel {
-    Patch,
-    Minor,
-    Major,
 }
 
 pub fn check(
@@ -185,29 +175,6 @@ pub fn print_plans(plans: &[ComponentPlan], json: bool) -> ReleaseResult<()> {
             );
         }
     }
-    Ok(())
-}
-
-pub fn bump(
-    root: &Path,
-    component_id: &str,
-    level: Option<BumpLevel>,
-    skip_changelog: bool,
-) -> ReleaseResult<()> {
-    bump::bump(root, component_id, level, skip_changelog)
-}
-
-/// Regenerate a component's full changelog from scoped git history (used to
-/// seed new component changelogs and to rebuild the cli changelog cleanly).
-pub fn regen_changelog(root: &Path, component_id: &str, output_path: &str) -> ReleaseResult<()> {
-    let manifest = load_manifest(root)?;
-    let component = manifest
-        .components
-        .iter()
-        .find(|component| component.id == component_id)
-        .with_release_context(|| format!("unknown release component {component_id}"))?;
-    cliff::generate_full_changelog(root, component, output_path)?;
-    println!("regenerated {output_path} for {component_id}");
     Ok(())
 }
 
@@ -408,16 +375,12 @@ fn collect_changed_component_errors(
         )
     })?;
 
-    // Best-effort advisory: git-cliff's suggested bump level. Silent when
-    // git-cliff is unavailable (e.g. CI), so this never changes pass/fail.
-    let hint = suggested_level_hint(cliff::suggested_level(root, component, &candidate));
-
     let latest = latest_version_from_plan(component, plan)?;
     if let Some(latest) = latest
         && candidate <= latest
     {
         errors.push(format!(
-            "{} code changed but version {} is not greater than latest {} tag version {}. Bump {} before merging.{hint}",
+            "{} code changed but version {} is not greater than latest {} tag version {}. Let release-please bump {} before merging.",
             component.id,
             plan.version,
             component.tag_prefix,
@@ -428,7 +391,7 @@ fn collect_changed_component_errors(
 
     if tag_exists(root, &plan.candidate_tag)? {
         errors.push(format!(
-            "{} code changed but tag {} already exists. Bump {} before merging.{hint}",
+            "{} code changed but tag {} already exists. Let release-please bump {} before merging.",
             component.id,
             plan.candidate_tag,
             bump_hint(component)
@@ -472,15 +435,6 @@ fn bump_hint(component: &Component) -> String {
         "android" => "apps/android/app/build.gradle.kts versionName and versionCode".to_owned(),
         "chrome" => "apps/chrome-extension/manifest.json".to_owned(),
         _ => format!("the {} version files", component.id),
-    }
-}
-
-fn suggested_level_hint(level: Option<BumpLevel>) -> String {
-    match level {
-        Some(BumpLevel::Major) => " (suggested bump: major)".to_owned(),
-        Some(BumpLevel::Minor) => " (suggested bump: minor)".to_owned(),
-        Some(BumpLevel::Patch) => " (suggested bump: patch)".to_owned(),
-        None => String::new(),
     }
 }
 

@@ -1,7 +1,6 @@
 use super::{Component, ReleaseContext, ReleaseResult, VersionFile, VersionKind};
 use regex::Regex;
 use std::path::Path;
-use std::process::Command;
 
 mod readme;
 
@@ -283,125 +282,6 @@ fn check_gradle_version_code_present(content: &str) -> ReleaseResult<()> {
     Ok(())
 }
 
-pub(super) fn replace_json_version(
-    content: &str,
-    pointer: Option<&str>,
-    next: &str,
-) -> ReleaseResult<String> {
-    let pointer = pointer.unwrap_or("/version");
-    let mut value: serde_json::Value =
-        serde_json::from_str(content).release_context("invalid JSON")?;
-    let target = value
-        .pointer_mut(pointer)
-        .with_release_context(|| format!("missing JSON version field at {pointer}"))?;
-    if !target.is_string() {
-        release_bail!("JSON version field at {pointer} is not a string");
-    }
-    *target = serde_json::Value::String(next.to_owned());
-    serde_json::to_string_pretty(&value).release_context("failed to serialize JSON")
-}
-
-pub(super) fn replace_cargo_package_version(
-    content: &str,
-    package: Option<&str>,
-    next: &str,
-) -> ReleaseResult<String> {
-    read_cargo_package_version(content, package)?;
-    // The root manifest also carries `[workspace.package] version`, inherited by
-    // every extracted crate via `version.workspace = true`. Bump it in lockstep
-    // with `[package]` so the workspace version — and therefore every crate's
-    // `CARGO_PKG_VERSION` — tracks the product version. Crate manifests without a
-    // `[workspace.package]` table are unaffected. The two sections are tracked
-    // separately so a half-bump (one section's version present but not rewritten)
-    // is caught rather than silently passing once `[package]` alone is bumped.
-    let has_workspace_version = read_workspace_package_version(content)?.is_some();
-    let mut in_package = false;
-    let mut in_workspace_package = false;
-    let mut package_replaced = false;
-    let mut workspace_replaced = false;
-    let mut output = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[package]" {
-            in_package = true;
-            in_workspace_package = false;
-        } else if trimmed == "[workspace.package]" {
-            in_workspace_package = true;
-            in_package = false;
-        } else if trimmed.starts_with('[') {
-            in_package = false;
-            in_workspace_package = false;
-        }
-
-        let mut next_line = line.to_owned();
-        if (in_package || in_workspace_package)
-            && trimmed.starts_with("version")
-            && extract_toml_string_assignment(trimmed).is_some()
-        {
-            let leading = &line[..line.len() - line.trim_start().len()];
-            next_line = format!(r#"{leading}version = "{next}""#);
-            if in_package {
-                package_replaced = true;
-            } else {
-                workspace_replaced = true;
-            }
-        }
-        output.push(next_line);
-    }
-    if !package_replaced {
-        release_bail!("missing Cargo package version");
-    }
-    if has_workspace_version && !workspace_replaced {
-        release_bail!(
-            "[workspace.package] version present but not bumped; refusing a half-bump that \
-             would drift the workspace-inherited version from the package version"
-        );
-    }
-    Ok(preserve_trailing_newline(content, output.join("\n")))
-}
-
-pub(super) fn replace_cargo_lock_package_version(
-    content: &str,
-    package: Option<&str>,
-    next: &str,
-) -> ReleaseResult<String> {
-    let package = package.release_context("cargo_lock_package requires package")?;
-    read_cargo_lock_package_version(content, Some(package))?;
-    let mut output = Vec::new();
-    let mut active_package: Option<String> = None;
-    let mut replaced = false;
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[[package]]" {
-            active_package = None;
-        } else if let Some(name) = cargo_lock_assignment(trimmed, "name") {
-            active_package = Some(name);
-        }
-
-        let mut next_line = line.to_owned();
-        if active_package.as_deref() == Some(package)
-            && trimmed.starts_with("version")
-            && cargo_lock_assignment(trimmed, "version").is_some()
-        {
-            let leading = &line[..line.len() - line.trim_start().len()];
-            next_line = format!(r#"{leading}version = "{next}""#);
-            replaced = true;
-        }
-        output.push(next_line);
-    }
-
-    if !replaced {
-        release_bail!("missing Cargo.lock package {package} version");
-    }
-    Ok(preserve_trailing_newline(content, output.join("\n")))
-}
-
-fn extract_toml_string_assignment(line: &str) -> Option<&str> {
-    let (_, value) = line.split_once('=')?;
-    value.trim().strip_prefix('"')?.strip_suffix('"')
-}
-
 pub(super) fn replace_gradle_version_name(content: &str, next: &str) -> ReleaseResult<String> {
     let regex = Regex::new(r#"(?m)^(\s*versionName\s*=\s*)"[^"]+""#)
         .release_context("invalid versionName replacement regex")?;
@@ -426,72 +306,6 @@ pub(super) fn increment_gradle_version_code(content: &str) -> ReleaseResult<Stri
         .release_context("versionCode overflowed while bumping")?;
     validate_gradle_version_code(next)?;
     Ok(regex.replace(content, format!("${{1}}{next}")).to_string())
-}
-
-pub(super) fn replace_readme_version_line(content: &str, next: &str) -> ReleaseResult<String> {
-    readme::replace_version_line(content, next)
-}
-
-pub(super) fn ensure_changelog_heading(content: &str, next: &str) -> ReleaseResult<String> {
-    let heading = format!("## [{next}]");
-    if content.lines().any(|line| line.starts_with(&heading)) {
-        return Ok(content.to_owned());
-    }
-    let date = release_date()?;
-    let block = format!("## [{next}] - {date}\n\n### Changed\n- Release version bump.\n\n");
-    let mut lines = content.lines();
-    let Some(first) = lines.next() else {
-        return Ok(format!("# Changelog\n\n{block}"));
-    };
-    Ok(if first.starts_with("# ") {
-        let rest = lines.collect::<Vec<_>>().join("\n");
-        if rest.trim().is_empty() {
-            format!("{first}\n\n{block}")
-        } else {
-            preserve_trailing_newline(content, format!("{first}\n\n{block}{}", rest.trim_start()))
-        }
-    } else {
-        format!("{block}{content}")
-    })
-}
-
-fn release_date() -> ReleaseResult<String> {
-    let output = Command::new("date")
-        .arg("+%F")
-        .output()
-        .release_context("failed to run date +%F")?;
-    if !output.status.success() {
-        release_bail!(
-            "date +%F failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-    }
-    let date = String::from_utf8(output.stdout).release_context("date +%F returned non-UTF-8")?;
-    let date = date.trim();
-    if !is_iso_date(date) {
-        release_bail!("date +%F returned invalid date: {date}");
-    }
-    Ok(date.to_owned())
-}
-
-pub(super) fn replace_npm_package_lock_version(
-    content: &str,
-    package: Option<&str>,
-    next: &str,
-) -> ReleaseResult<String> {
-    let package = package.release_context("npm_package_lock requires package")?;
-    read_npm_package_lock_version(content, Some(package))?;
-    let mut value: serde_json::Value =
-        serde_json::from_str(content).release_context("invalid JSON")?;
-    *value
-        .get_mut("version")
-        .release_context("missing package-lock root version")? =
-        serde_json::Value::String(next.to_owned());
-    *value
-        .pointer_mut("/packages//version")
-        .release_context("missing package-lock packages[''] version")? =
-        serde_json::Value::String(next.to_owned());
-    serde_json::to_string_pretty(&value).release_context("failed to serialize package-lock")
 }
 
 fn validate_gradle_version_code(code: u64) -> ReleaseResult<u64> {
@@ -519,21 +333,4 @@ fn cargo_lock_assignment(line: &str, key: &str) -> Option<String> {
     line.strip_prefix(&prefix)
         .and_then(|value| value.trim().strip_prefix('"')?.strip_suffix('"'))
         .map(ToOwned::to_owned)
-}
-
-fn is_iso_date(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() == 10
-        && bytes[0..4].iter().all(u8::is_ascii_digit)
-        && bytes[4] == b'-'
-        && bytes[5..7].iter().all(u8::is_ascii_digit)
-        && bytes[7] == b'-'
-        && bytes[8..10].iter().all(u8::is_ascii_digit)
-}
-
-fn preserve_trailing_newline(original: &str, mut updated: String) -> String {
-    if original.ends_with('\n') && !updated.ends_with('\n') {
-        updated.push('\n');
-    }
-    updated
 }
