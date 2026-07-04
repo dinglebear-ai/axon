@@ -122,9 +122,23 @@ impl ServiceContext {
         let Some(pool) = jobs.sqlite_pool() else {
             return None;
         };
-        let store: Arc<dyn JobStore> = Arc::new(axon_jobs::unified::SqliteUnifiedJobStore::new(
-            (*pool).clone(),
-        ));
+        // Bind the durable observability sink to the SAME shared pool. Its
+        // tables are created by the composed migration runner
+        // (`apply_all_migrations`), so use the migration-free constructor to
+        // avoid colliding with that runner's bookkeeping. Every status/heartbeat
+        // transition routed through this store now also lands in
+        // `axon_observe_events`/`axon_observe_heartbeats` with a
+        // strictly-increasing per-job sequence, supplementing (not replacing) the
+        // existing `job_events`/`progress_json` SSE/status streams.
+        let observe_sink = Arc::new(
+            axon_observe::sink::SqliteObservabilitySink::from_migrated_pool((*pool).clone()),
+        );
+        let store: Arc<dyn JobStore> = Arc::new(
+            axon_jobs::unified::SqliteUnifiedJobStore::with_observe_sink(
+                (*pool).clone(),
+                observe_sink,
+            ),
+        );
         match TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await {
             Ok(runtime) => Some(Arc::new(runtime)),
             Err(err) => {

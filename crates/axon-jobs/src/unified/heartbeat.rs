@@ -37,7 +37,13 @@ impl SqliteUnifiedJobStore {
             .await?;
         self.upsert_provider_reservations(&mut tx, &heartbeat)
             .await?;
-        tx.commit().await.map_err(sql_error)
+        tx.commit().await.map_err(sql_error)?;
+
+        // Supplement: mirror the heartbeat into the durable observability sink
+        // after the authoritative write commits. Sink errors are logged, not
+        // propagated.
+        self.observe_heartbeat(&heartbeat).await;
+        Ok(())
     }
 
     async fn update_heartbeat_summary(

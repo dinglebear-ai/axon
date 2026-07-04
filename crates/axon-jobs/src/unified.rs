@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use axon_api::source::*;
+use axon_observe::sink::SqliteObservabilitySink;
 use sqlx::SqlitePool;
 
 use crate::boundary::{JobStore, Result};
@@ -10,17 +13,41 @@ mod control;
 mod control_helpers;
 #[path = "unified/heartbeat.rs"]
 mod heartbeat;
+#[path = "unified/observe.rs"]
+mod observe;
 #[path = "unified/ops.rs"]
 mod ops;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SqliteUnifiedJobStore {
     pool: SqlitePool,
+    /// Optional durable observability sink (`axon_observe_events`/heartbeats).
+    ///
+    /// When present, every status transition and heartbeat routed through this
+    /// store is *also* recorded as a durable [`SourceProgressEvent`] with a
+    /// strictly-increasing per-`job_id` sequence. This supplements — it never
+    /// replaces — the existing `job_events`/`progress_json` streams that back
+    /// SSE/status rendering, so streaming behavior is unchanged. `None` (the
+    /// bare [`SqliteUnifiedJobStore::new`] constructor, used by fakes/tests)
+    /// disables the supplement entirely.
+    observe: Option<Arc<SqliteObservabilitySink>>,
 }
 
 impl SqliteUnifiedJobStore {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            observe: None,
+        }
+    }
+
+    /// Build a store that also routes status/heartbeat transitions into the
+    /// durable observability sink on the same pool.
+    pub fn with_observe_sink(pool: SqlitePool, observe: Arc<SqliteObservabilitySink>) -> Self {
+        Self {
+            pool,
+            observe: Some(observe),
+        }
     }
 }
 

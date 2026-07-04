@@ -62,10 +62,23 @@ impl SqliteObservabilitySink {
             .run(&pool)
             .await
             .map_err(|e| map_str("observe.migrate_failed", e.to_string()))?;
-        Ok(Self {
+        Ok(Self::from_migrated_pool(pool))
+    }
+
+    /// Build a sink from a pool whose observability tables are already created
+    /// by the composed cross-crate migration runner (see [`crate::migration`]).
+    ///
+    /// Unlike [`from_pool`](Self::from_pool), this does **not** run
+    /// `sqlx::migrate!`: the production runtime shares one SQLite pool across the
+    /// jobs runtime and every domain store, and that pool's migrations are owned
+    /// by `axon_jobs::migrations::apply_all_migrations`. Running observe's own
+    /// migrator here would collide with the composed runner's migration
+    /// bookkeeping, so callers on the shared pool use this constructor.
+    pub fn from_migrated_pool(pool: SqlitePool) -> Self {
+        Self {
             pool,
             sequences: Arc::new(SequenceRegistry::new()),
-        })
+        }
     }
 
     /// Shared sequence registry, so callers can assign sequences consistently
