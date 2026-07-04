@@ -54,6 +54,14 @@ impl PruneRequest {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PruneExecuteRequest {
+    pub plan: PrunePlan,
+    pub confirm: bool,
+    pub reason: String,
+}
+
 /// The scope of a prune. Each variant resolves to a concrete plan by the
 /// `axon-prune` planner. Variants mirror the pruning contract exactly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
