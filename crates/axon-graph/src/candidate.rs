@@ -15,6 +15,7 @@ use axon_api::source::{ApiError, GraphCandidate};
 
 use crate::edge::GraphEdgeKind;
 use crate::error::graph_validation_error;
+use crate::evidence::EvidenceKind;
 use crate::node::GraphNodeKind;
 
 /// Validate a candidate against the closed kind registry and candidate rules.
@@ -70,6 +71,10 @@ pub fn validate_candidate(candidate: &GraphCandidate) -> Result<(), ApiError> {
             "candidate {:?} declares edges but carries no evidence",
             candidate.candidate_id
         )));
+    }
+
+    for evidence in &candidate.evidence {
+        EvidenceKind::from_str(&evidence.evidence_kind)?;
     }
 
     Ok(())
