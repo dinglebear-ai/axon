@@ -1,7 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::env::env_example_facts;
+use crate::env::{env_example_facts, env_example_parse_items};
 use crate::parser::ParseInput;
 
 fn input(text: &str) -> ParseInput {
@@ -31,6 +31,52 @@ fn input(text: &str) -> ParseInput {
     }
 }
 
+fn parse_fixture(path: &str, text: &str) -> crate::parser::ParseResult {
+    let mut input = input(text);
+    input.document.source_item_key = SourceItemKey::from(path);
+    input.document.canonical_uri = format!("file:///repo/{path}");
+    input.document.path = Some(path.to_string());
+    let (facts, graph_candidates) = env_example_parse_items(&input);
+    crate::parser::ParseResult {
+        header: crate::parser::stage_header(&input, LifecycleStatus::Completed, Vec::new(), None),
+        document_id: input.document.document_id.clone(),
+        facts,
+        graph_candidates,
+        parser_id: "env_example".to_string(),
+        parser_version: crate::facts::PARSER_VERSION.to_string(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
+    }
+}
+
+fn has_fact(result: &crate::parser::ParseResult, fact_kind: &str, name: &str) -> bool {
+    result
+        .facts
+        .iter()
+        .any(|fact| fact.fact_kind == fact_kind && fact.name == name)
+}
+
+#[test]
+fn env_example_parser_never_emits_secret_values() {
+    let result = parse_fixture(
+        ".env.example",
+        "DATABASE_URL=postgres://user:pass@db/app\nOPENAI_API_KEY=sk-proj-secret\nPORT=3000\n",
+    );
+
+    assert!(has_fact(&result, "secret_reference", "DATABASE_URL"));
+    assert!(has_fact(&result, "secret_reference", "OPENAI_API_KEY"));
+    assert!(has_fact(&result, "environment_variable", "PORT"));
+    let serialized = serde_json::to_string(&result).expect("serialize parse result");
+    assert!(!serialized.contains("sk-proj-secret"));
+    assert!(!serialized.contains("user:pass"));
+    assert!(
+        result
+            .graph_candidates
+            .iter()
+            .all(|candidate| axon_graph::candidate::validate_candidate(candidate).is_ok())
+    );
+}
+
 #[test]
 fn extracts_env_example_keys_without_secret_values() {
     let facts = env_example_facts(&input(
@@ -38,7 +84,7 @@ fn extracts_env_example_keys_without_secret_values() {
     ));
 
     assert_eq!(facts.len(), 2);
-    assert_eq!(facts[0].fact_kind, "env_var");
+    assert_eq!(facts[0].fact_kind, "environment_variable");
     assert_eq!(facts[0].name, "API_URL");
     assert_eq!(facts[0].value["has_default"], true);
     assert_eq!(facts[1].value["has_default"], false);
