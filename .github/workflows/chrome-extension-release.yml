@@ -26,7 +26,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # required to create releases
+  contents: write   # required to upload release artifacts
 
 jobs:
   build:
@@ -35,11 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # The extension's assets/ is a symlink into the top-level assets/, so
-          # both paths must be checked out for package.sh to resolve real files.
           sparse-checkout: |
             apps/chrome-extension
-            assets
           sparse-checkout-cone-mode: false
 
       - name: Build extension zip
@@ -81,7 +78,7 @@ jobs:
             apps/chrome-extension/dist/*.zip.sha256
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Attach artifacts to release
         # Create a release on real tag pushes; workflow_dispatch is a dry-run
         # unless explicitly called with publish=true on a chrome-ext-v* tag.
         if: >-
@@ -90,25 +87,13 @@ jobs:
             github.event_name == 'push' ||
             (github.event_name == 'workflow_dispatch' && inputs.publish)
           )
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Chrome extension v${{ steps.build.outputs.version }}
-          # Curated body instead of generate_release_notes: the extension versions
-          # independently, so auto-notes diff against an unrelated axon v* tag and
-          # dump the whole axon PR history into the extension's notes.
-          body: |
-            Axon — Chrome extension v${{ steps.build.outputs.version }}.
-
-            **Install:** download `axon-${{ steps.build.outputs.version }}.zip`, unzip, and
-            load it via `chrome://extensions` → Developer mode → Load unpacked — or upload the zip to the
-            Chrome Web Store.
-
-            **Verify:** `sha256sum -c axon-${{ steps.build.outputs.version }}.zip.sha256`
-
-            See `apps/chrome-extension/README.md` for configuration.
-          files: |
-            ${{ steps.build.outputs.zip }}
-            ${{ steps.build.outputs.zip }}.sha256
-          fail_on_unmatched_files: true
-          # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
-          make_latest: false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" \
+            "${{ steps.build.outputs.zip }}" \
+            "${{ steps.build.outputs.zip }}.sha256" \
+            --clobber
