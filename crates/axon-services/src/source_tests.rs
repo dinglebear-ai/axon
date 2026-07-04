@@ -194,6 +194,102 @@ async fn index_source_web_map_scope_is_reported_without_falling_back_to_site() {
 }
 
 #[tokio::test]
+async fn source_routing_covers_phase_4_input_families() {
+    let temp = tempfile::TempDir::new().expect("tempdir");
+    let local_path = temp.path().to_string_lossy().to_string();
+    let cases = vec![
+        (
+            SourceRequest::new(local_path),
+            SourceKind::Local,
+            SourceScope::Directory,
+            "local",
+        ),
+        (
+            SourceRequest::new("https://github.com/jmagar/axon"),
+            SourceKind::Git,
+            SourceScope::Repo,
+            "github",
+        ),
+        (
+            SourceRequest::new("npm:left-pad"),
+            SourceKind::Registry,
+            SourceScope::Package,
+            "npm",
+        ),
+        (
+            SourceRequest::new("r/rust"),
+            SourceKind::Reddit,
+            SourceScope::Subreddit,
+            "reddit",
+        ),
+        (
+            SourceRequest::new("https://youtube.com/watch?v=dQw4w9WgXcQ"),
+            SourceKind::Youtube,
+            SourceScope::Video,
+            "youtube",
+        ),
+        (
+            SourceRequest::new("feed:https://example.com/feed.xml"),
+            SourceKind::Feed,
+            SourceScope::Feed,
+            "feed",
+        ),
+        (
+            SourceRequest::new("session:claude:/tmp/session.jsonl"),
+            SourceKind::Session,
+            SourceScope::Thread,
+            "session",
+        ),
+        (
+            SourceRequest::new("mcp:context7/resolve-library-id"),
+            SourceKind::McpTool,
+            SourceScope::Tool,
+            "mcp",
+        ),
+        (
+            SourceRequest::new("cli:rg"),
+            SourceKind::CliTool,
+            SourceScope::Tool,
+            "cli",
+        ),
+    ];
+
+    for (request, expected_kind, expected_scope, expected_adapter) in cases {
+        let routed = routing::resolve_source_route(&request)
+            .unwrap_or_else(|err| panic!("{} should route: {err}", request.source));
+        assert_eq!(
+            routed.route.source.source_kind, expected_kind,
+            "{}",
+            request.source
+        );
+        assert_eq!(routed.route.scope, expected_scope, "{}", request.source);
+        assert_eq!(
+            routed.route.adapter.name, expected_adapter,
+            "{}",
+            request.source
+        );
+    }
+}
+
+#[tokio::test]
+async fn index_source_reports_unsupported_dispatch_for_tool_sources() {
+    let ctx = context_without_data_plane();
+    let result = index_source(SourceRequest::new("cli:rg"), &ctx)
+        .await
+        .expect("unsupported dispatch is represented as failed SourceResult");
+
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "source.route.unsupported_dispatch"),
+        "expected unsupported dispatch warning, got: {:?}",
+        result.warnings
+    );
+}
+
+#[tokio::test]
 async fn index_source_unsupported_input_is_unsupported() {
     let ctx = context_without_data_plane();
     let result = index_source(SourceRequest::new("not-a-path-or-url"), &ctx)

@@ -68,6 +68,17 @@ pub async fn index_source(
     };
     let kind = routed.kind;
     let route = routed.route;
+    if kind == SourceInputKind::Unsupported {
+        return Ok(route_error_result(
+            &input,
+            ApiError::new(
+                "source.route.unsupported_dispatch",
+                axon_error::ErrorStage::Routing,
+                "resolved source kind does not have a source dispatch implementation yet",
+            )
+            .with_context("source_kind", format!("{:?}", route.source.source_kind)),
+        ));
+    }
 
     let Some(runtime) = ctx.target_local_source_runtime() else {
         return Ok(degraded_no_data_plane(
