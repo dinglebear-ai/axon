@@ -246,6 +246,35 @@ fn production_registry_runs_real_parser_families() {
     )));
     assert_eq!(markdown.parser_id, "markdown_headings");
     assert_eq!(markdown.facts[0].fact_kind, "markdown_heading");
+
+    let docker = registry.parse(&input(source_doc(
+        ContentKind::PlainText,
+        Some("Dockerfile"),
+        None,
+        "FROM qdrant/qdrant:v1.13.1\nEXPOSE 6333\n",
+    )));
+    assert_eq!(docker.parser_id, "docker_manifest");
+    assert!(docker.facts.iter().any(|fact| {
+        fact.fact_kind == "docker_base_image" && fact.name == "qdrant/qdrant:v1.13.1"
+    }));
+
+    let env = registry.parse(&input(source_doc(
+        ContentKind::PlainText,
+        Some(".env.example"),
+        None,
+        "QDRANT_URL=http://localhost:6333\nOPENAI_API_KEY=\n",
+    )));
+    assert_eq!(env.parser_id, "env_example");
+    assert!(
+        env.facts
+            .iter()
+            .any(|fact| fact.fact_kind == "env_var" && fact.name == "QDRANT_URL")
+    );
+    assert!(
+        env.facts
+            .iter()
+            .any(|fact| { fact.fact_kind == "secret_reference" && fact.name == "OPENAI_API_KEY" })
+    );
 }
 
 #[test]

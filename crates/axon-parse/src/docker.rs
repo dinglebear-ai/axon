@@ -1,10 +1,14 @@
-use axon_api::source::SourceParseFacts;
+use axon_api::source::{GraphCandidate, SourceParseFacts};
 use serde_json::json;
 
 use crate::facts::{inline_text, source_fact};
 use crate::parser::ParseInput;
 
 pub const MODULE_NAME: &str = "docker";
+
+pub fn docker_parse_items(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
+    (docker_facts(input), Vec::new())
+}
 
 pub fn docker_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
     let path = input.document.path.as_deref().unwrap_or_default();
