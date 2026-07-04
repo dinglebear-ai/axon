@@ -12,10 +12,12 @@
 
 - `CLAUDE.md` is the source of truth for agent memory; do not edit `AGENTS.md` or `GEMINI.md` directly.
 - Rust workspace style: `mod_module_files = "deny"`; use sibling `foo.rs` files, never `foo/mod.rs`.
-- Phase 3 canonical scope is `docs/pipeline-unification/delivery/implementation-plan.md` lines 98-117.
-- Phase 3 checklist source is `docs/pipeline-unification/delivery/implementation-checklist.md` lines 52-67.
-- Fake requirements source is `docs/pipeline-unification/delivery/testing-contract.md` lines 65-86.
-- Provider capability source is `docs/pipeline-unification/schemas/provider-capability-schema.md` lines 60-82 and 174-203.
+- Phase 3 canonical scope is `docs/pipeline-unification/delivery/implementation-plan.md` Phase 3, plus the live issue #298 Phase 3 checklist. Re-read the live issue section before closeout; do not rely on stale line numbers.
+- Phase 3 checklist source is `docs/pipeline-unification/delivery/implementation-checklist.md` Phase 3, corrected by the more detailed issue tracker and source-of-truth contracts.
+- Fake requirements source is `docs/pipeline-unification/delivery/testing-contract.md` Boundary Fake Requirements.
+- Provider capability source is `docs/pipeline-unification/schemas/provider-capability-schema.md` Required Fields and Provider Capability Shape.
+- Store/provider trait source is `docs/pipeline-unification/foundation/types/store-contract.md` and `docs/pipeline-unification/foundation/types/provider-contract.md`.
+- Runtime fairness/cooling source is `docs/pipeline-unification/runtime/provider-contract.md`.
 - Current mismatch: `docs/reference/runtime/provider-capabilities.schema.json` lines 18-30 still mark provider capabilities as a skeleton.
 - Do not edit GitHub issue #298 until the code/docs changes land and are verified.
 - Use the smallest verification surface that proves Phase 3; do not run broad live smoke tests for this docs/schema/fake-boundary slice.
@@ -30,6 +32,10 @@ Apply these corrections before implementation:
 - Generated provider capability artifacts must be sourced from Rust-owned provider DTOs and provider boundary crates. `docs/reference/runtime/provider-capabilities.*` is generated output, not a source of truth.
 - Keep provider schema fixture inputs bounded to schema-owner DTO/registry files. Do not make `fixture_repo()` copy broad crate trees or grow into a mini-workspace.
 - Fake memory review paths must preserve production pagination behavior. Cursor/limit must be applied during iteration, not after scanning and cloning all records.
+- The live issue #298 Phase 3 checklist includes boundaries beyond the early plan: `WatchStore`, `SearchProvider`, `FetchProvider`, `RenderProvider`, `NetworkCaptureProvider`, and `SecurityPolicy`. Do not mark Phase 3 aligned until those boundaries have owner-crate traits, strict fakes or explicit contract-accepted owner deferrals, capability coverage, and tests.
+- `DocumentStatus` is ledger-owned. Do not add a separate document-status store to satisfy wording; prove the status methods and capability reporting live on `LedgerStore`.
+- The `SourceResolver`/`SourceRouter` line in the live issue is Phase 4-owned by the docs packet. Phase 3 closeout must either leave it to the Phase 4 plan or prepare an authorized tracker correction; do not implement routing inside Phase 3 to satisfy an over-broad checklist line.
+- Enforce the architectural boundary that `axon-jobs` does not depend on `axon-services`; this is a Phase 3 acceptance item, not merely a later layering cleanup.
 - Do not prewrite issue proof text with `PASS` lines. Issue updates must quote actual commands and results after verification.
 
 ## File Structure
@@ -44,12 +50,107 @@ Modify these files:
 - `crates/axon-memory/src/store_tests.rs` — add tests for memory review, forgetting, superseding, and contradiction behavior.
 - `crates/axon-graph/src/store.rs` — make duplicate graph candidates merge evidence rather than replacing edge evidence, and expose conflict warnings when stable keys disagree on node kind.
 - `crates/axon-graph/src/store_tests.rs` — add tests for evidence merge and conflict warning behavior.
+- Provider/search/fetch/render/network/security boundary files in their owner crates — verify or add trait/fake/capability coverage for `SearchProvider`, `FetchProvider`, `RenderProvider`, `NetworkCaptureProvider`, `SecurityPolicy`, `HealthProbe`, and `RateLimiter` without moving these boundaries into transports or `axon-services`.
+- Job/watch/ledger boundary files in their owner crates — verify `JobStore`, `WatchStore`, and ledger-owned `DocumentStatus` behavior, capability reporting, reset/idempotency tests, and `axon-jobs` layering.
 - `docs/pipeline-unification/delivery/implementation-checklist.md` — clarify that Phase 3 does not own resolver/router work and that provider capability schema completion is required.
 - Optional after merge: GitHub issue #298 body — update Phase 3 checkboxes and move the `SourceResolver`/`SourceRouter` line to Phase 4/PR5.
 
 Create these files only if the implementation wants cleaner generated markdown helpers:
 
 - `xtask/src/schemas/provider_capabilities.rs` — focused provider schema generator helpers. Prefer this if `families.rs` starts growing awkwardly.
+
+## Contract Gap Audit
+
+This plan originally covered provider schema generation plus memory/graph fake
+strictness, but that is not enough for the checked Phase 3 tracker. Treat these
+as mandatory gaps to close or explicitly defer with a source-of-truth reason:
+
+- Full store inventory: `LedgerStore`, `GraphStore`, `MemoryStore`,
+  `VectorStore`, `ArtifactStore`, `JobStore`, `WatchStore`, `ConfigStore`, and
+  `DocumentCache` each need owner-crate traits, fakes, capability/health
+  reporting, reset/idempotency tests, and strict unsupported-call behavior.
+- Full provider inventory: `EmbeddingProvider`, `LlmProvider`, `SearchProvider`,
+  `FetchProvider`, `RenderProvider`, `NetworkCaptureProvider`,
+  `CredentialProvider`, `HealthProbe`, `RateLimiter`, and `SecurityPolicy` each
+  need owner-crate traits, fakes, capability/health reporting, deterministic
+  success/error/rate-limit/timeout behavior where applicable, and reservation or
+  policy coverage.
+- Provider capability artifacts must include reservation policy/state,
+  cooling/health, degraded modes, cost class, and family-specific capability
+  details. A non-skeleton artifact that only includes `ProviderCapability` is
+  insufficient if related required `$defs` are missing.
+- Provider saturation proof must exercise the fake reservation scheduler or
+  equivalent owner boundary and show interactive `query`/`ask` lanes are not
+  starved by background source jobs.
+- Store ownership proof must include `DocumentStatus` on `LedgerStore`,
+  `WatchStore` as a separate watch lifecycle boundary, and a layering check that
+  prevents jobs from calling services.
+- Phase 4 routing work must stay out of Phase 3 implementation. The only Phase 3
+  action for that mismatch is tracker/docs reconciliation after verified code
+  and with explicit authorization to mutate the issue.
+
+## Task 0: Lock Full Phase 3 Boundary Inventory
+
+**Files:**
+- Modify or verify owner-crate trait/fake/capability files for every Phase 3
+  store/provider boundary named above.
+- Modify: `xtask/src/schemas/tests.rs`
+- Verify: `cargo xtask check-layering`
+
+**Interfaces:**
+- Consumes: `store-contract.md`, `provider-contract.md`,
+  `runtime/provider-contract.md`, and the live issue #298 Phase 3 checklist.
+- Produces: tests or generated checks that fail if any Phase 3 boundary is
+  missing an owner crate, fake implementation, capability/health projection, or
+  required layering guard.
+
+- [ ] **Step 1: Add a Phase 3 boundary inventory constant**
+
+Create one test-side inventory containing the required boundary names grouped as
+stores, providers, and cross-cutting policy boundaries. Include all names from
+the live issue #298 Phase 3 checklist:
+
+```text
+stores: LedgerStore, GraphStore, MemoryStore, VectorStore, ArtifactStore,
+JobStore, WatchStore, ConfigStore, DocumentCache
+providers/policies: EmbeddingProvider, LlmProvider, SearchProvider,
+FetchProvider, RenderProvider, NetworkCaptureProvider, CredentialProvider,
+HealthProbe, RateLimiter, SecurityPolicy
+ledger-owned status: DocumentStatus
+```
+
+- [ ] **Step 2: Prove each boundary has an owner-crate trait and fake**
+
+Add focused tests or schema/layering assertions that every inventory row maps to
+an owner crate and has a strict fake/in-memory implementation. Fakes must reject
+unsupported calls rather than silently returning successful placeholder data.
+
+- [ ] **Step 3: Prove capability/health/reset/idempotency coverage**
+
+For stores, assert capability/health reporting plus reset/idempotency tests where
+the contract requires them. For providers, assert capability/health, timeout,
+rate-limit or cooling behavior, deterministic fake output, and reservation or
+policy enforcement where applicable.
+
+- [ ] **Step 4: Prove ownership boundaries**
+
+Run or add checks for:
+
+```text
+DocumentStatus is ledger-owned, with no separate DocumentStatusStore trait
+axon-jobs does not depend on axon-services
+transport crates do not own store/provider traits
+provider clients do not publish ledger generations or render transport output
+```
+
+- [ ] **Step 5: Run the inventory proof**
+
+```bash
+cargo test -p xtask phase_3_boundary_inventory
+cargo xtask check-layering
+```
+
+Expected: both PASS before later Phase 3 tasks can be considered complete.
 
 ## Task 1: Replace Provider Capability Skeleton Schema
 
@@ -754,14 +855,22 @@ Replace the Phase 3 block in `docs/pipeline-unification/delivery/implementation-
 - [ ] implement `DocumentCache`
 - [ ] implement `HealthProbe`
 - [ ] implement `RateLimiter`
+- [ ] implement `WatchStore`
+- [ ] implement `SearchProvider`
+- [ ] implement `FetchProvider`
+- [ ] implement `RenderProvider`
+- [ ] implement `NetworkCaptureProvider`
+- [ ] implement `SecurityPolicy`
+- [ ] keep `DocumentStatus` ledger-owned, not a separate store
 - [ ] add strict fakes for all Phase 3 stores/providers
 - [ ] add provider reservations/cooling/health
 - [ ] generate complete provider capability schema and markdown artifacts
+- [ ] enforce `axon-jobs` does not depend on `axon-services`
 
 Exit criteria:
 
 - fake-boundary tests can run without Qdrant, TEI, LLMs, browser, or live network
-- provider saturation is observable and does not overload TEI/LLM backends
+- provider saturation is observable and cannot starve interactive query/ask lanes
 - `docs/reference/runtime/provider-capabilities.schema.json` is not a skeleton artifact
 - source routing, URL normalization, authority entrypoints, and adapter registry work remain owned by Phase 4
 ```
@@ -810,6 +919,7 @@ cargo test -p axon-llm fake_llm_provider --locked
 cargo test -p axon-jobs fake_job_store_ --locked
 cargo test -p axon-core fake_core --locked
 cargo test -p axon-authz fake_credential_provider --locked
+cargo test -p xtask phase_3_boundary_inventory --locked
 ```
 
 Expected: all PASS without Qdrant, TEI, LLMs, browser, or network.
@@ -847,6 +957,8 @@ If there is no generated verification artifact convention for this issue, do not
 - `cargo test -p axon-jobs fake_job_store_ --locked`: PASS
 - `cargo test -p axon-core fake_core --locked`: PASS
 - `cargo test -p axon-authz fake_credential_provider --locked`: PASS
+- `cargo test -p xtask phase_3_boundary_inventory --locked`: PASS
+- `cargo xtask check-layering`: PASS
 - `cargo test -p xtask provider_schema_is_not_a_skeleton_and_contains_reservation_fields --locked`: PASS
 - `cargo test -p xtask generate_writes_all_required_family_artifacts --locked`: PASS
 - `git diff --check`: PASS
@@ -886,7 +998,8 @@ Use this replacement text for issue #298 Phase 3:
 ```markdown
 ### Phase 3: Stores, Providers, And Fakes
 
-- [x] Define `LedgerStore`, `GraphStore`, `MemoryStore`, `VectorStore`, `EmbeddingProvider`, `LlmProvider`, `ArtifactStore`, `JobStore`, `ConfigStore`, `CredentialProvider`, `DocumentCache`, `HealthProbe`, and `RateLimiter` boundaries in their owner crates.
+- [x] Define `LedgerStore`, `GraphStore`, `MemoryStore`, `VectorStore`, `EmbeddingProvider`, `LlmProvider`, `ArtifactStore`, `JobStore`, `WatchStore`, `ConfigStore`, `CredentialProvider`, `DocumentCache`, `HealthProbe`, `RateLimiter`, `SearchProvider`, `FetchProvider`, `RenderProvider`, `NetworkCaptureProvider`, and `SecurityPolicy` boundaries in their owner crates.
+- [x] Keep `DocumentStatus` ledger-owned and enforce `axon-jobs` does not depend on `axon-services`.
 - [x] Add strict fake/in-memory implementations for Phase 3 stores/providers.
 - [x] Implement provider reservations, cooling, health, and backpressure.
 - [x] Generate complete provider capability schema and markdown artifacts from Rust-owned DTOs.

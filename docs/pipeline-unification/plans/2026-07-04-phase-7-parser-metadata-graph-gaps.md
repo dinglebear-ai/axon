@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Finish the Phase 7 parser, metadata, and graph gap work so Docker/env/tool outputs produce contract-valid facts, graph candidates, ranges, redacted payloads, and shared metadata across the source pipeline.
+**Goal:** Finish the Phase 7 parser, metadata, graph, payload, vertical-extraction, and LLM-provider gap work so every required parser family produces contract-valid facts, graph candidates, source ranges, redacted payloads, and shared metadata across the source pipeline.
 
 **Architecture:** Keep parsing in `axon-parse`, chunk/source-range validation in `axon-document`, public retrieval payload validation in `axon-vectors`, graph-kind validation in `axon-graph`, and cross-store lineage fixtures in crate-level tests. Parser outputs remain candidates and facts only; durable graph writes stay behind graph-store validation. CLI/MCP tool-output ingestion is metadata-only/no-exec by default and redacts argv/env/stdout/stderr before artifacts or vector writes.
 
@@ -10,7 +10,8 @@
 
 ## Global Constraints
 
-- Source-of-truth docs are `docs/pipeline-unification/sources/metadata-payload.md`, `docs/pipeline-unification/sources/chunking-contract.md`, `docs/pipeline-unification/sources/source-graph.md`, `docs/pipeline-unification/schemas/vector-payload-schema.md`, `docs/pipeline-unification/runtime/redaction-contract.md`, and `docs/pipeline-unification/surfaces/tool-contract.md`.
+- Source-of-truth docs are `docs/pipeline-unification/foundation/source-pipeline.md`, `docs/pipeline-unification/sources/parsing-contract.md`, `docs/pipeline-unification/sources/metadata-payload.md`, `docs/pipeline-unification/sources/chunking-contract.md`, `docs/pipeline-unification/sources/source-graph.md`, `docs/pipeline-unification/schemas/vector-payload-schema.md`, `docs/pipeline-unification/runtime/redaction-contract.md`, `docs/pipeline-unification/runtime/security-contract.md`, and `docs/pipeline-unification/surfaces/tool-contract.md`.
+- This plan must satisfy every open live issue #298 Phase 7 checklist item: LLM provider migration, vertical extraction parse facts, source-specific metadata registries, all required parser families, required chunk profiles/source ranges/fallback visibility, manifest/runtime/API/schema parsing, CLI/MCP tool output parsing/chunking, shared metadata validation, graph registry validation, and ledger/vector/graph link fixtures.
 - Every adapter emits `SourceDocument`; parsers emit `SourceParseFacts` and `GraphCandidate` only.
 - Every chunk has deterministic identity, `chunk_locator`, and `source_range`.
 - Parser-produced graph facts must not publish invalid source ranges.
@@ -44,12 +45,29 @@ Apply these corrections before implementation:
 
 ## Source-Of-Truth Alignment Notes
 
+- `parsing-contract.md` requires the complete parser-family set: code, Rust, JavaScript/TypeScript, Python, Docker, env examples, API schemas, sessions, and CLI/MCP tools. Docker/env/tool work is necessary but not sufficient for Phase 7 closure.
 - `chunking-contract.md` requires `code_manifest`, `structured_records`, `api_schema`, `tool_output`, and `session_turns` profiles, plus source ranges for text/code, HTML, transcript, and structured records.
 - `source-graph.md` requires Docker/env/tool facts to use canonical node kinds such as `container_image`, `container_image_tag`, `runtime_service`, `network_endpoint`, `environment_variable`, `secret_reference`, `tool`, `tool_call`, `external_resource`, and evidence kinds such as `container_manifest`, `runtime_manifest`, `env_example`, `tool_call_event`, and `tool_result_event`.
 - `metadata-payload.md` requires one shared envelope visible in ledger rows, graph evidence, document status, vector payloads, artifacts, memory rows, job status/events, logs/traces, citations, and ask/evaluate traces.
 - `vector-payload-schema.md` rejects unknown source-specific public fields unless registered and generated into the payload schema.
 - `redaction-contract.md` states unknown metadata is `internal` and redaction failure blocks public payload writes.
 - `tool-contract.md` defines CLI/MCP operations as service-routed actions, not arbitrary shell execution.
+- `source-pipeline.md` places `SourceEnrichment`, `SourceParseFacts`, `GraphCandidate`, `SourceGraph`, `DocumentPreparer`, and vector payload construction in one stage sequence; vertical extractors and LLM enrichment must feed that sequence rather than bypassing it.
+
+## Issue #298 Phase 7 Gap Mapping
+
+| Open checklist item | Plan task coverage | Required proof |
+| --- | --- | --- |
+| Move LLM provider implementations from `axon-core`/`axon-extract` into `axon-llm` | Task 9 | `axon-core::llm` and extract fallback callers route through `axon-llm::LlmProvider`; no duplicate provider runtime remains. |
+| Move vertical extraction parse facts into `axon-parse`/`axon-adapters`; keep structured `extract` orchestration in `axon-services` | Task 10 | Vertical extractors emit `SourceParseFacts`/`GraphCandidate` or adapter metadata without owning extract orchestration. |
+| Add source-specific metadata registries | Task 7 | Registry tests cover emitted Phase 7 fields and generated vector schema artifacts. |
+| Implement all required parser families | Tasks 1, 3, 4, 5, 11 | Code/Rust/JS/TS/Python/Docker/env/API/session/tool fixtures all route through production registry. |
+| Implement required chunk profiles, source ranges, fallback visibility, and range validation | Task 6 and Task 11 | Router tests cover required profiles; invalid ranges degrade/fail before publish; fallback status is visible in metadata. |
+| Implement manifest/runtime/API/schema parsing | Tasks 3, 4, 10, 11 | Package/dependency/service/env/endpoint/schema/toolchain facts validate against graph and metadata registries. |
+| Implement CLI/MCP tool output parsing/chunking with side-effect class, allowlist policy, redaction, artifacts, and external resources | Task 5 | Parser handles observed tool output; services own trusted execution policy; artifact and graph tests prove redaction. |
+| Implement shared metadata validation before embedding | Task 7 and Task 8 | Required store/vector field sets and promotion rules are enforced by production validators. |
+| Add graph registry validation for node/edge/evidence/merge/conflict/authority/confidence | Task 2, Task 6, Task 8 | Graph candidate validator rejects unknown kinds, bad evidence ranges, bad merge keys/conflict metadata. |
+| Track ledger/vector/graph links and conflict rules in graph fixtures | Task 8 | Builder-backed fixture ties `job_id`, `source_id`, generation, document, chunk, and graph evidence. |
 
 ## Current-State Findings
 
@@ -102,6 +120,16 @@ Apply these corrections before implementation:
   - Validate evidence kind names and evidence ranges for parser-produced graph candidates.
 - Modify: `crates/axon-graph/src/candidate_tests.rs`
   - Add invalid source-range rejection tests.
+- Modify: `crates/axon-llm/src/*`
+  - Own Gemini, OpenAI-compatible, Codex, and other synthesis provider implementations behind `LlmProvider`.
+- Modify: `crates/axon-core/src/llm/*` and `crates/axon-extract/src/*`
+  - Remove or delegate old provider runtime implementations; keep only shared config/redaction/utilities that belong in `axon-core`.
+- Modify: `crates/axon-extract/src/*` and `crates/axon-adapters/src/*`
+  - Route vertical extraction facts through adapter/parser outputs while keeping structured `extract` orchestration in services.
+- Modify: `crates/axon-parse/src/{manifest,schema,code,session,tool}.rs`
+  - Complete required Rust, JS/TS, Python, API/schema, sessions, and CLI/MCP parser family coverage.
+- Modify: `crates/axon-document/src/chunk_router.rs`
+  - Cover all required chunk profiles from `chunking-contract.md`, including `api_schema` and `session_turns`.
 - Create: `crates/axon-services/src/source/tool_policy.rs`
   - Own trusted CLI/MCP tool-source execution policy validation outside the parser.
 - Test: `crates/axon-services/src/source/tool_policy_tests.rs`
@@ -1497,7 +1525,123 @@ git add crates/axon-graph/src/fixture_tests.rs crates/axon-graph/src/lib.rs crat
 git commit -m "test(graph): tie source generation lineage fixtures"
 ```
 
-## Task 9: Final Verification And Checklist Evidence
+## Task 9: Move LLM Providers Behind `axon-llm`
+
+**Files:**
+
+- Modify: `crates/axon-llm/src/*`
+- Modify: `crates/axon-core/src/llm/*`
+- Modify: `crates/axon-extract/src/*`
+- Modify: `crates/axon-services/src/*`
+- Test: `crates/axon-llm/src/provider_tests.rs`
+
+**Interfaces:**
+
+- Consumes: current Gemini/headless, OpenAI-compatible, Codex, and extract fallback provider implementations.
+- Produces: one `axon-llm::LlmProvider` runtime boundary used by ask/summarize/evaluate/suggest/extract fallback/debug/research.
+
+- [ ] **Step 1: Add provider-ownership regression**
+
+Add a test proving every configured backend resolves through `axon_llm::provider_registry()` and no service/extract caller instantiates an old `axon_core::llm` provider directly.
+
+- [ ] **Step 2: Move or delegate provider implementations**
+
+Move implementation code that owns provider process/client behavior into `axon-llm`. `axon-core` may retain config parsing, redaction utilities, timeouts, and shared text helpers only when they are not provider clients.
+
+- [ ] **Step 3: Preserve structured extract orchestration**
+
+Keep structured `extract` command/service orchestration in `axon-services` and `axon-extract`; only provider execution moves to `axon-llm`.
+
+- [ ] **Step 4: Run LLM provider tests**
+
+Run:
+
+```bash
+cargo test -p axon-llm provider --no-fail-fast
+cargo test -p axon-services llm --no-fail-fast
+cargo test -p axon-extract llm --no-fail-fast
+```
+
+Expected: PASS, or record exact closest matching test names if crates do not expose these filters.
+
+## Task 10: Route Vertical Extraction Facts Through Parse/Adapter Boundaries
+
+**Files:**
+
+- Modify: `crates/axon-extract/src/*`
+- Modify: `crates/axon-adapters/src/*`
+- Modify: `crates/axon-parse/src/*`
+- Test: `crates/axon-extract/src/vertical_parse_facts_tests.rs`
+
+**Interfaces:**
+
+- Consumes: current vertical extractor outputs.
+- Produces: adapter metadata, `SourceParseFacts`, and `GraphCandidate` values that feed the source pipeline without bypassing parser/document/vector validation.
+
+- [ ] **Step 1: Add vertical fact fixture**
+
+Create fixtures for at least one implemented vertical that emits package/API/service facts. Assert the vertical produces `SourceParseFacts` and graph candidates with canonical source-graph names, and that structured `extract` still returns its service result DTO without writing vectors directly.
+
+- [ ] **Step 2: Move vertical fact construction**
+
+Move fact construction into `axon-parse` or adapter-owned normalization helpers. `axon-extract` may call those helpers for structured extraction, but it must not own source lifecycle, payload, or graph persistence semantics.
+
+- [ ] **Step 3: Run vertical extraction tests**
+
+Run:
+
+```bash
+cargo test -p axon-extract vertical --no-fail-fast
+cargo test -p axon-parse vertical --no-fail-fast
+```
+
+Expected: PASS.
+
+## Task 11: Complete Required Parser Families And Chunk Profiles
+
+**Files:**
+
+- Modify: `crates/axon-parse/src/{code,manifest,schema,session,tool}.rs`
+- Modify: `crates/axon-document/src/chunk_router.rs`
+- Modify: `crates/axon-document/src/chunk_router_tests.rs`
+- Test: parser-family fixtures under `crates/axon-parse/src/*_tests.rs`
+
+**Interfaces:**
+
+- Consumes: `parsing-contract.md` required parser family list and `chunking-contract.md` profile list.
+- Produces: production registry coverage for code, Rust, JS/TS, Python, Docker, env examples, API schemas, sessions, and CLI/MCP tools; chunk routing coverage for `code_symbol`, `code_manifest`, `markdown_sections`, `html_article`, `plain_text_windows`, `transcript_segments`, `structured_records`, `api_schema`, `tool_output`, `session_turns`, and `atomic_metadata`.
+
+- [ ] **Step 1: Add parser-family completeness test**
+
+Add a registry test that fails unless `production_registry()` can route fixtures for:
+
+```text
+Cargo.toml, Cargo.lock, lib.rs, package.json, pnpm-lock.yaml, index.ts,
+pyproject.toml, requirements.txt, module.py, Dockerfile, docker-compose.yml,
+.env.example, openapi.yaml, schema.graphql, session.jsonl, tool-output.jsonl,
+mcp-tool-schema.json
+```
+
+- [ ] **Step 2: Add chunk-profile completeness test**
+
+Assert each required profile from `chunking-contract.md` is selected by at least one fixture and records source-range/fallback metadata.
+
+- [ ] **Step 3: Implement missing parser routes/facts**
+
+Fill missing parser family routes and facts. Required manifest/runtime/API/schema facts include package, dependency, service, env, endpoint, schema, and toolchain facts.
+
+- [ ] **Step 4: Run parser/document completeness tests**
+
+Run:
+
+```bash
+cargo test -p axon-parse parser_family_completeness --no-fail-fast
+cargo test -p axon-document chunk_profile_completeness --no-fail-fast
+```
+
+Expected: PASS.
+
+## Task 12: Final Verification And Checklist Evidence
 
 **Files:**
 
@@ -1507,7 +1651,7 @@ git commit -m "test(graph): tie source generation lineage fixtures"
 **Interfaces:**
 
 - Consumes: all prior task commits.
-- Produces: evidence for Phase 7 Task 2 checklist completion.
+- Produces: evidence for Phase 7 checklist completion.
 
 - [ ] **Step 1: Run requested checks**
 
@@ -1519,6 +1663,7 @@ cargo test -p axon-document --no-fail-fast
 cargo test -p axon-vectors payload --no-fail-fast
 cargo test -p axon-graph --no-fail-fast
 cargo test -p axon-services tool_policy --no-fail-fast
+cargo test -p axon-llm provider --no-fail-fast
 cargo xtask schemas vector-payload --check
 ```
 
@@ -1532,12 +1677,14 @@ Run:
 rg -n '"source_item"|"declares"|"source_line"' crates/axon-parse crates/axon-graph
 rg -n 'sk-proj|Authorization: Bearer|ghp_|password=' crates/axon-parse/src/*_tests.rs crates/axon-vectors/tests/fixtures
 rg -n 'candidate_''with_edge|tool_execution_''policy' crates/axon-parse crates/axon-services
+rg -n 'axon_core::llm|crate::llm::.*Provider|struct .*Gemini|struct .*OpenAi|struct .*Codex' crates/axon-core crates/axon-extract crates/axon-services
 ```
 
 Expected:
 - No production graph candidate helper emits non-contract `source_item`, `declares`, or `source_line` names.
 - Secret-like fixture values appear only in negative tests that assert they are rejected or redacted.
 - No parser production code emits trusted execution-policy facts from untrusted JSONL claims.
+- No provider runtime implementation remains outside `axon-llm` except shared config/utilities.
 
 - [ ] **Step 3: Update issue #298 checklist after implementation**
 
@@ -1558,6 +1705,6 @@ git commit -m "docs(pipeline): plan phase 7 parser metadata graph gaps"
 
 ## Self-Review
 
-- Spec coverage: Docker/env parser production registration is covered by Tasks 1, 3, and 4. Source-range validation is covered by Task 6. Service/env/endpoint/toolchain fact extraction is covered by Tasks 3, 4, and 5, with bounded Compose scope in Task 3. CLI/MCP tool-output policy and no-exec defaults are covered by service-owned policy validation in Task 5. Metadata registry coverage, unknown metadata policy, redaction fail-closed behavior, and generated schema checks are covered by Task 7. Shared metadata lineage across vector/graph/generation is covered by Task 8 through production validators. Bad spans and redacted tool output failure guards are covered by Tasks 5 and 6.
+- Spec coverage: Docker/env parser production registration is covered by Tasks 1, 3, and 4. Source-range validation is covered by Task 6. Service/env/endpoint/toolchain fact extraction is covered by Tasks 3, 4, 5, 10, and 11, with bounded Compose scope in Task 3. CLI/MCP tool-output policy and no-exec defaults are covered by service-owned policy validation in Task 5. Metadata registry coverage, unknown metadata policy, redaction fail-closed behavior, and generated schema checks are covered by Task 7. Shared metadata lineage across vector/graph/generation is covered by Task 8 through production validators. LLM-provider ownership is covered by Task 9. Vertical extractor parse facts are covered by Task 10. Complete parser-family and chunk-profile coverage is covered by Task 11. Bad spans and redacted tool output failure guards are covered by Tasks 5 and 6.
 - Placeholder scan: the plan contains no deferred placeholder language.
 - Type consistency: the plan uses existing `ParseInput`, `ParseResult`, `ParserCapability`, `SourceParser`, `SourceParseFacts`, `GraphCandidate`, `GraphEvidence`, `SourceRange`, `MetadataMap`, and `production_registry` concepts from the current crates.
