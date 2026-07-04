@@ -7,6 +7,216 @@ use super::*;
 
 mod generated_contract_tests;
 
+const PHASE_1_REQUIRED_API_DEFS: &[&str] = &[
+    "SuccessEnvelope",
+    "ErrorEnvelope",
+    "Page",
+    "PollDescriptor",
+    "JobDescriptor",
+    "SourceRequest",
+    "ResolvedSource",
+    "RoutePlan",
+    "SourcePlan",
+    "SourceResult",
+    "SourceManifest",
+    "ManifestItem",
+    "SourceManifestDiff",
+    "SourceGeneration",
+    "CleanupDebt",
+    "SourceDocument",
+    "PreparedDocument",
+    "PreparedChunk",
+    "DocumentStatus",
+    "SourceParseFacts",
+    "GraphCandidate",
+    "GraphNode",
+    "GraphEdge",
+    "GraphEvidence",
+    "EmbeddingBatch",
+    "EmbeddingResult",
+    "VectorPointBatch",
+    "VectorSearchRequest",
+    "VectorSearchResult",
+    "SearchRequest",
+    "SearchResult",
+    "JobSummary",
+    "JobEventPage",
+    "WatchRequest",
+    "WatchResult",
+    "WatchDescriptor",
+    "SourceProgressEvent",
+    "TraceContext",
+    "ArtifactRef",
+    "ArtifactListRequest",
+    "ArtifactResult",
+    "UploadCreateRequest",
+    "UploadResult",
+    "PruneRequest",
+    "PruneExecuteRequest",
+    "PrunePlan",
+    "PruneResult",
+    "CollectionListRequest",
+    "CollectionResult",
+    "ProviderCapability",
+    "HealthReport",
+    "ApiError",
+    "SourceError",
+    "SourceWarning",
+];
+
+const PHASE_1_DEFERRED_API_DEFS: &[(&str, &str, &str)] = &[
+    (
+        "QueryRequest",
+        "phase-3b-security-error-memory.md",
+        "needs request/action auth policy and retrieval filter bounds",
+    ),
+    (
+        "QueryResult",
+        "phase-3b-security-error-memory.md",
+        "needs bounded result content policy",
+    ),
+    (
+        "RetrievalRequest",
+        "phase-3b-security-error-memory.md",
+        "needs retrieval filter and content reference policy",
+    ),
+    (
+        "RetrievalResult",
+        "phase-3b-security-error-memory.md",
+        "needs artifact-backed content policy",
+    ),
+    (
+        "AskRequest",
+        "phase-3b-security-error-memory.md",
+        "needs bounded prompt and synthesis policy",
+    ),
+    (
+        "AskResult",
+        "phase-3b-security-error-memory.md",
+        "needs artifact-backed answer/context policy",
+    ),
+    (
+        "ChatRequest",
+        "phase-3b-security-error-memory.md",
+        "needs closed ChatRole and prompt/content policy",
+    ),
+    (
+        "ChatResult",
+        "phase-3b-security-error-memory.md",
+        "needs tool-call and content redaction policy",
+    ),
+    (
+        "EvaluationRequest",
+        "phase-3b-security-error-memory.md",
+        "needs closed evaluation input and auth policy",
+    ),
+    (
+        "EvaluationResult",
+        "phase-3b-security-error-memory.md",
+        "needs closed EvaluationVerdict",
+    ),
+    (
+        "SuggestRequest",
+        "phase-9-source-families.md",
+        "needs source-family discovery contract",
+    ),
+    (
+        "SuggestResult",
+        "phase-9-source-families.md",
+        "needs source-family discovery contract",
+    ),
+    (
+        "ResearchRequest",
+        "phase-7-parser-metadata-graph.md",
+        "needs bounded synthesis/source content policy",
+    ),
+    (
+        "ResearchResult",
+        "phase-7-parser-metadata-graph.md",
+        "needs artifact-backed answer policy",
+    ),
+    (
+        "SummarizeRequest",
+        "phase-7-parser-metadata-graph.md",
+        "needs closed SummaryFormat and content bounds",
+    ),
+    (
+        "SummarizeResult",
+        "phase-7-parser-metadata-graph.md",
+        "needs artifact-backed summary policy",
+    ),
+    (
+        "EndpointDiscoveryRequest",
+        "phase-9-source-families.md",
+        "needs source-family discovery contract",
+    ),
+    (
+        "EndpointDiscoveryResult",
+        "phase-9-source-families.md",
+        "needs source-family discovery contract",
+    ),
+    (
+        "BrandRequest",
+        "phase-5a-surface-drift-generated-artifacts.md",
+        "needs generated route policy",
+    ),
+    (
+        "BrandResult",
+        "phase-5a-surface-drift-generated-artifacts.md",
+        "needs artifact/redaction policy",
+    ),
+    (
+        "DiffRequest",
+        "phase-5a-surface-drift-generated-artifacts.md",
+        "needs closed DiffMode and generated route policy",
+    ),
+    (
+        "DiffResult",
+        "phase-5a-surface-drift-generated-artifacts.md",
+        "needs artifact-backed diff policy",
+    ),
+    (
+        "ScreenshotRequest",
+        "phase-5a-surface-drift-generated-artifacts.md",
+        "needs generated route policy",
+    ),
+    (
+        "ScreenshotResult",
+        "phase-5a-surface-drift-generated-artifacts.md",
+        "needs artifact-only screenshot policy",
+    ),
+    (
+        "ExtractRequest",
+        "phase-7-parser-metadata-graph.md",
+        "needs explicit extract policy and prompt bounds",
+    ),
+    (
+        "ExtractResult",
+        "phase-7-parser-metadata-graph.md",
+        "needs structured output artifact/redaction policy",
+    ),
+    (
+        "DedupeRequest",
+        "phase-5b-reset-preflight.md",
+        "needs current destructive-operation contract",
+    ),
+    (
+        "DedupeResult",
+        "phase-5b-reset-preflight.md",
+        "needs current destructive-operation contract",
+    ),
+    (
+        "PurgeRequest",
+        "phase-5b-reset-preflight.md",
+        "needs prune/reset cutover contract without legacy target/prefix",
+    ),
+    (
+        "PurgeResult",
+        "phase-5b-reset-preflight.md",
+        "needs prune/reset cutover contract",
+    ),
+];
+
 pub(super) fn fixture_repo() -> TempDir {
     let tmp = TempDir::new().unwrap();
     for path in [
@@ -169,6 +379,40 @@ fn generate_writes_all_required_family_artifacts() {
 }
 
 #[test]
+fn api_schema_contains_phase_1_required_defs() {
+    let artifact = std::fs::read_to_string(workspace_path("docs/reference/api/schemas.json"))
+        .expect("read generated API schema artifact");
+    let schema: serde_json::Value =
+        serde_json::from_str(&artifact).expect("parse generated API schema artifact");
+    let defs = schema
+        .get("$defs")
+        .and_then(|value| value.as_object())
+        .expect("generated API schema has $defs object");
+
+    for name in PHASE_1_REQUIRED_API_DEFS {
+        assert!(
+            defs.contains_key(*name),
+            "missing API schema $defs entry: {name}"
+        );
+    }
+}
+
+#[test]
+fn phase_1_deferred_api_defs_are_documented() {
+    for (name, owner, reason) in PHASE_1_DEFERRED_API_DEFS {
+        assert!(!name.is_empty(), "deferred API def must have a name");
+        assert!(
+            !owner.is_empty(),
+            "deferred API def {name} must have an owner plan"
+        );
+        assert!(
+            !reason.is_empty(),
+            "deferred API def {name} must have a reason"
+        );
+    }
+}
+
+#[test]
 fn check_passes_after_generation_and_fails_after_stale_artifact() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
@@ -230,7 +474,6 @@ fn source_input_checksum_matches_fixture_and_drifts_when_source_changes() {
 #[test]
 fn removed_surface_drift_fails_generation() {
     for (path, token) in [
-        ("docs/reference/api/schemas.json", "\"EmbedRequest\""),
         ("docs/reference/cli/commands.json", "\"embed\""),
         ("docs/reference/cli/commands.json", "\"code-search\""),
         ("docs/reference/mcp/tool-schema.json", "\"vertical_scrape\""),
@@ -241,8 +484,6 @@ fn removed_surface_drift_fails_generation() {
             "docs/reference/config/env.schema.json",
             "\"AXON_MCP_HTTP_TOKEN\"",
         ),
-        ("docs/reference/api/schemas.json", "\"url\""),
-        ("docs/reference/api/schemas.json", "\"path_prefix\""),
     ] {
         let artifacts = vec![artifact::SchemaArtifact::new(
             path,
@@ -252,6 +493,91 @@ fn removed_surface_drift_fails_generation() {
             .expect_err("removed surface token should fail");
         assert!(err.to_string().contains("removed public surface token"));
     }
+}
+
+#[test]
+fn removed_legacy_api_request_shapes_are_absent() {
+    let artifact = std::fs::read_to_string(workspace_path("docs/reference/api/schemas.json"))
+        .expect("read generated API schema artifact");
+    let schema: serde_json::Value =
+        serde_json::from_str(&artifact).expect("parse generated API schema artifact");
+    let defs = schema
+        .get("$defs")
+        .and_then(|value| value.as_object())
+        .expect("generated API schema has $defs object");
+
+    for removed_def in [
+        "EmbedRequest",
+        "IngestRequest",
+        "CrawlRequest",
+        "ScrapeRequest",
+        "CodeSearchRequest",
+    ] {
+        assert!(
+            !defs.contains_key(removed_def),
+            "legacy request def leaked: {removed_def}"
+        );
+    }
+
+    if let Some(purge) = defs.get("PurgeRequest") {
+        let properties = purge
+            .get("properties")
+            .and_then(|value| value.as_object())
+            .expect("PurgeRequest schema has properties");
+        assert!(
+            !properties.contains_key("target"),
+            "legacy PurgeRequest.target leaked"
+        );
+        assert!(
+            !properties.contains_key("prefix"),
+            "legacy PurgeRequest.prefix leaked"
+        );
+    }
+}
+
+#[test]
+fn removed_surface_drift_checks_legacy_api_defs_by_schema_path() {
+    let artifacts = vec![artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({
+            "$defs": {
+                "EmbedRequest": {
+                    "type": "object",
+                    "properties": {
+                        "input": { "type": "string" }
+                    }
+                }
+            },
+            "description": "EmbedRequest may appear in prose, but not as a $defs key"
+        })
+        .to_string(),
+    )];
+    let err = registry::check_removed_surface_drift(&artifacts)
+        .expect_err("legacy API request def should fail");
+    assert!(err.to_string().contains("EmbedRequest"), "{err}");
+}
+
+#[test]
+fn removed_surface_drift_checks_legacy_purge_properties_by_schema_path() {
+    let artifacts = vec![artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({
+            "$defs": {
+                "PurgeRequest": {
+                    "type": "object",
+                    "properties": {
+                        "target": { "type": "string" },
+                        "reason": { "type": "string" }
+                    }
+                }
+            },
+            "description": "PurgeRequest is allowed only when its legacy fields are gone"
+        })
+        .to_string(),
+    )];
+    let err = registry::check_removed_surface_drift(&artifacts)
+        .expect_err("legacy purge property should fail");
+    assert!(err.to_string().contains("PurgeRequest.target"), "{err}");
 }
 
 #[test]
@@ -440,4 +766,11 @@ fn assert_stale_after_with_args(
 
     assert!(err.to_string().contains("schema artifacts are stale"));
     assert!(err.to_string().contains(expected_error_substring));
+}
+
+fn workspace_path(path: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask has workspace parent")
+        .join(path)
 }

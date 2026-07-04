@@ -39,6 +39,41 @@ fn source_request_deserializes_with_defaults_for_minimal_input() {
 }
 
 #[test]
+fn resolved_source_serializes_to_api_contract_shape() {
+    let resolved = ResolvedSource {
+        source: "https://example.com/docs".to_string(),
+        canonical_uri: "https://example.com/docs".to_string(),
+        source_id: SourceId::from("src_web_example_docs"),
+        source_kind: SourceKind::Web,
+        adapter: AdapterRef {
+            name: "web".to_string(),
+            version: "1".to_string(),
+        },
+        default_scope: SourceScope::Site,
+        available_scopes: vec![SourceScope::Page, SourceScope::Site, SourceScope::Map],
+        authority: AuthorityLevel::Official,
+        confidence: 0.97,
+        reason: "canonical https URL".to_string(),
+        graph: Vec::new(),
+        warnings: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let value = serde_json::to_value(&resolved).expect("serialize resolved source");
+
+    assert_eq!(value["source"], "https://example.com/docs");
+    assert_eq!(value["canonical_uri"], "https://example.com/docs");
+    assert_eq!(value["source_kind"], "web");
+    assert_eq!(value["adapter"]["name"], "web");
+    assert_eq!(value["default_scope"], "site");
+    assert_eq!(value["available_scopes"], json!(["page", "site", "map"]));
+    assert!(value.get("graph").is_none() || value["graph"].as_array().is_some());
+    assert!(value.get("requested_uri").is_none());
+    assert!(value.get("candidate_adapters").is_none());
+    assert!(value.get("display_name").is_none());
+}
+
+#[test]
 fn source_request_rejects_unknown_external_fields() {
     let err = serde_json::from_value::<SourceRequest>(json!({
         "source": "github.com/jmagar/axon",
