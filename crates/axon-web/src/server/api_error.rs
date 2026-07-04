@@ -16,13 +16,20 @@ use axon_api::source::{ErrorEnvelope, TraceContext};
 use axon_error::{ErrorSeverity, ErrorStage};
 use axum::{
     Json,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
 
 /// Contract version stamped into every REST envelope. Matches the value used by
 /// the MCP tool-schema golden and the rest-contract document.
 pub(crate) const CONTRACT_VERSION: &str = "2026-06-30";
+
+/// Marker header stamped on every response this module builds. The router's
+/// `jsonize_auth_error` normalizer uses it to skip responses that are already a
+/// contract `ErrorEnvelope` (e.g. a handler's richer per-source `auth.forbidden`
+/// carrying `required_scope`), so it only rewrites bare auth-layer 401/403s.
+/// Stripped before the response leaves the server.
+pub(crate) const ERROR_ENVELOPE_MARKER: &str = "x-axon-error-envelope";
 
 /// Build the contract [`ErrorEnvelope`] response for an [`ApiError`].
 ///
@@ -51,7 +58,11 @@ pub(crate) fn error_envelope_response_with_status(error: ApiError, status: Statu
             attributes: Default::default(),
         },
     };
-    (status, Json(envelope)).into_response()
+    let mut response = (status, Json(envelope)).into_response();
+    response
+        .headers_mut()
+        .insert(ERROR_ENVELOPE_MARKER, HeaderValue::from_static("1"));
+    response
 }
 
 fn new_correlation_id(prefix: &str) -> String {

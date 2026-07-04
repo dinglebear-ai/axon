@@ -8,13 +8,14 @@ use axon_services::client_contract::{
 };
 use axon_services::transport;
 use axon_services::types::SearchOptions;
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 
 use super::super::error::HttpError;
+use super::super::json::Json;
 use super::rag::required_text;
 
 #[path = "exploration_stream.rs"]

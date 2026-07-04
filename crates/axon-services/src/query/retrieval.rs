@@ -50,7 +50,7 @@ pub async fn query_via_retrieval_with_cfg(
         )));
     }
 
-    let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg);
+    let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg).await;
 
     log_info("retrieval: axon-retrieval engine");
 
@@ -119,7 +119,7 @@ type ResolvedStores = (
 
 /// Resolve the read-plane stores + provider identity, preferring the context's
 /// attached runtime.
-fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
+async fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
     if let Some(target) = ctx.target_local_source_runtime() {
         return (
             Arc::clone(&target.vector_store),
@@ -129,7 +129,7 @@ fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
             target.embedding_dimensions,
         );
     }
-    let stores = build_read_stores_from_config(cfg);
+    let stores = build_read_stores_from_config(cfg).await;
     (
         stores.vector_store,
         stores.embedding_provider,

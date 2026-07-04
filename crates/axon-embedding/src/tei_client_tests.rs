@@ -264,3 +264,82 @@ async fn embed_surfaces_status_error_without_leaking_endpoint() {
     assert!(!err.message.contains(&server.base_url()));
     assert!(!err.message.contains("127.0.0.1"));
 }
+
+#[tokio::test]
+async fn derive_embedding_identity_uses_info_model_and_probe_dimensions() {
+    let server = MockServer::start_async().await;
+    // `/info` reports the true model_id (with the org prefix the seed lacks).
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/info");
+            then.status(200)
+                .json_body(serde_json::json!({ "model_id": "Qwen/Qwen3-Embedding-0.6B" }));
+        })
+        .await;
+    // The probe embed returns a 4-dim vector → derived dimensions = 4.
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32, 0.4_f32]]));
+        })
+        .await;
+
+    // Seed the provider with the short model + wrong dims; derivation overrides.
+    let provider =
+        TeiEmbeddingProvider::new(config(server.base_url(), 1024, InstructionSupport::None));
+    let identity = provider
+        .derive_embedding_identity()
+        .await
+        .expect("derive identity");
+
+    assert_eq!(identity.model, "Qwen/Qwen3-Embedding-0.6B");
+    assert_eq!(identity.dimensions, 4);
+}
+
+#[tokio::test]
+async fn derive_embedding_identity_falls_back_to_config_model_when_info_lacks_model_id() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/info");
+            then.status(200).json_body(serde_json::json!({}));
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32]]));
+        })
+        .await;
+
+    let provider =
+        TeiEmbeddingProvider::new(config(server.base_url(), 2, InstructionSupport::None));
+    let identity = provider
+        .derive_embedding_identity()
+        .await
+        .expect("derive identity");
+
+    // No model_id in /info → keep the configured seed model, but dimensions
+    // still come from the live probe.
+    assert_eq!(identity.model, "qwen3-embedding");
+    assert_eq!(identity.dimensions, 2);
+}
+
+#[tokio::test]
+async fn derive_embedding_identity_errors_when_info_unreachable() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/info");
+            then.status(500);
+        })
+        .await;
+
+    let provider =
+        TeiEmbeddingProvider::new(config(server.base_url(), 2, InstructionSupport::None));
+    let err = provider.derive_embedding_identity().await.unwrap_err();
+    // The status carries the opaque endpoint marker, never the raw host.
+    assert!(!err.message.contains("127.0.0.1"));
+}

@@ -36,26 +36,85 @@ pub struct TargetReadStores {
 }
 
 /// Build the read-plane stores (vector store + embedding provider) from
-/// [`Config`]. Constructors do not perform I/O; the endpoints are dialed lazily
-/// on first request.
-pub fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
-    let embedding_provider = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
+/// [`Config`]. Store constructors do not perform I/O; only the embedding
+/// identity is derived from the live TEI provider (with a config/default
+/// fallback when it is unreachable).
+pub async fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
+    let identity = resolve_embedding_identity(cfg).await;
+    let embedding_provider = build_tei_provider(cfg, &identity);
+    let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+    TargetReadStores {
+        vector_store: Arc::new(vector_store),
+        embedding_provider: Arc::new(embedding_provider),
+        embedding_provider_id: ProviderId::new(EMBEDDING_PROVIDER_ID),
+        embedding_model: identity.model,
+        embedding_dimensions: identity.dimensions,
+    }
+}
+
+/// Construct the TEI embedding provider seeded with the resolved embedding
+/// identity, so `EmbeddingResult.model`/`dimensions` (stamped into every vector
+/// payload) match the provider-derived values rather than a hardcoded seed.
+fn build_tei_provider(cfg: &Config, identity: &EmbeddingIdentity) -> TeiEmbeddingProvider {
+    TeiEmbeddingProvider::new(TeiEmbeddingConfig {
         endpoint: cfg.tei_url.clone(),
-        model: EMBEDDING_MODEL.to_string(),
-        dimensions: EMBEDDING_DIMENSIONS,
+        model: identity.model.clone(),
+        dimensions: identity.dimensions,
+        timeout: Duration::from_millis(cfg.tei_request_timeout_ms),
+        max_batch_inputs: cfg.tei_max_client_batch_size as u32,
+        max_input_tokens: MAX_INPUT_TOKENS,
+        max_batch_tokens: MAX_BATCH_TOKENS,
+        instruction_support: InstructionSupport::QueryAndDocument,
+    })
+}
+
+/// Resolved embedding model + dimensions used to size the collection, seed the
+/// provider, and stamp vector payloads.
+struct EmbeddingIdentity {
+    model: String,
+    dimensions: u32,
+}
+
+/// Resolve the embedding model + dimensions from the live TEI endpoint (`/info`
+/// for `model_id`, a probe embed for dimensions). Builds a probe provider seeded
+/// with the fallback identity purely to issue the derivation requests. Falls
+/// back to the configured defaults when the provider is unreachable, so a
+/// fire-and-forget CLI enqueue or an offline TEI never blocks store construction.
+async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
+    let probe = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
+        endpoint: cfg.tei_url.clone(),
+        model: EMBEDDING_MODEL_FALLBACK.to_string(),
+        dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
         timeout: Duration::from_millis(cfg.tei_request_timeout_ms),
         max_batch_inputs: cfg.tei_max_client_batch_size as u32,
         max_input_tokens: MAX_INPUT_TOKENS,
         max_batch_tokens: MAX_BATCH_TOKENS,
         instruction_support: InstructionSupport::QueryAndDocument,
     });
-    let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
-    TargetReadStores {
-        vector_store: Arc::new(vector_store),
-        embedding_provider: Arc::new(embedding_provider),
-        embedding_provider_id: ProviderId::new(EMBEDDING_PROVIDER_ID),
-        embedding_model: EMBEDDING_MODEL.to_string(),
-        embedding_dimensions: EMBEDDING_DIMENSIONS,
+    match probe.derive_embedding_identity().await {
+        Ok(derived) => {
+            tracing::info!(
+                model = %derived.model,
+                dimensions = derived.dimensions,
+                "derived embedding model/dimensions from TEI provider"
+            );
+            EmbeddingIdentity {
+                model: derived.model,
+                dimensions: derived.dimensions,
+            }
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                fallback_model = EMBEDDING_MODEL_FALLBACK,
+                fallback_dimensions = EMBEDDING_DIMENSIONS_FALLBACK,
+                "could not derive embedding identity from TEI provider; using config/default fallback"
+            );
+            EmbeddingIdentity {
+                model: EMBEDDING_MODEL_FALLBACK.to_string(),
+                dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
+            }
+        }
     }
 }
 
@@ -64,13 +123,11 @@ const EMBEDDING_PROVIDER_ID: &str = "target-local-embed";
 /// Provider id for the target local-source vector store.
 const VECTOR_PROVIDER_ID: &str = "target-local-vector";
 
-/// Embedding model shipped in the Axon stack (TEI Qwen3-Embedding-0.6B).
-///
-/// There is no dedicated `Config` field for the embedding model/dimensions yet
-/// (the TEI endpoint serves a fixed model), so these mirror the deployed stack.
-const EMBEDDING_MODEL: &str = "Qwen3-Embedding-0.6B";
-/// Dense vector dimensionality produced by [`EMBEDDING_MODEL`].
-const EMBEDDING_DIMENSIONS: u32 = 1024;
+/// Fallback embedding model when the TEI provider cannot be reached to derive
+/// the live `model_id` (matches the model shipped in the Axon stack).
+const EMBEDDING_MODEL_FALLBACK: &str = "Qwen3-Embedding-0.6B";
+/// Fallback dense-vector dimensionality when a live probe embed is unavailable.
+const EMBEDDING_DIMENSIONS_FALLBACK: u32 = 1024;
 /// Max input tokens per embedding request (mirrors the provider capability).
 const MAX_INPUT_TOKENS: u32 = 8192;
 /// Max tokens pooled into one TEI embed batch.
@@ -108,16 +165,8 @@ impl TargetLocalSourceRuntime {
         // migration here.
         let ledger = SqliteLedgerStore::from_pool(pool);
 
-        let embedding_provider = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
-            endpoint: cfg.tei_url.clone(),
-            model: EMBEDDING_MODEL.to_string(),
-            dimensions: EMBEDDING_DIMENSIONS,
-            timeout: Duration::from_millis(cfg.tei_request_timeout_ms),
-            max_batch_inputs: cfg.tei_max_client_batch_size as u32,
-            max_input_tokens: MAX_INPUT_TOKENS,
-            max_batch_tokens: MAX_BATCH_TOKENS,
-            instruction_support: InstructionSupport::QueryAndDocument,
-        });
+        let identity = resolve_embedding_identity(cfg).await;
+        let embedding_provider = build_tei_provider(cfg, &identity);
 
         let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
 
@@ -139,8 +188,8 @@ impl TargetLocalSourceRuntime {
             ))),
             embedding_provider_id,
             vector_provider_id,
-            embedding_model: EMBEDDING_MODEL.to_string(),
-            embedding_dimensions: EMBEDDING_DIMENSIONS,
+            embedding_model: identity.model,
+            embedding_dimensions: identity.dimensions,
         })
     }
 }

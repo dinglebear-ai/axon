@@ -64,11 +64,20 @@ pub struct TeiEmbedOutcome {
     pub requests: u64,
 }
 
+/// A subset of the TEI `/info` response. TEI serves `model_id` here, but NOT the
+/// output dimensionality — dimensions are measured with a probe embed instead.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TeiInfo {
+    #[serde(default)]
+    pub model_id: Option<String>,
+}
+
 /// Reqwest-backed TEI embed transport carrying a redaction-safe embed URL.
 #[derive(Debug)]
 pub struct TeiClient {
     client: Client,
     embed_url: String,
+    info_url: String,
     provider_id: String,
     max_batch_inputs: usize,
     max_attempts: usize,
@@ -92,16 +101,57 @@ impl TeiClient {
         })?;
         let base = params.endpoint.trim().trim_end_matches('/');
         let embed_url = format!("{base}/embed");
+        let info_url = format!("{base}/info");
         let max_batch_inputs = resolve_batch_size(params.max_batch_inputs);
         Ok(Self {
             client,
             embed_url,
+            info_url,
             provider_id: params.provider_id,
             max_batch_inputs,
             max_attempts: params.max_attempts.max(1),
             request_timeout: params.request_timeout,
             requests: AtomicU64::new(0),
         })
+    }
+
+    /// Fetch the TEI `/info` document (single attempt, no retries). Errors carry
+    /// only the opaque endpoint marker — never the raw URL.
+    pub async fn fetch_info(&self) -> Result<TeiInfo, ApiError> {
+        let resp = self
+            .client
+            .get(&self.info_url)
+            .timeout(self.request_timeout)
+            .send()
+            .await
+            .map_err(|err| self.transport(error_category(&err)))?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(self.status_error(status));
+        }
+        resp.json::<TeiInfo>()
+            .await
+            .map_err(|err| self.transport(error_category(&err)))
+    }
+
+    /// Embed a single probe input and return its vector length. Used to derive
+    /// the provider's true output dimensionality, which `/info` does not expose.
+    pub async fn probe_dimensions(&self, probe: &str) -> Result<u32, ApiError> {
+        let outcome = self
+            .embed_all(std::slice::from_ref(&probe.to_string()))
+            .await?;
+        let dims = outcome
+            .vectors
+            .first()
+            .map(|vector| vector.len() as u32)
+            .filter(|dims| *dims > 0)
+            .ok_or_else(|| {
+                self.error(
+                    "embedding.tei.probe_empty",
+                    "TEI probe embed returned no vector",
+                )
+            })?;
+        Ok(dims)
     }
 
     /// Embed every input, preserving order. Returns one vector per input at the

@@ -5,10 +5,11 @@ use axon_services::client_contract::{
     RestRetrieveRequest as RetrieveRequest, RestSuggestRequest as SuggestRequest,
 };
 use axon_services::transport;
-use axum::{Json, extract::State};
+use axum::extract::State;
 use std::sync::Arc;
 
 use super::super::error::HttpError;
+use super::super::json::Json;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 
