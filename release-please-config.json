@@ -8,6 +8,11 @@
       "release-type": "rust",
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "apps/palette-tauri",
+        "apps/android",
+        "apps/chrome-extension"
+      ],
       "extra-files": [
         {
           "type": "toml",
@@ -27,6 +32,11 @@
           "type": "json",
           "path": "apps/web/openapi/axon.json",
           "jsonpath": "$.info.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/web/package-lock.json",
+          "jsonpath": "$.version"
         },
         {
           "type": "json",

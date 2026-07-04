@@ -70,30 +70,32 @@ pub(super) fn fixups(
 }
 
 pub(super) fn release_please_dispatch_items(
-    root: &Path,
+    _root: &Path,
     components: &[Component],
-    paths_released: &str,
+    release_outputs: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
+    let outputs: serde_json::Value =
+        serde_json::from_str(release_outputs).release_context("failed to parse release outputs")?;
+    let paths_released = outputs
+        .get("paths_released")
+        .and_then(|value| value.as_str())
+        .release_context("release outputs missing paths_released")?;
     let released_paths = parse_paths_released(paths_released)?;
-    let versions = read_release_please_manifest(root)?;
     let mut items = Vec::new();
 
     for component in components {
         if !released_paths.contains(&component.release_please_path) {
             continue;
         }
-        let version = versions
-            .get(&component.release_please_path)
-            .with_release_context(|| {
-                format!(
-                    ".release-please-manifest.json is missing path {}",
-                    component.release_please_path
-                )
-            })?;
+        let tag_key = format!("{}_tag", component.id);
+        let tag = outputs
+            .get(&tag_key)
+            .and_then(|value| value.as_str())
+            .with_release_context(|| format!("release outputs missing {tag_key}"))?;
         items.push(ReleasePleaseDispatchItem {
             id: component.id.clone(),
             workflow: component.release_workflow.clone(),
-            tag: format!("{}{}", component.tag_prefix, version),
+            tag: tag.to_owned(),
         });
     }
 
