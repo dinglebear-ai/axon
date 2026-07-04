@@ -894,7 +894,12 @@ Release-please determines the bump type from conventional commits:
 
 - `feat!:` or `BREAKING CHANGE` → **major** (X+1.0.0)
 - `feat` or `feat(...)` → **minor** (X.Y+1.0)
-- Everything else (`fix`, `chore`, `refactor`, `test`, `docs`, etc.) → **patch** (X.Y.Z+1)
+- `fix` or `fix(...)` → **patch** (X.Y.Z+1)
+- `perf` and `refactor` appear in the **Changed** changelog section when they
+  are part of a release.
+- `chore`, `ci`, `docs`, `test`, `build`, and `style` are hidden from
+  generated release notes by `release-please-config.json` so non-user-facing
+  maintenance commits do not bury the release signal.
 
 The rollback command `cargo xtask bump-version <component>` derives the level
 from the conventional commits touching that component's shipping paths since
@@ -921,7 +926,15 @@ versioned by the marketplace, not the manifest.
 
 **Changelogs are generated, not hand-stamped.** Each component has its own
 `CHANGELOG.md` (`CHANGELOG.md`, `apps/palette-tauri/CHANGELOG.md`,
-`apps/android/CHANGELOG.md`, `apps/chrome-extension/CHANGELOG.md`). `bump-version`
+`apps/android/CHANGELOG.md`, `apps/chrome-extension/CHANGELOG.md`).
+Release-please owns normal changelog updates and uses the native
+`changelog-sections` policy in `release-please-config.json` to mirror Axon's old
+git-cliff release-note shape: user-facing `feat`, `fix`, `perf`, and `refactor`
+entries are shown; routine maintenance types are hidden. Release PRs also carry
+release-please labels and a PR header/footer explaining that CI may append
+derived-file fixups before merge.
+
+The old `bump-version` path remains only as rollback tooling. In that mode it
 prepends a real section via git-cliff, scoped to the component's shipping paths +
 tag prefix (config in `cliff.toml`). **`git-cliff` must be installed where you run
 `bump-version`** (`mise use -g git-cliff`); the CI gate
