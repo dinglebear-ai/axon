@@ -65,7 +65,7 @@ name = "Chrome Extension"
 tag_prefix = "chrome-ext-v"
 release_please_path = "apps/chrome-extension"
 release_workflow = "chrome-extension-release.yml"
-shipping_paths = ["apps/chrome-extension", "assets"]
+shipping_paths = ["apps/chrome-extension"]
 version_source = { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" }
 version_files = [
   { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" },
