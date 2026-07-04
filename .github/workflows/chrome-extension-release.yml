@@ -20,12 +20,14 @@ on:
         default: false
 
 permissions:
-  contents: write   # required to upload release artifacts
+  contents: read
 
 jobs:
   build:
     name: package chrome extension
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required to upload release artifacts
     steps:
       - uses: actions/checkout@v5
         with:
@@ -81,11 +83,12 @@ jobs:
           inputs.publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZIP_PATH: ${{ steps.build.outputs.zip }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" \
-            "${{ steps.build.outputs.zip }}" \
-            "${{ steps.build.outputs.zip }}.sha256" \
+            "$ZIP_PATH" \
+            "$ZIP_PATH.sha256" \
             --clobber

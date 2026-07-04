@@ -85,10 +85,14 @@ fn strip_android_release_please_markers(content: &str) -> String {
     content
         .lines()
         .filter(|line| {
-            !line.contains("x-release-please-start-version")
-                && !line.contains("x-release-please-end")
+            let trimmed = line.trim();
+            trimmed != "// x-release-please-start-version" && trimmed != "// x-release-please-end"
         })
-        .map(|line| line.replace(" // x-release-please-version-code", ""))
+        .map(|line| {
+            line.strip_suffix(" // x-release-please-version-code")
+                .unwrap_or(line)
+                .to_owned()
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

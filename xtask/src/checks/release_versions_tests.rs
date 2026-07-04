@@ -915,6 +915,7 @@ fn bump_cli_updates_source_manifests_and_lockfiles() {
             .unwrap()
             .contains("## [1.0.1] - ")
     );
+    assert_release_please_manifest_version(&fixture, ".", "1.0.1");
     assert_eq!(
         read_json_version(
             &fs::read_to_string(fixture.path("apps/web/package.json")).unwrap(),
@@ -944,6 +945,7 @@ fn bump_android_updates_version_name_and_code() {
     let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
     assert_eq!(read_gradle_version_name(&content).unwrap(), "1.3.3");
     assert_eq!(read_gradle_version_code(&content).unwrap(), 7);
+    assert_release_please_manifest_version(&fixture, "apps/android", "1.3.3");
 }
 
 #[test]
@@ -976,6 +978,7 @@ fn bump_palette_updates_source_manifests_and_lockfile() {
         .unwrap(),
         "5.11.0"
     );
+    assert_release_please_manifest_version(&fixture, "apps/palette-tauri", "5.11.0");
 }
 
 #[test]
@@ -1041,7 +1044,7 @@ fn release_please_dispatch_plan_uses_manifest_metadata() {
 }
 
 #[test]
-fn release_please_dispatch_plan_rejects_non_bool_object_paths() {
+fn release_please_dispatch_plan_rejects_object_paths() {
     let fixture = Fixture::new();
     let release_outputs = r#"{
   "paths_released": "{\".\": \"yes\"}",
@@ -1050,7 +1053,7 @@ fn release_please_dispatch_plan_rejects_non_bool_object_paths() {
     let err = release_please_dispatch_plan(fixture.root(), release_outputs).unwrap_err();
     assert!(
         err.to_string()
-            .contains("paths_released object value for . must be a boolean")
+            .contains("paths_released must be a JSON array")
     );
 }
 
@@ -1095,10 +1098,12 @@ fn android_fixup_increments_version_code() {
     .unwrap();
 
     release_please_fixups(fixture.root(), "android", "1.5.1").unwrap();
+    release_please_fixups(fixture.root(), "android", "1.5.1").unwrap();
 
     let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
     assert_eq!(read_gradle_version_name(&content).unwrap(), "1.5.1");
     assert_eq!(read_gradle_version_code(&content).unwrap(), 15);
+    assert!(content.contains("x-release-please-version-code 1.5.1"));
 }
 
 #[test]
@@ -1338,6 +1343,13 @@ version = "5.10.2"
         );
         write(&self.path("assets/.keep"), "");
     }
+}
+
+fn assert_release_please_manifest_version(fixture: &Fixture, path: &str, expected: &str) {
+    let content = fs::read_to_string(fixture.path(".release-please-manifest.json")).unwrap();
+    let versions: std::collections::BTreeMap<String, String> =
+        serde_json::from_str(&content).unwrap();
+    assert_eq!(versions.get(path).map(String::as_str), Some(expected));
 }
 
 fn bump_cli_fixture_to(fixture: &Fixture, version: &str) {

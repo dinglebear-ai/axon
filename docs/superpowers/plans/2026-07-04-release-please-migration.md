@@ -892,22 +892,26 @@ git commit -m "chore: remove git-cliff release fallback"
 ## Engineering Review: Applied Findings
 
 ### Architecture
+
 - Applied: release-please now runs after `CI` success instead of direct `push`.
 - Applied: artifact workflows upload to existing releases instead of creating releases.
 - Applied: dispatch uses `release/components.toml` through `xtask release-please-dispatch-plan`.
 - Applied: Chrome `assets/**` blind spot is fixed before Chrome migration.
 
 ### Simplicity
+
 - Applied: removed committed inventory doc.
 - Applied: delayed git-cliff deletion until after a proven release.
 - Applied: avoided hard-coded YAML component mappings.
 
 ### Security
+
 - Applied: added `RELEASE_PLEASE_TOKEN` requirement so release PR CI can run.
 - Applied: pinned privileged actions by SHA.
 - Applied: split workflow permissions by job and removed broad `issues: write`.
 
 ### Performance
+
 - Applied: preserved targeted release validation instead of broad workspace tests.
 - Applied: kept release-please behind the existing CI completion gate.
 
@@ -923,17 +927,19 @@ git commit -m "chore: remove git-cliff release fallback"
 | release PR | default token does not trigger CI | Y | Y | missing secret failure | workflow failure |
 
 ### NOT in Scope
+
 - Artifact signing changes: existing signing scaffold remains unchanged.
 - Custom release-please plugin: unnecessary unless postprocessors prove insufficient.
 - Deleting git-cliff before first release: explicitly delayed.
 
 ### Applied Checklist
+
 - [x] 1. Preserve exact-CI-success gate with `workflow_run`.
 - [x] 2. Use a real release-please token, not default `GITHUB_TOKEN`.
 - [x] 3. Re-enable release/version CI validation.
 - [x] 4. Convert artifact workflows to upload-only release publishing.
 - [x] 5. Add full version-file coverage table.
-- [x] 6. Remove invalid `apps/web/package-lock.json` root `$.version` updater.
+- [x] 6. Add missing `apps/web/package-lock.json` root `$.version` updater.
 - [x] 7. Add Android `versionCode` postprocessor requirement.
 - [x] 8. Fix Chrome top-level `assets/**` release scope.
 - [x] 9. Add `release_please_path` to avoid hard-coded Rust/YAML mappings.
