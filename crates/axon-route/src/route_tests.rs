@@ -343,49 +343,45 @@ fn router_rejects_unsupported_scope_before_acquisition() {
 #[test]
 fn router_rejects_unknown_explicit_adapter() {
     let resolver = resolver_with_authority();
-    let router = SourceRouter::new(AdapterRegistry::target_defaults());
     let mut request = SourceRequest::new("example.com");
     request.adapter = Some("missing-adapter".to_string());
-    let resolved = resolver.resolve(&request).expect("source resolves");
 
-    let err = router
-        .route(&request, resolved)
+    let err = resolver
+        .resolve(&request)
         .expect_err("unknown adapter fails before acquisition");
 
-    assert_eq!(err.code.0, "route.adapter.unknown");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.code.0, "source.resolve.no_adapter");
+    assert_eq!(err.stage, axon_error::ErrorStage::Resolving);
 }
 
 #[test]
 fn router_rejects_adapter_that_does_not_support_source_kind() {
     let resolver = resolver_with_authority();
-    let router = SourceRouter::new(AdapterRegistry::target_defaults());
     let mut request = SourceRequest::new("example.com");
     request.adapter = Some("github".to_string());
-    let resolved = resolver.resolve(&request).expect("source resolves");
 
-    let err = router
-        .route(&request, resolved)
+    let err = resolver
+        .resolve(&request)
         .expect_err("source-kind mismatch fails before acquisition");
 
-    assert_eq!(err.code.0, "route.adapter.unsupported_source");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.code.0, "source.resolve.no_adapter");
+    assert_eq!(err.stage, axon_error::ErrorStage::Resolving);
 }
 
 #[test]
-fn router_rejects_explicit_adapter_outside_resolved_provider_family() {
+fn router_allows_explicit_adapter_with_matching_source_kind() {
     let resolver = resolver_with_authority();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());
     let mut request = SourceRequest::new("https://github.com/jmagar/axon");
     request.adapter = Some("git".to_string());
     let resolved = resolver.resolve(&request).expect("github source resolves");
 
-    let err = router
+    let route = router
         .route(&request, resolved)
-        .expect_err("generic git adapter is not the resolved github provider");
+        .expect("explicit generic git adapter can route git sources");
 
-    assert_eq!(err.code.0, "route.adapter.unsupported_source");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(route.adapter.name, "git");
+    assert_eq!(route.source.source_kind, SourceKind::Git);
 }
 
 #[test]
