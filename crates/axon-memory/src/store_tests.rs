@@ -236,3 +236,50 @@ async fn fake_memory_store_reviews_forgets_supersedes_and_contradicts() {
     let replacement_record = store.get(replacement.memory_id).await.unwrap().unwrap();
     assert_eq!(replacement_record.status, MemoryStatus::Contradicted);
 }
+
+#[tokio::test]
+async fn fake_memory_store_review_cursor_paginates_without_skipping_records() {
+    let store = FakeMemoryStore::new();
+    let first = store.remember(request("first memory")).await.unwrap();
+    let second = store.remember(request("second memory")).await.unwrap();
+    let third = store.remember(request("third memory")).await.unwrap();
+
+    let page_one = store
+        .review(MemoryReviewRequest {
+            reason: None,
+            memory_type: Some(MemoryType::Fact),
+            scope: None,
+            limit: Some(2),
+            cursor: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        page_one
+            .memories
+            .iter()
+            .map(|record| record.memory_id.clone())
+            .collect::<Vec<_>>(),
+        vec![first.memory_id, second.memory_id.clone()]
+    );
+
+    let page_two = store
+        .review(MemoryReviewRequest {
+            reason: None,
+            memory_type: Some(MemoryType::Fact),
+            scope: None,
+            limit: Some(2),
+            cursor: page_one.cursor,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        page_two
+            .memories
+            .iter()
+            .map(|record| record.memory_id.clone())
+            .collect::<Vec<_>>(),
+        vec![third.memory_id]
+    );
+    assert!(page_two.cursor.is_none());
+}
