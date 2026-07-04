@@ -7,8 +7,8 @@ use serde_json::json;
 use crate::point::VectorPointBatchBuilder;
 use crate::store::{FakeVectorMode, FakeVectorStore, VectorStore};
 use crate::testing::{
-    test_collection_spec, test_embedding_result_for, test_prepared_document,
-    test_vector_build_context,
+    test_collection_spec, test_collection_spec_hybrid, test_embedding_result_for,
+    test_prepared_document, test_vector_build_context,
 };
 
 fn batch() -> VectorPointBatch {
@@ -43,7 +43,7 @@ fn search() -> VectorSearchRequest {
 async fn fake_vector_store_can_simulate_partial_failure_and_slow_write() {
     let partial = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::PartialFailure);
     partial
-        .ensure_collection(test_collection_spec(3))
+        .ensure_collection(test_collection_spec_hybrid(3))
         .await
         .unwrap();
     let err = partial.upsert(batch()).await.unwrap_err();
@@ -51,7 +51,7 @@ async fn fake_vector_store_can_simulate_partial_failure_and_slow_write() {
     assert_eq!(partial.search(search()).await.unwrap().results.len(), 1);
 
     let slow = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::SlowWrite);
-    slow.ensure_collection(test_collection_spec(3))
+    slow.ensure_collection(test_collection_spec_hybrid(3))
         .await
         .unwrap();
     let written = slow.upsert(batch()).await.unwrap();
@@ -64,7 +64,7 @@ async fn fake_vector_store_invalid_payload_errors_do_not_echo_raw_discriminators
     let raw_visibility = "customer-alpha-supervalue-12345";
     let store = FakeVectorStore::new("fake-vector");
     store
-        .ensure_collection(test_collection_spec(3))
+        .ensure_collection(test_collection_spec_hybrid(3))
         .await
         .unwrap();
     let mut batch = batch();
@@ -82,7 +82,7 @@ async fn fake_vector_store_invalid_payload_errors_do_not_echo_raw_discriminators
 async fn url_delete_selector_matches_canonical_payload_fields() {
     let store = FakeVectorStore::new("fake-vector");
     store
-        .ensure_collection(test_collection_spec(3))
+        .ensure_collection(test_collection_spec_hybrid(3))
         .await
         .unwrap();
     let mut batch = batch();
