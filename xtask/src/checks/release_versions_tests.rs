@@ -1041,6 +1041,43 @@ fn release_please_dispatch_plan_uses_manifest_metadata() {
 }
 
 #[test]
+fn release_please_dispatch_plan_rejects_non_bool_object_paths() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "{\".\": \"yes\"}",
+  "cli_tag": "v1.0.0"
+}"#;
+    let err = release_please_dispatch_plan(fixture.root(), release_outputs).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("paths_released object value for . must be a boolean")
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_uses_component_manifest() {
+    let fixture = Fixture::new();
+    let items = release_please_fixup_plan(
+        fixture.root(),
+        "apps/palette-tauri/CHANGELOG.md\napps/android/app/build.gradle.kts\n",
+    )
+    .unwrap();
+    assert_eq!(
+        items,
+        vec![
+            release_please::ReleasePleaseFixupItem {
+                id: "palette".to_owned(),
+                version: "5.10.2".to_owned(),
+            },
+            release_please::ReleasePleaseFixupItem {
+                id: "android".to_owned(),
+                version: "1.3.2".to_owned(),
+            },
+        ]
+    );
+}
+
+#[test]
 fn android_fixup_increments_version_code() {
     let fixture = Fixture::new();
     fs::write(

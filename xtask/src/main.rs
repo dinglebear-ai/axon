@@ -108,6 +108,13 @@ enum Command {
         #[arg(long)]
         version: String,
     },
+    /// Print release-please postprocessing needed for a release PR file list.
+    ReleasePleaseFixupPlan {
+        #[arg(long)]
+        files: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Print the artifact workflow dispatch plan from release-please outputs.
     ReleasePleaseDispatchPlan {
         #[arg(long)]
@@ -207,6 +214,11 @@ fn main() -> Result<()> {
         Command::ReleasePleaseFixups { component, version } => Ok(
             checks::release_versions::release_please_fixups(&root, &component, &version)?,
         ),
+        Command::ReleasePleaseFixupPlan { files, json } => {
+            let items = checks::release_versions::release_please_fixup_plan(&root, &files)?;
+            checks::release_versions::print_release_please_fixup_plan(&items, json)?;
+            Ok(())
+        }
         Command::ReleasePleaseDispatchPlan {
             release_outputs,
             json,

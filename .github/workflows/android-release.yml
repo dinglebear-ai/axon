@@ -114,8 +114,8 @@ jobs:
             exit 1
           fi
 
-          # On a real tag push, the tag version must match versionName so a
-          # release can never ship an APK the tag disagrees with.
+          # On release-please dispatch, the tag version must match versionName
+          # so a release can never ship an APK the tag disagrees with.
           if [[ "${GITHUB_REF}" == refs/tags/android-v* ]]; then
             tag_version="${GITHUB_REF#refs/tags/android-v}"
             if [[ "$tag_version" != "$version" ]]; then

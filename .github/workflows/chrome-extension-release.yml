@@ -45,8 +45,8 @@ jobs:
             exit 1
           fi
 
-          # On a real tag push, the tag version must match the manifest version
-          # so a release can never ship a zip the tag disagrees with.
+          # On release-please dispatch, the tag version must match the manifest
+          # version so a release can never ship a zip the tag disagrees with.
           if [[ "${GITHUB_REF}" == refs/tags/chrome-ext-v* ]]; then
             tag_version="${GITHUB_REF#refs/tags/chrome-ext-v}"
             if [[ "$tag_version" != "$version" ]]; then
