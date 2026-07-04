@@ -2,16 +2,16 @@ use clap::{Args, Subcommand, ValueEnum};
 
 #[derive(Debug, Args, Default)]
 pub(in crate::config) struct SetupInitArgs {
-    /// MCP HTTP bind host written to AXON_MCP_HTTP_HOST
+    /// MCP HTTP bind host written to AXON_HTTP_HOST
     #[arg(long = "mcp-host")]
     pub(in crate::config) mcp_host: Option<String>,
-    /// MCP HTTP bind port written to AXON_MCP_HTTP_PORT
+    /// MCP HTTP bind port written to AXON_HTTP_PORT
     #[arg(long = "mcp-port")]
     pub(in crate::config) mcp_port: Option<u16>,
-    /// MCP auth mode. Bearer generates/requires AXON_MCP_HTTP_TOKEN; OAuth requires Google OAuth vars.
+    /// MCP auth mode. Bearer generates/requires AXON_HTTP_TOKEN; OAuth requires Google OAuth vars.
     #[arg(long = "auth-mode", value_enum)]
     pub(in crate::config) auth_mode: Option<SetupAuthMode>,
-    /// Static bearer token for AXON_MCP_HTTP_TOKEN
+    /// Static bearer token for AXON_HTTP_TOKEN
     #[arg(long = "mcp-token")]
     pub(in crate::config) mcp_token: Option<String>,
     /// Public URL for OAuth metadata and callbacks

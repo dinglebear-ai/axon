@@ -98,7 +98,7 @@ fn generic_synthesis_prompt_omits_skill_frontmatter_and_activation() {
 
 #[test]
 fn codex_app_server_uses_direct_synthesis_prompt() {
-    let prompt = synthesis_prompt_for_backend(axon_core::llm::LlmBackendKind::CodexAppServer);
+    let prompt = synthesis_prompt_for_backend(axon_llm::LlmBackendKind::CodexAppServer);
 
     assert!(!prompt.contains("Use the rag-synthesize skill"));
     assert!(prompt.contains("provided context"));

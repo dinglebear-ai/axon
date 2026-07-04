@@ -2,7 +2,7 @@ use crate::events::{LogLevel, ServiceEvent, emit, synthesis_delta_handler};
 use crate::scrape;
 use crate::types::{SummarizeDocument, SummarizeResult, SummarizeTiming, SummarizeUsage};
 use axon_core::config::{Config, ConfigOverrides, ScrapeFormat};
-use axon_core::llm::{self, CompletionRequest, ReasoningEffort};
+use axon_llm::{self as llm, CompletionRequest, ReasoningEffort};
 use std::error::Error;
 use std::time::Instant;
 use tokio::sync::mpsc;

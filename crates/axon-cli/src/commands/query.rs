@@ -3,11 +3,12 @@ use axon_core::config::Config;
 use axon_core::error::diagnostics_from_error;
 use axon_core::logging::log_info;
 use axon_core::ui::{accent, muted, primary, status_text};
+use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
 use axon_services::types::Pagination;
 use std::error::Error;
 
-pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_query(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("query requires text")?;
     // TODO: cfg.quiet — suppress progress log when quiet mode lands
     if !cfg.json_output {
@@ -22,7 +23,7 @@ pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
         limit: cfg.search_limit.max(1),
         offset: 0,
     };
-    let results = query_svc::query(cfg, &query, opts)
+    let results = query_svc::query(ctx, cfg, &query, opts)
         .await
         .inspect_err(|err| {
             if cfg.ask_diagnostics

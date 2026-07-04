@@ -1,3 +1,4 @@
+use axon_api::source::SourceGenerationId;
 use axon_code_index::ReindexProgress;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -21,6 +22,8 @@ pub enum CodeSearchWatchEvent {
         indexed_files: usize,
         removed_files: usize,
         generation: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_source_generation: Option<SourceGenerationId>,
     },
     RefreshProgress {
         progress: ReindexProgress,

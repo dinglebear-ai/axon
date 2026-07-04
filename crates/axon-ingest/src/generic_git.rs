@@ -2,11 +2,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
-#[cfg(test)]
-use axon_source_ledger::SourceLedgerStore;
-use axon_source_ledger::{ManifestItem, SourceIdentity, SourceKind};
 use reqwest::Url;
-use sha2::{Digest, Sha256};
 
 use crate::progress::PhaseReporter;
 use crate::subprocess::{SUBPROCESS_TIMEOUT, run_command_with_timeout};
@@ -14,28 +10,12 @@ use axon_core::config::Config;
 use axon_core::content::redact_url;
 use axon_core::http::validate_url;
 use axon_core::logging::{log_done, log_info, log_warn};
-use axon_vector::ops::PreparedDoc;
 use axon_vector::ops::embed_prepared_docs;
 use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files};
 use axon_vector::ops::qdrant::qdrant_delete_repo_file_fragments;
 
-const GIT_SOURCE_INDEX_VERSION: i64 = 1;
-const SOURCE_LEDGER_LEASE_TTL_MS: i64 = 30 * 60 * 1000;
-const SOURCE_LEDGER_BACKOFF_MS: i64 = 60 * 1000;
-const SOURCE_CLEANUP_BATCH_SIZE: usize = 128;
-
 mod file_docs;
-mod ledger;
 pub(crate) use file_docs::file_docs;
-#[cfg(test)]
-pub(crate) use ledger::{
-    PreparedGitLedgerRefresh, commit_git_ledger_refresh, open_source_ledger_pool,
-    prepare_git_manifest_with_store,
-};
-use ledger::{
-    finalize_git_ledger_refresh, prepare_git_ledger_refresh, release_git_ledger_after_error,
-    stamp_git_docs_with_ledger, start_source_lease_heartbeat, stop_source_lease_heartbeat,
-};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericGitTarget {
@@ -57,19 +37,6 @@ pub(crate) fn git_ref_is_immutable_commit_sha(reference: &str) -> bool {
 #[cfg(test)]
 pub(crate) fn git_ref_schedules_refresh(reference: &str) -> bool {
     !git_ref_is_immutable_commit_sha(reference)
-}
-
-fn git_source_id(collection: &str, target: &GenericGitTarget, reference: &str) -> String {
-    format!("git:{collection}:{}#{reference}", target.web_url)
-}
-
-fn git_source_identity(cfg: &Config, target: &GenericGitTarget, reference: &str) -> SourceIdentity {
-    SourceIdentity::new(
-        git_source_id(&cfg.collection, target, reference),
-        SourceKind::Git,
-        cfg.collection.clone(),
-        GIT_SOURCE_INDEX_VERSION,
-    )
 }
 
 pub fn parse_generic_git_target(input: &str) -> Result<GenericGitTarget> {
@@ -197,38 +164,18 @@ pub(crate) async fn ingest_git_repository(
         }
     }
     let current_urls: HashSet<String> = docs.iter().map(|doc| doc.url().to_string()).collect();
-    let manifest = git_manifest_from_docs(&docs);
-    let mut lease = None;
+    let summary = embed_prepared_docs(cfg, docs, None)
+        .await
+        .map_err(|e| anyhow!("{e}"))?
+        .require_success("generic git embed")
+        .map_err(|e| anyhow!("{e}"))?;
     if include_source {
-        lease = Some(prepare_git_ledger_refresh(cfg, &target, &branch, &manifest).await?);
-        if let Some(prepared) = &lease {
-            docs = stamp_git_docs_with_ledger(docs, prepared)?;
-        }
-    }
-    let heartbeat = lease.as_ref().map(start_source_lease_heartbeat);
-    let summary_result: Result<_> = async {
-        embed_prepared_docs(cfg, docs, None)
-            .await
-            .map_err(|e| anyhow!("{e}"))?
-            .require_success("generic git embed")
-            .map_err(|e| anyhow!("{e}"))
-    }
-    .await;
-    let summary = match summary_result {
-        Ok(summary) => summary,
-        Err(err) => {
-            stop_source_lease_heartbeat(heartbeat).await;
-            if let Some(prepared) = &lease {
-                return release_git_ledger_after_error(prepared, err).await;
-            }
-            return Err(err);
-        }
-    };
-    if let Some(prepared) = lease {
-        let finalize_result =
-            finalize_git_ledger_refresh(cfg, &prepared, summary.chunks_embedded).await;
-        stop_source_lease_heartbeat(heartbeat).await;
-        finalize_result?;
+        // Delete file chunks that vanished upstream. Upserts over live URLs
+        // (deterministic point IDs) already refreshed changed files during embed;
+        // this removes fragments for files no longer present in the current
+        // checkout. Source-generation cleanup now belongs to axon-ledger via the
+        // `axon source` pipeline; this legacy `ingest` path does no generation
+        // tracking.
         if let Err(err) = qdrant_delete_repo_file_fragments(
             cfg,
             provider,
@@ -263,27 +210,6 @@ pub(crate) async fn ingest_git_repository(
         target.web_url, summary.chunks_embedded
     ));
     Ok(summary.chunks_embedded)
-}
-
-fn git_manifest_from_docs(docs: &[PreparedDoc]) -> Vec<ManifestItem> {
-    docs.iter().map(git_manifest_item_from_doc).collect()
-}
-
-fn git_manifest_item_from_doc(doc: &PreparedDoc) -> ManifestItem {
-    let item_key = doc
-        .extra()
-        .and_then(|extra| extra.get("code_file_path"))
-        .and_then(|value| value.as_str())
-        .unwrap_or_else(|| doc.url())
-        .to_string();
-    let mut hasher = Sha256::new();
-    let mut size_bytes = 0i64;
-    for chunk in doc.chunks() {
-        size_bytes = size_bytes.saturating_add(chunk.len() as i64);
-        hasher.update(chunk.as_bytes());
-        hasher.update([0]);
-    }
-    ManifestItem::new(item_key, hex::encode(hasher.finalize()), size_bytes)
 }
 
 #[cfg(test)]

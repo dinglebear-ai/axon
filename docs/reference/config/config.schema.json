@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "SchemaFamilyContract": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "config"
+        },
+        "future_registry": {
+          "type": "string"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "skeleton"
+        }
+      },
+      "required": [
+        "family",
+        "status",
+        "owner_crates"
+      ],
+      "type": "object",
+      "x-axon": {
+        "replaced_by": "crate-owned registry generator in the matching implementation PR",
+        "skeleton": true
+      }
+    }
+  },
+  "$id": "https://axon.local/schemas/config/config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon schema contract artifact.",
+  "title": "AxonConfigSchema",
+  "type": "object",
+  "x-axon": {
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas config",
+    "owner_crates": [
+      "axon-core"
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:06b44103479aa1f70052e54908de79d1913a05fe44d9abefcdf94df8fcbc798f",
+        "kind": "rust_directory",
+        "path": "crates/axon-core/src/config"
+      },
+      {
+        "checksum": "sha256:c4ef4ccf1afb79b1529624c5c1c2ee26e85d9bc1388af1551418c68acd27b89f",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/configuration/config-contract.md"
+      }
+    ]
+  }
+}

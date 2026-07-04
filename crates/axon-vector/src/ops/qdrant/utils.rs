@@ -33,7 +33,10 @@ pub fn qdrant_base(cfg: &Config) -> &str {
 /// v8: Added normalized pre-chunk planner fields: `chunk_content_kind`,
 ///     `chunk_locator`, `source_range`, `chunking_fallback`, and
 ///     `code_chunk_source`.
-pub const PAYLOAD_SCHEMA_VERSION: u32 = 8;
+///
+/// Single source of truth: `axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION`, so
+/// the vector write path and the doctor/reset cutover check never drift.
+pub const PAYLOAD_SCHEMA_VERSION: u32 = axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION;
 
 pub(crate) fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
     axon_core::config::validate_collection_name(name)
@@ -126,7 +129,15 @@ pub fn payload_text_typed(payload: &QdrantPayload) -> &str {
 }
 
 pub fn payload_url_typed(payload: &QdrantPayload) -> &str {
-    payload.url.as_str()
+    // Legacy points carry `url`; new unified-pipeline points carry
+    // `item_canonical_uri` instead. Fall back so retrieval does not skip
+    // new-pipeline content as url-less (build_candidates_from_hits drops
+    // url-empty hits). Prod points keep `url`, so this is a no-op for them.
+    if !payload.url.is_empty() {
+        payload.url.as_str()
+    } else {
+        payload.item_canonical_uri.as_str()
+    }
 }
 
 pub fn payload_url(payload: &serde_json::Value) -> String {

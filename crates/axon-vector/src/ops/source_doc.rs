@@ -7,12 +7,21 @@ use super::input::{chunk_markdown_with_offsets, chunk_text_with_offsets};
 use super::tei::{PreparedDoc, StructuredPayload};
 use axon_core::logging::log_warn;
 
+mod document_bridge;
 mod ledger;
 mod support;
+#[cfg(test)]
+mod target_payload_fixture;
 
+use document_bridge::prepare_atomic_source;
 pub use ledger::LedgerPayload;
 use ledger::sanitize_doc_extra;
-use support::{LineIndex, domain_for_origin, domain_from_web_url, file_locator};
+use support::{
+    LineIndex, base_chunk_metadata, chunk_metadata, domain_for_origin, domain_from_web_url,
+    file_locator, insert_missing_or_null,
+};
+#[cfg(test)]
+pub(in crate::ops) use target_payload_fixture::target_vector_payload_fixture_for_chunk;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceOrigin {
@@ -229,6 +238,8 @@ impl SourceDocument {
         content_type: &'static str,
         chunk_extra: Vec<Value>,
     ) -> PreparedDoc {
+        // TODO(PR8/#298): remove this legacy conversion once markdown, plain text,
+        // and code file preparation move behind axon-document in later PRs.
         PreparedDoc::from_planned_chunks(
             self.url,
             self.domain,
@@ -260,7 +271,7 @@ pub async fn prepare_source_document(doc: SourceDocument) -> Result<PreparedDoc,
                 .await
                 .map_err(|e| format!("chunk_text panicked: {e}"))
         }
-        SourceChunkHint::AtomicText { point_id } => Ok(prepare_atomic_source(doc, point_id)),
+        SourceChunkHint::AtomicText { point_id } => prepare_atomic_source(doc, point_id),
     }
 }
 
@@ -424,22 +435,6 @@ fn prepare_plain_source(doc: SourceDocument) -> PreparedDoc {
     doc.into_prepared(chunks, "text", chunk_extra)
 }
 
-fn prepare_atomic_source(doc: SourceDocument, point_id: uuid::Uuid) -> PreparedDoc {
-    let line_index = LineIndex::new(&doc.text);
-    let (line_start, line_end) = line_index.line_range_for_bytes(0, doc.text.len());
-    let chunk_extra = vec![chunk_metadata(base_chunk_metadata(
-        "plain_text",
-        &format!("{}#chunk-0", doc.url),
-        line_start,
-        line_end,
-        0,
-        doc.text.len(),
-    ))];
-    let chunk = doc.text.clone();
-    doc.into_prepared(vec![chunk], "text", chunk_extra)
-        .with_chunk_point_ids(vec![point_id])
-}
-
 fn safe_markdown_chunks_with_offsets(text: &str) -> (Vec<(usize, usize, String)>, bool) {
     if text
         .chars()
@@ -460,31 +455,6 @@ fn safe_markdown_chunks_with_offsets(text: &str) -> (Vec<(usize, usize, String)>
     }
 }
 
-fn base_chunk_metadata(
-    content_kind: &str,
-    locator: &str,
-    line_start: u32,
-    line_end: u32,
-    byte_start: usize,
-    byte_end: usize,
-) -> Map<String, Value> {
-    let mut range = Map::new();
-    range.insert("line_start".into(), line_start.into());
-    range.insert("line_end".into(), line_end.into());
-    range.insert("byte_start".into(), byte_start.into());
-    range.insert("byte_end".into(), byte_end.into());
-
-    let mut extra = Map::new();
-    extra.insert("chunk_content_kind".into(), content_kind.into());
-    extra.insert("chunk_locator".into(), locator.into());
-    extra.insert("source_range".into(), Value::Object(range));
-    extra
-}
-
-fn chunk_metadata(metadata: Map<String, Value>) -> Value {
-    Value::Object(metadata)
-}
-
 fn ensure_file_doc_extra(
     extra: Option<Value>,
     path: &str,
@@ -503,12 +473,6 @@ fn ensure_file_doc_extra(
     insert_missing_or_null(&mut map, "code_is_test", is_test_path(path).into());
     insert_missing_or_null(&mut map, "symbol_extraction_status", symbol_status.into());
     Some(Value::Object(map))
-}
-
-fn insert_missing_or_null(map: &mut Map<String, Value>, key: &str, value: Value) {
-    if !map.contains_key(key) || map.get(key).is_some_and(Value::is_null) {
-        map.insert(key.to_string(), value);
-    }
 }
 
 #[cfg(test)]

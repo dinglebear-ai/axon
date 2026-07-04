@@ -77,7 +77,7 @@ pub(super) async fn first_run_ask(
         Ok(query) => query,
         Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
     };
-    match axon_services::query::ask(&cfg, query, None).await {
+    match axon_services::query::ask(&state.service_context, &cfg, query, None).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => HttpError::from_box(err).into_response(),
     }

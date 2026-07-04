@@ -101,7 +101,7 @@ services:
       # home is CODEX_HOME=/home/axon/.axon/codex (see environment above), which
       # already persists via the ~/.axon bind mount on the first volume line.
     ports:
-      - "${AXON_MCP_HTTP_PUBLISH:-8001}:8001"
+      - "${AXON_HTTP_PUBLISH:-8001}:8001"
     command: ["serve"]
     depends_on:
       axon-tei:

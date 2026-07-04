@@ -11,7 +11,7 @@ fn cfg(command: CommandKind, positional: &[&str], wait: bool) -> Config {
 #[test]
 fn job_command_mode_detects_fire_and_forget_submit() {
     assert_eq!(
-        job_command_mode(&cfg(CommandKind::Crawl, &["https://example.com"], false)),
+        job_command_mode(&cfg(CommandKind::Extract, &["https://example.com"], false)),
         Some(JobCommandMode::Submit {
             fire_and_forget: true
         })
@@ -21,7 +21,7 @@ fn job_command_mode_detects_fire_and_forget_submit() {
 #[test]
 fn job_command_mode_detects_waiting_submit() {
     assert_eq!(
-        job_command_mode(&cfg(CommandKind::Embed, &["./docs"], true)),
+        job_command_mode(&cfg(CommandKind::Extract, &["https://example.com"], true)),
         Some(JobCommandMode::Submit {
             fire_and_forget: false
         })
@@ -31,7 +31,7 @@ fn job_command_mode_detects_waiting_submit() {
 #[test]
 fn job_command_mode_worker_subcommand_needs_workers() {
     assert_eq!(
-        job_command_mode(&cfg(CommandKind::Ingest, &["worker"], false)),
+        job_command_mode(&cfg(CommandKind::Extract, &["worker"], false)),
         Some(JobCommandMode::Subcommand {
             name: "worker",
             needs_workers: true,
@@ -49,7 +49,7 @@ fn job_command_mode_read_only_and_recover_subcommands_do_not_spawn_workers() {
         })
     );
     assert_eq!(
-        job_command_mode(&cfg(CommandKind::Crawl, &["recover"], false)),
+        job_command_mode(&cfg(CommandKind::Extract, &["recover"], false)),
         Some(JobCommandMode::Subcommand {
             name: "recover",
             needs_workers: false,

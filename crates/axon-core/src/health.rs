@@ -1,6 +1,6 @@
 pub mod doctor;
 
-pub use doctor::build_doctor_report;
+pub use doctor::{LlmDoctorProbe, build_doctor_report};
 
 use crate::config::parse::helpers::env_bool;
 use crate::paths::axon_data_dir;

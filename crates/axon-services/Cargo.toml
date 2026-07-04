@@ -8,14 +8,25 @@ license = "MIT"
 
 [dependencies]
 axon-core = { path = "../axon-core" }
+axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
 axon-crawl = { path = "../axon-crawl" }
 axon-vector = { path = "../axon-vector" }
 axon-ingest = { path = "../axon-ingest" }
 axon-extract = { path = "../axon-extract" }
+axon-memory = { path = "../axon-memory" }
 axon-jobs = { path = "../axon-jobs" }
+axon-observe = { path = "../axon-observe" }
 axon-code-index = { path = "../axon-code-index" }
-axon-source-ledger = { path = "../axon-source-ledger" }
+axon-adapters = { path = "../axon-adapters" }
+axon-route = { path = "../axon-route" }
+axon-document = { path = "../axon-document" }
+axon-embedding = { path = "../axon-embedding" }
+axon-ledger = { path = "../axon-ledger" }
+axon-graph = { path = "../axon-graph" }
+axon-vectors = { path = "../axon-vectors" }
+axon-prune = { path = "../axon-prune" }
+axon-retrieval = { path = "../axon-retrieval" }
 anyhow = "1"
 async-trait = "0.1"
 base64 = "0.22"

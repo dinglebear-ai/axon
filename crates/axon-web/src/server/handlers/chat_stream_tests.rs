@@ -1,4 +1,4 @@
-use axon_core::llm::CompletionResponse;
+use axon_llm::CompletionResponse;
 use axum::{body::to_bytes, http::StatusCode, response::sse::Event};
 use std::convert::Infallible;
 use std::sync::{

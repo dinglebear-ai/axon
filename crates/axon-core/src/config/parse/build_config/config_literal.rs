@@ -45,7 +45,7 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     let tei_url = resolve_tei_url(inputs.global, inputs.toml)?;
     let qdrant_url = resolve_qdrant_url(inputs.global, inputs.toml)?;
     let custom_headers = validate_custom_headers(inputs.global.custom_headers.clone())?;
-    let mcp_http_port = env_port("AXON_MCP_HTTP_PORT", 8001)?;
+    let mcp_http_port = env_port("AXON_HTTP_PORT", 8001)?;
 
     let mut cfg = Config::default();
     populate_identity_and_crawl(&mut cfg, &inputs);
@@ -72,12 +72,6 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.url_glob = g.url_glob.clone();
     cfg.query = g.query.clone();
     cfg.search_limit = g.limit;
-    cfg.code_search_cwd = inputs.dispatched.code_search_cwd.clone();
-    cfg.code_search_path_prefix = inputs.dispatched.code_search_path_prefix.clone();
-    cfg.code_search_no_freshness = inputs.dispatched.code_search_no_freshness;
-    cfg.code_search_watch = inputs.dispatched.code_search_watch.clone();
-    cfg.embed_watch = inputs.dispatched.embed_watch;
-    cfg.embed_no_watch = inputs.dispatched.embed_no_watch;
     cfg.freshness = inputs.dispatched.freshness.clone();
     cfg.fresh_action = inputs.dispatched.fresh_action.clone();
     cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
@@ -85,6 +79,9 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.train_notes = inputs.dispatched.train_notes.clone();
     cfg.purge_prefix = inputs.dispatched.purge_prefix;
     cfg.purge_dry_run = inputs.dispatched.purge_dry_run;
+    cfg.source_scope = inputs.dispatched.source_scope.clone();
+    cfg.reset_stores = inputs.dispatched.reset_stores.clone();
+    cfg.reset_dry_run = inputs.dispatched.reset_dry_run;
     cfg.doctor_diagnose = inputs.dispatched.doctor_diagnose;
     // `extract` defaults to the exact single-page path when omitted. The crawl
     // page-cap default + ceiling are NOT resolved here — that policy lives in the
@@ -279,7 +276,7 @@ fn populate_services_and_ask_basics(
         .map(|u| u.trim_end_matches('/').to_string())
         .unwrap_or_default();
     cfg.research_full_content = env_bool("AXON_RESEARCH_FULL_CONTENT", true);
-    cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
+    cfg.mcp_allowed_origins = env::var("AXON_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))
         .unwrap_or_default();
@@ -449,7 +446,7 @@ fn populate_misc(
         inputs.dispatched.mcp_transport_default,
     );
     cfg.mcp_transport = resolve_mcp_transport(mcp_transport, mcp_transport_default);
-    cfg.mcp_http_host = env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    cfg.mcp_http_host = env::var("AXON_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     cfg.mcp_http_port = mcp_http_port;
     cfg.custom_headers = custom_headers;
     cfg.warc_output = g.warc.clone();

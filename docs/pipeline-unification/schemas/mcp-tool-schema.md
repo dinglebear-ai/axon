@@ -20,7 +20,7 @@ transport wrapper fields.
 
 ```text
 docs/reference/mcp/tool-schema.json
-docs/reference/mcp/tool-schema.md
+docs/reference/mcp/pipeline-tool-schema.md
 crates/axon-mcp/tests/golden/tool-schema.json
 ```
 
@@ -371,7 +371,7 @@ The MCP schema bundle must embed or reference:
 
 ## Generated Markdown Reference
 
-`docs/reference/mcp/tool-schema.md` contains:
+`docs/reference/mcp/pipeline-tool-schema.md` contains:
 
 - one table of actions
 - one table per grouped action with subactions
@@ -450,7 +450,7 @@ Generation inputs:
 
 Generated outputs:
 
-- `docs/reference/mcp/tool-schema.md`
+- `docs/reference/mcp/pipeline-tool-schema.md`
 - `docs/reference/mcp/tool-schema.json`
 - schema snapshots under the owning crate tests
 

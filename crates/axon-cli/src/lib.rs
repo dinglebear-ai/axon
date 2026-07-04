@@ -6,13 +6,12 @@ use axon_core::config::{CommandKind, Config, parse_args};
 use axon_core::logging::{init_tracing, log_done, log_info, log_warn};
 use axon_services::context::ServiceContext;
 use commands::{
-    run_ask, run_brand, run_code_search, run_completions, run_config, run_crawl, run_debug,
-    run_dedupe, run_diff, run_doctor, run_domains, run_embed, run_endpoints, run_evaluate,
-    run_extract, run_fresh, run_ingest, run_map, run_mcp, run_memory, run_migrate, run_monitor,
-    run_palette, run_purge, run_query, run_refresh, run_research, run_retrieve, run_scrape,
-    run_screenshot, run_search, run_serve, run_sessions, run_setup, run_sources, run_stats,
-    run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
-    start_url_from_cfg,
+    run_ask, run_brand, run_completions, run_config, run_debug, run_dedupe, run_diff, run_doctor,
+    run_domains, run_endpoints, run_evaluate, run_extract, run_fresh, run_map, run_mcp, run_memory,
+    run_migrate, run_monitor, run_palette, run_purge, run_query, run_refresh, run_research,
+    run_reset, run_retrieve, run_screenshot, run_search, run_serve, run_sessions, run_setup,
+    run_source, run_sources, run_stats, run_status, run_suggest, run_summarize, run_sync,
+    run_train, run_update, run_watch, start_url_from_cfg,
 };
 use std::error::Error;
 use std::sync::Arc;
@@ -34,26 +33,22 @@ async fn run_once(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     match cfg.command {
-        CommandKind::Scrape => run_scrape(cfg, service_context).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
         CommandKind::Endpoints => run_endpoints(cfg).await?,
-        CommandKind::Crawl => run_crawl(cfg, service_context).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Monitor => run_monitor(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg, service_context).await?,
-        CommandKind::Embed => run_embed(cfg, service_context).await?,
         CommandKind::Brand => run_brand(cfg).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Diff => run_diff(cfg).await?,
         CommandKind::Doctor => run_doctor(cfg).await?,
-        CommandKind::Query => run_query(cfg).await?,
-        CommandKind::CodeSearch => run_code_search(cfg, service_context).await?,
+        CommandKind::Query => run_query(cfg, service_context).await?,
         CommandKind::Retrieve => run_retrieve(cfg).await?,
-        CommandKind::Ask => run_ask(cfg).await?,
+        CommandKind::Ask => run_ask(cfg, service_context).await?,
         CommandKind::Summarize => run_summarize(cfg).await?,
-        CommandKind::Evaluate => run_evaluate(cfg).await?,
-        CommandKind::Train => run_train(cfg).await?,
+        CommandKind::Evaluate => run_evaluate(cfg, service_context).await?,
+        CommandKind::Train => run_train(cfg, service_context).await?,
         CommandKind::Suggest => run_suggest(cfg).await?,
         CommandKind::Sources => run_sources(cfg).await?,
         CommandKind::Domains => run_domains(cfg).await?,
@@ -63,14 +58,17 @@ async fn run_once(
         CommandKind::Purge => run_purge(cfg).await?,
         CommandKind::Refresh => run_refresh(cfg, service_context).await?,
         CommandKind::Fresh => run_fresh(cfg, service_context).await?,
-        CommandKind::Ingest => run_ingest(cfg, service_context).await?,
         CommandKind::Memory => run_memory(cfg, service_context).await?,
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,
+        CommandKind::Source => run_source(cfg, service_context).await?,
         CommandKind::Research => run_research(cfg, service_context).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Serve => run_serve(cfg).await?,
+        // `reset` is dispatched early in `run()` (before any ServiceContext is
+        // built) so its dry-run mutates nothing; it never reaches `run_once`.
+        CommandKind::Reset => unreachable!("reset is dispatched before run_once"),
         CommandKind::Preflight | CommandKind::Smoke | CommandKind::Compose => {
             run_setup(cfg).await?
         }
@@ -85,10 +83,7 @@ async fn run_once(
 }
 
 fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
-    if !matches!(
-        cfg.command,
-        CommandKind::Crawl | CommandKind::Extract | CommandKind::Embed | CommandKind::Ingest
-    ) {
+    if !matches!(cfg.command, CommandKind::Extract) {
         return None;
     }
 
@@ -197,12 +192,28 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         cfg.performance_profile
     ));
 
+    // `reset` must run BEFORE any ServiceContext is built: constructing the
+    // job runtime opens + migrates the SQLite DB (creating a fresh 42-table
+    // file), which would break reset's dry-run "mutate nothing" guarantee and
+    // make its inventory always report a fully-migrated DB. Reset owns store
+    // lifecycle directly, so it needs no job runtime.
+    if cfg.command == CommandKind::Reset {
+        run_reset(&cfg).await?;
+        log_done("command=reset complete");
+        return Ok(());
+    }
+
     let cfg_arc = Arc::new(cfg);
     // CLI commands use ServiceContext::new() (enqueue-only) unless the command
     // intentionally needs in-process workers. Fire-and-forget submits enqueue
     // and exit; operator `worker` subcommands spawn workers in this process.
     let command_mode = job_command_mode(&cfg_arc);
     let needs_workers = cfg_arc.wait
+        // `source` indexes synchronously in the foreground but needs the
+        // data-plane runtime (ledger/embedding/vector stores), which is only
+        // attached to a worker-bearing ServiceContext. Always build one so
+        // `axon source <path>` works without an explicit `--wait`.
+        || cfg_arc.command == CommandKind::Source
         || matches!(
             command_mode,
             Some(JobCommandMode::Subcommand {

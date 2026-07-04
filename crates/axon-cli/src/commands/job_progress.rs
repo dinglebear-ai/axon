@@ -26,12 +26,6 @@ pub(crate) fn crawl_progress_summary(
     }
 }
 
-pub(crate) fn crawl_list_progress_summary(job: &ServiceJob) -> Option<String> {
-    let empty_embed_jobs = HashMap::new();
-    let empty_embed_totals = HashMap::new();
-    crawl_progress_summary(job, &empty_embed_jobs, &empty_embed_totals)
-}
-
 pub(crate) fn embed_progress_summary(
     job: &ServiceJob,
     fallback_docs_total: Option<u64>,

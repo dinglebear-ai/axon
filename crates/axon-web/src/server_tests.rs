@@ -132,7 +132,8 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
             .json()
             .await
             .unwrap_or_else(|err| panic!("{method} {path} returned non-JSON auth error: {err}"));
-        assert_eq!(body["kind"], "unauthorized", "{method} {path}");
+        assert_eq!(body["ok"], false, "{method} {path}");
+        assert_eq!(body["error"]["code"], "auth.missing", "{method} {path}");
     }
 
     stop(shutdown, handle).await;
@@ -221,9 +222,9 @@ fn routing_registers_no_v1_route_outside_inventory() {
     // Self-test floor: the scanner MUST see the multi-line registrations, not
     // silently regress to seeing nothing (which would turn this whole test into a
     // no-op — the exact failure mode it exists to prevent). Both of these are
-    // registered multi-line in routing.rs today (`.nest("/v1/crawl", …)` and
+    // registered multi-line in routing.rs today (`.nest("/v1/extract", …)` and
     // `.route("/v1/research/stream", …)`).
-    for must_see in ["/v1/crawl", "/v1/research/stream"] {
+    for must_see in ["/v1/extract", "/v1/research/stream"] {
         assert!(
             registered.contains(must_see),
             "route scanner missed `{must_see}` — the .route(/.nest( matcher is broken \
@@ -336,11 +337,9 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/query",
         "/v1/ask",
         "/v1/ask/stream",
-        "/v1/crawl",
-        "/v1/crawl/{id}",
-        "/v1/embed",
+        "/v1/sources",
         "/v1/extract",
-        "/v1/ingest",
+        "/v1/extract/{id}",
         "/v1/watch",
         "/v1/watch/{id}/run",
         "/v1/memory",
@@ -489,36 +488,19 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let client = reqwest::Client::new();
     let job_id = Uuid::nil();
     let watch_run = format!("/v1/watch/{job_id}/run");
-    let crawl_cancel = format!("/v1/crawl/{job_id}/cancel");
-    let embed_cancel = format!("/v1/embed/{job_id}/cancel");
     let extract_cancel = format!("/v1/extract/{job_id}/cancel");
-    let ingest_cancel = format!("/v1/ingest/{job_id}/cancel");
     let mobile_session = "/v1/mobile/sessions/test_session";
     let routes = [
         ("POST", "/v1/dedupe"),
         ("POST", "/v1/purge"),
+        ("POST", "/v1/sources"),
         ("POST", "/v1/watch"),
         ("POST", watch_run.as_str()),
-        ("POST", "/v1/crawl"),
-        ("POST", crawl_cancel.as_str()),
-        ("POST", "/v1/crawl/cleanup"),
-        ("DELETE", "/v1/crawl"),
-        ("POST", "/v1/crawl/recover"),
-        ("POST", "/v1/embed"),
-        ("POST", embed_cancel.as_str()),
-        ("POST", "/v1/embed/cleanup"),
-        ("DELETE", "/v1/embed"),
-        ("POST", "/v1/embed/recover"),
         ("POST", "/v1/extract"),
         ("POST", extract_cancel.as_str()),
         ("POST", "/v1/extract/cleanup"),
         ("DELETE", "/v1/extract"),
         ("POST", "/v1/extract/recover"),
-        ("POST", "/v1/ingest"),
-        ("POST", ingest_cancel.as_str()),
-        ("POST", "/v1/ingest/cleanup"),
-        ("DELETE", "/v1/ingest"),
-        ("POST", "/v1/ingest/recover"),
         ("POST", "/v1/memory"),
         ("PUT", mobile_session),
         ("DELETE", mobile_session),
@@ -589,9 +571,10 @@ async fn v1_memory_route_dispatches_validation_errors_without_live_qdrant() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["kind"], "bad_request");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
     assert!(
-        body["message"]
+        body["error"]["message"]
             .as_str()
             .is_some_and(|message| message.contains("query is required")),
         "{body}"

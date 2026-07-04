@@ -1,6 +1,6 @@
+use axon_api::ApiError;
 use axon_core::error::{ServiceTaxonomyError, diagnostics_from_error, taxonomy_from_error};
 use axum::{
-    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -13,6 +13,11 @@ pub(crate) struct HttpError {
     kind: ErrorKind,
     message: String,
     diagnostics: Option<serde_json::Value>,
+    /// Contract error, present when a handler already produced an [`ApiError`].
+    /// When set, [`IntoResponse`] renders it verbatim (status derived from the
+    /// error) instead of projecting the legacy `(status, kind)` pair. Boxed to
+    /// keep `HttpError` (and thus every handler `Result`) small.
+    api_error: Option<Box<ApiError>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
@@ -48,7 +53,6 @@ pub(crate) enum ErrorKind {
 }
 
 impl ErrorKind {
-    #[cfg(test)]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::BadGateway => "bad_gateway",
@@ -137,6 +141,22 @@ impl HttpError {
             kind: kind.into(),
             message: message.into(),
             diagnostics: None,
+            api_error: None,
+        }
+    }
+
+    /// Wrap a contract [`ApiError`] a handler already produced. The HTTP status
+    /// is derived from the error via
+    /// [`super::api_error::status_for_api_error`], and the error renders
+    /// verbatim in the [`axon_api::source::ErrorEnvelope`].
+    pub(crate) fn from_api_error(error: ApiError) -> Self {
+        let status = super::api_error::status_for_api_error(&error);
+        Self {
+            status,
+            kind: ErrorKind::Internal,
+            message: error.message.clone(),
+            diagnostics: None,
+            api_error: Some(Box::new(error)),
         }
     }
 
@@ -193,6 +213,7 @@ impl HttpError {
             kind: kind.into(),
             message: response_message(status, err),
             diagnostics,
+            api_error: None,
         }
     }
 }
@@ -204,16 +225,32 @@ impl From<Box<dyn Error>> for HttpError {
 }
 
 impl IntoResponse for HttpError {
+    /// Render the contract [`ErrorEnvelope`] (`ok:false` + `ApiError`-shaped
+    /// `error`) rather than the legacy `{kind, message}` body. The retained
+    /// HTTP status still drives the response code; `kind`/`message`/
+    /// `diagnostics` are projected onto the shared [`axon_api::ApiError`] via
+    /// [`super::api_error::api_error_from_status_kind`].
     fn into_response(self) -> Response {
-        (
+        // A handler that already produced an `ApiError` renders it verbatim
+        // with a status derived from the error itself.
+        if let Some(error) = self.api_error {
+            return super::api_error::error_envelope_response(*error);
+        }
+        let mut api_error = super::api_error::api_error_from_status_kind(
             self.status,
-            Json(ErrorBody {
-                kind: self.kind,
-                message: self.message,
-                diagnostics: self.diagnostics,
-            }),
-        )
-            .into_response()
+            self.kind.as_str(),
+            self.message,
+        );
+        if let Some(serde_json::Value::Object(map)) = self.diagnostics {
+            for (key, value) in map {
+                let rendered = match value {
+                    serde_json::Value::String(s) => s,
+                    other => other.to_string(),
+                };
+                api_error.details.insert(key, rendered);
+            }
+        }
+        super::api_error::error_envelope_response_with_status(api_error, self.status)
     }
 }
 

@@ -35,7 +35,7 @@
     "api_token": {
       "type": "string",
       "title": "API token",
-      "description": "Bearer token (AXON_MCP_HTTP_TOKEN). Leave empty for unauthenticated/loopback instances.",
+      "description": "Bearer token (AXON_HTTP_TOKEN). Leave empty for unauthenticated/loopback instances.",
       "sensitive": true
     }
   }

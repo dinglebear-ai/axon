@@ -13,22 +13,6 @@ pub fn rest_route_contracts() -> &'static [RestRouteContract] {
 const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
     RestRouteContract {
         method: "POST",
-        path: "/v1/scrape",
-        schema_name: "RestScrapeRequest",
-        fields: &[
-            "collection",
-            "embed",
-            "exclude_selector",
-            "format",
-            "headers",
-            "render_mode",
-            "root_selector",
-            "url",
-            "urls",
-        ],
-    },
-    RestRouteContract {
-        method: "POST",
         path: "/v1/summarize",
         schema_name: "RestSummarizeRequest",
         fields: &[
@@ -55,27 +39,6 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
     },
     RestRouteContract {
         method: "POST",
-        path: "/v1/crawl",
-        schema_name: "RestCrawlRequest",
-        fields: &[
-            "collection",
-            "delay_ms",
-            "discover_llms_txt",
-            "discover_sitemaps",
-            "headers",
-            "include_subdomains",
-            "max_depth",
-            "max_llms_txt_urls",
-            "max_pages",
-            "max_sitemaps",
-            "render_mode",
-            "respect_robots",
-            "sitemap_since_days",
-            "urls",
-        ],
-    },
-    RestRouteContract {
-        method: "POST",
         path: "/v1/extract",
         schema_name: "RestExtractRequest",
         fields: &[
@@ -88,18 +51,6 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
             "render_mode",
             "urls",
         ],
-    },
-    RestRouteContract {
-        method: "POST",
-        path: "/v1/embed",
-        schema_name: "RestEmbedRequest",
-        fields: &["collection", "input", "source_type"],
-    },
-    RestRouteContract {
-        method: "POST",
-        path: "/v1/ingest",
-        schema_name: "RestIngestRequest",
-        fields: &["include_source", "sessions", "source_type", "target"],
     },
     RestRouteContract {
         method: "POST",

@@ -10,6 +10,13 @@ export type components = {
             "status": string;
             "status_url": string;
         };
+        "AdapterOptions": {
+            "values": components['schemas']['MetadataMap'];
+        };
+        "AdapterRef": {
+            "name": string;
+            "version": string;
+        };
         "ArtifactHandle": {
             "bytes": number;
             "display_path": string;
@@ -19,6 +26,28 @@ export type components = {
             "relative_path": string;
             "url"?: string | null;
         };
+        "ArtifactId": string;
+        "ArtifactKind": "raw_content" | "normalized_content" | "manifest" | "report" | "screenshot" | "warc" | "provider_trace";
+        "ArtifactMode": "none" | "on_large_output" | "always";
+        "ArtifactRef": {
+            "artifact_id": components['schemas']['ArtifactId'];
+            "artifact_kind": components['schemas']['ArtifactKind'];
+            "content_hash"?: string | null;
+            "created_at": components['schemas']['Timestamp'];
+            "size_bytes"?: number | null;
+            "uri": string;
+        };
+        "AuthorityEvidence": {
+            "confidence": number;
+            "evidence_kind": string;
+            "value": string;
+        };
+        "AuthorityHint": {
+            "authority": components['schemas']['AuthorityLevel'];
+            "canonical_uri"?: string | null;
+            "evidence": components['schemas']['AuthorityEvidence'][];
+        };
+        "AuthorityLevel": "official" | "verified" | "user_pinned" | "inferred" | "community" | "mirror" | "conflicting" | "unknown";
         "BrandColor": {
             "count": number;
             "hex": string;
@@ -35,6 +64,21 @@ export type components = {
             "url": string;
         };
         "ColorUsage": "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
+        "ContentRef": {
+            "kind": "inline_text";
+            "text": string;
+        } | {
+            "bytes_base64": string;
+            "kind": "inline_bytes";
+            "mime_type": string;
+        } | {
+            "artifact_id": components['schemas']['ArtifactId'];
+            "kind": "artifact";
+        } | {
+            "integrity"?: string | null;
+            "kind": "external";
+            "uri": string;
+        };
         "DedupeRequest": {
             "collection"?: string | null;
         };
@@ -104,17 +148,42 @@ export type components = {
             "message": string;
         };
         "ErrorKind": "bad_gateway" | "bad_request" | "challenge_detected" | "forbidden" | "internal" | "invalid_path" | "ladder_exhausted" | "not_found" | "output_dir_error" | "path_error" | "path_escape" | "payload_too_large" | "rate_limited" | "read_error" | "structured_data_malformed" | "symlink_not_allowed" | "timeout" | "unauthorized" | "unsupported_media_type" | "upstream_unavailable" | "vertical_auth_invalid" | "vertical_auth_missing" | "vertical_blocked_antibot" | "vertical_rate_limited" | "vertical_target_not_found" | "vertical_target_unavailable" | "vertical_unsupported_url";
-        "IngestSessionsPreparedRequest": {
-            "collection"?: string | null;
-            "docs": components['schemas']['PreparedSessionDoc'][];
-            "project"?: string | null;
+        "ExecutionMode": "foreground" | "background" | "wait";
+        "ExecutionPolicy": {
+            "detached": boolean;
+            "heartbeat_interval_secs": number;
+            "mode": components['schemas']['ExecutionMode'];
+            "priority": components['schemas']['JobPriority'];
+            "wait_timeout_secs"?: number | null;
+        };
+        "GraphWriteSummary": {
+            "degraded": boolean;
+            "edges_upserted": number;
+            "evidence_records": number;
+            "nodes_upserted": number;
+        };
+        "InlineSourceResult": {
+            "content"?: null | components['schemas']['ContentRef'];
+            "metadata": components['schemas']['MetadataMap'];
+            "summary"?: string | null;
+        };
+        "JobDescriptor": {
+            "created_at": components['schemas']['Timestamp'];
+            "job_id": components['schemas']['JobId'];
+            "kind": components['schemas']['JobKind'];
+            "poll": components['schemas']['PollDescriptor'];
+            "status": components['schemas']['LifecycleStatus'];
+            "updated_at": components['schemas']['Timestamp'];
         };
         "JobFamily": "embed" | "extract" | "ingest";
+        "JobId": string;
+        "JobKind": "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset";
         "JobMetric": {
             "label": string;
             "value": string;
         };
         "JobPhase": "pending" | "running" | "done" | "failed" | "canceled";
+        "JobPriority": "interactive" | "high" | "normal" | "background" | "maintenance";
         "JobProgress": {
             "error"?: string | null;
             "family": components['schemas']['JobFamily'];
@@ -126,6 +195,14 @@ export type components = {
             "job": unknown;
             "progress"?: null | components['schemas']['JobProgress'];
         };
+        "LedgerSummary": {
+            "committed_generation"?: null | components['schemas']['SourceGenerationId'];
+            "counts": components['schemas']['SourceCounts'];
+            "generation": components['schemas']['SourceGenerationId'];
+            "source_id": components['schemas']['SourceId'];
+            "status": components['schemas']['LifecycleStatus'];
+        };
+        "LifecycleStatus": "queued" | "pending" | "running" | "waiting" | "blocked" | "canceling" | "completed" | "completed_degraded" | "failed" | "canceled" | "expired" | "skipped";
         "LinkEntry": {
             "href": string;
             "text": string;
@@ -148,6 +225,7 @@ export type components = {
             "new"?: string | null;
             "old"?: string | null;
         };
+        "MetadataMap": Record<string, unknown>;
         "MobileChatItem": {
             "kind": string;
             "payload"?: Record<string, unknown>;
@@ -181,20 +259,22 @@ export type components = {
             "turn_count": number;
             "updated_at": number;
         };
+        "OutputPolicy": {
+            "artifact_mode": components['schemas']['ArtifactMode'];
+            "include_progress": boolean;
+            "inline_limit_bytes": number;
+            "json": boolean;
+            "response_mode": components['schemas']['ResponseMode'];
+        };
         "PanelCollectionsResponse": {
             "collections": string[];
         };
-        "PreparedSessionDoc": {
-            "extra"?: unknown;
-            "session_date"?: string | null;
-            "session_file": string;
-            "session_platform": string;
-            "session_project"?: string | null;
-            "session_turn_count"?: number | null;
-            "text": string;
-            "title"?: string | null;
-            "url": string;
+        "PollDescriptor": {
+            "events_url"?: string | null;
+            "status_url": string;
+            "suggested_interval_ms": number;
         };
+        "ProviderId": string;
         "PurgeRequest": {
             "collection"?: string | null;
             "dry_run"?: boolean | null;
@@ -251,31 +331,10 @@ export type components = {
             "message": string;
             "model"?: string | null;
         };
-        "RestCrawlRequest": {
-            "collection"?: string | null;
-            "delay_ms"?: number | null;
-            "discover_llms_txt"?: boolean | null;
-            "discover_sitemaps"?: boolean | null;
-            "headers"?: string[];
-            "include_subdomains"?: boolean | null;
-            "max_depth"?: number | null;
-            "max_llms_txt_urls"?: number | null;
-            "max_pages"?: number | null;
-            "max_sitemaps"?: number | null;
-            "render_mode"?: null | components['schemas']['RenderMode'];
-            "respect_robots"?: boolean | null;
-            "sitemap_since_days"?: number | null;
-            "urls": string[];
-        };
         "RestDiffRequest": {
             "render_mode"?: null | components['schemas']['RenderMode'];
             "url_a": string;
             "url_b": string;
-        };
-        "RestEmbedRequest": {
-            "collection"?: string | null;
-            "input": string;
-            "source_type"?: string | null;
         };
         "RestEvaluateRequest": {
             "before"?: string | null;
@@ -297,13 +356,6 @@ export type components = {
             "render_mode"?: null | components['schemas']['RenderMode'];
             "urls": string[];
         };
-        "RestIngestRequest": {
-            "include_source"?: boolean | null;
-            "sessions"?: null | components['schemas']['RestSessionsIngestOptions'];
-            "source_type"?: null | components['schemas']['RestIngestSourceType'];
-            "target"?: string | null;
-        };
-        "RestIngestSourceType": "github" | "gitlab" | "gitea" | "git" | "reddit" | "youtube" | "rss" | "sessions";
         "RestMapRequest": {
             "limit"?: number | null;
             "offset"?: number | null;
@@ -355,17 +407,6 @@ export type components = {
             "token_budget"?: number | null;
             "url": string;
         };
-        "RestScrapeRequest": {
-            "collection"?: string | null;
-            "embed"?: boolean | null;
-            "exclude_selector"?: string | null;
-            "format"?: null | components['schemas']['ScrapeFormat'];
-            "headers"?: string[];
-            "render_mode"?: null | components['schemas']['RenderMode'];
-            "root_selector"?: string | null;
-            "url"?: string | null;
-            "urls"?: string[] | null;
-        };
         "RestScreenshotRequest": {
             "full_page"?: boolean | null;
             "url": string;
@@ -376,12 +417,6 @@ export type components = {
             "offset"?: number | null;
             "query": string;
             "time_range"?: string | null;
-        };
-        "RestSessionsIngestOptions": {
-            "claude"?: boolean | null;
-            "codex"?: boolean | null;
-            "gemini"?: boolean | null;
-            "project"?: string | null;
         };
         "RestSuggestRequest": {
             "collection"?: string | null;
@@ -405,7 +440,6 @@ export type components = {
         };
         "RpcProtocol": "jsonrpc2" | "openrpc" | "mcp";
         "RpcTransport": "http" | "sse";
-        "ScrapeFormat": "markdown" | "html" | "rawHtml" | "json" | "llm";
         "ScreenshotResult": {
             "artifact_handle"?: null | components['schemas']['ArtifactHandle'];
             "path": string;
@@ -420,6 +454,84 @@ export type components = {
             "supported_routes": string[];
             "version": string;
         };
+        "Severity": "debug" | "info" | "warning" | "degraded" | "failed" | "fatal";
+        "SourceCounts": {
+            "bytes_total": number;
+            "chunks_total": number;
+            "documents_total": number;
+            "items_changed": number;
+            "items_total": number;
+            "vector_points_total": number;
+        };
+        "SourceError": {
+            "cause"?: string | null;
+            "code": string;
+            "message": string;
+            "provider_id"?: null | components['schemas']['ProviderId'];
+            "retryable": boolean;
+            "severity": components['schemas']['Severity'];
+            "source_item_key"?: null | components['schemas']['SourceItemKey'];
+        };
+        "SourceGenerationId": string;
+        "SourceId": string;
+        "SourceIntent": "acquire" | "refresh" | "watch" | "map";
+        "SourceItemKey": string;
+        "SourceKind": "web" | "local" | "git" | "registry" | "feed" | "reddit" | "youtube" | "session" | "cli_tool" | "mcp_tool" | "memory" | "upload";
+        "SourceLimits": {
+            "max_bytes_per_item"?: number | null;
+            "max_chunks"?: number | null;
+            "max_depth"?: number | null;
+            "max_items"?: number | null;
+            "max_pages"?: number | null;
+            "max_total_bytes"?: number | null;
+            "provider_timeout_ms"?: number | null;
+        };
+        "SourceRefreshPolicy": "if_stale" | "force" | "never";
+        "SourceRequest": {
+            "adapter"?: string | null;
+            "authority_hint"?: null | components['schemas']['AuthorityHint'];
+            "collection"?: string | null;
+            "embed"?: boolean;
+            "execution"?: components['schemas']['ExecutionPolicy'];
+            "idempotency_key"?: string | null;
+            "intent"?: components['schemas']['SourceIntent'];
+            "limits"?: components['schemas']['SourceLimits'];
+            "metadata"?: components['schemas']['MetadataMap'];
+            "options"?: components['schemas']['AdapterOptions'];
+            "output"?: components['schemas']['OutputPolicy'];
+            "refresh"?: components['schemas']['SourceRefreshPolicy'];
+            "scope"?: null | components['schemas']['SourceScope'];
+            "source": string;
+            "watch"?: components['schemas']['SourceWatchPolicy'];
+        };
+        "SourceResult": {
+            "adapter": components['schemas']['AdapterRef'];
+            "artifacts": components['schemas']['ArtifactRef'][];
+            "canonical_uri": string;
+            "counts": components['schemas']['SourceCounts'];
+            "errors": components['schemas']['SourceError'][];
+            "graph": components['schemas']['GraphWriteSummary'];
+            "inline"?: null | components['schemas']['InlineSourceResult'];
+            "job"?: null | components['schemas']['JobDescriptor'];
+            "job_id": components['schemas']['JobId'];
+            "ledger": components['schemas']['LedgerSummary'];
+            "scope": components['schemas']['SourceScope'];
+            "source_id": components['schemas']['SourceId'];
+            "source_kind": components['schemas']['SourceKind'];
+            "status": components['schemas']['LifecycleStatus'];
+            "warnings": components['schemas']['SourceWarning'][];
+            "watch"?: null | components['schemas']['WatchResult'];
+        };
+        "SourceScope": "page" | "site" | "docs" | "repo" | "workspace" | "branch" | "org" | "package" | "version" | "feed" | "subreddit" | "thread" | "comment" | "video" | "playlist" | "channel" | "issue" | "pull_request" | "merge_request" | "release" | "wiki" | "file" | "directory" | "map" | "tool" | "script" | "api";
+        "SourceWarning": {
+            "code": string;
+            "message": string;
+            "retryable": boolean;
+            "severity": components['schemas']['Severity'];
+            "source_item_key"?: null | components['schemas']['SourceItemKey'];
+        };
+        "SourceWatchPolicy": "disabled" | "ensure" | "enabled";
+        "Timestamp": string;
         "UpsertMobileSessionRequest": {
             "session": components['schemas']['MobileSession'];
         };
@@ -435,6 +547,24 @@ export type components = {
             "task_payload": unknown;
             "task_type": string;
         };
+        "WatchId": string;
+        "WatchResult": {
+            "adapter": components['schemas']['AdapterRef'];
+            "canonical_uri": string;
+            "enabled": boolean;
+            "job"?: null | components['schemas']['JobDescriptor'];
+            "latest_job"?: null | components['schemas']['JobDescriptor'];
+            "schedule": components['schemas']['WatchSchedule'];
+            "scope": components['schemas']['SourceScope'];
+            "source_id": components['schemas']['SourceId'];
+            "warnings": components['schemas']['SourceWarning'][];
+            "watch_id": components['schemas']['WatchId'];
+        };
+        "WatchSchedule": {
+            "cron"?: string | null;
+            "every_seconds": number;
+            "timezone"?: string | null;
+        };
     };
 };
 
@@ -449,20 +579,10 @@ export type paths = {
     "/v1/chat": { post: operations["v1_chat"] };
     "/v1/chat/stream": { post: operations["v1_chat_stream"] };
     "/v1/collections": { get: operations["collections_openapi_marker"] };
-    "/v1/crawl": { get: operations["list_jobs"]; post: operations["start_crawl"]; delete: operations["clear_jobs"] };
-    "/v1/crawl/cleanup": { post: operations["cleanup_jobs"] };
-    "/v1/crawl/recover": { post: operations["recover_jobs"] };
-    "/v1/crawl/{id}": { get: operations["job_status"] };
-    "/v1/crawl/{id}/cancel": { post: operations["cancel_job"] };
     "/v1/dedupe": { post: operations["dedupe"] };
     "/v1/diff": { post: operations["diff"] };
     "/v1/doctor": { get: operations["doctor"] };
     "/v1/domains": { get: operations["domains"] };
-    "/v1/embed": { get: operations["list_embed_jobs"]; post: operations["start_embed"]; delete: operations["clear_embed_jobs"] };
-    "/v1/embed/cleanup": { post: operations["cleanup_embed_jobs"] };
-    "/v1/embed/recover": { post: operations["recover_embed_jobs"] };
-    "/v1/embed/{id}": { get: operations["embed_job_status"] };
-    "/v1/embed/{id}/cancel": { post: operations["cancel_embed_job"] };
     "/v1/endpoints": { post: operations["endpoints"] };
     "/v1/evaluate": { post: operations["evaluate"] };
     "/v1/extract": { get: operations["list_extract_jobs"]; post: operations["start_extract"]; delete: operations["clear_extract_jobs"] };
@@ -470,12 +590,6 @@ export type paths = {
     "/v1/extract/recover": { post: operations["recover_extract_jobs"] };
     "/v1/extract/{id}": { get: operations["extract_job_status"] };
     "/v1/extract/{id}/cancel": { post: operations["cancel_extract_job"] };
-    "/v1/ingest": { get: operations["list_ingest_jobs"]; post: operations["start_ingest"]; delete: operations["clear_ingest_jobs"] };
-    "/v1/ingest/cleanup": { post: operations["cleanup_ingest_jobs"] };
-    "/v1/ingest/recover": { post: operations["recover_ingest_jobs"] };
-    "/v1/ingest/sessions/prepared": { post: operations["start_prepared_sessions_ingest"] };
-    "/v1/ingest/{id}": { get: operations["ingest_job_status"] };
-    "/v1/ingest/{id}/cancel": { post: operations["cancel_ingest_job"] };
     "/v1/map": { post: operations["map"] };
     "/v1/memory": { post: operations["memory"] };
     "/v1/mobile/sessions": { get: operations["list_mobile_sessions"] };
@@ -485,10 +599,9 @@ export type paths = {
     "/v1/research": { post: operations["research"] };
     "/v1/research/stream": { post: operations["research_stream"] };
     "/v1/retrieve": { post: operations["retrieve"] };
-    "/v1/scrape": { post: operations["scrape"] };
     "/v1/screenshot": { post: operations["screenshot"] };
     "/v1/search": { post: operations["search"] };
-    "/v1/sources": { get: operations["sources"] };
+    "/v1/sources": { get: operations["sources"]; post: operations["index_source"] };
     "/v1/stats": { get: operations["stats"] };
     "/v1/status": { get: operations["status"] };
     "/v1/suggest": { post: operations["suggest"] };
@@ -509,24 +622,10 @@ export type operations = {
     "v1_chat": { method: "post"; path: "/v1/chat"; operationId: "v1_chat"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": components['schemas']['RestChatResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "v1_chat_stream": { method: "post"; path: "/v1/chat/stream"; operationId: "v1_chat_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "collections_openapi_marker": { method: "get"; path: "/v1/collections"; operationId: "collections_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['PanelCollectionsResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "list_jobs": { method: "get"; path: "/v1/crawl"; operationId: "list_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "start_crawl": { method: "post"; path: "/v1/crawl"; operationId: "start_crawl"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestCrawlRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "clear_jobs": { method: "delete"; path: "/v1/crawl"; operationId: "clear_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cleanup_jobs": { method: "post"; path: "/v1/crawl/cleanup"; operationId: "cleanup_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "recover_jobs": { method: "post"; path: "/v1/crawl/recover"; operationId: "recover_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "job_status": { method: "get"; path: "/v1/crawl/{id}"; operationId: "job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cancel_job": { method: "post"; path: "/v1/crawl/{id}/cancel"; operationId: "cancel_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "dedupe": { method: "post"; path: "/v1/dedupe"; operationId: "dedupe"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: null | components['schemas']['DedupeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "415": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "diff": { method: "post"; path: "/v1/diff"; operationId: "diff"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestDiffRequest']; responses: { "200": components['schemas']['DiffResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "doctor": { method: "get"; path: "/v1/doctor"; operationId: "doctor"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "domains": { method: "get"; path: "/v1/domains"; operationId: "domains"; parameters: { query: { "limit"?: number | null; "offset"?: number | null; "domain"?: string | null; "cursor"?: string | null }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "list_embed_jobs": { method: "get"; path: "/v1/embed"; operationId: "list_embed_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "start_embed": { method: "post"; path: "/v1/embed"; operationId: "start_embed"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestEmbedRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "clear_embed_jobs": { method: "delete"; path: "/v1/embed"; operationId: "clear_embed_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cleanup_embed_jobs": { method: "post"; path: "/v1/embed/cleanup"; operationId: "cleanup_embed_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "recover_embed_jobs": { method: "post"; path: "/v1/embed/recover"; operationId: "recover_embed_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "embed_job_status": { method: "get"; path: "/v1/embed/{id}"; operationId: "embed_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cancel_embed_job": { method: "post"; path: "/v1/embed/{id}/cancel"; operationId: "cancel_embed_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "endpoints": { method: "post"; path: "/v1/endpoints"; operationId: "endpoints"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['EndpointsRequest']; responses: { "200": components['schemas']['EndpointReport']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "evaluate": { method: "post"; path: "/v1/evaluate"; operationId: "evaluate"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestEvaluateRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_extract_jobs": { method: "get"; path: "/v1/extract"; operationId: "list_extract_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -536,14 +635,6 @@ export type operations = {
     "recover_extract_jobs": { method: "post"; path: "/v1/extract/recover"; operationId: "recover_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "extract_job_status": { method: "get"; path: "/v1/extract/{id}"; operationId: "extract_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "cancel_extract_job": { method: "post"; path: "/v1/extract/{id}/cancel"; operationId: "cancel_extract_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "list_ingest_jobs": { method: "get"; path: "/v1/ingest"; operationId: "list_ingest_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "start_ingest": { method: "post"; path: "/v1/ingest"; operationId: "start_ingest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestIngestRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "clear_ingest_jobs": { method: "delete"; path: "/v1/ingest"; operationId: "clear_ingest_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cleanup_ingest_jobs": { method: "post"; path: "/v1/ingest/cleanup"; operationId: "cleanup_ingest_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "recover_ingest_jobs": { method: "post"; path: "/v1/ingest/recover"; operationId: "recover_ingest_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "start_prepared_sessions_ingest": { method: "post"; path: "/v1/ingest/sessions/prepared"; operationId: "start_prepared_sessions_ingest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['IngestSessionsPreparedRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "ingest_job_status": { method: "get"; path: "/v1/ingest/{id}"; operationId: "ingest_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cancel_ingest_job": { method: "post"; path: "/v1/ingest/{id}/cancel"; operationId: "cancel_ingest_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "map": { method: "post"; path: "/v1/map"; operationId: "map"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMapRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "memory": { method: "post"; path: "/v1/memory"; operationId: "memory"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_mobile_sessions": { method: "get"; path: "/v1/mobile/sessions"; operationId: "list_mobile_sessions"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['MobileSessionListResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -555,10 +646,10 @@ export type operations = {
     "research": { method: "post"; path: "/v1/research"; operationId: "research"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "504": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research_stream": { method: "post"; path: "/v1/research/stream"; operationId: "research_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "retrieve": { method: "post"; path: "/v1/retrieve"; operationId: "retrieve"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestRetrieveRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "scrape": { method: "post"; path: "/v1/scrape"; operationId: "scrape"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestScrapeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "screenshot": { method: "post"; path: "/v1/screenshot"; operationId: "screenshot"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestScreenshotRequest']; responses: { "200": components['schemas']['ScreenshotResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "search": { method: "post"; path: "/v1/search"; operationId: "search"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "sources": { method: "get"; path: "/v1/sources"; operationId: "sources"; parameters: { query: { "limit"?: number | null; "offset"?: number | null; "domain"?: string | null; "cursor"?: string | null }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "index_source": { method: "post"; path: "/v1/sources"; operationId: "index_source"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['SourceRequest']; responses: { "200": components['schemas']['SourceResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "stats": { method: "get"; path: "/v1/stats"; operationId: "stats"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "status": { method: "get"; path: "/v1/status"; operationId: "status"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "suggest": { method: "post"; path: "/v1/suggest"; operationId: "suggest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSuggestRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "429": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

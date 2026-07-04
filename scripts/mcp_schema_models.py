@@ -100,15 +100,15 @@ class EnumDef:
 
 # Maps AxonRequest variant -> action name (snake_case from serde rename_all).
 # Also maps Request struct name -> action name for struct lookups.
+# MCP action surface. The legacy indexing actions (crawl/scrape/embed/ingest/
+# code_search/vertical_scrape) were folded into the single `source` action and
+# are intentionally absent here — they no longer exist on the MCP tool.
 VARIANT_TO_ACTION: dict[str, str] = {
     "Status": "status",
-    "Crawl": "crawl",
+    "Source": "source",
     "Extract": "extract",
-    "Embed": "embed",
-    "Ingest": "ingest",
     "Memory": "memory",
     "Query": "query",
-    "CodeSearch": "code_search",
     "Retrieve": "retrieve",
     "Search": "search",
     "Map": "map",
@@ -120,7 +120,6 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Sources": "sources",
     "Stats": "stats",
     "Help": "help",
-    "Scrape": "scrape",
     "Research": "research",
     "Ask": "ask",
     "Summarize": "summarize",
@@ -129,7 +128,6 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Brand": "brand",
     "Purge": "purge",
     "ElicitDemo": "elicit_demo",
-    "VerticalScrape": "vertical_scrape",
 }
 
 STRUCT_TO_ACTION: dict[str, str] = {
@@ -137,7 +135,7 @@ STRUCT_TO_ACTION: dict[str, str] = {
 }
 
 # Lifecycle families get special documentation treatment.
-LIFECYCLE_FAMILIES: set[str] = {"crawl", "extract", "embed", "ingest"}
+LIFECYCLE_FAMILIES: set[str] = {"extract"}
 
 # Crawl-specific field descriptions (hardcoded -- not derivable from types).
 CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
@@ -186,16 +184,16 @@ RUNTIME_ENV_VARS: list = [
 RUNTIME_ENV_VARS_DEPRECATED: list[str] = []
 
 MCP_TRANSPORT_ENV_VARS: list[str] = [
-    "AXON_MCP_HTTP_HOST",
-    "AXON_MCP_HTTP_PORT",
+    "AXON_HTTP_HOST",
+    "AXON_HTTP_PORT",
 ]
 
 MCP_AUTH_ENV_VARS: list[str] = [
-    "AXON_MCP_HTTP_TOKEN",
-    "AXON_MCP_AUTH_MODE",
-    "AXON_MCP_PUBLIC_URL",
-    "AXON_MCP_GOOGLE_CLIENT_ID",
-    "AXON_MCP_GOOGLE_CLIENT_SECRET",
-    "AXON_MCP_AUTH_ADMIN_EMAIL",
-    "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+    "AXON_HTTP_TOKEN",
+    "AXON_AUTH_MODE",
+    "AXON_PUBLIC_URL",
+    "AXON_GOOGLE_CLIENT_ID",
+    "AXON_GOOGLE_CLIENT_SECRET",
+    "AXON_AUTH_ADMIN_EMAIL",
+    "AXON_ALLOWED_REDIRECT_URIS",
 ]

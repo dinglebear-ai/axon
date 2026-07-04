@@ -1423,7 +1423,7 @@ access logs/metrics.
 
 | Route | Request | Response data | Side effects |
 |---|---|---|---|
-| `POST /v1/query` | body `{ "query", "source_id?", "graph_node_id?", "filters"?, "generation": "committed"|number, "limit", "include_graph" }` | ranked chunk/document results plus optional graph refs | may read VectorStore/GraphStore/DocumentCache only |
+| `POST /v1/query` | body `{ "query", "source_id?", "graph_node_id?", "filters"?, "committed_generation"?: string, "limit", "include_graph" }` | ranked chunk/document results plus optional graph refs; generation filters target committed published generations, never staged numeric source generations | may read VectorStore/GraphStore/DocumentCache only |
 | `POST /v1/retrieve` | body `{ "source?", "source_id?", "document_id?", "url?", "chunk_id?", "include_content": bool, "limit" }` | documents/chunks with metadata, content subject to auth/redaction | may read ArtifactStore/DocumentCache only |
 | `POST /v1/ask` | body `{ "question", "filters"?, "retrieval"?, "synthesis"?, "include_trace"?: bool }` | `{ "answer", "citations", "retrieval", "graph", "model", "warnings" }` | reads retrieval stores and calls `LlmProvider`; may write job/event rows if async |
 | `POST /v1/ask/stream` | same as `/v1/ask` plus streaming options | SSE stream of retrieval, token, citation, and final events | reads retrieval stores and calls streaming `LlmProvider` |

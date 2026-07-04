@@ -360,7 +360,7 @@ fn print_local_setup_report(
     println!(
         "{}",
         muted(
-            "token: AXON_MCP_HTTP_TOKEN presence is reported in setup phases; values are never printed"
+            "token: AXON_HTTP_TOKEN presence is reported in setup phases; values are never printed"
         )
     );
     println!(

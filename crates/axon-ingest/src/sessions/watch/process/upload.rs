@@ -130,8 +130,8 @@ pub(super) async fn upload_prepared_sessions_to_server(
         .upload_token
         .clone()
         .map(Ok)
-        .unwrap_or_else(|| std::env::var("AXON_MCP_HTTP_TOKEN"))
-        .map_err(|_| anyhow!("AXON_MCP_HTTP_TOKEN is required when --upload-to-server is set"))?;
+        .unwrap_or_else(|| std::env::var("AXON_HTTP_TOKEN"))
+        .map_err(|_| anyhow!("AXON_HTTP_TOKEN is required when --upload-to-server is set"))?;
     upload_prepared_sessions_to_server_with_auth(&base, &token, request).await
 }
 

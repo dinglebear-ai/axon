@@ -42,7 +42,7 @@ class McpDocRendererTest(unittest.TestCase):
 
         self.assertIn("| `max_depth` | usize | 10 | Max crawl depth |", markdown)
         self.assertIn("`graph` is a deprecated compatibility field", markdown)
-        self.assertIn("- `AXON_MCP_AUTH_MODE`", markdown)
+        self.assertIn("- `AXON_AUTH_MODE`", markdown)
         self.assertIn("- `ui://axon/status-dashboard`", markdown)
 
 

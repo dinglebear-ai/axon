@@ -1,0 +1,417 @@
+use axon_api::source::*;
+
+use crate::migration::sqlite_error;
+use crate::sqlite::SqliteLedgerStore;
+use crate::sqlite::cleanup::insert_cleanup_debt_once_in_tx;
+use crate::sqlite::util::{enum_wire_value, json_error, timestamp};
+use crate::store::Result;
+use crate::validation::{
+    ensure_generation_publishable, ensure_generation_writable, generation_already_published_error,
+    manifest_missing_error, source_missing_error,
+};
+
+mod stale_cleanup;
+
+use stale_cleanup::stale_item_cleanup_debt_in_tx;
+
+pub(super) async fn create_generation(
+    store: &SqliteLedgerStore,
+    source_id: SourceId,
+) -> Result<SourceGeneration> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    ensure_source_exists_in_tx(&mut tx, &source_id).await?;
+    let previous_generation = current_committed_generation_in_tx(&mut tx, &source_id).await?;
+    let next_sequence: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(MAX(sequence), 0) + 1
+        FROM source_generations
+        WHERE source_id = ?1
+        "#,
+    )
+    .bind(&source_id.0)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    let generation = SourceGeneration {
+        source_id: source_id.clone(),
+        generation: SourceGenerationId::new(format!("gen_{next_sequence}")),
+        status: LifecycleStatus::Running,
+        publish_state: PublishState::Writing,
+        created_at: timestamp(),
+        published_at: None,
+        item_counts: ItemCounts {
+            added: 0,
+            modified: 0,
+            removed: 0,
+            unchanged: 0,
+            failed: 0,
+        },
+        document_counts: DocumentCounts {
+            discovered: 0,
+            prepared: 0,
+            embedded: 0,
+            published: 0,
+            failed: 0,
+        },
+        cleanup_debt: Vec::new(),
+        previous_generation,
+    };
+    upsert_generation_in_tx(&mut tx, &generation, Some(next_sequence)).await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(generation)
+}
+
+pub(super) async fn ensure_source_exists_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+) -> Result<()> {
+    let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
+        .bind(&source_id.0)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(sqlite_error)?;
+    if exists.is_none() {
+        return Err(source_missing_error(source_id));
+    }
+    Ok(())
+}
+
+pub(super) async fn complete_generation(
+    store: &SqliteLedgerStore,
+    generation: SourceGeneration,
+) -> Result<SourceGeneration> {
+    ensure_generation_publishable(&generation)?;
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
+    ensure_generation_writable(&stored)?;
+    let manifest_exists: Option<i64> = sqlx::query_scalar(
+        r#"
+        SELECT 1
+        FROM source_manifests
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&generation.source_id.0)
+    .bind(&generation.generation.0)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    if manifest_exists.is_none() {
+        return Err(manifest_missing_error(&generation));
+    }
+    if stored.previous_generation != generation.previous_generation {
+        return Err(ApiError::new(
+            "source.ledger.generation_baseline_changed",
+            ErrorStage::Publishing,
+            format!(
+                "generation {} was based on {:?}, but stored generation is based on {:?}",
+                generation.generation.0, generation.previous_generation, stored.previous_generation
+            ),
+        )
+        .with_source_id(generation.source_id.0));
+    }
+
+    let mut completed = generation;
+    completed.created_at = stored.created_at;
+    completed.publish_state = PublishState::Writing;
+    completed.published_at = None;
+    completed.cleanup_debt = Vec::new();
+    upsert_generation_in_tx(&mut tx, &completed, None).await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(completed)
+}
+
+pub(super) async fn fail_generation(
+    store: &SqliteLedgerStore,
+    generation: SourceGeneration,
+) -> Result<SourceGeneration> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
+    if stored.published_at.is_some() || stored.publish_state != PublishState::Writing {
+        return Err(generation_already_published_error(&stored));
+    }
+
+    let mut failed = generation;
+    failed.created_at = stored.created_at;
+    failed.published_at = None;
+    failed.publish_state = PublishState::Writing;
+    failed.status = LifecycleStatus::Failed;
+    upsert_generation_in_tx(&mut tx, &failed, None).await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(failed)
+}
+
+pub(super) async fn publish_generation(
+    store: &SqliteLedgerStore,
+    request: PublishGenerationRequest,
+) -> Result<SourceGeneration> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let generation = generation_in_tx(&mut tx, &request.source_id, &request.generation).await?;
+    ensure_generation_publishable(&generation)?;
+
+    let manifest_exists: Option<i64> = sqlx::query_scalar(
+        r#"
+        SELECT 1
+        FROM source_manifests
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&generation.source_id.0)
+    .bind(&generation.generation.0)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    if manifest_exists.is_none() {
+        return Err(manifest_missing_error(&generation));
+    }
+
+    let previous = current_committed_generation_in_tx(&mut tx, &generation.source_id).await?;
+    if previous != request.expected_previous_generation
+        || generation.previous_generation != request.expected_previous_generation
+    {
+        return Err(ApiError::new(
+            "source.ledger.generation_baseline_changed",
+            ErrorStage::Publishing,
+            format!(
+                "generation {} was based on {:?}, but committed generation is {:?}",
+                generation.generation.0, generation.previous_generation, previous
+            ),
+        )
+        .with_source_id(generation.source_id.0));
+    }
+
+    let mut committed_generation = generation.clone();
+    committed_generation.published_at = Some(timestamp());
+    let cleanup_debt =
+        stale_item_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?;
+    committed_generation.publish_state = if cleanup_debt.is_empty() {
+        PublishState::Committed
+    } else {
+        PublishState::CleanupPending
+    };
+    committed_generation.cleanup_debt = cleanup_debt
+        .iter()
+        .map(|debt| debt.debt_id.clone())
+        .collect();
+    upsert_generation_in_tx(&mut tx, &committed_generation, None).await?;
+    for debt in cleanup_debt {
+        insert_cleanup_debt_once_in_tx(&mut tx, debt).await?;
+    }
+
+    let result = sqlx::query(
+        r#"
+        UPDATE sources
+        SET committed_generation = ?1,
+            updated_at = ?2
+        WHERE source_id = ?3
+          AND (
+            (committed_generation IS NULL AND ?4 IS NULL)
+            OR committed_generation = ?4
+          )
+        "#,
+    )
+    .bind(&committed_generation.generation.0)
+    .bind(timestamp().0)
+    .bind(&committed_generation.source_id.0)
+    .bind(previous.as_ref().map(|value| value.0.as_str()))
+    .execute(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    if result.rows_affected() != 1 {
+        return Err(ApiError::new(
+            "source.ledger.generation_baseline_changed",
+            ErrorStage::Publishing,
+            format!(
+                "source {} committed generation changed during publish",
+                committed_generation.source_id.0
+            ),
+        )
+        .with_source_id(committed_generation.source_id.0));
+    }
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(committed_generation)
+}
+
+pub(super) async fn committed_generation(
+    store: &SqliteLedgerStore,
+    source_id: &SourceId,
+) -> Result<Option<SourceGenerationId>> {
+    let committed_generation: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT committed_generation
+        FROM sources
+        WHERE source_id = ?1
+        "#,
+    )
+    .bind(&source_id.0)
+    .fetch_optional(&store.pool)
+    .await
+    .map_err(sqlite_error)?
+    .flatten();
+    Ok(committed_generation.map(SourceGenerationId::new))
+}
+
+pub(super) async fn upsert_generation_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    generation: &SourceGeneration,
+    sequence: Option<i64>,
+) -> Result<()> {
+    let sequence = match sequence {
+        Some(sequence) => sequence,
+        None => sqlx::query_scalar(
+            r#"
+            SELECT sequence
+            FROM source_generations
+            WHERE source_id = ?1 AND generation = ?2
+            "#,
+        )
+        .bind(&generation.source_id.0)
+        .bind(&generation.generation.0)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(sqlite_error)?,
+    };
+    let generation_json = serde_json::to_string(generation).map_err(json_error)?;
+    sqlx::query(
+        r#"
+        INSERT INTO source_generations (
+            source_id,
+            generation,
+            sequence,
+            status,
+            publish_state,
+            generation_json,
+            created_at,
+            published_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        ON CONFLICT(source_id, generation) DO UPDATE SET
+            sequence = COALESCE(excluded.sequence, source_generations.sequence),
+            status = excluded.status,
+            publish_state = excluded.publish_state,
+            generation_json = excluded.generation_json,
+            published_at = excluded.published_at
+        "#,
+    )
+    .bind(&generation.source_id.0)
+    .bind(&generation.generation.0)
+    .bind(sequence)
+    .bind(enum_wire_value(generation.status)?)
+    .bind(enum_wire_value(generation.publish_state)?)
+    .bind(generation_json)
+    .bind(&generation.created_at.0)
+    .bind(
+        generation
+            .published_at
+            .as_ref()
+            .map(|value| value.0.as_str()),
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+    Ok(())
+}
+
+async fn generation_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<SourceGeneration> {
+    let generation_json: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT generation_json
+        FROM source_generations
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&source_id.0)
+    .bind(&generation.0)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+    let Some(generation_json) = generation_json else {
+        return Err(ApiError::new(
+            "source.ledger.generation_missing",
+            ErrorStage::Publishing,
+            format!("generation {} does not exist", generation.0),
+        )
+        .with_source_id(source_id.0.clone()));
+    };
+    serde_json::from_str(&generation_json).map_err(json_error)
+}
+
+pub(super) async fn ensure_generation_for_manifest_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    manifest: &SourceManifest,
+) -> Result<()> {
+    let exists: Option<i64> = sqlx::query_scalar(
+        r#"
+        SELECT 1
+        FROM source_generations
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&manifest.source_id.0)
+    .bind(&manifest.generation.0)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+    if exists.is_some() {
+        return Ok(());
+    }
+
+    let sequence: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(MAX(sequence), 0) + 1
+        FROM source_generations
+        WHERE source_id = ?1
+        "#,
+    )
+    .bind(&manifest.source_id.0)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+    let generation = SourceGeneration {
+        source_id: manifest.source_id.clone(),
+        generation: manifest.generation.clone(),
+        status: LifecycleStatus::Running,
+        publish_state: PublishState::Writing,
+        created_at: manifest.created_at.clone(),
+        published_at: None,
+        item_counts: ItemCounts {
+            added: 0,
+            modified: 0,
+            removed: 0,
+            unchanged: manifest.items.len() as u64,
+            failed: 0,
+        },
+        document_counts: DocumentCounts {
+            discovered: manifest.items.len() as u64,
+            prepared: 0,
+            embedded: 0,
+            published: 0,
+            failed: 0,
+        },
+        cleanup_debt: Vec::new(),
+        previous_generation: current_committed_generation_in_tx(tx, &manifest.source_id).await?,
+    };
+    upsert_generation_in_tx(tx, &generation, Some(sequence)).await
+}
+
+pub(super) async fn current_committed_generation_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+) -> Result<Option<SourceGenerationId>> {
+    let committed_generation: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT committed_generation
+        FROM sources
+        WHERE source_id = ?1
+        "#,
+    )
+    .bind(&source_id.0)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(sqlite_error)?
+    .flatten();
+    Ok(committed_generation.map(SourceGenerationId::new))
+}

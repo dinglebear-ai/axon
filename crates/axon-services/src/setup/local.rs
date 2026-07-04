@@ -45,7 +45,7 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
 /// prerequisite tool (e.g. nvidia-smi) must never trigger a redeploy when the
 /// stack is plainly up. Single-shot with a short timeout; never blocks startup.
 ///
-/// The host/port are read from `AXON_MCP_HTTP_HOST` / `AXON_MCP_HTTP_PORT` in the
+/// The host/port are read from `AXON_HTTP_HOST` / `AXON_HTTP_PORT` in the
 /// environment (populated from `~/.axon/.env` at startup), falling back to
 /// `127.0.0.1:8001`. This deliberately reads the env directly rather than
 /// `cfg.mcp_http_port`: the config layer gates those keys behind a host/trusted
@@ -53,8 +53,8 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
 /// stays at the default. The deployed `.env` value is the authoritative bind, and
 /// this matches how the `setup`/`preflight` readiness check resolves the axon URL.
 pub async fn stack_already_healthy() -> bool {
-    let host = std::env::var("AXON_MCP_HTTP_HOST").unwrap_or_default();
-    let port = std::env::var("AXON_MCP_HTTP_PORT")
+    let host = std::env::var("AXON_HTTP_HOST").unwrap_or_default();
+    let port = std::env::var("AXON_HTTP_PORT")
         .ok()
         .and_then(|value| value.trim().parse::<u16>().ok())
         .unwrap_or(8001);
@@ -367,8 +367,8 @@ async fn run_readiness_phases(env_values: &BTreeMap<String, String>) -> Vec<Loca
     let qdrant_url = env_value(env_values, "QDRANT_URL", DEFAULT_QDRANT_URL);
     let tei_url = env_value(env_values, "TEI_URL", DEFAULT_TEI_URL);
     let chrome_url = env_value(env_values, "AXON_CHROME_REMOTE_URL", DEFAULT_CHROME_URL);
-    let axon_host = env_value(env_values, "AXON_MCP_HTTP_HOST", "127.0.0.1");
-    let axon_port = env_value(env_values, "AXON_MCP_HTTP_PORT", "8001")
+    let axon_host = env_value(env_values, "AXON_HTTP_HOST", "127.0.0.1");
+    let axon_port = env_value(env_values, "AXON_HTTP_PORT", "8001")
         .parse::<u16>()
         .unwrap_or(8001);
 

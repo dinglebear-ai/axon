@@ -5,16 +5,28 @@ pub mod android_api_contract;
 pub mod api_parity;
 pub mod broken_symlinks;
 pub mod claude_symlinks;
+pub mod dep_graph;
+pub mod doc_contracts;
+pub mod doc_links;
 pub mod env_staged;
 pub mod layering;
 pub mod mcp_http;
 pub mod no_mod_rs;
 pub mod openapi_drift;
+pub mod public_api;
 pub mod release_versions;
+pub mod repo_structure;
+pub mod repo_structure_spec;
 pub mod secrets;
 pub mod sqlite_migrations;
 pub mod unwraps;
 pub mod version_sync;
+
+#[cfg(test)]
+mod repo_structure_tests;
+
+#[cfg(test)]
+mod layering_tests;
 
 pub fn check(root: &Path) -> Result<()> {
     no_mod_rs::check(root)?;
@@ -25,7 +37,12 @@ pub fn check(root: &Path) -> Result<()> {
     env_staged::check(root)?;
     unwraps::check(root)?;
     claude_symlinks::check(root)?;
+    repo_structure::check(root)?;
     broken_symlinks::check(root)?;
+    doc_links::check(root)?;
+    doc_contracts::check(root)?;
+    dep_graph::check(root)?;
+    public_api::check(root)?;
     sqlite_migrations::check(root)?;
     secrets::check(root)?;
     release_versions::check_local(root)?;

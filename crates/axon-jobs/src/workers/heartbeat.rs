@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 
 use crate::backend::JobKind;
 use crate::ops::touch_heartbeat_for_attempt;
+use axon_api::source::{JobHeartbeat, JobId, LifecycleStatus, PipelinePhase, Timestamp};
 
 /// Default heartbeat interval. Watchdog stale threshold (default 300s + 60s
 /// confirm = 360s) is much larger, so a 30s interval gives ~12x margin.
@@ -58,3 +59,34 @@ impl Drop for HeartbeatGuard {
         }
     }
 }
+
+#[allow(dead_code)]
+pub(crate) fn legacy_job_heartbeat(
+    id: uuid::Uuid,
+    kind: JobKind,
+    attempt: u32,
+    worker_id: Option<String>,
+    last_event_sequence: Option<u64>,
+) -> JobHeartbeat {
+    JobHeartbeat {
+        job_id: JobId::new(id),
+        attempt,
+        worker_id,
+        phase: match kind {
+            JobKind::Crawl => PipelinePhase::Fetching,
+            JobKind::Embed => PipelinePhase::Embedding,
+            JobKind::Extract => PipelinePhase::Synthesizing,
+            JobKind::Ingest => PipelinePhase::Fetching,
+        },
+        status: LifecycleStatus::Running,
+        stage_id: None,
+        heartbeat_at: Timestamp::from(chrono::Utc::now()),
+        last_event_sequence,
+        counts: None,
+        provider_reservations: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+#[path = "heartbeat_tests.rs"]
+mod tests;

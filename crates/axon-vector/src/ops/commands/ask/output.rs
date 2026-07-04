@@ -1,7 +1,7 @@
 use axon_core::config::Config;
 use axon_core::http::http_client;
-use axon_core::llm;
 use axon_core::logging::{log_info, log_warn};
+use axon_llm as llm;
 use std::error::Error;
 use std::time::Instant;
 

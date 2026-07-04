@@ -5,6 +5,10 @@ use crate::backend::JobKind;
 use crate::query::{count_jobs_by_status, oldest_pending_created_at};
 use crate::status::JobStatus;
 use crate::store::now_ms;
+use axon_api::source::{
+    JobId, LifecycleStatus, PipelinePhase, Severity, SourceProgressEvent, SourceWarning,
+    StageCounts, Timestamp, Visibility,
+};
 
 /// One job kind found starving during a watchdog sweep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,6 +16,69 @@ pub(super) struct StarvationAlarm {
     pub kind: JobKind,
     pub pending: i64,
     pub oldest_age_ms: i64,
+}
+
+impl StarvationAlarm {
+    #[allow(dead_code)]
+    pub(crate) fn to_progress_event(
+        self,
+        job_id: JobId,
+        sequence: u64,
+        timestamp: Timestamp,
+    ) -> SourceProgressEvent {
+        SourceProgressEvent {
+            event_id: format!("starvation-{}-{sequence}", self.kind.table_name()),
+            sequence,
+            job_id,
+            attempt: 0,
+            stage_id: None,
+            batch_id: None,
+            reservation_id: None,
+            checkpoint_id: None,
+            dedupe_key: Some(format!("starvation:{}", self.kind.table_name())),
+            phase: PipelinePhase::Leasing,
+            status: LifecycleStatus::Waiting,
+            severity: Severity::Warning,
+            visibility: Visibility::Internal,
+            message: format!(
+                "{} queue starved with {} pending jobs",
+                self.kind.table_name(),
+                self.pending
+            ),
+            timestamp,
+            source_id: None,
+            canonical_uri: None,
+            adapter: None,
+            scope: None,
+            generation: None,
+            counts: StageCounts {
+                items_total: Some(self.pending.max(0) as u64),
+                items_done: 0,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            timing: None,
+            current: None,
+            throughput: None,
+            retry: None,
+            warning: Some(SourceWarning {
+                code: "worker.starvation".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "oldest pending {} job has waited {} seconds with no running worker",
+                    self.kind.table_name(),
+                    self.oldest_age_ms / 1000
+                ),
+                source_item_key: None,
+                retryable: true,
+            }),
+            error: None,
+        }
+    }
 }
 
 /// Detect and recover starved job queues.

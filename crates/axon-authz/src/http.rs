@@ -3,9 +3,9 @@
 //! Guards `axon mcp --transport http` (and `--transport both`) endpoints.
 //! Supports two modes, selected at startup:
 //!
-//! - **Bearer-only** (`AXON_MCP_HTTP_TOKEN` set, `AXON_MCP_AUTH_MODE=bearer`):
+//! - **Bearer-only** (`AXON_HTTP_TOKEN` set, `AXON_AUTH_MODE=bearer`):
 //!   static constant-time token comparison via lab-auth `AuthLayer`.
-//! - **OAuth** (`AXON_MCP_AUTH_MODE=oauth`): Google OAuth 2.0 + JWT validation
+//! - **OAuth** (`AXON_AUTH_MODE=oauth`): Google OAuth 2.0 + JWT validation
 //!   via lab-auth `AuthLayer`, with the OAuth router mounted alongside `/mcp`.
 //!   The static bearer token continues to work in dual-mode (both static and
 //!   JWT bearer are accepted simultaneously).
@@ -17,7 +17,7 @@
 //!
 //! The `AuthPolicy` enum centralises the startup decision:
 //!
-//! | `AXON_MCP_AUTH_MODE` | `AXON_MCP_HTTP_TOKEN` | bind      | policy                            |
+//! | `AXON_AUTH_MODE` | `AXON_HTTP_TOKEN` | bind      | policy                            |
 //! |----------------------|-----------------------|-----------|-----------------------------------|
 //! | `oauth`              | any                   | any       | `Mounted { auth_state: Some(_) }` |
 //! | `bearer` (default)   | set                   | any       | `Mounted { auth_state: None }`    |
@@ -32,15 +32,24 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::{AXON_FULL_ACCESS_SCOPE, AXON_READ_SCOPE, AXON_WRITE_SCOPE};
+use crate::{
+    AXON_ADMIN_SCOPE, AXON_EXECUTE_SCOPE, AXON_FULL_ACCESS_SCOPE, AXON_LOCAL_SCOPE,
+    AXON_READ_SCOPE, AXON_WRITE_SCOPE,
+};
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use lab_auth::{AuthLayer, state::AuthState};
 
+/// The scope required to reach a route/action, mapped to its OAuth scope string.
+///
+/// `Admin`, `Execute`, and `Local` are fine-grained scopes that are NOT implied
+/// by broad read/write (see [`crate::scope_satisfies`] and the auth contract).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AxonScope {
     Read,
     Write,
     Admin,
+    Execute,
+    Local,
 }
 
 impl AxonScope {
@@ -48,24 +57,52 @@ impl AxonScope {
         match self {
             Self::Read => AXON_READ_SCOPE,
             Self::Write => AXON_WRITE_SCOPE,
-            Self::Admin => AXON_FULL_ACCESS_SCOPE,
+            // Admin routes require the dedicated `axon:admin` scope. This is a
+            // real scope string (not the read+write combo) so `axon:write`
+            // callers cannot reach prune/reset/provider-config routes.
+            Self::Admin => AXON_ADMIN_SCOPE,
+            Self::Execute => AXON_EXECUTE_SCOPE,
+            Self::Local => AXON_LOCAL_SCOPE,
         }
     }
 }
 
-#[allow(dead_code)]
+/// Map a source-surface action (`action` + optional `subaction`) to the
+/// minimum scope required, keyed on the current clean-break source routes.
+///
+/// Returns:
+/// - `None` for actions that carry no scope requirement (e.g. `help`).
+/// - `Some("__deny__")` for unknown actions (fail closed).
+/// - `Some(scope)` otherwise.
+///
+/// This is the source-surface mapping used by the REST auth tests; the MCP
+/// server maintains its own `MCP_ACTION_SPECS` table. It is keyed on the
+/// unified source surface (`sources`, `resolve`, `watch`, `prune`, `reset`,
+/// retrieval, and tool/local execution) rather than the removed legacy verbs
+/// (`crawl`/`scrape`/`embed`/`ingest`/`extract`), which fold into `sources`.
 pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'static str> {
     let scope = match action {
         "help" => return None,
-        "crawl" | "extract" | "embed" | "ingest" => match subaction.unwrap_or("start") {
-            "status" | "list" => AxonScope::Read,
-            _ => AxonScope::Write,
-        },
-        "scrape" | "summarize" | "endpoints" | "brand" | "diff" => AxonScope::Write,
-        "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" | "search"
-        | "map" => AxonScope::Read,
-        "evaluate" | "suggest" | "research" | "ask" | "screenshot" => AxonScope::Write,
-        "migrate" | "dedupe" => AxonScope::Admin,
+        // Read surface: discovery, listing, status, and pure retrieval.
+        "sources" | "resolve" | "query" | "retrieve" | "status" | "doctor" | "domains"
+        | "stats" | "capabilities" | "adapters" | "providers" | "collections" | "jobs" => {
+            match subaction {
+                // Mutating sub-verbs on otherwise-read families require write.
+                Some("create" | "refresh" | "delete" | "cancel" | "retry") => AxonScope::Write,
+                _ => AxonScope::Read,
+            }
+        }
+        // Web read+synthesis surface (no acquisition side effects by default).
+        "search" | "research" | "ask" | "chat" | "evaluate" | "suggest" | "map" => AxonScope::Read,
+        // Write surface: the unified source lifecycle + watch + write-y ops.
+        "source" | "watch" | "memory" | "summarize" | "endpoints" | "brand" | "diff"
+        | "screenshot" | "extract" | "upload" => AxonScope::Write,
+        // Admin surface: destructive/prune/reset/provider config.
+        "prune" | "reset" | "dedupe" | "purge" | "migrate" => AxonScope::Admin,
+        // Tool-execution sources (CLI/MCP tool adapters) require `axon:execute`.
+        "cli_tool" | "mcp_tool" | "exec" => AxonScope::Execute,
+        // Local filesystem sources require `axon:local`.
+        "local" => AxonScope::Local,
         _ => return Some("__deny__"),
     };
     Some(scope.as_str())
@@ -96,7 +133,7 @@ pub enum AuthPolicy {
     ///
     /// - `Some(_)` — OAuth active: Google flow + JWKS issuance; OAuth router
     ///   is also mounted on `/.well-known/*`, `/authorize`, `/token`, etc.
-    /// - `None` — bearer-only: middleware validates `AXON_MCP_HTTP_TOKEN` via
+    /// - `None` — bearer-only: middleware validates `AXON_HTTP_TOKEN` via
     ///   lab-auth's `AuthLayer::with_static_token`; no OAuth router mounted.
     Mounted { auth_state: Option<Arc<AuthState>> },
 }
@@ -162,7 +199,7 @@ pub fn build_auth_layer(
 
 /// OAuth protected-resource metadata URL base for `WWW-Authenticate`.
 ///
-/// `lab-auth` still uses `AXON_MCP_PUBLIC_URL + /mcp` as the canonical
+/// `lab-auth` still uses `AXON_PUBLIC_URL + /mcp` as the canonical
 /// protected resource audience. This value intentionally stays at the public
 /// origin because the unified Axum server mounts RFC 9728 metadata at
 /// `/.well-known/oauth-protected-resource`, beside `/mcp`, not under it.
@@ -177,7 +214,7 @@ pub fn oauth_resource_url(policy: &AuthPolicy) -> Option<Arc<str>> {
             auth_state: Some(_)
         }
     );
-    oauth_resource_url_from_parts(oauth_active, std::env::var("AXON_MCP_PUBLIC_URL").ok())
+    oauth_resource_url_from_parts(oauth_active, std::env::var("AXON_PUBLIC_URL").ok())
 }
 
 fn oauth_resource_url_from_parts(
@@ -197,7 +234,7 @@ fn oauth_resource_url_from_parts(
 /// - Stdio mode: always `LoopbackDev` (process isolation is the trust
 ///   boundary). OAuth config is ignored with a warning.
 /// - Non-loopback without any auth: rejected (non-loopback bind requires
-///   either `AXON_MCP_HTTP_TOKEN` or `AXON_MCP_AUTH_MODE=oauth`).
+///   either `AXON_HTTP_TOKEN` or `AXON_AUTH_MODE=oauth`).
 /// - OAuth mode: builds `lab_auth::AuthState` and returns
 ///   `Mounted { auth_state: Some(_) }`.
 /// - Bearer-only with a token: `Mounted { auth_state: None }`.
@@ -208,13 +245,13 @@ pub async fn build_auth_policy(
 ) -> Result<AuthPolicy, Box<dyn std::error::Error>> {
     // Stdio always gets LoopbackDev regardless of env vars.
     if is_stdio {
-        let auth_mode = std::env::var("AXON_MCP_AUTH_MODE")
+        let auth_mode = std::env::var("AXON_AUTH_MODE")
             .unwrap_or_default()
             .trim()
             .to_ascii_lowercase();
         if auth_mode == "oauth" {
             tracing::warn!(
-                "AXON_MCP_AUTH_MODE=oauth is set but axon is starting in stdio mode — \
+                "AXON_AUTH_MODE=oauth is set but axon is starting in stdio mode — \
                  OAuth config is ignored; LoopbackDev policy applies (process isolation \
                  is the trust boundary). Use HTTP transport for auth enforcement."
             );
@@ -225,7 +262,7 @@ pub async fn build_auth_policy(
         return Ok(AuthPolicy::LoopbackDev);
     }
 
-    let auth_mode = std::env::var("AXON_MCP_AUTH_MODE")
+    let auth_mode = std::env::var("AXON_AUTH_MODE")
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
@@ -237,42 +274,38 @@ pub async fn build_auth_policy(
         // Build lab-auth AuthState from env vars. The AuthConfigBuilder reads
         // from a Vec<(String,String)> source so we never call std::env::var
         // inside lab-auth — all values come from our typed extraction here.
-        let public_url = std::env::var("AXON_MCP_PUBLIC_URL")
+        let public_url = std::env::var("AXON_PUBLIC_URL")
             .ok()
             .filter(|s| !s.trim().is_empty());
-        let google_client_id = std::env::var("AXON_MCP_GOOGLE_CLIENT_ID")
+        let google_client_id = std::env::var("AXON_GOOGLE_CLIENT_ID")
             .ok()
             .filter(|s| !s.trim().is_empty());
-        let google_client_secret = std::env::var("AXON_MCP_GOOGLE_CLIENT_SECRET")
+        let google_client_secret = std::env::var("AXON_GOOGLE_CLIENT_SECRET")
             .ok()
             .filter(|s| !s.trim().is_empty());
-        let admin_email = std::env::var("AXON_MCP_AUTH_ADMIN_EMAIL")
+        let admin_email = std::env::var("AXON_AUTH_ADMIN_EMAIL")
             .ok()
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_default();
 
         let mut vars: Vec<(String, String)> = Vec::with_capacity(16);
-        push_var(&mut vars, "AXON_MCP_AUTH_MODE", "oauth");
+        push_var(&mut vars, "AXON_AUTH_MODE", "oauth");
         if let Some(url) = public_url.as_deref() {
-            push_var(&mut vars, "AXON_MCP_PUBLIC_URL", url);
+            push_var(&mut vars, "AXON_PUBLIC_URL", url);
         }
         if let Some(id) = google_client_id.as_deref() {
-            push_var(&mut vars, "AXON_MCP_GOOGLE_CLIENT_ID", id);
+            push_var(&mut vars, "AXON_GOOGLE_CLIENT_ID", id);
         }
         if let Some(secret) = google_client_secret.as_deref() {
-            push_var(&mut vars, "AXON_MCP_GOOGLE_CLIENT_SECRET", secret);
+            push_var(&mut vars, "AXON_GOOGLE_CLIENT_SECRET", secret);
         }
         if !admin_email.is_empty() {
-            push_var(&mut vars, "AXON_MCP_AUTH_ADMIN_EMAIL", &admin_email);
+            push_var(&mut vars, "AXON_AUTH_ADMIN_EMAIL", &admin_email);
         }
         // Pass allowed redirect URIs; always include claude.ai as a default.
         let allowed_uris = build_allowed_redirect_uris();
         if !allowed_uris.is_empty() {
-            push_var(
-                &mut vars,
-                "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
-                &allowed_uris,
-            );
+            push_var(&mut vars, "AXON_ALLOWED_REDIRECT_URIS", &allowed_uris);
         }
 
         let auth_config = build_oauth_auth_config_from_sources(vars)?;
@@ -324,8 +357,8 @@ pub async fn build_auth_policy(
     // Non-loopback without auth — refuse to start.
     Err(format!(
         "refusing to start unauthenticated MCP HTTP server on non-loopback host '{host}'; \
-         set AXON_MCP_HTTP_TOKEN or set AXON_MCP_AUTH_MODE=oauth and configure OAuth env vars, \
-         or bind AXON_MCP_HTTP_HOST to 127.0.0.1/localhost"
+         set AXON_HTTP_TOKEN or set AXON_AUTH_MODE=oauth and configure OAuth env vars, \
+         or bind AXON_HTTP_HOST to 127.0.0.1/localhost"
     )
     .into())
 }
@@ -346,14 +379,14 @@ fn build_oauth_auth_config_from_sources(
         .map_err(|e| format!("failed to build lab-auth AuthConfig: {e}").into())
 }
 
-/// Build the `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` value.
+/// Build the `AXON_ALLOWED_REDIRECT_URIS` value.
 ///
 /// Always includes `https://claude.ai/api/mcp/auth_callback` so claude.ai
 /// MCP clients can complete DCR registration. Additional URIs from the env var
 /// are appended.
 fn build_allowed_redirect_uris() -> String {
     let mut uris: Vec<String> = vec!["https://claude.ai/api/mcp/auth_callback".into()];
-    if let Ok(extra) = std::env::var("AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS") {
+    if let Ok(extra) = std::env::var("AXON_ALLOWED_REDIRECT_URIS") {
         for u in extra.split(',') {
             let u = u.trim();
             if !u.is_empty() && !uris.iter().any(|existing| existing == u) {
@@ -370,7 +403,7 @@ fn push_var(vars: &mut Vec<(String, String)>, key: &str, value: &str) {
 
 // ── Legacy static-token helpers (test-only; production uses lab_auth::AuthLayer) ──
 
-/// Reads the static MCP bearer token (`AXON_MCP_HTTP_TOKEN`) from the process
+/// Reads the static MCP bearer token (`AXON_HTTP_TOKEN`) from the process
 /// environment.
 ///
 /// `pub` only so the web crate's REST auth layer can share the same source of
@@ -378,7 +411,7 @@ fn push_var(vars: &mut Vec<(String, String)>, key: &str, value: &str) {
 /// API surface. Do not expose its return value to clients or logs.
 #[doc(hidden)]
 pub fn configured_mcp_http_token() -> Option<String> {
-    std::env::var("AXON_MCP_HTTP_TOKEN")
+    std::env::var("AXON_HTTP_TOKEN")
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|s| !s.is_empty())

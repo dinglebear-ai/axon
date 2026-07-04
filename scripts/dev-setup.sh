@@ -365,7 +365,7 @@ if [[ -z "$WEB_TOKEN" ]]; then
   set_env AXON_WEB_API_TOKEN         "$WEB_TOKEN"
   set_env NEXT_PUBLIC_AXON_API_TOKEN "$WEB_TOKEN"
 fi
-set_env_if_missing AXON_MCP_HTTP_TOKEN "$(gen_secret)"
+set_env_if_missing AXON_HTTP_TOKEN "$(gen_secret)"
 ok "Secrets verified"
 
 # Qdrant runs on tootie by default so its large resident working set does not

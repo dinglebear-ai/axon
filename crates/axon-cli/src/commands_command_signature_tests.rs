@@ -10,15 +10,9 @@ type CommandFn = for<'a> fn(
 ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error>>> + 'a>>;
 
 #[allow(dead_code)]
-fn _assert_command_signatures(
-    _crawl: CommandFn,
-    _embed: CommandFn,
-    _extract: CommandFn,
-    _ingest: CommandFn,
-) {
-}
+fn _assert_command_signatures(_extract: CommandFn) {}
 
 #[test]
 fn commands_accept_service_context() {
-    _assert_command_signatures(run_crawl, run_embed, run_extract, run_ingest);
+    _assert_command_signatures(run_extract);
 }

@@ -2,7 +2,7 @@ use super::{
     already_indexed, filter_new_suggestions, parse_suggestions_from_llm,
     request_suggestions_from_runner,
 };
-use axon_core::llm::{CompletionRequest, CompletionRunner, CompletionTurnResult};
+use axon_llm::{CompletionRequest, CompletionRunner, CompletionTurnResult};
 use std::collections::HashSet;
 use std::error::Error;
 use std::sync::{Arc, Mutex};

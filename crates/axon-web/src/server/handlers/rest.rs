@@ -73,7 +73,7 @@ fn family_2_sync_post(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> 
         .route("/v1/suggest", guarded(post(sync_post::v1_suggest), write))
         .route("/v1/search", guarded(post(sync_post::v1_search), write))
         .route("/v1/research", guarded(post(sync_post::v1_research), write))
-        .route("/v1/scrape", guarded(post(sync_post::v1_scrape), write))
+        .route("/v1/sources", guarded(post(sync_post::v1_sources), write))
         .route(
             "/v1/summarize",
             guarded(post(sync_post::v1_summarize), write),
@@ -85,50 +85,6 @@ fn family_2_sync_post(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> 
 /// `MethodRouter` layers apply across all methods on a single path.
 fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
     Router::new()
-        .route(
-            "/v1/crawl",
-            guarded(post(async_jobs::v1_crawl_submit), write)
-                .merge(guarded(get(async_jobs::v1_crawl_list), read))
-                .merge(guarded(delete(async_jobs::v1_crawl_clear), write)),
-        )
-        .route(
-            "/v1/crawl/cleanup",
-            guarded(post(async_jobs::v1_crawl_cleanup), write),
-        )
-        .route(
-            "/v1/crawl/recover",
-            guarded(post(async_jobs::v1_crawl_recover), write),
-        )
-        .route(
-            "/v1/crawl/{id}",
-            guarded(get(async_jobs::v1_crawl_status), read),
-        )
-        .route(
-            "/v1/crawl/{id}/cancel",
-            guarded(post(async_jobs::v1_crawl_cancel), write),
-        )
-        .route(
-            "/v1/embed",
-            guarded(post(async_jobs::v1_embed_submit), write)
-                .merge(guarded(get(async_jobs::v1_embed_list), read))
-                .merge(guarded(delete(async_jobs::v1_embed_clear), write)),
-        )
-        .route(
-            "/v1/embed/cleanup",
-            guarded(post(async_jobs::v1_embed_cleanup), write),
-        )
-        .route(
-            "/v1/embed/recover",
-            guarded(post(async_jobs::v1_embed_recover), write),
-        )
-        .route(
-            "/v1/embed/{id}",
-            guarded(get(async_jobs::v1_embed_status), read),
-        )
-        .route(
-            "/v1/embed/{id}/cancel",
-            guarded(post(async_jobs::v1_embed_cancel), write),
-        )
         .route(
             "/v1/extract",
             guarded(post(async_jobs::v1_extract_submit), write)
@@ -151,53 +107,16 @@ fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState>
             "/v1/extract/{id}/cancel",
             guarded(post(async_jobs::v1_extract_cancel), write),
         )
-        .route(
-            "/v1/ingest",
-            guarded(post(async_jobs::v1_ingest_submit), write)
-                .merge(guarded(get(async_jobs::v1_ingest_list), read))
-                .merge(guarded(delete(async_jobs::v1_ingest_clear), write)),
-        )
-        .route(
-            "/v1/ingest/cleanup",
-            guarded(post(async_jobs::v1_ingest_cleanup), write),
-        )
-        .route(
-            "/v1/ingest/recover",
-            guarded(post(async_jobs::v1_ingest_recover), write),
-        )
-        .route(
-            "/v1/ingest/{id}",
-            guarded(get(async_jobs::v1_ingest_status), read),
-        )
-        .route(
-            "/v1/ingest/{id}/cancel",
-            guarded(post(async_jobs::v1_ingest_cancel), write),
-        )
 }
 
 #[cfg(test)]
 pub(crate) fn documented_rest_paths_for_tests() -> Vec<String> {
     [
-        "GET /v1/crawl",
-        "POST /v1/crawl",
-        "POST /v1/crawl/cleanup",
-        "DELETE /v1/crawl",
-        "POST /v1/crawl/recover",
-        "GET /v1/embed",
-        "POST /v1/embed",
-        "POST /v1/embed/cleanup",
-        "DELETE /v1/embed",
-        "POST /v1/embed/recover",
         "GET /v1/extract",
         "POST /v1/extract",
         "POST /v1/extract/cleanup",
         "DELETE /v1/extract",
         "POST /v1/extract/recover",
-        "GET /v1/ingest",
-        "POST /v1/ingest",
-        "POST /v1/ingest/cleanup",
-        "DELETE /v1/ingest",
-        "POST /v1/ingest/recover",
     ]
     .into_iter()
     .map(ToString::to_string)

@@ -1,6 +1,25 @@
 use super::*;
 use crate::http::LoopbackGuard;
+use crate::llm::{CompletionRequest, CompletionResponse, TextCompleter};
 use httpmock::prelude::*;
+
+/// Test completer that never runs a real backend. These tests never reach the
+/// LLM fallback (deterministic match or empty prompt), so a stub is sufficient.
+struct NoopCompleter;
+
+#[async_trait::async_trait]
+impl TextCompleter for NoopCompleter {
+    async fn complete_text(
+        &self,
+        _req: CompletionRequest,
+    ) -> Result<CompletionResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Err("noop completer".into())
+    }
+}
+
+fn noop_completer() -> Arc<dyn TextCompleter> {
+    Arc::new(NoopCompleter)
+}
 
 /// When Chrome mode is requested but no chrome_remote_url is configured,
 /// the extract engine must fall back to the HTTP path gracefully rather
@@ -13,6 +32,7 @@ async fn extract_chrome_mode_without_remote_url_falls_back_to_http() {
         prompt: "test".to_string(),
         limit: 1,
         llm_backend: crate::llm::LlmBackendConfig::default(),
+        completer: noop_completer(),
         custom_headers: vec![],
         render_mode: RenderMode::Chrome,
         chrome_remote_url: None, // ← no Chrome configured
@@ -60,6 +80,7 @@ async fn extract_limit_one_uses_exact_single_url_path() {
         prompt: String::new(),
         limit: 1,
         llm_backend: crate::llm::LlmBackendConfig::default(),
+        completer: noop_completer(),
         custom_headers: vec![],
         render_mode: RenderMode::Http,
         chrome_remote_url: None,

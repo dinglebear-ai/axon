@@ -1,10 +1,6 @@
-use crate::crawl_sync::{
-    chrome_fallback::plan_chrome_fallback, crawl_changed_manifest_keys,
-    crawl_manifest_to_ledger_items, crawl_source_identity, crawl_sync_effective_config,
-};
+use crate::crawl_sync::{chrome_fallback::plan_chrome_fallback, crawl_sync_effective_config};
 use axon_core::config::{Config, ScrapeFormat};
 use axon_crawl::engine::CrawlSummary;
-use axon_source_ledger::{SourceIdentity, SourceKind, SourceLedgerStore};
 
 // ─── LLM format guard ────────────────────────────────────────────────────────
 
@@ -20,19 +16,6 @@ fn config_scrape_format_llm_round_trips() {
     };
     assert_eq!(cfg.format, ScrapeFormat::Llm);
     assert!(cfg.wait);
-}
-
-#[test]
-fn crawl_source_identity_is_collection_scoped() {
-    let source_a = crawl_source_identity("https://example.com/docs", "axon-a");
-    let source_a_again = crawl_source_identity("https://example.com/docs", "axon-a");
-    let source_b = crawl_source_identity("https://example.com/docs", "axon-b");
-
-    assert_ne!(source_a.source_id, source_b.source_id);
-    assert_eq!(source_a.source_id, source_a_again.source_id);
-    assert!(source_a.source_id.starts_with("crawl:axon-a:"));
-    assert!(source_b.source_id.starts_with("crawl:axon-b:"));
-    assert!(!source_a.source_id.contains("https://example.com/docs"));
 }
 
 /// When `format` is anything other than `Llm`, the LLM stream pass is skipped.
@@ -130,86 +113,4 @@ fn sitemap_only_sync_crawl_preserves_unbounded_operator_override() {
     let effective = crawl_sync_effective_config(&cfg, "https://docs.rs/std");
 
     assert_eq!(effective.max_pages, 50_000);
-}
-
-#[tokio::test]
-async fn crawl_manifest_adapter_uses_url_hash_and_markdown_size()
--> Result<(), Box<dyn std::error::Error>> {
-    let manifest = tempfile::NamedTempFile::new()?;
-    tokio::fs::write(
-        manifest.path(),
-        serde_json::json!({
-            "url": "https://example.com/a",
-            "relative_path": "markdown/a.md",
-            "markdown_chars": 42,
-            "content_hash": "hash-a"
-        })
-        .to_string()
-            + "\n",
-    )
-    .await?;
-
-    let items = crawl_manifest_to_ledger_items(manifest.path()).await?;
-
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].item_key, "https://example.com/a");
-    assert_eq!(items[0].content_hash, "hash-a");
-    assert_eq!(items[0].size_bytes, 42);
-    Ok(())
-}
-
-#[tokio::test]
-async fn crawl_changed_manifest_keys_excludes_reused_pages()
--> Result<(), Box<dyn std::error::Error>> {
-    let manifest = tempfile::NamedTempFile::new()?;
-    tokio::fs::write(
-        manifest.path(),
-        serde_json::json!({
-            "url": "https://example.com/reused",
-            "relative_path": "markdown/reused.md",
-            "markdown_chars": 42,
-            "content_hash": "hash-reused",
-            "changed": false
-        })
-        .to_string()
-            + "\n"
-            + &serde_json::json!({
-                "url": "https://example.com/changed",
-                "relative_path": "markdown/changed.md",
-                "markdown_chars": 50,
-                "content_hash": "hash-changed",
-                "changed": true
-            })
-            .to_string()
-            + "\n",
-    )
-    .await?;
-
-    let keys = crawl_changed_manifest_keys(manifest.path()).await?;
-
-    assert_eq!(keys.len(), 1);
-    assert!(keys.contains("https://example.com/changed"));
-    Ok(())
-}
-
-#[tokio::test]
-async fn crawl_embed_failure_does_not_commit_generation() -> Result<(), Box<dyn std::error::Error>>
-{
-    let pool = axon_jobs::store::open_sqlite_pool(":memory:").await?;
-    let store = SourceLedgerStore::new(pool);
-    let source = SourceIdentity::new("crawl-source", SourceKind::Crawl, "axon", 1);
-    store.ensure_source(&source).await?;
-
-    let embed_result: Result<(), &str> = Err("embed failed");
-    if embed_result.is_ok() {
-        let generation = store.begin_generation(&source).await?;
-        store
-            .commit_generation(&source.source_id, generation)
-            .await?;
-    }
-
-    let status = store.source_status(&source.source_id).await?;
-    assert_eq!(status.committed_generation, 0);
-    assert_eq!(store.max_generation(&source.source_id).await?, 0);
-    Ok(())
 }

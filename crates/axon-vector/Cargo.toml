@@ -8,7 +8,9 @@ license = "MIT"
 
 [dependencies]
 axon-core = { path = "../axon-core" }
+axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
+axon-document = { path = "../axon-document" }
 anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -89,6 +91,7 @@ test-helpers = []
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
+axon-vectors = { path = "../axon-vectors" }
 httpmock = "0.8"
 serial_test = "3"
 proptest = "1"

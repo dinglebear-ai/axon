@@ -29,12 +29,12 @@ async fn context(cfg: &Config) -> ServiceContext {
 #[tokio::test]
 async fn create_scrape_schedule_writes_db() {
     let cfg = freshness_cfg(
-        CommandKind::Scrape,
+        CommandKind::Fresh,
         "https://example.com",
         FreshnessCommand::Scrape,
     );
     let ctx = context(&cfg).await;
-    create_schedule_from_command(&cfg, &ctx)
+    axon_services::freshness::create_from_config(&cfg, &ctx)
         .await
         .expect("create schedule");
     let schedules = axon_services::freshness::list(&ctx, 10)
@@ -49,19 +49,19 @@ async fn create_scrape_schedule_writes_db() {
 async fn create_crawl_embed_and_ingest_schedules() {
     for (command, target, fresh_command, stored_command) in [
         (
-            CommandKind::Crawl,
+            CommandKind::Fresh,
             "https://example.com/docs",
             FreshnessCommand::Crawl,
             "crawl",
         ),
         (
-            CommandKind::Embed,
+            CommandKind::Fresh,
             "fresh text",
             FreshnessCommand::Embed,
             "embed",
         ),
         (
-            CommandKind::Ingest,
+            CommandKind::Fresh,
             "rss:https://example.com/feed.xml",
             FreshnessCommand::Ingest,
             "ingest",
@@ -69,7 +69,7 @@ async fn create_crawl_embed_and_ingest_schedules() {
     ] {
         let cfg = freshness_cfg(command, target, fresh_command);
         let ctx = context(&cfg).await;
-        create_schedule_from_command(&cfg, &ctx)
+        axon_services::freshness::create_from_config(&cfg, &ctx)
             .await
             .expect("create schedule");
         let schedules = axon_services::freshness::list(&ctx, 10)
@@ -82,7 +82,7 @@ async fn create_crawl_embed_and_ingest_schedules() {
 
 #[tokio::test]
 async fn fresh_list_run_now_and_history_execute() {
-    let mut cfg = freshness_cfg(CommandKind::Embed, "fresh text", FreshnessCommand::Embed);
+    let mut cfg = freshness_cfg(CommandKind::Fresh, "fresh text", FreshnessCommand::Embed);
     let ctx = context(&cfg).await;
     let created = axon_services::freshness::create_from_config(&cfg, &ctx)
         .await

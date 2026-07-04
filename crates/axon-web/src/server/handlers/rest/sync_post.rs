@@ -3,7 +3,7 @@
 //! One handler per resource:
 //!   - POST /v1/query, /v1/retrieve, /v1/map    — read scope
 //!   - POST /v1/suggest, /v1/search,
-//!     /v1/research, /v1/scrape                 — write scope
+//!     /v1/research, /v1/sources                — write scope
 //!
 //! NOTE: `/v1/evaluate` is intentionally absent — `services::query::evaluate`
 //! holds non-`Send` errors across `.await` points; see the comment in rest.rs.
@@ -12,17 +12,15 @@
 //! and serializes the typed result as JSON. Errors flow through
 //! `error::map_service_error`.
 
+use super::super::super::json::Json;
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
-use super::types::{
-    MapBody, QueryBody, RetrieveBody, ScrapeBody, SearchBody, SuggestBody, UrlsBody,
-};
+use super::types::{MapBody, QueryBody, RetrieveBody, SearchBody, SuggestBody, UrlsBody};
 use axon_services::query as query_svc;
 use axon_services::search as search_svc;
 use axon_services::transport;
-use axon_services::{map as map_svc, scrape as scrape_svc, summarize as summarize_svc};
+use axon_services::{map as map_svc, summarize as summarize_svc};
 use axum::{
-    Json,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -64,7 +62,17 @@ pub(crate) async fn v1_query(
         Err(err) => return err.into_response(),
     };
     let opts = transport::pagination(req.limit, req.offset, cfg.search_limit);
-    match query_svc::query(&cfg, &req.query, opts).await {
+    let ctx = match state.service_context().await {
+        Ok(ctx) => ctx,
+        Err(err) => {
+            return rest_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                format!("service context: {err}"),
+            );
+        }
+    };
+    match query_svc::query(&ctx, &cfg, &req.query, opts).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }
@@ -179,33 +187,36 @@ pub(crate) async fn v1_research(
     }
 }
 
-pub(crate) async fn v1_scrape(
+pub(crate) async fn v1_sources(
     State(state): State<RestState>,
-    Json(req): Json<ScrapeBody>,
+    Json(req): Json<axon_api::source::SourceRequest>,
 ) -> Response {
-    if let Err(r) = require_field(&req.url, "url") {
+    if let Err(r) = require_field(&req.source, "source") {
         return r;
     }
-    let mut cfg = state.cfg.as_ref().clone();
-    if let Some(embed) = req.embed {
-        cfg.embed = embed;
-    }
-    let results = match scrape_svc::scrape_batch_with_optional_embed(
-        &cfg,
-        std::slice::from_ref(&req.url),
-        None,
-    )
-    .await
-    {
-        Ok(results) => results,
+    let ctx = match state.service_context().await {
+        Ok(ctx) => ctx,
         Err(err) => return map_service_error(err.as_ref()),
     };
-    match results.into_iter().next() {
-        Some(result) => Json(result).into_response(),
-        None => rest_error(
-            StatusCode::BAD_GATEWAY,
-            "upstream_error",
-            "scrape returned no result".to_string(),
+    // `index_source` is not `Send` (the web-source bridge holds a
+    // `Box<dyn Error>` across `.await`); run it on a blocking thread whose
+    // `JoinHandle` is `Send`, mirroring `handlers::sources::index_source`.
+    let handle = tokio::runtime::Handle::current();
+    let result = tokio::task::spawn_blocking(move || {
+        handle.block_on(async move {
+            axon_services::index_source(req, ctx.as_ref())
+                .await
+                .map_err(|err| err.to_string())
+        })
+    })
+    .await;
+    match result {
+        Ok(Ok(result)) => Json(result).into_response(),
+        Ok(Err(message)) => rest_error(StatusCode::BAD_GATEWAY, "upstream", message),
+        Err(err) => rest_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            format!("source indexing task failed: {err}"),
         ),
     }
 }

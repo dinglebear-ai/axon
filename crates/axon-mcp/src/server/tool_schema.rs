@@ -1,8 +1,5 @@
 use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
-use crate::schema::{
-    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
-    MemorySubaction, VerticalScrapeSubaction,
-};
+use crate::schema::{AxonRequest, ExtractSubaction, MemorySubaction};
 use rmcp::schemars::JsonSchema;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -91,14 +88,15 @@ fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static st
         json!({
             "cost_order": ["cheap", "moderate", "expensive", "write"],
             "first_pass": ["status", "doctor", "sources", "domains", "stats", "query", "retrieve", "help"],
-            "async_jobs": ["crawl", "extract", "embed", "ingest"],
+            "index_with": ["source"],
+            "async_jobs": ["extract"],
             "poll_async_jobs_with": {
                 "subaction": "status",
                 "required_field": "job_id"
             },
             "artifact_first": {
                 "default_response_mode": "path",
-                "inline_defaults": ["scrape", "retrieve"]
+                "inline_defaults": ["retrieve"]
             },
             "schema_resource": MCP_TOOL_SCHEMA_URI
         }),
@@ -207,18 +205,14 @@ fn axon_action_metadata() -> Value {
 
 fn axon_subaction_metadata() -> Value {
     json!({
-        "crawl": enum_values_for::<CrawlSubaction>(),
         "extract": enum_values_for::<ExtractSubaction>(),
-        "embed": enum_values_for::<EmbedSubaction>(),
-        "ingest": enum_values_for::<IngestSubaction>(),
         "memory": enum_values_for::<MemorySubaction>(),
-        "vertical_scrape": enum_values_for::<VerticalScrapeSubaction>(),
     })
 }
 
 fn axon_required_field_metadata() -> Value {
     json!({
-        "code_search": ["query", "cwd"]
+        "source": ["source"]
     })
 }
 

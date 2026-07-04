@@ -20,13 +20,16 @@ pub mod job_dto;
 pub mod job_progress;
 pub mod job_status;
 pub mod mcp_schema;
+pub mod migration;
 pub mod purge;
+pub mod reset;
 pub mod result;
 pub mod service_job;
 pub mod source;
 
 pub use explain::*;
 pub use purge::*;
+pub use reset::*;
 pub use result::*;
 pub use source::*;
 

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
+const ENV_KEY: &str = "AXON_HTTP_TOKEN";
 
 pub(super) struct EnvGuard {
     key: &'static str,
@@ -133,8 +133,13 @@ impl ServiceJobRuntime for EmptyRuntime {
 pub(super) async fn spawn_ask_test_server(
     auth_policy: AuthPolicy,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
+    let cfg = Arc::new(axon_core::config::Config::default());
+    let ctx = Arc::new(ServiceContext::from_runtime(
+        Arc::clone(&cfg),
+        Arc::new(EmptyRuntime),
+    ));
     let app = protect_routes(
-        ask_router::<()>(Arc::new(axon_core::config::Config::default())),
+        ask_router::<()>(cfg, ctx),
         &auth_policy,
         ScopeRequirement::Write,
     );
@@ -276,7 +281,11 @@ async fn v1_artifact_query_requires_bearer_auth_and_serves_png() {
         .expect("missing path request");
     assert_eq!(missing_path.status(), StatusCode::BAD_REQUEST);
     let error_body: serde_json::Value = missing_path.json().await.unwrap();
-    assert_eq!(error_body["kind"], "invalid_path");
+    assert_eq!(error_body["ok"], false);
+    assert_eq!(
+        error_body["error"]["code"],
+        "route.validation.invalid_field"
+    );
 
     let authorized = client
         .get(format!("{base}/v1/artifacts?path=screenshots/shot.png"))
@@ -343,9 +352,14 @@ async fn panel_artifact_rejects_unsafe_paths_when_authorized() {
     stop(shutdown, handle).await;
 }
 
+/// The legacy `/v1/ingest/sessions/prepared` route was removed in #343 (folded
+/// into `/v1/sources` + `/v1/uploads`). Before the API-aware 404 fallback
+/// landed, an unrouted `/v1/*` path silently returned the SPA `index.html`
+/// (200), which masked the removal. It must now return the contract
+/// `ErrorEnvelope` 404 (`route.not_found`), not the SPA HTML.
 #[tokio::test]
 #[serial]
-async fn prepared_sessions_route_accepts_body_larger_than_default_rest_limit() {
+async fn removed_prepared_sessions_route_returns_enveloped_not_found() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
@@ -374,11 +388,12 @@ async fn prepared_sessions_route_accepts_body_larger_than_default_rest_limit() {
         .await
         .expect("prepared sessions request");
     let status = response.status();
+    let value: serde_json::Value = response.json().await.expect("enveloped 404 body");
 
     stop(shutdown, handle).await;
-    assert_ne!(status, StatusCode::PAYLOAD_TOO_LARGE);
-    assert_ne!(status, StatusCode::UNAUTHORIZED);
-    assert_ne!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(value["ok"], serde_json::json!(false));
+    assert_eq!(value["error"]["code"], "route.not_found");
 }
 
 async fn spawn_app(

@@ -39,17 +39,17 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_HTTP_TOKEN",
+        "AXON_HTTP_TOKEN",
         KeepEnv,
         ContainerRequired,
         None,
         Canonical,
         true,
     ),
-    spec("AXON_MCP_AUTH_MODE", KeepEnv, Both, None, Canonical, false),
-    spec("AXON_MCP_PUBLIC_URL", KeepEnv, Both, None, Canonical, false),
+    spec("AXON_AUTH_MODE", KeepEnv, Both, None, Canonical, false),
+    spec("AXON_PUBLIC_URL", KeepEnv, Both, None, Canonical, false),
     spec(
-        "AXON_MCP_GOOGLE_CLIENT_ID",
+        "AXON_GOOGLE_CLIENT_ID",
         KeepEnv,
         Both,
         None,
@@ -57,7 +57,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_GOOGLE_CLIENT_SECRET",
+        "AXON_GOOGLE_CLIENT_SECRET",
         KeepEnv,
         Both,
         None,
@@ -65,7 +65,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         true,
     ),
     spec(
-        "AXON_MCP_AUTH_ADMIN_EMAIL",
+        "AXON_AUTH_ADMIN_EMAIL",
         KeepEnv,
         Both,
         None,
@@ -73,7 +73,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+        "AXON_ALLOWED_REDIRECT_URIS",
         KeepEnv,
         Both,
         None,
@@ -81,7 +81,7 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_ALLOWED_ORIGINS",
+        "AXON_ALLOWED_ORIGINS",
         KeepEnv,
         Both,
         None,
