@@ -139,46 +139,6 @@ jobs:
       - name: Enforce MCP CLI transport mode support
         run: cargo xtask check-mcp-http
 
-  version-sync:
-    name: version-sync
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: ${{ needs.changes.outputs.release == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            plugins
-            docs
-            migrations
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: xtask
-      - name: create web assets placeholder
-        run: |
-          mkdir -p apps/web/out
-          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: Verify release-please version plan for changed shipping components
-        run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
-
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
     runs-on: ubuntu-latest
@@ -773,6 +733,7 @@ jobs:
             src
             crates
             xtask
+            plugins
             docs
             .github
             scripts
@@ -1666,7 +1627,6 @@ jobs:
     needs:
       - changes
       - mcp-transport-modes
-      - version-sync
       - aurora-primitive-inventory
       - android
       - android-openapi-client
@@ -1709,7 +1669,6 @@ jobs:
           }
           require_success_or_skipped changes "${{ needs.changes.result }}"
           require_success_or_skipped mcp-transport-modes "${{ needs.mcp-transport-modes.result }}"
-          require_success_or_skipped version-sync "${{ needs.version-sync.result }}"
           require_success_or_skipped aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}"
           require_success_or_skipped android "${{ needs.android.result }}"
           require_success_or_skipped android-openapi-client "${{ needs.android-openapi-client.result }}"

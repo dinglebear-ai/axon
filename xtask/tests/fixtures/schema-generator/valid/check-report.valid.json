@@ -1,0 +1,11 @@
+[
+  {
+    "family": "api",
+    "ok": true,
+    "artifacts_checked": 3,
+    "fixtures_validated": 0,
+    "snapshots_checked": 0,
+    "drift": [],
+    "warnings": []
+  }
+]

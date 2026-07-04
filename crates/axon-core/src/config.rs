@@ -1,6 +1,7 @@
 mod cli;
 mod help;
 pub mod parse;
+pub mod schema_registry;
 pub mod secret;
 pub mod source_routing;
 mod types;

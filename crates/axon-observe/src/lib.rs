@@ -10,6 +10,7 @@ pub mod migration;
 pub mod phase;
 pub mod progress;
 pub mod reservation;
+pub mod schema_registry;
 pub mod sequence;
 pub mod sink;
 pub mod span;

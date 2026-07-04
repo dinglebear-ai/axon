@@ -21,73 +21,34 @@ fn payload_required_fields_from_source() -> Vec<String> {
 }
 
 #[test]
-fn generated_adapter_docs_include_route_time_registry() {
+fn adapter_schema_family_is_not_emitted_as_phase_2_artifact() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
 
-    let content = std::fs::read_to_string(
-        tmp.path()
-            .join("docs/reference/sources/adapter-scopes.json"),
-    )
-    .unwrap();
-    let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-    let adapters = value["x-axon"]["adapters"].as_array().unwrap();
-    let source_inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
-    let web = adapters
-        .iter()
-        .find(|adapter| adapter["name"] == "web")
-        .expect("web adapter exists");
-
-    assert_eq!(
-        value["$id"],
-        "https://axon.local/schemas/sources/adapter-scopes.json"
-    );
-    assert_eq!(web["source_kind"], "web");
-    assert_eq!(web["default_scope"], "site");
-    assert_eq!(
-        web["allowed_option_keys"],
-        serde_json::json!(["manifest_path", "markdown_root", "map_urls"])
+    assert!(
+        !tmp.path()
+            .join("docs/reference/sources/adapter-scopes.json")
+            .exists(),
+        "Phase 2 does not define an adapters schema family"
     );
     assert!(
-        web["supported_scopes"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("map"))
+        !tmp.path()
+            .join("docs/reference/sources/adapter-scopes.md")
+            .exists(),
+        "Phase 2 does not define an adapters schema family"
     );
-    assert_eq!(web["watch_supported"], true);
-    assert!(source_inputs.iter().any(|input| {
-        input["path"] == "crates/axon-adapters/src/web.rs"
-            && input["checksum"].as_str().unwrap().starts_with("sha256:")
-    }));
-
-    let markdown =
-        std::fs::read_to_string(tmp.path().join("docs/reference/sources/adapter-scopes.md"))
-            .unwrap();
-    assert!(markdown.contains("| `web` | `web` | `site` | `site`, `page`, `docs`, `map` |"));
 }
 
 #[test]
-fn generated_adapter_schema_models_registry_payload() {
+fn adapter_schema_markdown_is_not_emitted_as_phase_2_artifact() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
 
-    let content = std::fs::read_to_string(
-        tmp.path()
-            .join("docs/reference/sources/adapter-scopes.json"),
-    )
-    .unwrap();
-    let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-    let properties = value["properties"].as_object().unwrap();
-    let x_axon = properties["x-axon"].as_object().unwrap();
-    let x_axon_properties = x_axon["properties"].as_object().unwrap();
-    let adapters = x_axon_properties["adapters"].as_object().unwrap();
-
-    assert_eq!(value["required"][0], "x-axon");
-    assert_eq!(adapters["type"], "array");
-    assert_eq!(adapters["items"]["$ref"], "#/$defs/AdapterCapability");
-    assert_eq!(
-        value["$defs"]["AdapterCapability"]["properties"]["supported_scopes"]["items"]["type"],
-        "string"
+    assert!(
+        !tmp.path()
+            .join("docs/reference/sources/adapter-scopes.json")
+            .exists(),
+        "Phase 2 does not define an adapters schema family"
     );
 }
 

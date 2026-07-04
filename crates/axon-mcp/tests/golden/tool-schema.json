@@ -1,61 +1,121 @@
 {
-  "$defs": {
-    "SchemaFamilyContract": {
-      "additionalProperties": false,
-      "properties": {
-        "family": {
-          "const": "mcp"
-        },
-        "future_registry": {
-          "type": "string"
-        },
-        "owner_crates": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "status": {
-          "const": "skeleton"
-        }
-      },
-      "required": [
-        "family",
-        "status",
-        "owner_crates"
-      ],
-      "type": "object",
-      "x-axon": {
-        "replaced_by": "crate-owned registry generator in the matching implementation PR",
-        "skeleton": true
-      }
-    }
-  },
   "$id": "https://axon.local/schemas/mcp/tool.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "actions": [
+    {
+      "action": "ask",
+      "async": false,
+      "mutates": false,
+      "request_dto": "AskRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "AskResponse",
+      "subaction": null
+    },
+    {
+      "action": "query",
+      "async": false,
+      "mutates": false,
+      "request_dto": "VectorSearchRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "VectorSearchResult",
+      "subaction": null
+    },
+    {
+      "action": "retrieve",
+      "async": false,
+      "mutates": false,
+      "request_dto": "RetrieveRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "RetrieveResponse",
+      "subaction": null
+    },
+    {
+      "action": "search",
+      "async": false,
+      "mutates": false,
+      "request_dto": "SearchRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "SearchResponse",
+      "subaction": null
+    },
+    {
+      "action": "research",
+      "async": false,
+      "mutates": false,
+      "request_dto": "ResearchRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "ResearchResponse",
+      "subaction": null
+    },
+    {
+      "action": "map",
+      "async": false,
+      "mutates": false,
+      "request_dto": "MapRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "MapResponse",
+      "subaction": null
+    },
+    {
+      "action": "extract",
+      "async": true,
+      "mutates": true,
+      "request_dto": "ExtractRequest",
+      "requires_auth_scope": "write",
+      "result_dto": "ExtractResponse",
+      "subaction": null
+    },
+    {
+      "action": "config",
+      "async": false,
+      "mutates": true,
+      "request_dto": "ConfigProjectionRequest",
+      "requires_auth_scope": "admin",
+      "result_dto": "ConfigProjectionResponse",
+      "subaction": null
+    }
+  ],
   "additionalProperties": false,
-  "description": "Generated Axon schema contract artifact.",
+  "properties": {
+    "actions": {
+      "items": {
+        "additionalProperties": true,
+        "required": [
+          "action",
+          "request_dto",
+          "result_dto",
+          "requires_auth_scope"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "actions"
+  ],
   "title": "AxonMcpToolSchema",
   "type": "object",
   "x-axon": {
-    "clean_break": true,
     "contract_version": "2026-06-30",
     "generated_by": "cargo xtask schemas mcp",
     "owner_crates": [
       "axon-mcp",
       "axon-api"
     ],
+    "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:023982562822f2420c3636425ee9bf7eb64f3a9163074c4d763d8be175ade953",
-        "kind": "rust_directory",
-        "path": "crates/axon-mcp/src"
+        "checksum": "sha256:f41acd92c675cb7fb16f0615f7280f51a4c70242c9621570c0f15cc6a649593d",
+        "kind": "rust_module",
+        "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:036271e18b7f24775b942409638b76563841d87fce1a66e63dd146d33844fc8f",
+        "checksum": "sha256:a09160e89b2b6fbccbcfe477fb228b8822551ea6bf2249558b6665f8c78dbdab",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/surfaces/tool-contract.md"
+        "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       }
-    ]
+    ],
+    "status": "RegistryBacked"
   }
 }
