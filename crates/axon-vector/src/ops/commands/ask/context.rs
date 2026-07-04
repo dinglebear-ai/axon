@@ -96,7 +96,7 @@ fn high_context_synthesis_model(cfg: &Config) -> bool {
     // Fallback when the override is unset: derive context-window capability from
     // the backend's model profile (arch-M4 keeps the explicit override as the
     // primary signal; this profile is the auto-detect path).
-    axon_core::llm::SynthesisModelProfile::from_config(cfg).high_context_full_docs()
+    axon_llm::SynthesisModelProfile::from_config(cfg).high_context_full_docs()
 }
 
 pub struct AskContext {

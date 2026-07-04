@@ -21,7 +21,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.fetch_retries = 7;
     submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
     submitted.tei_url = "http://submitted-tei:80".to_string();
-    submitted.llm_backend = axon_core::llm::LlmBackendKind::OpenAiCompat;
+    submitted.llm_backend = axon_llm::LlmBackendKind::OpenAiCompat;
     submitted.openai_base_url = "http://submitted-openai:8080/v1".to_string();
     submitted.openai_api_key = "submitted-openai-secret".to_string();
     submitted.openai_model = "submitted-gemma".to_string();
@@ -51,7 +51,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.fetch_retries = 1;
     worker.qdrant_url = "http://worker-qdrant:6333".to_string();
     worker.tei_url = "http://worker-tei:80".to_string();
-    worker.llm_backend = axon_core::llm::LlmBackendKind::GeminiHeadless;
+    worker.llm_backend = axon_llm::LlmBackendKind::GeminiHeadless;
     worker.openai_base_url = "http://worker-openai:8080/v1".to_string();
     worker.openai_api_key = "worker-openai-secret".to_string();
     worker.openai_model = "worker-gemma".to_string();
@@ -91,7 +91,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     assert_eq!(effective.tei_url, "http://submitted-tei:80");
     assert_eq!(
         effective.llm_backend,
-        axon_core::llm::LlmBackendKind::OpenAiCompat
+        axon_llm::LlmBackendKind::OpenAiCompat
     );
     assert_eq!(effective.openai_base_url, "http://submitted-openai:8080/v1");
     assert_eq!(effective.openai_api_key, "worker-openai-secret");
@@ -158,7 +158,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
         ..Config::default()
     };
     let cfg = Config {
-        llm_backend: axon_core::llm::LlmBackendKind::CodexAppServer,
+        llm_backend: axon_llm::LlmBackendKind::CodexAppServer,
         codex_cmd: "/opt/codex/bin/codex".to_string(),
         codex_home: Some(PathBuf::from("/home/example/.codex")),
         codex_model: "gpt-5.5".to_string(),
@@ -180,7 +180,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
 
     assert_eq!(
         restored.llm_backend,
-        axon_core::llm::LlmBackendKind::CodexAppServer
+        axon_llm::LlmBackendKind::CodexAppServer
     );
     assert_eq!(restored.codex_cmd, "/usr/local/bin/codex");
     assert_eq!(

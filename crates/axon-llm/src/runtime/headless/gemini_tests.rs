@@ -149,7 +149,7 @@ fn gemini_headless_assembles_split_multibyte_codepoint() {
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn gemini_headless_timeout_returns_error_for_hung_child() {
-    use crate::llm::{CompletionRequest, LlmBackendConfig};
+    use crate::runtime::{CompletionRequest, LlmBackendConfig};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
@@ -162,7 +162,7 @@ async fn gemini_headless_timeout_returns_error_for_hung_child() {
 
     let mut req = CompletionRequest::new("hello");
     req.backend = LlmBackendConfig {
-        kind: crate::llm::LlmBackendKind::GeminiHeadless,
+        kind: crate::runtime::LlmBackendKind::GeminiHeadless,
         gemini_cmd: cmd.display().to_string(),
         gemini_model: None,
         gemini_home: Some(dir.path().to_path_buf()),

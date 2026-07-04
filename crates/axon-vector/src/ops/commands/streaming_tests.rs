@@ -1,7 +1,7 @@
 use super::*;
 use crate::ops::commands::ask::synthesis_prompt::{SKILL_MD, synthesis_prompt_for_gemini};
 use axon_core::config::Config;
-use axon_core::llm::{CompletionRequest, CompletionRunner, CompletionTurnResult, LlmBackendKind};
+use axon_llm::{CompletionRequest, CompletionRunner, CompletionTurnResult, LlmBackendKind};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 

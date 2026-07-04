@@ -51,7 +51,7 @@ import time; time.sleep(30)
     reset_pools_for_tests().await;
 
     let backend = LlmBackendConfig {
-        kind: crate::llm::LlmBackendKind::CodexAppServer,
+        kind: crate::runtime::LlmBackendKind::CodexAppServer,
         codex_cmd: script.display().to_string(),
         completion_concurrency: 1,
         completion_timeout_secs: 5,

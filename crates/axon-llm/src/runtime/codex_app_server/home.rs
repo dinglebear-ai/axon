@@ -17,7 +17,7 @@
 //! which deliberately resolves the user's *real* `CODEX_HOME` so MCP servers,
 //! skills, and hooks load.
 
-use crate::llm::LlmBackendConfig;
+use crate::runtime::LlmBackendConfig;
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::ffi::{OsStr, OsString};

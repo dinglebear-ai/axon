@@ -15,8 +15,8 @@ use crate::types::{
     ResearchResult, ResearchTiming, ResearchUsage, SearchOptions, SummarySource,
 };
 use axon_core::config::Config;
-use axon_core::llm::{self, CompletionRequest};
 use axon_core::logging::{log_info, log_warn};
+use axon_llm::{self as llm, CompletionRequest};
 use spider_agent::{TimeRange, TokenUsage};
 use std::error::Error;
 use std::time::Duration;

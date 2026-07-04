@@ -259,11 +259,11 @@ impl ConfigSnapshot {
     }
 }
 
-fn llm_backend_snapshot(kind: axon_core::llm::LlmBackendKind) -> String {
+fn llm_backend_snapshot(kind: axon_llm::LlmBackendKind) -> String {
     match kind {
-        axon_core::llm::LlmBackendKind::GeminiHeadless => "gemini-headless".to_string(),
-        axon_core::llm::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
-        axon_core::llm::LlmBackendKind::CodexAppServer => "codex-app-server".to_string(),
+        axon_llm::LlmBackendKind::GeminiHeadless => "gemini-headless".to_string(),
+        axon_llm::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
+        axon_llm::LlmBackendKind::CodexAppServer => "codex-app-server".to_string(),
     }
 }
 

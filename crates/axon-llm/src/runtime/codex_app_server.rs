@@ -23,8 +23,8 @@ use std::time::Duration;
 use tokio::process::Child;
 use tokio::task::JoinHandle;
 
-use crate::llm::headless::common::{joined_prompt, read_bounded_stderr, redacted_stderr_tail};
-use crate::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig, ReasoningEffort};
+use crate::runtime::headless::common::{joined_prompt, read_bounded_stderr, redacted_stderr_tail};
+use crate::runtime::{CompletionRequest, CompletionResponse, LlmBackendConfig, ReasoningEffort};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);

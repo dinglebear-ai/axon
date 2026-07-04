@@ -1,6 +1,6 @@
 //! Pool-split protocol helpers: one-time init and per-turn handshakes.
 //!
-//! These are called by [`crate::llm::codex_app_server::pool`] and are
+//! These are called by [`crate::runtime::codex_app_server::pool`] and are
 //! separate from the [`super::CodexStreamState`] one-shot state machine.
 
 use serde_json::Value;
@@ -9,7 +9,7 @@ use std::error::Error as StdError;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 
-use crate::llm::types::{CompletionResponse, LlmBackendConfig, UsageSnapshot};
+use crate::runtime::{CompletionResponse, LlmBackendConfig, UsageSnapshot};
 
 use super::{
     ID_INITIALIZE, ID_THREAD_START, decline_server_request, initialize_line, parse_usage,

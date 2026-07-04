@@ -1,5 +1,5 @@
-use crate::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig, UsageSnapshot};
-use crate::redact::is_secret_like;
+use crate::runtime::{CompletionRequest, CompletionResponse, LlmBackendConfig, UsageSnapshot};
+use axon_core::redact::is_secret_like;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -160,7 +160,7 @@ fn sanitize_openai_error_body(text: &str) -> String {
         truncate_utf8_boundary(&mut rendered, LIMIT);
         return rendered;
     }
-    let mut rendered = crate::redact::redact_secrets(trimmed);
+    let mut rendered = axon_core::redact::redact_secrets(trimmed);
     truncate_utf8_boundary(&mut rendered, LIMIT);
     rendered
 }
@@ -200,7 +200,7 @@ fn sanitize_error_json(value: &serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(values.iter().map(sanitize_error_json).collect())
         }
         serde_json::Value::String(value) => {
-            serde_json::Value::String(crate::redact::redact_secrets(value))
+            serde_json::Value::String(axon_core::redact::redact_secrets(value))
         }
         value => value.clone(),
     }
