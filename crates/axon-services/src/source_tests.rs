@@ -177,6 +177,23 @@ async fn index_source_uses_routed_scope_without_data_plane() {
 }
 
 #[tokio::test]
+async fn index_source_web_map_scope_is_reported_without_falling_back_to_site() {
+    let ctx = context_without_data_plane();
+    let mut request = SourceRequest::new("https://example.com/docs");
+    request.intent = axon_api::source::SourceIntent::Map;
+    request.scope = Some(SourceScope::Map);
+    request.embed = false;
+
+    let result = index_source(request, &ctx)
+        .await
+        .expect("missing data plane returns degraded result");
+
+    assert_eq!(result.source_kind, SourceKind::Web);
+    assert_eq!(result.scope, SourceScope::Map);
+    assert_eq!(result.canonical_uri, "https://example.com/docs");
+}
+
+#[tokio::test]
 async fn index_source_unsupported_input_is_unsupported() {
     let ctx = context_without_data_plane();
     let result = index_source(SourceRequest::new("not-a-path-or-url"), &ctx)
