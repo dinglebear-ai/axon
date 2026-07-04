@@ -15,9 +15,11 @@ mod error;
 mod files;
 mod git;
 mod manifest;
+mod release_please;
 
 use error::{ReleaseContext, ReleaseVersionError};
 use manifest::validate_manifest;
+use release_please::{ReleasePleaseDispatchItem, release_please_dispatch_items};
 
 #[cfg(test)]
 use manifest::same_version_file;
@@ -114,6 +116,10 @@ pub fn check(
     let manifest = load_manifest(root)?;
     let plans = build_plan(root, &manifest, base, head, mode)?;
     let mut errors = Vec::new();
+    errors.extend(release_please::check_manifest_versions(
+        root,
+        &manifest.components,
+    )?);
 
     for (component, plan) in manifest.components.iter().zip(plans.iter()) {
         let parity_errors = check_component_parity(root, component, &plan.version)?;
@@ -272,6 +278,37 @@ pub fn regen_changelog(root: &Path, component_id: &str, output_path: &str) -> Re
         .with_release_context(|| format!("unknown release component {component_id}"))?;
     cliff::generate_full_changelog(root, component, output_path)?;
     println!("regenerated {output_path} for {component_id}");
+    Ok(())
+}
+
+pub fn release_please_fixups(root: &Path, component_id: &str, version: &str) -> ReleaseResult<()> {
+    let manifest = load_manifest(root)?;
+    release_please::fixups(root, &manifest.components, component_id, version)
+}
+
+pub fn release_please_dispatch_plan(
+    root: &Path,
+    paths_released: &str,
+) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
+    let manifest = load_manifest(root)?;
+    release_please_dispatch_items(root, &manifest.components, paths_released)
+}
+
+pub fn print_release_please_dispatch_plan(
+    items: &[ReleasePleaseDispatchItem],
+    json: bool,
+) -> ReleaseResult<()> {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(items)
+                .release_context("failed to serialize release-please dispatch plan")?
+        );
+    } else {
+        for item in items {
+            println!("{} workflow={} tag={}", item.id, item.workflow, item.tag);
+        }
+    }
     Ok(())
 }
 

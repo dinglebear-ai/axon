@@ -3,6 +3,8 @@ use regex::Regex;
 use std::path::Path;
 use std::process::Command;
 
+mod readme;
+
 pub(super) const MAX_ANDROID_VERSION_CODE: u64 = 2_100_000_000;
 
 pub(super) fn read_version(root: &Path, file: &VersionFile) -> ReleaseResult<String> {
@@ -63,7 +65,7 @@ pub(super) fn check_component_parity(
             VersionKind::CargoLockPackage => {
                 check_cargo_lock_package_version(&content, file.package.as_deref(), expected)
             }
-            VersionKind::ReadmeVersionLine => check_readme_version_line(&content, expected),
+            VersionKind::ReadmeVersionLine => readme::check_version_line(&content, expected),
             VersionKind::ChangelogHeading => check_changelog_heading(&content, expected),
             VersionKind::JsonVersion => {
                 check_json_version(&content, file.json_pointer.as_deref(), expected)
@@ -218,14 +220,6 @@ fn check_cargo_lock_package_version(
     let actual = read_cargo_lock_package_version(content, package)?;
     if actual != expected {
         release_bail!("expected Cargo.lock package version {expected}, found {actual}");
-    }
-    Ok(())
-}
-
-fn check_readme_version_line(content: &str, expected: &str) -> ReleaseResult<()> {
-    let expected = format!("Version: {expected}");
-    if !content.lines().any(|line| line.trim() == expected) {
-        release_bail!("missing '{expected}'");
     }
     Ok(())
 }
@@ -435,14 +429,7 @@ pub(super) fn increment_gradle_version_code(content: &str) -> ReleaseResult<Stri
 }
 
 pub(super) fn replace_readme_version_line(content: &str, next: &str) -> ReleaseResult<String> {
-    let regex = Regex::new(r#"(?m)^Version:\s*[0-9A-Za-z.+-]+$"#)
-        .release_context("invalid README version replacement regex")?;
-    if !regex.is_match(content) {
-        release_bail!("missing README Version line");
-    }
-    Ok(regex
-        .replace(content, format!("Version: {next}"))
-        .to_string())
+    readme::replace_version_line(content, next)
 }
 
 pub(super) fn ensure_changelog_heading(content: &str, next: &str) -> ReleaseResult<String> {

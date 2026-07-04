@@ -61,7 +61,7 @@ fn reads_component_manifest() {
                 "chrome-ext-v",
                 "apps/chrome-extension",
                 "chrome-extension-release.yml",
-                &["apps/chrome-extension".to_owned(), "assets".to_owned()][..],
+                &["apps/chrome-extension".to_owned()][..],
             ),
         ]
     );
@@ -738,7 +738,22 @@ fn android_change_allows_version_code_increase() {
         "# Changelog\n\n## [1.3.3]\n",
     )
     .unwrap();
-    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  ".": "1.0.0",
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.3",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/android/app/build.gradle.kts",
+        ".release-please-manifest.json",
+    ]);
     fixture.git(&["commit", "-m", "bump android version"]);
 
     check(
@@ -790,8 +805,13 @@ fn chrome_assets_change_requires_chrome_bump() {
     let fixture = Fixture::new();
     fixture.init_repo();
     fixture.git(&["tag", "chrome-ext-v0.2.0"]);
-    fs::write(fixture.path("assets/icon.svg"), "<svg />\n").unwrap();
-    fixture.git(&["add", "assets/icon.svg"]);
+    fs::create_dir_all(fixture.path("apps/chrome-extension/assets")).unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/assets/axon-glyph.svg"),
+        "<svg />\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/chrome-extension/assets/axon-glyph.svg"]);
     fixture.git(&["commit", "-m", "change asset"]);
 
     let error = check(
@@ -971,6 +991,76 @@ fn release_manifest_requires_release_please_path() {
 }
 
 #[test]
+fn release_please_manifest_matches_component_versions() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  ".": "9.9.9",
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let errors =
+        release_please::check_manifest_versions(fixture.root(), &manifest.components).unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains(".release-please-manifest.json"))
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_uses_manifest_metadata() {
+    let fixture = Fixture::new();
+    let items =
+        release_please_dispatch_plan(fixture.root(), r#"[".", "apps/palette-tauri"]"#).unwrap();
+    assert_eq!(
+        items,
+        vec![
+            release_please::ReleasePleaseDispatchItem {
+                id: "cli".to_owned(),
+                workflow: "release.yml".to_owned(),
+                tag: "v1.0.0".to_owned(),
+            },
+            release_please::ReleasePleaseDispatchItem {
+                id: "palette".to_owned(),
+                workflow: "palette-release.yml".to_owned(),
+                tag: "palette-v5.10.2".to_owned(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn android_fixup_increments_version_code() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 14 // x-release-please-version-code
+        // x-release-please-start-version
+        versionName = "1.5.1"
+        // x-release-please-end
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    release_please_fixups(fixture.root(), "android", "1.5.1").unwrap();
+
+    let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
+    assert_eq!(read_gradle_version_name(&content).unwrap(), "1.5.1");
+    assert_eq!(read_gradle_version_code(&content).unwrap(), 15);
+}
+
+#[test]
 fn manifest_validation_rejects_duplicate_ids() {
     let fixture = Fixture::new();
     let mut manifest = load_manifest(fixture.root()).unwrap();
@@ -1086,6 +1176,16 @@ impl Fixture {
         )
         .expect("release/components.toml fixture exists");
         write(&self.path("release/components.toml"), &manifest);
+        write(
+            &self.path(".release-please-manifest.json"),
+            r#"{
+  ".": "1.0.0",
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+        );
         for workflow in [
             "release.yml",
             "palette-release.yml",
