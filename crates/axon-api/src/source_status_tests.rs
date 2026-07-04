@@ -384,3 +384,18 @@ fn phase_1_operation_dtos_reject_unknown_fields() {
         "{collection_err}"
     );
 }
+
+#[test]
+fn phase_1_registered_provider_dtos_reject_unknown_fields() {
+    let search_err = serde_json::from_value::<SearchRequest>(serde_json::json!({
+        "query": "axon phase 1",
+        "limit": 10,
+        "metadata": {},
+        "legacy": true
+    }))
+    .expect_err("search request must reject unknown fields");
+    assert!(
+        search_err.to_string().contains("unknown field"),
+        "{search_err}"
+    );
+}
