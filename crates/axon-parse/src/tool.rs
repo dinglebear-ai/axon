@@ -1,14 +1,23 @@
-use axon_api::source::{LifecycleStatus, Severity, SourceParseFacts, SourceWarning};
+use axon_api::source::{
+    GraphCandidate, LifecycleStatus, Severity, SourceParseFacts, SourceWarning,
+};
 use serde_json::{Value, json};
 
 use crate::facts::{inline_text, source_fact};
+use crate::graph_candidate::candidate_edge;
 use crate::parser::{ParseInput, ParseResult, stage_header};
 
 pub const MODULE_NAME: &str = "tool";
+pub const MAX_TOOL_JSONL_LINE_BYTES: usize = 256 * 1024;
+pub const MAX_TOOL_JSON_DEPTH: usize = 32;
+pub const MAX_TOOL_JSON_ENTRIES: usize = 4_096;
+pub const MAX_TOOL_REDACTED_FIELDS: usize = 512;
+pub const MAX_TOOL_RESOURCES_PER_RECORD: usize = 128;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ToolParseItems {
     pub facts: Vec<SourceParseFacts>,
+    pub graph_candidates: Vec<GraphCandidate>,
     pub warnings: Vec<SourceWarning>,
 }
 
@@ -19,6 +28,14 @@ pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
         let line_no = idx as u32 + 1;
         let trimmed = line.trim();
         if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.len() > MAX_TOOL_JSONL_LINE_BYTES {
+            parsed.warnings.push(warning(
+                input,
+                "tool.jsonl.line_too_large",
+                format!("tool JSONL line {line_no} exceeds maximum byte length"),
+            ));
             continue;
         }
         let value = match serde_json::from_str::<Value>(trimmed) {
@@ -32,6 +49,14 @@ pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
                 continue;
             }
         };
+        if !json_within_caps(&value) {
+            parsed.warnings.push(warning(
+                input,
+                "tool.jsonl.bounds_exceeded",
+                format!("tool JSONL line {line_no} exceeds structural limits"),
+            ));
+            continue;
+        }
         let Some(tool) = value
             .get("tool")
             .or_else(|| value.get("tool_name"))
@@ -47,23 +72,51 @@ pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
             .map(|action| format!("{tool}.{action}"))
             .unwrap_or_else(|| tool.to_string());
         let output_kind = value.get("output").map(json_kind).unwrap_or("missing");
+        let side_effect_class = value
+            .get("side_effect_class")
+            .and_then(Value::as_str)
+            .unwrap_or("read");
 
         parsed.facts.push(source_fact(
             input,
             "tool_output_jsonl",
             "jsonl",
-            "tool_output",
-            name,
+            "tool_observed_claim",
+            &name,
             json!({
                 "tool": tool,
                 "action": action,
                 "status": value.get("status").and_then(Value::as_str).unwrap_or("unknown"),
                 "output_kind": output_kind,
+                "observed_execution_requested": value.get("execution_requested").and_then(Value::as_bool),
+                "observed_execution_allowed_claim": value.get("execution_allowed").and_then(Value::as_bool),
+                "trusted_policy": false,
+                "side_effect_class": side_effect_class,
+                "argv": "[redacted]",
+                "env": "[redacted]",
+                "stdout": "[redacted]",
+                "stderr": "[redacted]",
             }),
             Some(line_no),
         ));
+        parsed.graph_candidates.push(candidate_edge(
+            input,
+            "tool_output_jsonl",
+            "tool_call_event",
+            "tool_call",
+            &tool_call_key(input, &name, line_no),
+            "tool",
+            &format!("tool:{tool}"),
+            "tool_call_uses_tool",
+            "tool_call_event",
+            Some(line_no),
+            Some(format!("{name} [redacted]")),
+        ));
 
-        for path in redacted_paths(&value) {
+        for path in redacted_paths(&value)
+            .into_iter()
+            .take(MAX_TOOL_REDACTED_FIELDS)
+        {
             parsed.facts.push(source_fact(
                 input,
                 "tool_output_jsonl",
@@ -85,26 +138,77 @@ pub fn tool_parse_items(input: &ParseInput) -> ToolParseItems {
         }
 
         if let Some(artifact) = output_artifact(&value) {
+            let artifact_id = artifact.artifact_id.clone();
             parsed.facts.push(source_fact(
                 input,
                 "tool_output_jsonl",
                 "jsonl_heuristic",
                 "tool_artifact_ref",
-                artifact.artifact_id.clone(),
+                artifact_id.clone(),
                 json!({
                     "tool": tool,
                     "action": action,
-                    "artifact_id": artifact.artifact_id,
+                    "artifact_id": artifact_id,
                     "uri": artifact.uri,
                     "size_bytes": artifact.size_bytes,
                     "reason": artifact.reason,
                 }),
                 Some(line_no),
             ));
+            parsed.graph_candidates.push(candidate_edge(
+                input,
+                "tool_output_jsonl",
+                "tool_result_event",
+                "tool_call",
+                &tool_call_key(input, &name, line_no),
+                "artifact",
+                &format!("artifact:{artifact_id}"),
+                "tool_call_produced_artifact",
+                "tool_result_event",
+                Some(line_no),
+                Some(format!("artifact:{artifact_id}")),
+            ));
             parsed.warnings.push(warning(
                 input,
                 "tool.output_artifact",
                 "tool output was stored as an artifact reference".to_string(),
+            ));
+        }
+
+        for uri in external_resources(&value)
+            .into_iter()
+            .take(MAX_TOOL_RESOURCES_PER_RECORD)
+        {
+            parsed.facts.push(source_fact(
+                input,
+                "tool_output_jsonl",
+                "jsonl_heuristic",
+                "external_resource",
+                uri.clone(),
+                json!({
+                    "tool": tool,
+                    "action": action,
+                    "uri": uri,
+                    "side_effect_class": side_effect_class,
+                }),
+                Some(line_no),
+            ));
+            parsed.graph_candidates.push(candidate_edge(
+                input,
+                "tool_output_jsonl",
+                "tool_call_event",
+                "tool_call",
+                &tool_call_key(input, &name, line_no),
+                "external_resource",
+                &format!("external:{uri}"),
+                if mutating_side_effect(side_effect_class) {
+                    "tool_call_mutated_resource"
+                } else {
+                    "tool_call_read_resource"
+                },
+                "tool_call_event",
+                Some(line_no),
+                Some(uri),
             ));
         }
     }
@@ -123,7 +227,7 @@ pub fn tool_parse_result(input: &ParseInput) -> ParseResult {
         header: stage_header(input, status, parsed.warnings.clone(), None),
         document_id: input.document.document_id.clone(),
         facts: parsed.facts,
-        graph_candidates: Vec::new(),
+        graph_candidates: parsed.graph_candidates,
         parser_id: "tool_output_jsonl".to_string(),
         parser_version: crate::facts::PARSER_VERSION.to_string(),
         warnings: parsed.warnings,
@@ -169,6 +273,34 @@ fn collect_redacted_paths(value: &Value, path: &str, paths: &mut Vec<String>) {
         }
         _ => {}
     }
+}
+
+fn json_within_caps(value: &Value) -> bool {
+    let mut stack = vec![(value, 1usize)];
+    let mut entries = 0usize;
+    while let Some((value, depth)) = stack.pop() {
+        if depth > MAX_TOOL_JSON_DEPTH {
+            return false;
+        }
+        match value {
+            Value::Array(items) => {
+                entries += items.len();
+                if entries > MAX_TOOL_JSON_ENTRIES {
+                    return false;
+                }
+                stack.extend(items.iter().map(|item| (item, depth + 1)));
+            }
+            Value::Object(object) => {
+                entries += object.len();
+                if entries > MAX_TOOL_JSON_ENTRIES {
+                    return false;
+                }
+                stack.extend(object.values().map(|item| (item, depth + 1)));
+            }
+            _ => {}
+        }
+    }
+    true
 }
 
 fn is_redacted(text: &str) -> bool {
@@ -226,6 +358,32 @@ fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
         .filter_map(|key| value.get(*key).and_then(Value::as_str))
         .find(|text| !text.is_empty())
         .map(str::to_string)
+}
+
+fn external_resources(value: &Value) -> Vec<String> {
+    let Some(resources) = value.get("resources").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    resources
+        .iter()
+        .filter_map(|resource| resource.get("uri").and_then(Value::as_str))
+        .filter(|uri| !uri.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn mutating_side_effect(side_effect_class: &str) -> bool {
+    matches!(
+        side_effect_class,
+        "write" | "mutate" | "delete" | "network_write"
+    )
+}
+
+fn tool_call_key(input: &ParseInput, name: &str, line_no: u32) -> String {
+    format!(
+        "tool_call:{}:{}:{line_no}",
+        input.document.source_item_key.0, name
+    )
 }
 
 fn warning(input: &ParseInput, code: &str, message: String) -> SourceWarning {
