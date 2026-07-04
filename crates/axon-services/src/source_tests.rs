@@ -1,5 +1,6 @@
 use super::*;
 use crate::runtime::ServiceJobRuntime;
+use crate::source::classify::SourceInputKind;
 use crate::types::ServiceJob;
 use axon_core::config::Config;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
@@ -91,6 +92,32 @@ impl ServiceJobRuntime for NoopRuntime {
 /// local-source runtime, so it exercises the "no data plane" degraded path.
 fn context_without_data_plane() -> ServiceContext {
     ServiceContext::from_runtime(Arc::new(Config::test_default()), Arc::new(NoopRuntime))
+}
+
+#[tokio::test]
+async fn source_routing_resolves_web_before_data_plane() {
+    let mut request = SourceRequest::new("example.com");
+    request.scope = Some(SourceScope::Map);
+
+    let routed =
+        routing::resolve_source_route(&request).expect("scheme-less web source should route");
+
+    assert_eq!(routed.kind, SourceInputKind::Web);
+    assert_eq!(routed.route.adapter.name, "web");
+    assert_eq!(routed.route.scope, SourceScope::Map);
+    assert_eq!(routed.route.source.canonical_uri, "https://example.com/");
+}
+
+#[tokio::test]
+async fn source_routing_rejects_unsupported_scope_before_data_plane() {
+    let mut request = SourceRequest::new("crates:serde");
+    request.scope = Some(SourceScope::Subreddit);
+
+    let err = routing::resolve_source_route(&request)
+        .expect_err("registry source must reject reddit scope before acquisition");
+
+    assert_eq!(err.code.0, "source.scope.unsupported");
+    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
 }
 
 #[tokio::test]
