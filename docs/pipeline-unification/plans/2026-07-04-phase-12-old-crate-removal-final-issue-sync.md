@@ -14,9 +14,13 @@ The Lavra engineering review found that old-crate deletion must be blocked by re
 
 ## Global Constraints
 
-- Source of truth: all contracts under `docs/pipeline-unification`, especially `delivery/cutover-contract.md`, `delivery/testing-contract.md`, `delivery/surface-removal-contract.md`, `delivery/dependency-order-map.md`, and `crates/README.md`.
+- Source of truth: live issue #298 Phase 12 and every contract under `docs/pipeline-unification`, especially `delivery/cutover-contract.md`, `delivery/testing-contract.md`, `delivery/documentation-contract.md`, `delivery/docs-generator-contract.md`, `delivery/surface-removal-contract.md`, `delivery/dependency-order-map.md`, `foundation/crate-structure.md`, `foundation/repo-structure.md`, `runtime/pruning-contract.md`, `schemas/schema-generator-contract.md`, `surfaces/*-contract.md`, and `crates/README.md`.
 - Remove `axon-vector`, `axon-code-index`, `axon-crawl`, `axon-ingest`, and `axon-extract` only after replacement paths and tests pass.
 - Prove no compatibility facades, no transport imports of domain internals, no old code paths reachable from canonical surfaces, and root `axon` is bootstrap only.
+- Generated docs, schemas, clients, and presentation token outputs must be current in check mode before final issue sync.
+- Tier 0-5 test model must exist; default CI must run tiers 0-3; live smoke must be opt-in/skippable; Tier 5 cutover cases must pass before completion.
+- Transport parity matrix must cover CLI/MCP/REST for source, watch, map, extract, query, retrieve, ask, memory, prune, reset, jobs, and events.
+- Adapter fixture families must exist for web, local, git, registries, feeds, social, video, sessions, CLI tools, and MCP tools. Full all-source fixture completeness cannot be deferred if #298 is marked complete.
 - Task-level verification is narrower than the final gate; full workspace tests and live smoke belong at final cutover.
 - Before marking #298 complete, run Tier 5 cutover cases from `delivery/testing-contract.md`.
 - Run Tier 5 replacement-path/cutover cases before the final old-crate deletion commit, or at minimum before merging that deletion. Crate deletion depends on replacement path proof.
@@ -24,6 +28,7 @@ The Lavra engineering review found that old-crate deletion must be blocked by re
 - Do not combine crate deletion, Tier 5 harness creation, issue audit, and follow-up issue filing in one implementation PR unless explicitly requested.
 - Full all-source fixture completeness cannot be deferred if #298 is being marked complete. If it remains incomplete, #298 must remain open or the issue scope must be explicitly narrowed.
 - Filing follow-up GitHub issues should not block code cutover unless Jacob explicitly asks for issue hygiene in the same PR.
+- Selected live smoke tests for local, web, git, ask/query, and reset must run before release readiness unless explicitly skipped with an issue-linked reason and live-smoke opt-in evidence.
 
 ---
 
@@ -74,6 +79,10 @@ Check:
 canonical source paths pass targeted tests
 generated removal checks pass
 reset/preflight blockers pass
+docs/schema/presentation generators pass in --check mode
+Tier 0-5 test model exists and Tier 5 cutover cases pass
+transport parity matrix passes for CLI/MCP/REST
+adapter fixture family inventory is complete
 no public surface imports old crate handlers
 no compatibility facade crates remain
 no transport imports domain internals
@@ -155,6 +164,9 @@ Run:
 cargo test -p axon-services source --no-fail-fast
 cargo test -p axon-vectors generation prune --no-fail-fast
 cargo xtask schemas generate --check
+cargo xtask docs generate --check
+cargo xtask presentation generate --check
+cargo test --workspace tier5 --no-fail-fast
 ```
 
 Expected: replacement source/vector/schema paths pass before deletion.
@@ -181,7 +193,76 @@ Expected: removed-crate absence passes.
 
 ---
 
-### Task 4: Phase 6 Through Phase 12 Issue Checklist Audit
+### Task 4: Tier 0-5 Test Model, Transport Parity, And Fixture Inventory
+
+**Files:**
+- Modify/create: test tier metadata and CI workflow/config files.
+- Modify/create: transport parity matrix tests.
+- Modify/create: adapter fixture inventory tests.
+
+**Interfaces:**
+- Produces: executable release-readiness evidence for issue #298 Phase 12.
+
+- [ ] **Step 1: Add test tier registry**
+
+Define Tier 0 static, Tier 1 unit, Tier 2 boundary fake, Tier 3 integration local, Tier 4 live smoke, and Tier 5 cutover commands in code/config/docs. Ensure default CI runs tiers 0-3 and live smoke is opt-in/skippable.
+
+- [ ] **Step 2: Add transport parity matrix**
+
+Cover CLI/MCP/REST parity for source create/refresh, map, watch create/exec, extract, query, retrieve, ask, memory remember/search/context, prune plan/exec, reset plan/exec, jobs get/events/cancel/retry, and shared success/error envelopes.
+
+- [ ] **Step 3: Add adapter fixture family inventory**
+
+Assert fixture families exist for web, local, git/github, registries, feeds, social, video, sessions, CLI tools, and MCP tools with input, resolved source, capability, manifest, fetched item, `SourceDocument`, metadata, graph candidates where supported, degraded modes, and watch/refresh behavior.
+
+- [ ] **Step 4: Run release-readiness tests**
+
+Run:
+
+```bash
+cargo test --workspace tier0 tier1 tier2 tier3 --no-fail-fast
+cargo test --workspace transport_parity adapter_fixture_inventory --no-fail-fast
+cargo test --workspace tier5 --no-fail-fast
+```
+
+Expected: default tiers, transport parity, fixture inventory, and Tier 5 cutover cases pass.
+
+---
+
+### Task 5: Generated Docs, Schemas, Clients, And Presentation Final Gate
+
+**Files:**
+- Generated: `docs/reference/**`
+- Generated: web/Palette/Android/Chrome clients
+- Generated: presentation token outputs
+- Test: xtask docs/schema/presentation tests.
+
+**Interfaces:**
+- Produces: final generated-surface freshness evidence.
+
+- [ ] **Step 1: Run schema/docs/presentation generation checks**
+
+Run:
+
+```bash
+cargo xtask schemas generate --check
+cargo xtask docs generate --check
+cargo xtask presentation generate --check
+cargo xtask check-doc-links
+cargo xtask check-doc-contracts
+```
+
+Expected: generated markdown headers, source input manifests, validated examples, schema fixtures, token snapshots, and stale-doc CI failure behavior exist and pass.
+
+- [ ] **Step 2: Verify removed surfaces cannot dispatch**
+
+Run the CLI/MCP/REST removed-surface tests plus generated-client removed-operation tests.
+
+Expected: removed CLI/MCP/REST/config/DTO/client surfaces are absent and cannot dispatch or validate.
+
+---
+
+### Task 6: Phase 6 Through Phase 12 Issue Checklist Audit
 
 **Files:**
 - No code files.
@@ -202,7 +283,7 @@ Expected: local JSON contains the live checklist and comments.
 
 - [ ] **Step 2: Audit checklist items**
 
-For every Phase 6, 7, 8, 9, 10, 11, and 12 unchecked item, record:
+For every Phase 6, 7, 8, 9, 10, 11, and 12 unchecked item, plus crate relocation, dependency/order, and planned PR breakdown items, record:
 
 ```text
 issue checklist text
@@ -212,11 +293,15 @@ reason if unchecked
 follow-up issue if deferrable
 ```
 
-- [ ] **Step 3: Update issue body**
+- [ ] **Step 3: Verify completion rules before editing**
+
+Do not mark #298 complete unless generated docs/schemas, fake-boundary tests, transport parity matrix, selected live smoke tests, Tier 5 cutover cases, mandatory reviews, all required adapter fixture families, and no-known-contract-gaps signoff all have current evidence. If any required item remains incomplete, keep #298 open and list blockers.
+
+- [ ] **Step 4: Update issue body**
 
 Use `gh issue edit 298 --body-file target/issue-298-updated-body.md` after updating checklist boxes. Only check items backed by code/docs/tests in the current branch.
 
-- [ ] **Step 4: Post audit summary comment**
+- [ ] **Step 5: Post audit summary comment**
 
 Run:
 
@@ -228,7 +313,7 @@ Expected: issue comment lists exact checked/unchecked changes and final blockers
 
 ---
 
-### Task 5: File Deferrable Hardening Follow-Ups
+### Task 7: File Deferrable Hardening Follow-Ups
 
 **Files:**
 - External: GitHub issues.
@@ -238,13 +323,13 @@ Expected: issue comment lists exact checked/unchecked changes and final blockers
 
 - [ ] **Step 1: Create follow-up issue drafts**
 
-Draft issues for:
+Draft issues only for genuinely non-blocking hardening. Do not defer any item required by issue #298 Phase 12 completion. Candidate non-blocking issues:
 
 ```text
-full all-source fixture completeness
-presentation/token parity
-Android/Chrome client parity
-full logs/traces status parity
+additional live-smoke breadth beyond selected local/web/git/ask/query/reset
+extra presentation polish after required token parity and accessibility checks pass
+additional Android/Chrome UX depth after generated client parity passes
+full logs/traces status polish beyond required observability/status parity
 memory graph/vector enhancements not required for current memory contract
 ```
 
@@ -260,7 +345,7 @@ Append the follow-up issue URLs to the #298 final audit comment or a separate co
 
 ---
 
-### Task 6: Tier 5 Cutover Cases
+### Task 8: Tier 5 Cutover Cases
 
 **Files:**
 - Test: `crates/axon-services/src/tier5_cutover_tests.rs`
@@ -288,7 +373,7 @@ async fn tier5_incompatible_store_block_and_reset_flow() {
 
 - [ ] **Step 2: Add remaining Tier 5 cases**
 
-Cover removed config validation, removed CLI/MCP/REST absence, old job/code-index/Qdrant payload absence, canonical local source reindex, canonical web source reindex, ask/query retrieval from target payloads, provider backpressure during fresh reindex, and interrupted partial generation not searchable after restart.
+Cover removed config validation, removed CLI/MCP/REST/generated-client absence, old job/code-index/Qdrant payload absence, fresh SQLite schema, fresh Qdrant collection/index shape, canonical local source reindex, canonical web source reindex, ask/query retrieval from target payloads, provider backpressure during fresh reindex, auth/token cache invalidation or re-auth guidance, and interrupted partial generation not searchable after restart.
 
 - [ ] **Step 3: Run Tier 5 tests**
 
@@ -298,7 +383,23 @@ Expected: all Tier 5 fake/local cutover tests pass.
 
 ---
 
-### Task 7: Final Verification Gate
+### Task 9: Selected Live Smoke And Mandatory Reviews
+
+- [ ] **Step 1: Run selected live smoke tests**
+
+Run the opt-in live smoke suite for local, web, git, ask/query, and reset with secrets redacted in output.
+
+Expected: live smoke is opt-in/skippable and records service URLs/model/collection/job ids/degradation status without secrets.
+
+- [ ] **Step 2: Run mandatory PR reviews**
+
+Run the required engineering/security/product or project-defined review process and record findings/resolutions in the final audit.
+
+Expected: mandatory review findings are resolved or tracked as blockers before issue completion.
+
+---
+
+### Task 10: Final Verification Gate
 
 - [ ] **Step 1: Run final format check**
 
@@ -318,7 +419,21 @@ Run: `cargo test --workspace --no-fail-fast`
 
 Expected: all workspace tests pass.
 
-- [ ] **Step 4: Verify old crate absence**
+- [ ] **Step 4: Run docs/schema/presentation final checks**
+
+Run:
+
+```bash
+cargo xtask schemas generate --check
+cargo xtask docs generate --check
+cargo xtask presentation generate --check
+cargo xtask check-doc-links
+cargo xtask check-doc-contracts
+```
+
+Expected: docs match generated artifacts, examples validate, links/contracts pass, and no stale generated output remains.
+
+- [ ] **Step 5: Verify old crate absence**
 
 Run:
 
@@ -328,6 +443,6 @@ cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | sort > 
 
 Expected: output does not include `axon-vector`, `axon-code-index`, `axon-crawl`, `axon-ingest`, or `axon-extract`.
 
-- [ ] **Step 5: Mark #298 complete only after evidence exists**
+- [ ] **Step 6: Mark #298 complete only after evidence exists**
 
-Update #298 only if Tasks 1-7 pass and the checklist audit has no required unchecked items. If required items remain, leave #298 open and list blockers with exact files/tests.
+Update #298 only if Tasks 1-10 pass and the checklist audit has no required unchecked items or known contract gaps. If required items remain, leave #298 open and list blockers with exact files/tests.
