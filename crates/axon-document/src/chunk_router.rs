@@ -20,6 +20,12 @@ impl ChunkRouter {
         if is_api_schema(doc) {
             return Ok(ChunkingProfile::ApiSchema);
         }
+        if is_tool_output(doc) {
+            return Ok(ChunkingProfile::ToolOutput);
+        }
+        if is_env_example(doc) {
+            return Ok(ChunkingProfile::StructuredRecords);
+        }
         if is_manifest(doc) {
             return Ok(ChunkingProfile::CodeManifest);
         }
@@ -112,15 +118,39 @@ fn is_manifest(doc: &SourceDocument) -> bool {
                     | "Dockerfile"
                     | "docker-compose.yml"
                     | "docker-compose.yaml"
-                    | ".env.example"
                     | "Chart.yaml"
                     | "values.yaml"
                     | "kustomization.yaml"
                     | "kustomization.yml"
             ) || filename.ends_with(".tf")
                 || filename.ends_with(".tfvars")
-                || filename.ends_with(".env.example")
         })
+}
+
+fn is_env_example(doc: &SourceDocument) -> bool {
+    doc.path
+        .as_deref()
+        .or_else(|| doc.canonical_uri.rsplit('/').next())
+        .is_some_and(|path| {
+            let filename = path.rsplit('/').next().unwrap_or(path);
+            matches!(
+                filename,
+                ".env.example"
+                    | ".env.sample"
+                    | ".env.template"
+                    | "example.env"
+                    | "env.example"
+                    | "env.sample"
+                    | "env.template"
+            ) || filename.ends_with(".env.example")
+        })
+}
+
+fn is_tool_output(doc: &SourceDocument) -> bool {
+    doc.path
+        .as_deref()
+        .or_else(|| doc.canonical_uri.rsplit('/').next())
+        .is_some_and(|path| path.rsplit('/').next().unwrap_or(path) == "tool-output.jsonl")
 }
 
 fn is_api_schema(doc: &SourceDocument) -> bool {

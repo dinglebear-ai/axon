@@ -6,7 +6,8 @@ use axon_api::source::{
 
 use crate::{
     ChunkingProfile, DocumentPreparer, PrepareSourceDocumentRequest,
-    preparer::validate_prepared_document, testing::RecordingPreparer,
+    preparer::{validate_prepared_document, validate_prepared_document_ranges},
+    testing::RecordingPreparer,
 };
 
 #[test]
@@ -125,6 +126,26 @@ fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
     assert!(error.contains("empty content"));
     assert!(error.contains("source_range byte_start > byte_end"));
     assert!(error.contains("locator range line_start > line_end"));
+}
+
+#[test]
+fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            "PORT=3000\n",
+            "gen-bounds",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap()
+        .document;
+    let mut invalid = prepared;
+    invalid.chunks[0].source_range.line_start = Some(9000);
+    invalid.chunks[0].source_range.line_end = Some(9001);
+
+    let err = validate_prepared_document_ranges(&invalid)
+        .expect_err("range outside normalized document rejected");
+    assert!(err.contains("outside normalized document"));
 }
 
 #[test]

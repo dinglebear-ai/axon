@@ -11,7 +11,7 @@
 
 use std::str::FromStr;
 
-use axon_api::source::{ApiError, GraphCandidate};
+use axon_api::source::{ApiError, GraphCandidate, SourceRange};
 
 use crate::edge::GraphEdgeKind;
 use crate::error::graph_validation_error;
@@ -75,9 +75,34 @@ pub fn validate_candidate(candidate: &GraphCandidate) -> Result<(), ApiError> {
 
     for evidence in &candidate.evidence {
         EvidenceKind::from_str(&evidence.evidence_kind)?;
+        if let Some(range) = &evidence.range {
+            validate_range_order(range)?;
+        }
     }
 
     Ok(())
+}
+
+fn validate_range_order(range: &SourceRange) -> Result<(), ApiError> {
+    if starts_after(range.line_start, range.line_end)
+        || starts_after(range.byte_start, range.byte_end)
+        || starts_after(range.char_start, range.char_end)
+        || starts_after(range.time_start_ms, range.time_end_ms)
+        || range
+            .turn_start
+            .as_ref()
+            .zip(range.turn_end.as_ref())
+            .is_some_and(|(start, end)| start > end)
+    {
+        return Err(graph_validation_error(
+            "invalid source range on graph evidence",
+        ));
+    }
+    Ok(())
+}
+
+fn starts_after<T: Ord>(start: Option<T>, end: Option<T>) -> bool {
+    start.zip(end).is_some_and(|(start, end)| start > end)
 }
 
 #[cfg(test)]

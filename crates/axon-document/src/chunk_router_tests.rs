@@ -93,6 +93,23 @@ fn router_selects_profile_from_document_shape_when_no_override_exists() {
 }
 
 #[test]
+fn router_selects_phase_7_parser_profiles_by_path() {
+    assert_eq!(route_for_path("Dockerfile"), ChunkingProfile::CodeManifest);
+    assert_eq!(
+        route_for_path("docker-compose.yml"),
+        ChunkingProfile::CodeManifest
+    );
+    assert_eq!(
+        route_for_path(".env.example"),
+        ChunkingProfile::StructuredRecords
+    );
+    assert_eq!(
+        route_for_path("tool-output.jsonl"),
+        ChunkingProfile::ToolOutput
+    );
+}
+
+#[test]
 fn router_ignores_generic_profile_metadata() {
     let mut doc = source_doc(ContentKind::PlainText, "release profile text");
     doc.metadata = metadata([("profile", json!("production"))]);
@@ -118,6 +135,8 @@ fn router_recognizes_common_manifest_and_config_files() {
         let doc = source_doc(ContentKind::PlainText, "name=value").with_path(path);
         let expected = if matches!(path, "openapi.yaml" | "schema.graphql" | "service.proto") {
             ChunkingProfile::ApiSchema
+        } else if matches!(path, ".env.example") {
+            ChunkingProfile::StructuredRecords
         } else {
             ChunkingProfile::CodeManifest
         };
@@ -169,4 +188,10 @@ fn metadata(entries: impl IntoIterator<Item = (&'static str, serde_json::Value)>
         map.insert(key.to_string(), value);
     }
     map
+}
+
+fn route_for_path(path: &str) -> ChunkingProfile {
+    ChunkRouter::default()
+        .route(&source_doc(ContentKind::PlainText, "body").with_path(path))
+        .unwrap()
 }
