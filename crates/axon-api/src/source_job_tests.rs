@@ -142,22 +142,22 @@ fn target_job_management_dtos_round_trip() {
     let summary = JobSummary {
         job_id,
         kind: JobKind::Source,
-        intent: Some(JobIntent::Refresh),
+        intent: None,
         status: LifecycleStatus::Running,
         phase: PipelinePhase::Embedding,
         created_at: created_at.clone(),
         updated_at: created_at.clone(),
-        started_at: Some(created_at.clone()),
+        started_at: None,
         finished_at: None,
         source_id: Some(source_id.clone()),
         watch_id: None,
-        parent_job_id: Some(parent_job_id),
-        root_job_id: Some(parent_job_id),
-        attempt: 1,
-        priority: JobPriority::Background,
+        parent_job_id: None,
+        root_job_id: None,
+        attempt: 0,
+        priority: JobPriority::Normal,
         counts: Some(counts()),
         current: None,
-        heartbeat: Some(heartbeat.clone()),
+        heartbeat: None,
         last_error: None,
         warnings: Vec::new(),
     };
@@ -217,7 +217,7 @@ fn target_job_management_dtos_round_trip() {
         }],
         limit: 50,
         next_cursor: None,
-        last_sequence: Some(12),
+        last_sequence: 12,
     };
     let cancel = JobCancelRequest {
         reason: Some("user requested".to_string()),
@@ -230,9 +230,13 @@ fn target_job_management_dtos_round_trip() {
         overrides: MetadataMap::default(),
     };
     let cleanup = JobCleanupResult {
-        jobs_pruned: 1,
-        events_pruned: 2,
-        heartbeats_pruned: 3,
+        matched: 3,
+        deleted: 3,
+        dry_run: false,
+        warnings: Vec::new(),
+        jobs_pruned: 3,
+        events_pruned: 0,
+        heartbeats_pruned: 0,
         artifacts_pruned: 0,
     };
 

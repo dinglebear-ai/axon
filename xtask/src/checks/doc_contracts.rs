@@ -9,27 +9,25 @@
 //! fails. It is the `check-doc-contracts` deliverable from
 //! `docs-generator-contract.md` ("generated doc references removed surfaces").
 //!
-//! Only the unscoped (`global`) removed-surface rules are used, because those are
-//! the type names (`*Request`). The command/route/config tokens (`"embed"`,
-//! `/v1/scrape`, …) are ordinary words in prose and are intentionally excluded to
-//! avoid false positives — they remain covered against the JSON artifacts by the
-//! schema generator.
+//! Only removed API DTO definition names are used here. The command/route/config
+//! tokens (`"embed"`, `/v1/scrape`, …) are ordinary words in prose and are
+//! intentionally excluded to avoid false positives — they remain covered against
+//! the JSON artifacts by the schema generator.
 
 use anyhow::{Result, bail};
 use std::path::Path;
 
 use walkdir::WalkDir;
 
-use crate::schemas::registry::REMOVED_SURFACE_RULES;
+use crate::schemas::registry::REMOVED_API_DTO_DEFS;
 
-/// Removed type-name tokens (quotes stripped) that must not appear in generated
-/// markdown. Derived from the unscoped `global(...)` removed-surface rules so the
-/// two lists never drift apart.
+/// Removed type-name tokens that must not appear in generated markdown. The
+/// source list is shared with the API schema removed-definition check so the two
+/// guardrails cannot drift apart.
 pub fn removed_doc_type_tokens() -> Vec<String> {
-    REMOVED_SURFACE_RULES
+    REMOVED_API_DTO_DEFS
         .iter()
-        .filter(|rule| rule.path_contains.is_empty())
-        .map(|rule| rule.token.trim_matches('"').to_string())
+        .map(|token| (*token).to_string())
         .collect()
 }
 

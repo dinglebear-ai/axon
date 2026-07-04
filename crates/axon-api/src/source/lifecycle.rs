@@ -36,7 +36,7 @@ pub struct SourceRequest {
     pub authority_hint: Option<AuthorityHint>,
     #[serde(default)]
     pub metadata: MetadataMap,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub idempotency_key: Option<String>,
 }
 
@@ -99,6 +99,7 @@ impl SourceRequest {
 pub struct ResolvedSource {
     pub source: String,
     pub canonical_uri: String,
+    #[serde(skip)]
     pub source_id: SourceId,
     pub source_kind: SourceKind,
     pub adapter: AdapterRef,
@@ -110,7 +111,7 @@ pub struct ResolvedSource {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graph: Vec<GraphRef>,
     pub warnings: Vec<SourceWarning>,
-    #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
+    #[serde(skip)]
     pub metadata: MetadataMap,
 }
 
@@ -183,7 +184,9 @@ pub struct SourceResult {
     pub job: Option<JobDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchResult>,
+    #[serde(skip)]
     pub artifacts: Vec<ArtifactRef>,
+    #[serde(skip)]
     pub errors: Vec<SourceError>,
 }
 
@@ -200,21 +203,45 @@ pub struct InlineSourceResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobDescriptor {
-    pub job_id: JobId,
     pub kind: JobKind,
+    pub id: JobId,
+    pub status_url: String,
+    pub events_url: String,
+    pub stream_url: String,
+    pub poll_after_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_url: Option<String>,
+    #[serde(skip)]
+    pub job_id: JobId,
+    #[serde(skip, default = "default_descriptor_status")]
     pub status: LifecycleStatus,
-    pub poll: PollDescriptor,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
+    #[serde(skip)]
+    pub poll: Option<PollDescriptor>,
+    #[serde(skip)]
+    pub created_at: Option<Timestamp>,
+    #[serde(skip)]
+    pub updated_at: Option<Timestamp>,
+}
+
+fn default_descriptor_status() -> LifecycleStatus {
+    LifecycleStatus::Queued
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PollDescriptor {
+    pub kind: JobKind,
+    pub id: JobId,
     pub status_url: String,
+    pub events_url: String,
+    pub stream_url: String,
+    pub poll_after_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub events_url: Option<String>,
-    pub suggested_interval_ms: u64,
+    pub cancel_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

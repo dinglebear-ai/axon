@@ -234,6 +234,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),
+            after_sequence: None,
             since_sequence: None,
             limit: Some(10),
             cursor: None,
@@ -242,7 +243,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
         .expect("list events");
     assert_eq!(public_events.events.len(), 1);
     assert_eq!(public_events.events[0].sequence, 2);
-    assert_eq!(public_events.last_sequence, Some(2));
+    assert_eq!(public_events.last_sequence, 2);
 
     let default_events = store
         .events(JobEventListRequest {
@@ -250,6 +251,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
             phase: None,
             severity: None,
             visibility: None,
+            after_sequence: None,
             since_sequence: None,
             limit: Some(u32::MAX),
             cursor: None,
@@ -286,6 +288,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),
+            after_sequence: None,
             since_sequence: None,
             limit: Some(10),
             cursor: None,
@@ -451,6 +454,8 @@ async fn recovery_honors_staleness_cutoff() {
     let recovery = store
         .recover(JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: None,
             older_than_seconds: Some(360),
             dry_run: false,
             allow_without_cutoff: false,
@@ -625,6 +630,8 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     let recovery = store
         .recover(JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: None,
             older_than_seconds: None,
             dry_run: false,
             allow_without_cutoff: true,
@@ -675,6 +682,10 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
 
     let cleanup = store
         .cleanup(JobCleanupRequest {
+            kind: None,
+            older_than: None,
+            status: None,
+            limit: None,
             older_than_seconds: None,
             dry_run: false,
             confirm_all_terminal: true,

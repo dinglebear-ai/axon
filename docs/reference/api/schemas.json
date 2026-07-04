@@ -539,6 +539,341 @@
       ],
       "type": "object"
     },
+    "ChunkDetail": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/ChunkDetail_ChunkId"
+        },
+        "chunk_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunk_locator": {
+          "$ref": "#/$defs/ChunkDetail_ChunkLocator"
+        },
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "document_id": {
+          "$ref": "#/$defs/ChunkDetail_DocumentId"
+        },
+        "embedding_metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/ChunkDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "source_range": {
+          "$ref": "#/$defs/ChunkDetail_SourceRange"
+        },
+        "vector_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "document_id",
+        "chunk_index",
+        "chunk_locator",
+        "source_range",
+        "metadata",
+        "graph_refs",
+        "vector_refs",
+        "content_hash"
+      ],
+      "title": "ChunkDetail",
+      "type": "object"
+    },
+    "ChunkDetail_ChunkId": {
+      "type": "string"
+    },
+    "ChunkDetail_ChunkLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/ChunkDetail_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "type": "object"
+    },
+    "ChunkDetail_DocumentId": {
+      "type": "string"
+    },
+    "ChunkDetail_GraphEdgeId": {
+      "type": "string"
+    },
+    "ChunkDetail_GraphNodeId": {
+      "type": "string"
+    },
+    "ChunkDetail_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkDetail_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkDetail_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ChunkDetail_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ChunkGetRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/ChunkGetRequest_ChunkId"
+        },
+        "document_id": {
+          "$ref": "#/$defs/ChunkGetRequest_DocumentId"
+        },
+        "include_content": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "document_id",
+        "chunk_id"
+      ],
+      "title": "ChunkGetRequest",
+      "type": "object"
+    },
+    "ChunkGetRequest_ChunkId": {
+      "type": "string"
+    },
+    "ChunkGetRequest_DocumentId": {
+      "type": "string"
+    },
+    "ChunkListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/ChunkListRequest_DocumentId"
+        },
+        "include_content": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "title": "ChunkListRequest",
+      "type": "object"
+    },
+    "ChunkListRequest_DocumentId": {
+      "type": "string"
+    },
     "ChunkLocator": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -577,6 +912,256 @@
       "type": "object"
     },
     "ChunkLocator_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ChunkSummary": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/ChunkSummary_ChunkId"
+        },
+        "chunk_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunk_locator": {
+          "$ref": "#/$defs/ChunkSummary_ChunkLocator"
+        },
+        "document_id": {
+          "$ref": "#/$defs/ChunkSummary_DocumentId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/ChunkSummary_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "source_range": {
+          "$ref": "#/$defs/ChunkSummary_SourceRange"
+        },
+        "vector_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "document_id",
+        "chunk_index",
+        "chunk_locator",
+        "source_range",
+        "metadata",
+        "graph_refs",
+        "vector_refs"
+      ],
+      "title": "ChunkSummary",
+      "type": "object"
+    },
+    "ChunkSummary_ChunkId": {
+      "type": "string"
+    },
+    "ChunkSummary_ChunkLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/ChunkSummary_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "type": "object"
+    },
+    "ChunkSummary_DocumentId": {
+      "type": "string"
+    },
+    "ChunkSummary_GraphEdgeId": {
+      "type": "string"
+    },
+    "ChunkSummary_GraphNodeId": {
+      "type": "string"
+    },
+    "ChunkSummary_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkSummary_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkSummary_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ChunkSummary_SourceRange": {
       "additionalProperties": false,
       "properties": {
         "byte_end": {
@@ -1536,7 +2121,7 @@
       ],
       "type": "string"
     },
-    "DocumentStatus": {
+    "DocumentDetail": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
@@ -1545,6 +2130,709 @@
           "minimum": 0,
           "type": "integer"
         },
+        "chunk_summary": {
+          "$ref": "#/$defs/DocumentDetail_ChunkSummary"
+        },
+        "chunks": {
+          "items": {
+            "$ref": "#/$defs/DocumentDetail_ChunkSummary"
+          },
+          "type": "array"
+        },
+        "content_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentDetail_ContentKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/DocumentDetail_DocumentId"
+        },
+        "generation": {
+          "$ref": "#/$defs/DocumentDetail_SourceGenerationId"
+        },
+        "graph": {
+          "items": {
+            "$ref": "#/$defs/DocumentDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/DocumentDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentDetail_SourceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/DocumentDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/DocumentDetail_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/DocumentDetail_DocumentLifecycleStatus"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vector_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vector_point_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "status",
+        "chunk_count",
+        "vector_point_count",
+        "graph_refs",
+        "generation",
+        "metadata",
+        "chunk_summary",
+        "vector_keys"
+      ],
+      "title": "DocumentDetail",
+      "type": "object"
+    },
+    "DocumentDetail_AdapterRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "DocumentDetail_AuthorityLevel": {
+      "enum": [
+        "official",
+        "verified",
+        "user_pinned",
+        "inferred",
+        "community",
+        "mirror",
+        "conflicting",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "DocumentDetail_ChunkId": {
+      "type": "string"
+    },
+    "DocumentDetail_ChunkLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/DocumentDetail_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "type": "object"
+    },
+    "DocumentDetail_ChunkSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/DocumentDetail_ChunkId"
+        },
+        "chunk_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunk_locator": {
+          "$ref": "#/$defs/DocumentDetail_ChunkLocator"
+        },
+        "document_id": {
+          "$ref": "#/$defs/DocumentDetail_DocumentId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/DocumentDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "source_range": {
+          "$ref": "#/$defs/DocumentDetail_SourceRange"
+        },
+        "vector_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "document_id",
+        "chunk_index",
+        "chunk_locator",
+        "source_range",
+        "metadata",
+        "graph_refs",
+        "vector_refs"
+      ],
+      "type": "object"
+    },
+    "DocumentDetail_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "DocumentDetail_DocumentId": {
+      "type": "string"
+    },
+    "DocumentDetail_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DocumentDetail_GraphEdgeId": {
+      "type": "string"
+    },
+    "DocumentDetail_GraphNodeId": {
+      "type": "string"
+    },
+    "DocumentDetail_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentDetail_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentDetail_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "DocumentDetail_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "DocumentDetail_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DocumentDetail_SourceCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_changed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vector_points_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items_total",
+        "items_changed",
+        "documents_total",
+        "chunks_total",
+        "vector_points_total",
+        "bytes_total"
+      ],
+      "type": "object"
+    },
+    "DocumentDetail_SourceGenerationId": {
+      "type": "string"
+    },
+    "DocumentDetail_SourceId": {
+      "type": "string"
+    },
+    "DocumentDetail_SourceItemKey": {
+      "type": "string"
+    },
+    "DocumentDetail_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
+      ],
+      "type": "string"
+    },
+    "DocumentDetail_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "DocumentDetail_SourceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/DocumentDetail_AdapterRef"
+        },
+        "authority": {
+          "$ref": "#/$defs/DocumentDetail_AuthorityLevel"
+        },
+        "canonical_uri": {
+          "type": "string"
+        },
+        "counts": {
+          "$ref": "#/$defs/DocumentDetail_SourceCounts"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "graph_node_ids": {
+          "items": {
+            "$ref": "#/$defs/DocumentDetail_GraphNodeId"
+          },
+          "type": "array"
+        },
+        "last_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentDetail_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_refreshed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/DocumentDetail_SourceId"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/DocumentDetail_SourceKind"
+        },
+        "status": {
+          "$ref": "#/$defs/DocumentDetail_LifecycleStatus"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentDetail_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "canonical_uri",
+        "display_name",
+        "source_kind",
+        "adapter",
+        "authority",
+        "status",
+        "counts",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "DocumentDetail_WatchId": {
+      "type": "string"
+    },
+    "DocumentListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentListRequest_ContentKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentListRequest_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentListRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentListRequest_DocumentLifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "DocumentListRequest",
+      "type": "object"
+    },
+    "DocumentListRequest_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "DocumentListRequest_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DocumentListRequest_SourceGenerationId": {
+      "type": "string"
+    },
+    "DocumentListRequest_SourceId": {
+      "type": "string"
+    },
+    "DocumentStatus": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
         "cleanup_status": {
           "anyOf": [
             {
@@ -1569,7 +2857,14 @@
           ]
         },
         "generation": {
-          "$ref": "#/$defs/DocumentStatus_SourceGenerationId"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentStatus_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "source_id": {
           "$ref": "#/$defs/DocumentStatus_SourceId"
@@ -1582,22 +2877,14 @@
         },
         "updated_at": {
           "type": "string"
-        },
-        "vector_point_count": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
         }
       },
       "required": [
         "document_id",
         "source_id",
         "source_item_key",
-        "generation",
         "status",
-        "updated_at",
-        "chunk_count",
-        "vector_point_count"
+        "updated_at"
       ],
       "title": "DocumentStatus",
       "type": "object"
@@ -1711,6 +2998,465 @@
       "type": "string"
     },
     "DocumentStatus_SourceItemKey": {
+      "type": "string"
+    },
+    "DocumentSummary": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentSummary_ContentKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/DocumentSummary_DocumentId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/DocumentSummary_GraphRef"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/DocumentSummary_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/DocumentSummary_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/DocumentSummary_DocumentLifecycleStatus"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vector_point_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "status",
+        "chunk_count",
+        "vector_point_count",
+        "graph_refs"
+      ],
+      "title": "DocumentSummary",
+      "type": "object"
+    },
+    "DocumentSummary_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "DocumentSummary_DocumentId": {
+      "type": "string"
+    },
+    "DocumentSummary_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DocumentSummary_GraphEdgeId": {
+      "type": "string"
+    },
+    "DocumentSummary_GraphNodeId": {
+      "type": "string"
+    },
+    "DocumentSummary_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentSummary_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentSummary_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "DocumentSummary_SourceId": {
+      "type": "string"
+    },
+    "DocumentSummary_SourceItemKey": {
+      "type": "string"
+    },
+    "DomainListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DomainListRequest_SourceKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "DomainListRequest",
+      "type": "object"
+    },
+    "DomainListRequest_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
+      ],
+      "type": "string"
+    },
+    "DomainSummary": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "document_count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "latest_refresh_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "top_sources": {
+          "items": {
+            "$ref": "#/$defs/DomainSummary_SourceSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "domain",
+        "source_count",
+        "document_count",
+        "chunk_count"
+      ],
+      "title": "DomainSummary",
+      "type": "object"
+    },
+    "DomainSummary_AdapterRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "DomainSummary_AuthorityLevel": {
+      "enum": [
+        "official",
+        "verified",
+        "user_pinned",
+        "inferred",
+        "community",
+        "mirror",
+        "conflicting",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "DomainSummary_GraphNodeId": {
+      "type": "string"
+    },
+    "DomainSummary_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "DomainSummary_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "DomainSummary_SourceCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_changed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vector_points_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items_total",
+        "items_changed",
+        "documents_total",
+        "chunks_total",
+        "vector_points_total",
+        "bytes_total"
+      ],
+      "type": "object"
+    },
+    "DomainSummary_SourceId": {
+      "type": "string"
+    },
+    "DomainSummary_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
+      ],
+      "type": "string"
+    },
+    "DomainSummary_SourceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/DomainSummary_AdapterRef"
+        },
+        "authority": {
+          "$ref": "#/$defs/DomainSummary_AuthorityLevel"
+        },
+        "canonical_uri": {
+          "type": "string"
+        },
+        "counts": {
+          "$ref": "#/$defs/DomainSummary_SourceCounts"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "graph_node_ids": {
+          "items": {
+            "$ref": "#/$defs/DomainSummary_GraphNodeId"
+          },
+          "type": "array"
+        },
+        "last_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DomainSummary_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_refreshed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/DomainSummary_SourceId"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/DomainSummary_SourceKind"
+        },
+        "status": {
+          "$ref": "#/$defs/DomainSummary_LifecycleStatus"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DomainSummary_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "canonical_uri",
+        "display_name",
+        "source_kind",
+        "adapter",
+        "authority",
+        "status",
+        "counts",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "DomainSummary_WatchId": {
       "type": "string"
     },
     "EmbeddingBatch": {
@@ -4030,58 +5776,325 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "confirm_all_terminal": {
-          "default": false,
-          "type": "boolean"
-        },
         "dry_run": {
-          "default": false,
           "type": "boolean"
         },
-        "older_than_seconds": {
-          "format": "uint64",
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCleanupRequest_JobKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
           "minimum": 0,
           "type": [
             "integer",
             "null"
           ]
+        },
+        "older_than": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCleanupRequest_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
+      "required": [
+        "dry_run"
+      ],
       "title": "JobCleanupRequest",
       "type": "object"
+    },
+    "JobCleanupRequest_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobCleanupRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
     },
     "JobCleanupResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "artifacts_pruned": {
+        "deleted": {
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
         },
-        "events_pruned": {
+        "dry_run": {
+          "type": "boolean"
+        },
+        "matched": {
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
         },
-        "heartbeats_pruned": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "jobs_pruned": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JobCleanupResult_SourceWarning"
+          },
+          "type": "array"
         }
       },
       "required": [
-        "jobs_pruned",
-        "events_pruned",
-        "heartbeats_pruned",
-        "artifacts_pruned"
+        "matched",
+        "deleted",
+        "dry_run",
+        "warnings"
       ],
       "title": "JobCleanupResult",
+      "type": "object"
+    },
+    "JobCleanupResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobCleanupResult_SourceItemKey": {
+      "type": "string"
+    },
+    "JobCleanupResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobCleanupResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCleanupResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "JobClearRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "type": "boolean"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobClearRequest_JobKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "older_than": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/JobClearRequest_LifecycleStatus"
+        }
+      },
+      "required": [
+        "status",
+        "confirm"
+      ],
+      "title": "JobClearRequest",
+      "type": "object"
+    },
+    "JobClearRequest_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobClearRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobClearResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/JobClearResult_LifecycleStatus"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JobClearResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "deleted",
+        "status",
+        "warnings"
+      ],
+      "title": "JobClearResult",
+      "type": "object"
+    },
+    "JobClearResult_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobClearResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobClearResult_SourceItemKey": {
+      "type": "string"
+    },
+    "JobClearResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobClearResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobClearResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
       "type": "object"
     },
     "JobCreateRequest": {
@@ -4366,32 +6379,46 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "created_at": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
           "type": "string"
         },
-        "job_id": {
+        "id": {
           "$ref": "#/$defs/JobDescriptor_JobId"
         },
         "kind": {
           "$ref": "#/$defs/JobDescriptor_JobKind"
         },
-        "poll": {
-          "$ref": "#/$defs/JobDescriptor_PollDescriptor"
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
-        "status": {
-          "$ref": "#/$defs/JobDescriptor_LifecycleStatus"
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "updated_at": {
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
           "type": "string"
         }
       },
       "required": [
-        "job_id",
         "kind",
-        "status",
-        "poll",
-        "created_at",
-        "updated_at"
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "title": "JobDescriptor",
       "type": "object"
@@ -4417,47 +6444,6 @@
         "reset"
       ],
       "type": "string"
-    },
-    "JobDescriptor_LifecycleStatus": {
-      "enum": [
-        "queued",
-        "pending",
-        "running",
-        "waiting",
-        "blocked",
-        "canceling",
-        "completed",
-        "completed_degraded",
-        "failed",
-        "canceled",
-        "expired",
-        "skipped"
-      ],
-      "type": "string"
-    },
-    "JobDescriptor_PollDescriptor": {
-      "additionalProperties": false,
-      "properties": {
-        "events_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_url": {
-          "type": "string"
-        },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "status_url",
-        "suggested_interval_ms"
-      ],
-      "type": "object"
     },
     "JobEvent": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4532,9 +6518,11 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "cursor": {
+        "after_sequence": {
+          "format": "uint64",
+          "minimum": 0,
           "type": [
-            "string",
+            "integer",
             "null"
           ]
         },
@@ -4549,16 +6537,6 @@
             "null"
           ]
         },
-        "phase": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobEventListRequest_PipelinePhase"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "severity": {
           "anyOf": [
             {
@@ -4567,14 +6545,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "since_sequence": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
           ]
         },
         "visibility": {
@@ -4596,38 +6566,6 @@
     },
     "JobEventListRequest_JobId": {
       "format": "uuid",
-      "type": "string"
-    },
-    "JobEventListRequest_PipelinePhase": {
-      "enum": [
-        "queued",
-        "requested",
-        "resolving",
-        "routing",
-        "authorizing",
-        "planning",
-        "leasing",
-        "discovering",
-        "diffing",
-        "fetching",
-        "rendering",
-        "enriching",
-        "normalizing",
-        "parsing",
-        "graphing",
-        "preparing",
-        "batching",
-        "embedding",
-        "vectorizing",
-        "upserting",
-        "retrieving",
-        "synthesizing",
-        "evaluating",
-        "publishing",
-        "cleaning",
-        "complete",
-        "canceled"
-      ],
       "type": "string"
     },
     "JobEventListRequest_Severity": {
@@ -4664,14 +6602,6 @@
         "last_sequence": {
           "format": "uint64",
           "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "uint32",
-          "minimum": 0,
           "type": "integer"
         },
         "next_cursor": {
@@ -4683,7 +6613,7 @@
       },
       "required": [
         "events",
-        "limit"
+        "last_sequence"
       ],
       "title": "JobEventPage",
       "type": "object"
@@ -5259,18 +7189,245 @@
       "format": "uuid",
       "type": "string"
     },
+    "JobListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobListRequest_JobKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobListRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobListRequest_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobListRequest_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "JobListRequest",
+      "type": "object"
+    },
+    "JobListRequest_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobListRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobListRequest_SourceId": {
+      "type": "string"
+    },
+    "JobListRequest_WatchId": {
+      "type": "string"
+    },
+    "JobRecoverRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobRecoverRequest_JobKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stale_before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "JobRecoveryRequest",
+      "type": "object"
+    },
+    "JobRecoverRequest_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "JobRecoverResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "job_ids": {
+          "items": {
+            "$ref": "#/$defs/JobRecoverResult_JobId"
+          },
+          "type": "array"
+        },
+        "recovered": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JobRecoverResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "recovered",
+        "job_ids",
+        "warnings"
+      ],
+      "title": "JobRecoveryResult",
+      "type": "object"
+    },
+    "JobRecoverResult_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "JobRecoverResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobRecoverResult_SourceItemKey": {
+      "type": "string"
+    },
+    "JobRecoverResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/JobRecoverResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobRecoverResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
     "JobRecoveryRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "allow_without_cutoff": {
-          "default": false,
-          "type": "boolean"
-        },
-        "dry_run": {
-          "default": false,
-          "type": "boolean"
-        },
         "kind": {
           "anyOf": [
             {
@@ -5281,11 +7438,17 @@
             }
           ]
         },
-        "older_than_seconds": {
-          "format": "uint64",
+        "limit": {
+          "format": "uint32",
           "minimum": 0,
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "stale_before": {
+          "type": [
+            "string",
             "null"
           ]
         }
@@ -5315,17 +7478,13 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "jobs_failed": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
+        "job_ids": {
+          "items": {
+            "$ref": "#/$defs/JobRecoveryResult_JobId"
+          },
+          "type": "array"
         },
-        "jobs_requeued": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "jobs_scanned": {
+        "recovered": {
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -5338,13 +7497,16 @@
         }
       },
       "required": [
-        "jobs_scanned",
-        "jobs_requeued",
-        "jobs_failed",
+        "recovered",
+        "job_ids",
         "warnings"
       ],
       "title": "JobRecoveryResult",
       "type": "object"
+    },
+    "JobRecoveryResult_JobId": {
+      "format": "uuid",
+      "type": "string"
     },
     "JobRecoveryResult_Severity": {
       "enum": [
@@ -5494,32 +7656,46 @@
     "JobRetryResult_JobDescriptor": {
       "additionalProperties": false,
       "properties": {
-        "created_at": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
           "type": "string"
         },
-        "job_id": {
+        "id": {
           "$ref": "#/$defs/JobRetryResult_JobId"
         },
         "kind": {
           "$ref": "#/$defs/JobRetryResult_JobKind"
         },
-        "poll": {
-          "$ref": "#/$defs/JobRetryResult_PollDescriptor"
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
-        "status": {
-          "$ref": "#/$defs/JobRetryResult_LifecycleStatus"
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "updated_at": {
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
           "type": "string"
         }
       },
       "required": [
-        "job_id",
         "kind",
-        "status",
-        "poll",
-        "created_at",
-        "updated_at"
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "type": "object"
     },
@@ -5544,47 +7720,6 @@
         "reset"
       ],
       "type": "string"
-    },
-    "JobRetryResult_LifecycleStatus": {
-      "enum": [
-        "queued",
-        "pending",
-        "running",
-        "waiting",
-        "blocked",
-        "canceling",
-        "completed",
-        "completed_degraded",
-        "failed",
-        "canceled",
-        "expired",
-        "skipped"
-      ],
-      "type": "string"
-    },
-    "JobRetryResult_PollDescriptor": {
-      "additionalProperties": false,
-      "properties": {
-        "events_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_url": {
-          "type": "string"
-        },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "status_url",
-        "suggested_interval_ms"
-      ],
-      "type": "object"
     },
     "JobStageSnapshot": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6408,12 +8543,6 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "attempt": {
-          "default": 0,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
         "counts": {
           "anyOf": [
             {
@@ -6426,42 +8555,6 @@
         },
         "created_at": {
           "type": "string"
-        },
-        "current": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_ProgressCurrent"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "finished_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "heartbeat": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_JobHeartbeat"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "intent": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_JobIntent"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "job_id": {
           "$ref": "#/$defs/JobSummary_JobId"
@@ -6479,32 +8572,8 @@
             }
           ]
         },
-        "parent_job_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_JobId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "phase": {
           "$ref": "#/$defs/JobSummary_PipelinePhase"
-        },
-        "priority": {
-          "$ref": "#/$defs/JobSummary_JobPriority",
-          "default": "normal"
-        },
-        "root_job_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_JobId"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "source_id": {
           "anyOf": [
@@ -6516,23 +8585,11 @@
             }
           ]
         },
-        "started_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "status": {
           "$ref": "#/$defs/JobSummary_LifecycleStatus"
         },
         "updated_at": {
           "type": "string"
-        },
-        "warnings": {
-          "items": {
-            "$ref": "#/$defs/JobSummary_SourceWarning"
-          },
-          "type": "array"
         },
         "watch_id": {
           "anyOf": [
@@ -6556,99 +8613,8 @@
       "title": "JobSummary",
       "type": "object"
     },
-    "JobSummary_ChunkId": {
-      "type": "string"
-    },
-    "JobSummary_DocumentId": {
-      "type": "string"
-    },
-    "JobSummary_JobHeartbeat": {
-      "additionalProperties": false,
-      "properties": {
-        "attempt": {
-          "default": 0,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "counts": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_StageCounts"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "heartbeat_at": {
-          "type": "string"
-        },
-        "job_id": {
-          "$ref": "#/$defs/JobSummary_JobId"
-        },
-        "last_event_sequence": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "phase": {
-          "$ref": "#/$defs/JobSummary_PipelinePhase"
-        },
-        "provider_reservations": {
-          "items": {
-            "$ref": "#/$defs/JobSummary_ProviderReservationSnapshot"
-          },
-          "type": "array"
-        },
-        "stage_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_StageId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "status": {
-          "$ref": "#/$defs/JobSummary_LifecycleStatus"
-        },
-        "worker_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "job_id",
-        "phase",
-        "status",
-        "heartbeat_at"
-      ],
-      "type": "object"
-    },
     "JobSummary_JobId": {
       "format": "uuid",
-      "type": "string"
-    },
-    "JobSummary_JobIntent": {
-      "enum": [
-        "run",
-        "acquire",
-        "refresh",
-        "watch",
-        "exec",
-        "retry",
-        "recover",
-        "cleanup",
-        "probe",
-        "reset"
-      ],
       "type": "string"
     },
     "JobSummary_JobKind": {
@@ -6666,16 +8632,6 @@
         "prune",
         "provider_probe",
         "reset"
-      ],
-      "type": "string"
-    },
-    "JobSummary_JobPriority": {
-      "enum": [
-        "interactive",
-        "high",
-        "normal",
-        "background",
-        "maintenance"
       ],
       "type": "string"
     },
@@ -6728,207 +8684,7 @@
       ],
       "type": "string"
     },
-    "JobSummary_ProgressCurrent": {
-      "additionalProperties": false,
-      "properties": {
-        "adapter": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "chunk_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_ChunkId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "document_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_DocumentId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "message": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "provider": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_ProviderId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "JobSummary_ProviderCoolingSnapshot": {
-      "additionalProperties": false,
-      "properties": {
-        "degraded": {
-          "type": "boolean"
-        },
-        "reason": {
-          "type": "string"
-        },
-        "retry_after": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "started_at": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "reason",
-        "started_at",
-        "degraded"
-      ],
-      "type": "object"
-    },
     "JobSummary_ProviderId": {
-      "type": "string"
-    },
-    "JobSummary_ProviderKind": {
-      "enum": [
-        "llm",
-        "embedding",
-        "vector",
-        "search",
-        "fetch",
-        "render",
-        "network_capture",
-        "artifact",
-        "ledger",
-        "graph",
-        "memory",
-        "job",
-        "watch",
-        "config",
-        "credential",
-        "cache",
-        "security",
-        "rate_limiter",
-        "health_probe"
-      ],
-      "type": "string"
-    },
-    "JobSummary_ProviderReservationSnapshot": {
-      "additionalProperties": false,
-      "properties": {
-        "acquired_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "cooling": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_ProviderCoolingSnapshot"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "expires_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "granted_units": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "priority": {
-          "$ref": "#/$defs/JobSummary_JobPriority"
-        },
-        "provider_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_ProviderId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "provider_kind": {
-          "$ref": "#/$defs/JobSummary_ProviderKind"
-        },
-        "queue_depth": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "requested_units": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "reservation_id": {
-          "$ref": "#/$defs/JobSummary_ReservationId"
-        },
-        "status": {
-          "$ref": "#/$defs/JobSummary_ProviderReservationStatus"
-        }
-      },
-      "required": [
-        "reservation_id",
-        "provider_kind",
-        "priority",
-        "requested_units",
-        "granted_units",
-        "status"
-      ],
-      "type": "object"
-    },
-    "JobSummary_ProviderReservationStatus": {
-      "enum": [
-        "requested",
-        "queued",
-        "granted",
-        "active",
-        "released",
-        "expired",
-        "canceled",
-        "failed"
-      ],
-      "type": "string"
-    },
-    "JobSummary_ReservationId": {
       "type": "string"
     },
     "JobSummary_Severity": {
@@ -6998,40 +8754,6 @@
     "JobSummary_SourceItemKey": {
       "type": "string"
     },
-    "JobSummary_SourceWarning": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/JobSummary_Severity"
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobSummary_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
-      "type": "object"
-    },
     "JobSummary_StageCounts": {
       "additionalProperties": false,
       "properties": {
@@ -7095,10 +8817,6 @@
         "bytes_done"
       ],
       "type": "object"
-    },
-    "JobSummary_StageId": {
-      "format": "uuid",
-      "type": "string"
     },
     "JobSummary_WatchId": {
       "type": "string"
@@ -7788,14 +9506,6 @@
             "string",
             "null"
           ]
-        },
-        "total": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
         }
       },
       "required": [
@@ -7832,6 +9542,9 @@
         "conflicting",
         "unknown"
       ],
+      "type": "string"
+    },
+    "Page_GraphNodeId": {
       "type": "string"
     },
     "Page_JobId": {
@@ -7940,6 +9653,12 @@
         "display_name": {
           "type": "string"
         },
+        "graph_node_ids": {
+          "items": {
+            "$ref": "#/$defs/Page_GraphNodeId"
+          },
+          "type": "array"
+        },
         "last_job_id": {
           "anyOf": [
             {
@@ -7948,6 +9667,12 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "last_refreshed_at": {
+          "type": [
+            "string",
+            "null"
           ]
         },
         "source_id": {
@@ -7967,6 +9692,12 @@
         },
         "updated_at": {
           "type": "string"
+        },
+        "user_label": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "watch_id": {
           "anyOf": [
@@ -7989,8 +9720,7 @@
         "status",
         "counts",
         "created_at",
-        "updated_at",
-        "tags"
+        "updated_at"
       ],
       "type": "object"
     },
@@ -8047,7 +9777,27 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "events_url": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/PollDescriptor_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/PollDescriptor_JobKind"
+        },
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retry_url": {
           "type": [
             "string",
             "null"
@@ -8056,18 +9806,42 @@
         "status_url": {
           "type": "string"
         },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
+        "stream_url": {
+          "type": "string"
         }
       },
       "required": [
+        "kind",
+        "id",
         "status_url",
-        "suggested_interval_ms"
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "title": "PollDescriptor",
       "type": "object"
+    },
+    "PollDescriptor_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "PollDescriptor_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "PreparedChunk": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -11693,18 +13467,11 @@
           },
           "type": "array"
         },
-        "metadata": {
-          "additionalProperties": true,
-          "type": "object"
-        },
         "reason": {
           "type": "string"
         },
         "source": {
           "type": "string"
-        },
-        "source_id": {
-          "$ref": "#/$defs/ResolvedSource_SourceId"
         },
         "source_kind": {
           "$ref": "#/$defs/ResolvedSource_SourceKind"
@@ -11719,7 +13486,6 @@
       "required": [
         "source",
         "canonical_uri",
-        "source_id",
         "source_kind",
         "adapter",
         "default_scope",
@@ -11808,9 +13574,6 @@
         "failed",
         "fatal"
       ],
-      "type": "string"
-    },
-    "ResolvedSource_SourceId": {
       "type": "string"
     },
     "ResolvedSource_SourceItemKey": {
@@ -12248,18 +14011,11 @@
           },
           "type": "array"
         },
-        "metadata": {
-          "additionalProperties": true,
-          "type": "object"
-        },
         "reason": {
           "type": "string"
         },
         "source": {
           "type": "string"
-        },
-        "source_id": {
-          "$ref": "#/$defs/RoutePlan_SourceId"
         },
         "source_kind": {
           "$ref": "#/$defs/RoutePlan_SourceKind"
@@ -12274,7 +14030,6 @@
       "required": [
         "source",
         "canonical_uri",
-        "source_id",
         "source_kind",
         "adapter",
         "default_scope",
@@ -12324,9 +14079,6 @@
         "failed",
         "fatal"
       ],
-      "type": "string"
-    },
-    "RoutePlan_SourceId": {
       "type": "string"
     },
     "RoutePlan_SourceItemKey": {
@@ -12737,6 +14489,845 @@
     "SourceDocument_SourceItemKey": {
       "type": "string"
     },
+    "SourceEnrichment": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_ArtifactRef"
+          },
+          "type": "array"
+        },
+        "chunk_hints": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_ChunkHint"
+          },
+          "type": "array"
+        },
+        "enrichment_kind": {
+          "$ref": "#/$defs/SourceEnrichment_EnrichmentKind"
+        },
+        "graph_candidates": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_GraphCandidate"
+          },
+          "type": "array"
+        },
+        "header": {
+          "$ref": "#/$defs/SourceEnrichment_StageResultHeader"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parse_hints": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_ParserHint"
+          },
+          "type": "array"
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceEnrichment_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceEnrichment_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceEnrichment_EnrichmentStatus"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "header",
+        "source_id",
+        "source_item_key",
+        "enrichment_kind",
+        "status",
+        "metadata",
+        "parse_hints",
+        "chunk_hints",
+        "graph_candidates",
+        "artifacts",
+        "warnings"
+      ],
+      "title": "SourceEnrichment",
+      "type": "object"
+    },
+    "SourceEnrichment_ArtifactId": {
+      "type": "string"
+    },
+    "SourceEnrichment_ArtifactKind": {
+      "enum": [
+        "raw_content",
+        "normalized_content",
+        "manifest",
+        "report",
+        "screenshot",
+        "warc",
+        "provider_trace"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/SourceEnrichment_ArtifactId"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/SourceEnrichment_ArtifactKind"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_kind",
+        "uri",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_ChunkHint": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "profile": {
+          "$ref": "#/$defs/SourceEnrichment_ChunkProfile"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "reason",
+        "options"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_ChunkId": {
+      "type": "string"
+    },
+    "SourceEnrichment_ChunkProfile": {
+      "enum": [
+        "code_symbol",
+        "code_manifest",
+        "markdown_sections",
+        "html_article",
+        "plain_text_windows",
+        "transcript_segments",
+        "structured_records",
+        "api_schema",
+        "tool_output",
+        "session_turns",
+        "atomic_metadata"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_DocumentId": {
+      "type": "string"
+    },
+    "SourceEnrichment_EnrichmentKind": {
+      "enum": [
+        "none",
+        "metadata",
+        "classification",
+        "summary",
+        "extraction",
+        "authority",
+        "dependency",
+        "api_schema",
+        "tool_schema",
+        "session",
+        "custom"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_EnrichmentStatus": {
+      "enum": [
+        "not_needed",
+        "pending",
+        "completed",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_GraphCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_GraphEdgeCandidate"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "item_canonical_uri": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/SourceEnrichment_JobId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "merge_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_GraphNodeCandidate"
+          },
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/SourceEnrichment_GraphCandidateProducer"
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceEnrichment_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceEnrichment_SourceItemKey"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "job_id",
+        "source_id",
+        "source_item_key",
+        "item_canonical_uri",
+        "kind",
+        "producer",
+        "nodes",
+        "edges",
+        "evidence",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_GraphCandidateProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "parser": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "version"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_GraphEdgeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_kind": {
+          "type": "string"
+        },
+        "from_stable_key": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_kind",
+        "from_stable_key",
+        "to_stable_key",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceEnrichment_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceEnrichment_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_GraphNodeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "node_kind": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_kind",
+        "stable_key",
+        "label",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceEnrichment_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_ParserHint": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parser_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "parser_id",
+        "reason",
+        "options"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_ProviderId": {
+      "type": "string"
+    },
+    "SourceEnrichment_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "SourceEnrichment_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceEnrichment_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_SourceId": {
+      "type": "string"
+    },
+    "SourceEnrichment_SourceItemKey": {
+      "type": "string"
+    },
+    "SourceEnrichment_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceEnrichment_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceEnrichment_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
+    "SourceEnrichment_StageId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceEnrichment_StageResultHeader": {
+      "additionalProperties": false,
+      "properties": {
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "counts": {
+          "$ref": "#/$defs/SourceEnrichment_StageCounts"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceEnrichment_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/SourceEnrichment_JobId"
+        },
+        "phase": {
+          "$ref": "#/$defs/SourceEnrichment_PipelinePhase"
+        },
+        "stage_id": {
+          "$ref": "#/$defs/SourceEnrichment_StageId"
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceEnrichment_LifecycleStatus"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/SourceEnrichment_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "job_id",
+        "stage_id",
+        "phase",
+        "status",
+        "started_at",
+        "counts",
+        "warnings"
+      ],
+      "type": "object"
+    },
     "SourceError": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -12867,6 +15458,998 @@
       "title": "SourceGeneration",
       "type": "object"
     },
+    "SourceGenerationDetail": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_ArtifactRef"
+          },
+          "type": "array"
+        },
+        "chunks": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_ChunkSummary"
+          },
+          "type": "array"
+        },
+        "cleanup_debt": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_CleanupDebt"
+          },
+          "type": "array"
+        },
+        "counts": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceCounts"
+        },
+        "documents": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_DocumentSummary"
+          },
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_SourceError"
+          },
+          "type": "array"
+        },
+        "generation": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_SourceItem"
+          },
+          "type": "array"
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceGenerationDetail_LifecycleStatus"
+        }
+      },
+      "required": [
+        "source_id",
+        "generation",
+        "status",
+        "counts",
+        "items",
+        "documents",
+        "chunks",
+        "cleanup_debt"
+      ],
+      "title": "SourceGenerationDetail",
+      "type": "object"
+    },
+    "SourceGenerationDetail_ArtifactId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_ArtifactKind": {
+      "enum": [
+        "raw_content",
+        "normalized_content",
+        "manifest",
+        "report",
+        "screenshot",
+        "warc",
+        "provider_trace"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_ArtifactId"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/SourceGenerationDetail_ArtifactKind"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_kind",
+        "uri",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_ChunkId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_ChunkLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceRange"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canonical_uri",
+        "heading_path",
+        "range"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_ChunkSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_ChunkId"
+        },
+        "chunk_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunk_locator": {
+          "$ref": "#/$defs/SourceGenerationDetail_ChunkLocator"
+        },
+        "document_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_DocumentId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "source_range": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceRange"
+        },
+        "vector_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "document_id",
+        "chunk_index",
+        "chunk_locator",
+        "source_range",
+        "metadata",
+        "graph_refs",
+        "vector_refs"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_CleanupDebt": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "debt_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_CleanupDebtId"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/SourceGenerationDetail_CleanupDebtKind"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_retry_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selector": {
+          "$ref": "#/$defs/SourceGenerationDetail_CleanupSelector"
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceGenerationDetail_LifecycleStatus"
+        }
+      },
+      "required": [
+        "debt_id",
+        "job_id",
+        "source_id",
+        "kind",
+        "selector",
+        "status",
+        "created_at",
+        "attempts"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_CleanupDebtId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_CleanupDebtKind": {
+      "enum": [
+        "vector_delete",
+        "artifact_delete",
+        "ledger_prune",
+        "graph_prune",
+        "memory_prune",
+        "job_retention",
+        "cache_prune"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_CleanupSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            },
+            "kind": {
+              "const": "source_item",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "document_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_DocumentId"
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_ChunkId"
+            },
+            "kind": {
+              "const": "chunk",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "chunk_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SourceGenerationDetail_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_DocumentId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_DocumentSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_ContentKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_DocumentId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceGenerationDetail_DocumentLifecycleStatus"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vector_point_count": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "status",
+        "chunk_count",
+        "vector_point_count",
+        "graph_refs"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_GraphEdgeId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_GraphNodeId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceGenerationDetail_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceGenerationDetail_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_ProviderId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_SourceCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_changed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vector_points_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items_total",
+        "items_changed",
+        "documents_total",
+        "chunks_total",
+        "vector_points_total",
+        "bytes_total"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceGenerationDetail_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_SourceGenerationId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_SourceId": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_SourceItem": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "document_ids": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_DocumentId"
+          },
+          "type": "array"
+        },
+        "generation": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceGenerationDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceGenerationDetail_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceGenerationDetail_DocumentLifecycleStatus"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "source_item_key",
+        "status",
+        "content_hash",
+        "generation",
+        "document_ids",
+        "graph_refs"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationDetail_SourceItemKey": {
+      "type": "string"
+    },
+    "SourceGenerationDetail_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceGenerationSummary": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cleanup_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceGenerationSummary_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "counts": {
+          "$ref": "#/$defs/SourceGenerationSummary_SourceCounts"
+        },
+        "generation": {
+          "$ref": "#/$defs/SourceGenerationSummary_SourceGenerationId"
+        },
+        "published_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceGenerationSummary_SourceId"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceGenerationSummary_LifecycleStatus"
+        }
+      },
+      "required": [
+        "source_id",
+        "generation",
+        "status",
+        "counts"
+      ],
+      "title": "SourceGenerationSummary",
+      "type": "object"
+    },
+    "SourceGenerationSummary_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceGenerationSummary_SourceCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_changed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vector_points_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items_total",
+        "items_changed",
+        "documents_total",
+        "chunks_total",
+        "vector_points_total",
+        "bytes_total"
+      ],
+      "type": "object"
+    },
+    "SourceGenerationSummary_SourceGenerationId": {
+      "type": "string"
+    },
+    "SourceGenerationSummary_SourceId": {
+      "type": "string"
+    },
     "SourceGeneration_CleanupDebtId": {
       "type": "string"
     },
@@ -12979,6 +16562,1077 @@
       "type": "string"
     },
     "SourceGeneration_SourceId": {
+      "type": "string"
+    },
+    "SourceItem": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "document_ids": {
+          "items": {
+            "$ref": "#/$defs/SourceItem_DocumentId"
+          },
+          "type": "array"
+        },
+        "generation": {
+          "$ref": "#/$defs/SourceItem_SourceGenerationId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceItem_GraphRef"
+          },
+          "type": "array"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItem_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceItem_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceItem_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceItem_DocumentLifecycleStatus"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "source_item_key",
+        "status",
+        "content_hash",
+        "generation",
+        "document_ids",
+        "graph_refs"
+      ],
+      "title": "SourceItem",
+      "type": "object"
+    },
+    "SourceItemDetail": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "content_preview": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "document_ids": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_DocumentId"
+          },
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_SourceError"
+          },
+          "type": "array"
+        },
+        "generation": {
+          "$ref": "#/$defs/SourceItemDetail_SourceGenerationId"
+        },
+        "graph_refs": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_GraphRef"
+          },
+          "type": "array"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manifest": {
+          "$ref": "#/$defs/SourceItemDetail_ManifestItem"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceItemDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceItemDetail_DocumentLifecycleStatus"
+        },
+        "statuses": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_DocumentStatus"
+          },
+          "type": "array"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "source_item_key",
+        "status",
+        "content_hash",
+        "generation",
+        "document_ids",
+        "graph_refs",
+        "manifest",
+        "statuses",
+        "errors",
+        "metadata"
+      ],
+      "title": "SourceItemDetail",
+      "type": "object"
+    },
+    "SourceItemDetail_CachePolicy": {
+      "enum": [
+        "bypass",
+        "use",
+        "revalidate",
+        "offline"
+      ],
+      "type": "string"
+    },
+    "SourceItemDetail_ChunkId": {
+      "type": "string"
+    },
+    "SourceItemDetail_ContentKind": {
+      "enum": [
+        "code",
+        "markdown",
+        "html",
+        "plain_text",
+        "transcript",
+        "structured",
+        "json",
+        "yaml",
+        "toml",
+        "xml",
+        "binary_metadata"
+      ],
+      "type": "string"
+    },
+    "SourceItemDetail_DocumentId": {
+      "type": "string"
+    },
+    "SourceItemDetail_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceItemDetail_DocumentStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "cleanup_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/SourceItemDetail_DocumentId"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceItemDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceItemDetail_DocumentLifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "status",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_FetchPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_policy": {
+          "$ref": "#/$defs/SourceItemDetail_CachePolicy"
+        },
+        "headers": {
+          "$ref": "#/$defs/SourceItemDetail_RedactedHeaders"
+        },
+        "method": {
+          "type": "string"
+        },
+        "render_required": {
+          "type": "boolean"
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "method",
+        "headers",
+        "render_required",
+        "cache_policy"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_GraphCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_GraphEdgeCandidate"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "item_canonical_uri": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/SourceItemDetail_JobId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "merge_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_GraphNodeCandidate"
+          },
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/SourceItemDetail_GraphCandidateProducer"
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceItemDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "job_id",
+        "source_id",
+        "source_item_key",
+        "item_canonical_uri",
+        "kind",
+        "producer",
+        "nodes",
+        "edges",
+        "evidence",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_GraphCandidateProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "parser": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "version"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_GraphEdgeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_kind": {
+          "type": "string"
+        },
+        "from_stable_key": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_kind",
+        "from_stable_key",
+        "to_stable_key",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_GraphEdgeId": {
+      "type": "string"
+    },
+    "SourceItemDetail_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceItemDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_GraphNodeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "node_kind": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_kind",
+        "stable_key",
+        "label",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_GraphNodeId": {
+      "type": "string"
+    },
+    "SourceItemDetail_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceItemDetail_ItemKind": {
+      "enum": [
+        "web_page",
+        "repo_file",
+        "local_file",
+        "package_version",
+        "feed_entry",
+        "transcript",
+        "session_turn",
+        "tool_call",
+        "cli_output",
+        "mcp_tool_output",
+        "memory_record",
+        "artifact"
+      ],
+      "type": "string"
+    },
+    "SourceItemDetail_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceItemDetail_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceItemDetail_ManifestItem": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_ContentKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "display_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fetch_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_FetchPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "graph_hints": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_GraphCandidate"
+          },
+          "type": "array"
+        },
+        "item_kind": {
+          "$ref": "#/$defs/SourceItemDetail_ItemKind"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "mtime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceItemDetail_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "source_item_key",
+        "canonical_uri",
+        "item_kind",
+        "metadata",
+        "graph_hints"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_ProviderId": {
+      "type": "string"
+    },
+    "SourceItemDetail_RedactedHeader": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "redacted"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_RedactedHeaders": {
+      "additionalProperties": false,
+      "properties": {
+        "headers": {
+          "items": {
+            "$ref": "#/$defs/SourceItemDetail_RedactedHeader"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "headers"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "SourceItemDetail_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceItemDetail_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItemDetail_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceItemDetail_SourceGenerationId": {
+      "type": "string"
+    },
+    "SourceItemDetail_SourceId": {
+      "type": "string"
+    },
+    "SourceItemDetail_SourceItemKey": {
+      "type": "string"
+    },
+    "SourceItemDetail_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceItem_DocumentId": {
+      "type": "string"
+    },
+    "SourceItem_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceItem_GraphEdgeId": {
+      "type": "string"
+    },
+    "SourceItem_GraphNodeId": {
+      "type": "string"
+    },
+    "SourceItem_GraphRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edge_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItem_GraphEdgeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItem_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SourceItem_ProviderId": {
+      "type": "string"
+    },
+    "SourceItem_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "SourceItem_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItem_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceItem_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceItem_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "SourceItem_SourceGenerationId": {
+      "type": "string"
+    },
+    "SourceItem_SourceId": {
+      "type": "string"
+    },
+    "SourceItem_SourceItemKey": {
       "type": "string"
     },
     "SourceJobStatus": {
@@ -13134,12 +17788,6 @@
         "details"
       ],
       "type": "object"
-    },
-    "SourceJobStatus_ChunkId": {
-      "type": "string"
-    },
-    "SourceJobStatus_DocumentId": {
-      "type": "string"
     },
     "SourceJobStatus_ErrorCode": {
       "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
@@ -13360,93 +18008,8 @@
       ],
       "type": "object"
     },
-    "SourceJobStatus_JobHeartbeat": {
-      "additionalProperties": false,
-      "properties": {
-        "attempt": {
-          "default": 0,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "counts": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_StageCounts"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "heartbeat_at": {
-          "type": "string"
-        },
-        "job_id": {
-          "$ref": "#/$defs/SourceJobStatus_JobId"
-        },
-        "last_event_sequence": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "phase": {
-          "$ref": "#/$defs/SourceJobStatus_PipelinePhase"
-        },
-        "provider_reservations": {
-          "items": {
-            "$ref": "#/$defs/SourceJobStatus_ProviderReservationSnapshot"
-          },
-          "type": "array"
-        },
-        "stage_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_StageId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "status": {
-          "$ref": "#/$defs/SourceJobStatus_LifecycleStatus"
-        },
-        "worker_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "job_id",
-        "phase",
-        "status",
-        "heartbeat_at"
-      ],
-      "type": "object"
-    },
     "SourceJobStatus_JobId": {
       "format": "uuid",
-      "type": "string"
-    },
-    "SourceJobStatus_JobIntent": {
-      "enum": [
-        "run",
-        "acquire",
-        "refresh",
-        "watch",
-        "exec",
-        "retry",
-        "recover",
-        "cleanup",
-        "probe",
-        "reset"
-      ],
       "type": "string"
     },
     "SourceJobStatus_JobKind": {
@@ -13464,16 +18027,6 @@
         "prune",
         "provider_probe",
         "reset"
-      ],
-      "type": "string"
-    },
-    "SourceJobStatus_JobPriority": {
-      "enum": [
-        "interactive",
-        "high",
-        "normal",
-        "background",
-        "maintenance"
       ],
       "type": "string"
     },
@@ -13537,12 +18090,6 @@
     "SourceJobStatus_JobSummary": {
       "additionalProperties": false,
       "properties": {
-        "attempt": {
-          "default": 0,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
         "counts": {
           "anyOf": [
             {
@@ -13555,42 +18102,6 @@
         },
         "created_at": {
           "type": "string"
-        },
-        "current": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_ProgressCurrent"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "finished_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "heartbeat": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_JobHeartbeat"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "intent": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_JobIntent"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "job_id": {
           "$ref": "#/$defs/SourceJobStatus_JobId"
@@ -13608,32 +18119,8 @@
             }
           ]
         },
-        "parent_job_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_JobId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "phase": {
           "$ref": "#/$defs/SourceJobStatus_PipelinePhase"
-        },
-        "priority": {
-          "$ref": "#/$defs/SourceJobStatus_JobPriority",
-          "default": "normal"
-        },
-        "root_job_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_JobId"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "source_id": {
           "anyOf": [
@@ -13645,23 +18132,11 @@
             }
           ]
         },
-        "started_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "status": {
           "$ref": "#/$defs/SourceJobStatus_LifecycleStatus"
         },
         "updated_at": {
           "type": "string"
-        },
-        "warnings": {
-          "items": {
-            "$ref": "#/$defs/SourceJobStatus_SourceWarning"
-          },
-          "type": "array"
         },
         "watch_id": {
           "anyOf": [
@@ -13733,90 +18208,6 @@
       ],
       "type": "string"
     },
-    "SourceJobStatus_ProgressCurrent": {
-      "additionalProperties": false,
-      "properties": {
-        "adapter": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "chunk_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_ChunkId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "document_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_DocumentId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "message": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "provider": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_ProviderId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "SourceJobStatus_ProviderCoolingSnapshot": {
-      "additionalProperties": false,
-      "properties": {
-        "degraded": {
-          "type": "boolean"
-        },
-        "reason": {
-          "type": "string"
-        },
-        "retry_after": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "started_at": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "reason",
-        "started_at",
-        "degraded"
-      ],
-      "type": "object"
-    },
     "SourceJobStatus_ProviderId": {
       "type": "string"
     },
@@ -13867,98 +18258,6 @@
         "reason"
       ],
       "type": "object"
-    },
-    "SourceJobStatus_ProviderReservationSnapshot": {
-      "additionalProperties": false,
-      "properties": {
-        "acquired_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "cooling": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_ProviderCoolingSnapshot"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "expires_at": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "granted_units": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "priority": {
-          "$ref": "#/$defs/SourceJobStatus_JobPriority"
-        },
-        "provider_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_ProviderId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "provider_kind": {
-          "$ref": "#/$defs/SourceJobStatus_ProviderKind"
-        },
-        "queue_depth": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "requested_units": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "reservation_id": {
-          "$ref": "#/$defs/SourceJobStatus_ReservationId"
-        },
-        "status": {
-          "$ref": "#/$defs/SourceJobStatus_ProviderReservationStatus"
-        }
-      },
-      "required": [
-        "reservation_id",
-        "provider_kind",
-        "priority",
-        "requested_units",
-        "granted_units",
-        "status"
-      ],
-      "type": "object"
-    },
-    "SourceJobStatus_ProviderReservationStatus": {
-      "enum": [
-        "requested",
-        "queued",
-        "granted",
-        "active",
-        "released",
-        "expired",
-        "canceled",
-        "failed"
-      ],
-      "type": "string"
-    },
-    "SourceJobStatus_ReservationId": {
-      "type": "string"
     },
     "SourceJobStatus_Severity": {
       "enum": [
@@ -14026,40 +18325,6 @@
     },
     "SourceJobStatus_SourceItemKey": {
       "type": "string"
-    },
-    "SourceJobStatus_SourceWarning": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/SourceJobStatus_Severity"
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceJobStatus_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
-      "type": "object"
     },
     "SourceJobStatus_StageCounts": {
       "additionalProperties": false,
@@ -16518,18 +20783,11 @@
           },
           "type": "array"
         },
-        "metadata": {
-          "additionalProperties": true,
-          "type": "object"
-        },
         "reason": {
           "type": "string"
         },
         "source": {
           "type": "string"
-        },
-        "source_id": {
-          "$ref": "#/$defs/SourcePlan_SourceId"
         },
         "source_kind": {
           "$ref": "#/$defs/SourcePlan_SourceKind"
@@ -16544,7 +20802,6 @@
       "required": [
         "source",
         "canonical_uri",
-        "source_id",
         "source_kind",
         "adapter",
         "default_scope",
@@ -16687,9 +20944,6 @@
       ],
       "type": "string"
     },
-    "SourcePlan_SourceId": {
-      "type": "string"
-    },
     "SourcePlan_SourceIntent": {
       "enum": [
         "acquire",
@@ -16826,12 +21080,6 @@
             "mode": "background",
             "priority": "normal"
           }
-        },
-        "idempotency_key": {
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "intent": {
           "$ref": "#/$defs/SourcePlan_SourceIntent",
@@ -17885,12 +22133,6 @@
             "priority": "normal"
           }
         },
-        "idempotency_key": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "intent": {
           "$ref": "#/$defs/SourceRequest_SourceIntent",
           "default": "acquire"
@@ -18248,23 +22490,11 @@
         "adapter": {
           "$ref": "#/$defs/SourceResult_AdapterRef"
         },
-        "artifacts": {
-          "items": {
-            "$ref": "#/$defs/SourceResult_ArtifactRef"
-          },
-          "type": "array"
-        },
         "canonical_uri": {
           "type": "string"
         },
         "counts": {
           "$ref": "#/$defs/SourceResult_SourceCounts"
-        },
-        "errors": {
-          "items": {
-            "$ref": "#/$defs/SourceResult_SourceError"
-          },
-          "type": "array"
         },
         "graph": {
           "$ref": "#/$defs/SourceResult_GraphWriteSummary"
@@ -18335,9 +22565,7 @@
         "ledger",
         "graph",
         "counts",
-        "warnings",
-        "artifacts",
-        "errors"
+        "warnings"
       ],
       "title": "SourceResult",
       "type": "object"
@@ -18360,56 +22588,6 @@
     },
     "SourceResult_ArtifactId": {
       "type": "string"
-    },
-    "SourceResult_ArtifactKind": {
-      "enum": [
-        "raw_content",
-        "normalized_content",
-        "manifest",
-        "report",
-        "screenshot",
-        "warc",
-        "provider_trace"
-      ],
-      "type": "string"
-    },
-    "SourceResult_ArtifactRef": {
-      "additionalProperties": false,
-      "properties": {
-        "artifact_id": {
-          "$ref": "#/$defs/SourceResult_ArtifactId"
-        },
-        "artifact_kind": {
-          "$ref": "#/$defs/SourceResult_ArtifactKind"
-        },
-        "content_hash": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "created_at": {
-          "type": "string"
-        },
-        "size_bytes": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "uri": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "artifact_id",
-        "artifact_kind",
-        "uri",
-        "created_at"
-      ],
-      "type": "object"
     },
     "SourceResult_ContentRef": {
       "oneOf": [
@@ -18555,32 +22733,46 @@
     "SourceResult_JobDescriptor": {
       "additionalProperties": false,
       "properties": {
-        "created_at": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
           "type": "string"
         },
-        "job_id": {
+        "id": {
           "$ref": "#/$defs/SourceResult_JobId"
         },
         "kind": {
           "$ref": "#/$defs/SourceResult_JobKind"
         },
-        "poll": {
-          "$ref": "#/$defs/SourceResult_PollDescriptor"
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
-        "status": {
-          "$ref": "#/$defs/SourceResult_LifecycleStatus"
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "updated_at": {
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
           "type": "string"
         }
       },
       "required": [
-        "job_id",
         "kind",
-        "status",
-        "poll",
-        "created_at",
-        "updated_at"
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "type": "object"
     },
@@ -18657,33 +22849,6 @@
       ],
       "type": "string"
     },
-    "SourceResult_PollDescriptor": {
-      "additionalProperties": false,
-      "properties": {
-        "events_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_url": {
-          "type": "string"
-        },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "status_url",
-        "suggested_interval_ms"
-      ],
-      "type": "object"
-    },
-    "SourceResult_ProviderId": {
-      "type": "string"
-    },
     "SourceResult_Severity": {
       "enum": [
         "debug",
@@ -18736,56 +22901,6 @@
         "chunks_total",
         "vector_points_total",
         "bytes_total"
-      ],
-      "type": "object"
-    },
-    "SourceResult_SourceError": {
-      "additionalProperties": false,
-      "properties": {
-        "cause": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "provider_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceResult_ProviderId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/SourceResult_Severity"
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceResult_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
       ],
       "type": "object"
     },
@@ -18972,6 +23087,220 @@
         "every_seconds"
       ],
       "type": "object"
+    },
+    "SourceSummary": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/SourceSummary_AdapterRef"
+        },
+        "authority": {
+          "$ref": "#/$defs/SourceSummary_AuthorityLevel"
+        },
+        "canonical_uri": {
+          "type": "string"
+        },
+        "counts": {
+          "$ref": "#/$defs/SourceSummary_SourceCounts"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "graph_node_ids": {
+          "items": {
+            "$ref": "#/$defs/SourceSummary_GraphNodeId"
+          },
+          "type": "array"
+        },
+        "last_job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSummary_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_refreshed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceSummary_SourceId"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/SourceSummary_SourceKind"
+        },
+        "status": {
+          "$ref": "#/$defs/SourceSummary_LifecycleStatus"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "user_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSummary_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "canonical_uri",
+        "display_name",
+        "source_kind",
+        "adapter",
+        "authority",
+        "status",
+        "counts",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SourceSummary",
+      "type": "object"
+    },
+    "SourceSummary_AdapterRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "SourceSummary_AuthorityLevel": {
+      "enum": [
+        "official",
+        "verified",
+        "user_pinned",
+        "inferred",
+        "community",
+        "mirror",
+        "conflicting",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "SourceSummary_GraphNodeId": {
+      "type": "string"
+    },
+    "SourceSummary_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SourceSummary_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "SourceSummary_SourceCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_changed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vector_points_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items_total",
+        "items_changed",
+        "documents_total",
+        "chunks_total",
+        "vector_points_total",
+        "bytes_total"
+      ],
+      "type": "object"
+    },
+    "SourceSummary_SourceId": {
+      "type": "string"
+    },
+    "SourceSummary_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
+      ],
+      "type": "string"
+    },
+    "SourceSummary_WatchId": {
+      "type": "string"
     },
     "SourceWarning": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -19368,32 +23697,46 @@
     "SuccessEnvelope_JobDescriptor": {
       "additionalProperties": false,
       "properties": {
-        "created_at": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
           "type": "string"
         },
-        "job_id": {
+        "id": {
           "$ref": "#/$defs/SuccessEnvelope_JobId"
         },
         "kind": {
           "$ref": "#/$defs/SuccessEnvelope_JobKind"
         },
-        "poll": {
-          "$ref": "#/$defs/SuccessEnvelope_PollDescriptor"
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
-        "status": {
-          "$ref": "#/$defs/SuccessEnvelope_LifecycleStatus"
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "updated_at": {
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
           "type": "string"
         }
       },
       "required": [
-        "job_id",
         "kind",
-        "status",
-        "poll",
-        "created_at",
-        "updated_at"
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "type": "object"
     },
@@ -19498,33 +23841,6 @@
       ],
       "type": "object"
     },
-    "SuccessEnvelope_PollDescriptor": {
-      "additionalProperties": false,
-      "properties": {
-        "events_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_url": {
-          "type": "string"
-        },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "status_url",
-        "suggested_interval_ms"
-      ],
-      "type": "object"
-    },
-    "SuccessEnvelope_ProviderId": {
-      "type": "string"
-    },
     "SuccessEnvelope_Severity": {
       "enum": [
         "debug",
@@ -19580,56 +23896,6 @@
       ],
       "type": "object"
     },
-    "SuccessEnvelope_SourceError": {
-      "additionalProperties": false,
-      "properties": {
-        "cause": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "provider_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SuccessEnvelope_ProviderId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/SuccessEnvelope_Severity"
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SuccessEnvelope_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
-      "type": "object"
-    },
     "SuccessEnvelope_SourceGenerationId": {
       "type": "string"
     },
@@ -19662,23 +23928,11 @@
         "adapter": {
           "$ref": "#/$defs/SuccessEnvelope_AdapterRef"
         },
-        "artifacts": {
-          "items": {
-            "$ref": "#/$defs/SuccessEnvelope_ArtifactRef"
-          },
-          "type": "array"
-        },
         "canonical_uri": {
           "type": "string"
         },
         "counts": {
           "$ref": "#/$defs/SuccessEnvelope_SourceCounts"
-        },
-        "errors": {
-          "items": {
-            "$ref": "#/$defs/SuccessEnvelope_SourceError"
-          },
-          "type": "array"
         },
         "graph": {
           "$ref": "#/$defs/SuccessEnvelope_GraphWriteSummary"
@@ -19749,9 +24003,7 @@
         "ledger",
         "graph",
         "counts",
-        "warnings",
-        "artifacts",
-        "errors"
+        "warnings"
       ],
       "type": "object"
     },
@@ -21169,32 +25421,46 @@
     "WatchDescriptor_JobDescriptor": {
       "additionalProperties": false,
       "properties": {
-        "created_at": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
           "type": "string"
         },
-        "job_id": {
+        "id": {
           "$ref": "#/$defs/WatchDescriptor_JobId"
         },
         "kind": {
           "$ref": "#/$defs/WatchDescriptor_JobKind"
         },
-        "poll": {
-          "$ref": "#/$defs/WatchDescriptor_PollDescriptor"
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
-        "status": {
-          "$ref": "#/$defs/WatchDescriptor_LifecycleStatus"
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "updated_at": {
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
           "type": "string"
         }
       },
       "required": [
-        "job_id",
         "kind",
-        "status",
-        "poll",
-        "created_at",
-        "updated_at"
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "type": "object"
     },
@@ -21219,47 +25485,6 @@
         "reset"
       ],
       "type": "string"
-    },
-    "WatchDescriptor_LifecycleStatus": {
-      "enum": [
-        "queued",
-        "pending",
-        "running",
-        "waiting",
-        "blocked",
-        "canceling",
-        "completed",
-        "completed_degraded",
-        "failed",
-        "canceled",
-        "expired",
-        "skipped"
-      ],
-      "type": "string"
-    },
-    "WatchDescriptor_PollDescriptor": {
-      "additionalProperties": false,
-      "properties": {
-        "events_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_url": {
-          "type": "string"
-        },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "status_url",
-        "suggested_interval_ms"
-      ],
-      "type": "object"
     },
     "WatchDescriptor_Severity": {
       "enum": [
@@ -21340,6 +25565,247 @@
         "every_seconds"
       ],
       "type": "object"
+    },
+    "WatchExecRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refresh": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchExecRequest_SourceRefreshPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wait": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "title": "WatchExecRequest",
+      "type": "object"
+    },
+    "WatchExecRequest_SourceRefreshPolicy": {
+      "enum": [
+        "if_stale",
+        "force",
+        "never"
+      ],
+      "type": "string"
+    },
+    "WatchHistoryRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchHistoryRequest_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "watch_id": {
+          "$ref": "#/$defs/WatchHistoryRequest_WatchId"
+        }
+      },
+      "required": [
+        "watch_id"
+      ],
+      "title": "WatchHistoryRequest",
+      "type": "object"
+    },
+    "WatchHistoryRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "WatchHistoryRequest_WatchId": {
+      "type": "string"
+    },
+    "WatchHistoryResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "jobs": {
+          "items": {
+            "$ref": "#/$defs/WatchHistoryResult_JobDescriptor"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "watch_id": {
+          "$ref": "#/$defs/WatchHistoryResult_WatchId"
+        }
+      },
+      "required": [
+        "watch_id",
+        "jobs"
+      ],
+      "title": "WatchHistoryResult",
+      "type": "object"
+    },
+    "WatchHistoryResult_JobDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/WatchHistoryResult_JobId"
+        },
+        "kind": {
+          "$ref": "#/$defs/WatchHistoryResult_JobKind"
+        },
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
+      ],
+      "type": "object"
+    },
+    "WatchHistoryResult_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "WatchHistoryResult_JobKind": {
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
+    },
+    "WatchHistoryResult_WatchId": {
+      "type": "string"
+    },
+    "WatchListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchListRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "WatchListRequest",
+      "type": "object"
+    },
+    "WatchListRequest_SourceId": {
+      "type": "string"
     },
     "WatchRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -21544,32 +26010,46 @@
     "WatchResult_JobDescriptor": {
       "additionalProperties": false,
       "properties": {
-        "created_at": {
+        "cancel_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "events_url": {
           "type": "string"
         },
-        "job_id": {
+        "id": {
           "$ref": "#/$defs/WatchResult_JobId"
         },
         "kind": {
           "$ref": "#/$defs/WatchResult_JobKind"
         },
-        "poll": {
-          "$ref": "#/$defs/WatchResult_PollDescriptor"
+        "poll_after_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
-        "status": {
-          "$ref": "#/$defs/WatchResult_LifecycleStatus"
+        "retry_url": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "updated_at": {
+        "status_url": {
+          "type": "string"
+        },
+        "stream_url": {
           "type": "string"
         }
       },
       "required": [
-        "job_id",
         "kind",
-        "status",
-        "poll",
-        "created_at",
-        "updated_at"
+        "id",
+        "status_url",
+        "events_url",
+        "stream_url",
+        "poll_after_ms"
       ],
       "type": "object"
     },
@@ -21594,47 +26074,6 @@
         "reset"
       ],
       "type": "string"
-    },
-    "WatchResult_LifecycleStatus": {
-      "enum": [
-        "queued",
-        "pending",
-        "running",
-        "waiting",
-        "blocked",
-        "canceling",
-        "completed",
-        "completed_degraded",
-        "failed",
-        "canceled",
-        "expired",
-        "skipped"
-      ],
-      "type": "string"
-    },
-    "WatchResult_PollDescriptor": {
-      "additionalProperties": false,
-      "properties": {
-        "events_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "status_url": {
-          "type": "string"
-        },
-        "suggested_interval_ms": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "status_url",
-        "suggested_interval_ms"
-      ],
-      "type": "object"
     },
     "WatchResult_Severity": {
       "enum": [
@@ -21723,6 +26162,91 @@
       "type": "string"
     },
     "WatchResult_WatchSchedule": {
+      "additionalProperties": false,
+      "properties": {
+        "cron": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "every_seconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timezone": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "every_seconds"
+      ],
+      "type": "object"
+    },
+    "WatchUpdateRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "embed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchUpdateRequest_AdapterOptions"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchUpdateRequest_WatchSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "WatchUpdateRequest",
+      "type": "object"
+    },
+    "WatchUpdateRequest_AdapterOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "WatchUpdateRequest_WatchSchedule": {
       "additionalProperties": false,
       "properties": {
         "cron": {
@@ -21934,12 +26458,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:580e88763804d02c63377d3bebdb4944cc519f0ccb157d0b2175d314ef641c3d",
+        "checksum": "sha256:e236d9666ce529d22b7e651e87f169c65376dff969733c7e24f0fb7d880aac1e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:58fc0d52419de6780813ca2582b52fa0d8030acb91f4293793a229905b954a25",
+        "checksum": "sha256:416b24378c1490827a325fc01c52ef1865c388edc41e9bd5e21e4e60832d2731",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/boundary.rs"
       },
@@ -21954,7 +26478,7 @@
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:5e127dacb627d9c8072ed81bff9f22377ba476bb02e595a7927902b24c0ca653",
+        "checksum": "sha256:0395b09638d4265bc795fa64409dfaee4df517883d6e62b909889e3537a78f1c",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -21969,22 +26493,27 @@
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:ccc908e830556ba6ba9a2325b43b4a9c9809360a82d7a00f3b3d415640428592",
+        "checksum": "sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:e9e6705e67f29dda9e16618738749c791ea41c2baccec1e302f4bf28f552bed5",
+        "checksum": "sha256:5bcbacf1cab2c1e653f62954264864a2f9b5706c7c5af966f1e9cb0ad53e5a2d",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job.rs"
       },
       {
-        "checksum": "sha256:40d277f8428220e70f6fb5ddaefddf2ad14e60301606bb9f1f7a961724f79baf",
+        "checksum": "sha256:9135d850c7a338877abeb2663a84e120fbc1f96b7993aa406e66d10b7d4458d9",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/job_listing.rs"
+      },
+      {
+        "checksum": "sha256:4709535f7d46c5825a081dd1d752a7f234ff828a0df5c73b15e2b941e4f278cc",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
       {
-        "checksum": "sha256:72004b7b6a328a66a4c0d292f1ec55137762f04e4bc55424bbcab00280af6748",
+        "checksum": "sha256:9da249644e01cc3a09e43a0f4e611a82b0f975a622e265bf7535186e46bec6f6",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/listing.rs"
       },
@@ -21999,7 +26528,7 @@
         "path": "crates/axon-api/src/source/prune.rs"
       },
       {
-        "checksum": "sha256:18aee671aff0ef6c181bb4898bd793576e3c757c8286060110ecd31d0027f90c",
+        "checksum": "sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/stage.rs"
       },
@@ -22024,17 +26553,17 @@
         "path": "crates/axon-error/src/api_error.rs"
       },
       {
-        "checksum": "sha256:4a6b57e73bc6e7e8ddec7dee03f851a3b2c22f4bfb8ee8b71ed09c932ebde97e",
+        "checksum": "sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:0de1ea3d8dfee644762d6901ffe95487b4bab6b3c55f072efbbc5b679a2d9a43",
+        "checksum": "sha256:9ee052d03c99715815746190a20a48a90ae941019bf64a565c829c6931c6bf3e",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       },
       {
-        "checksum": "sha256:4d0eb5d3e7e9c5af65c9906e14d0d089444108cf38bdf7e0ad64b4a5cd74acea",
+        "checksum": "sha256:aadaf249df71062f5587913656f113b8bac4bb073b4a9b199d0fdb253b9e4c70",
         "kind": "rust_module",
         "path": "xtask/src/schemas/tests.rs"
       }

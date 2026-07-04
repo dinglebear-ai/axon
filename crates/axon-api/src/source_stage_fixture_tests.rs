@@ -235,6 +235,7 @@ fn source_enrichment_fixtures_round_trip() {
             chunk_hints: Vec::new(),
             graph_candidates: Vec::new(),
             artifacts: Vec::new(),
+            warnings: Vec::new(),
         };
         round_trip(&value);
     }

@@ -335,7 +335,7 @@ impl SqliteUnifiedJobStore {
             .map(row_to_event)
             .collect::<Result<Vec<_>>>()?;
         Ok(JobEventPage {
-            last_sequence: events.last().map(|event| event.sequence),
+            last_sequence: events.last().map(|event| event.sequence).unwrap_or(0),
             limit,
             next_cursor: None,
             events,

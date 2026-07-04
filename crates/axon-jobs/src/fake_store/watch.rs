@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use axon_api::source::*;
 
+use super::helpers::descriptor;
 use super::{FakeJobWatchStore, capability, missing_job, missing_watch};
 use crate::boundary::{Result, WatchStore};
 use crate::limits::clamp_page_limit;
@@ -115,18 +116,7 @@ impl WatchStore for FakeJobWatchStore {
             job.watch_id = Some(watch_id.clone());
             job.source_id = source_id;
         }
-        let latest_job = state.jobs.get(&job_id).map(|job| JobDescriptor {
-            job_id: job.job_id,
-            kind: job.kind,
-            status: job.status,
-            poll: PollDescriptor {
-                status_url: format!("/v1/jobs/{job_id}", job_id = job.job_id.0),
-                events_url: None,
-                suggested_interval_ms: 1000,
-            },
-            created_at: job.created_at.clone(),
-            updated_at: job.updated_at.clone(),
-        });
+        let latest_job = state.jobs.get(&job_id).map(descriptor);
         if let Some(watch) = state.watches.get_mut(&watch_id) {
             watch.latest_job = latest_job;
         }
@@ -146,23 +136,13 @@ impl WatchStore for FakeJobWatchStore {
             .flat_map(|ids| ids.iter())
             .rev()
             .filter_map(|job_id| state.jobs.get(job_id))
-            .map(|job| JobDescriptor {
-                job_id: job.job_id,
-                kind: job.kind,
-                status: job.status,
-                poll: PollDescriptor {
-                    status_url: format!("/v1/jobs/{job_id}", job_id = job.job_id.0),
-                    events_url: None,
-                    suggested_interval_ms: 1000,
-                },
-                created_at: job.created_at.clone(),
-                updated_at: job.updated_at.clone(),
-            })
+            .map(descriptor)
             .take(clamp_page_limit(request.limit) as usize)
             .collect();
         Ok(WatchHistoryResult {
-            runs,
-            warnings: Vec::new(),
+            watch_id: request.watch_id,
+            jobs: runs,
+            next_cursor: None,
         })
     }
 
