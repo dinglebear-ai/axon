@@ -138,6 +138,45 @@ async fn index_source_empty_input_is_unsupported() {
 }
 
 #[tokio::test]
+async fn index_source_rejects_bad_scope_before_data_plane() {
+    let ctx = context_without_data_plane();
+    let mut request = SourceRequest::new("crates:serde");
+    request.scope = Some(SourceScope::Subreddit);
+
+    let result = index_source(request, &ctx)
+        .await
+        .expect("route failure is returned as a failed SourceResult");
+
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "source.scope.unsupported"),
+        "expected route scope warning, got: {:?}",
+        result.warnings
+    );
+}
+
+#[tokio::test]
+async fn index_source_uses_routed_scope_without_data_plane() {
+    let ctx = context_without_data_plane();
+    let mut request = SourceRequest::new("example.com");
+    request.scope = Some(SourceScope::Map);
+    request.embed = false;
+
+    let result = index_source(request, &ctx)
+        .await
+        .expect("missing data plane returns a degraded result");
+
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert_eq!(result.source_kind, SourceKind::Web);
+    assert_eq!(result.scope, SourceScope::Map);
+    assert_eq!(result.adapter.name, "web");
+    assert_eq!(result.canonical_uri, "https://example.com/");
+}
+
+#[tokio::test]
 async fn index_source_unsupported_input_is_unsupported() {
     let ctx = context_without_data_plane();
     let result = index_source(SourceRequest::new("not-a-path-or-url"), &ctx)
@@ -149,8 +188,8 @@ async fn index_source_unsupported_input_is_unsupported() {
         result
             .warnings
             .iter()
-            .any(|w| w.message.contains("is none of these")),
-        "expected unsupported-input message, got: {:?}",
+            .any(|w| w.code == "source.resolve.unsupported"),
+        "expected unsupported-input route warning, got: {:?}",
         result.warnings
     );
 }
