@@ -291,7 +291,7 @@ fn validate_source_range_order(
     range: &SourceRange,
     field: &str,
 ) -> Result<(), VectorPayloadValidationError> {
-    for suffix in [
+    if let Some(suffix) = [
         range_starts_after(range.line_start, range.line_end, "line"),
         range_starts_after(range.byte_start, range.byte_end, "byte"),
         range_starts_after(range.char_start, range.char_end, "char"),
@@ -299,6 +299,7 @@ fn validate_source_range_order(
     ]
     .into_iter()
     .flatten()
+    .next()
     {
         return Err(VectorPayloadValidationError::InvalidFieldShape {
             field: format!("{field}.{suffix}"),
