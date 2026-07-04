@@ -78,6 +78,12 @@ use super::{handlers, openapi_jobs, routing};
         super::types::PanelCollectionsResponse,
         super::error::ErrorKind,
         super::error::ErrorBody,
+        axon_api::source::ErrorEnvelope,
+        axon_api::ApiError,
+        axon_error::ErrorCode,
+        axon_error::ErrorStage,
+        axon_error::ErrorSeverity,
+        axon_error::ErrorVisibility,
         axon_services::client_contract::RestQueryRequest,
         axon_services::client_contract::RestRetrieveRequest,
         axon_services::client_contract::RestEvaluateRequest,
@@ -209,7 +215,7 @@ fn auth_error_response(description: &'static str) -> RefOr<Response> {
     let mut response = Response::new(description);
     response.content.insert(
         "application/json".to_string(),
-        Content::new(Some(Ref::from_schema_name("ErrorBody"))),
+        Content::new(Some(Ref::from_schema_name("ErrorEnvelope"))),
     );
     RefOr::T(response)
 }

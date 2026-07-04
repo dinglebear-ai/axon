@@ -9,7 +9,6 @@ license = "MIT"
 [dependencies]
 axon-core = { path = "../axon-core" }
 axon-api = { path = "../axon-api" }
-axon-source-ledger = { path = "../axon-source-ledger" }
 axon-vector = { path = "../axon-vector" }
 anyhow = "1"
 async-trait = "0.1"

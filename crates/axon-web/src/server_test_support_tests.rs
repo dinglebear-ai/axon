@@ -281,7 +281,11 @@ async fn v1_artifact_query_requires_bearer_auth_and_serves_png() {
         .expect("missing path request");
     assert_eq!(missing_path.status(), StatusCode::BAD_REQUEST);
     let error_body: serde_json::Value = missing_path.json().await.unwrap();
-    assert_eq!(error_body["kind"], "invalid_path");
+    assert_eq!(error_body["ok"], false);
+    assert_eq!(
+        error_body["error"]["code"],
+        "route.validation.invalid_field"
+    );
 
     let authorized = client
         .get(format!("{base}/v1/artifacts?path=screenshots/shot.png"))

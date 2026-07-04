@@ -41,7 +41,6 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-ingest",
     "crates/axon-extract",
     "crates/axon-jobs",
-    "crates/axon-source-ledger",
     "crates/axon-code-index",
     "crates/axon-services",
     "crates/axon-mcp",

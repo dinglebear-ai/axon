@@ -13,7 +13,9 @@
 //! call runs on a blocking thread via `spawn_blocking` + `Handle::block_on`,
 //! whose `JoinHandle` is `Send` and thus a valid axum handler future.
 
+use axon_api::ApiError;
 use axon_api::source::{SourceRequest, SourceResult};
+use axon_error::ErrorStage;
 use axum::{Json, extract::State, http::StatusCode};
 use std::sync::Arc;
 
@@ -38,7 +40,16 @@ pub(crate) async fn index_source(
     Json(request): Json<SourceRequest>,
 ) -> Result<Json<SourceResult>, HttpError> {
     if request.source.trim().is_empty() {
-        return Err(HttpError::bad_request("source is required"));
+        // The source pipeline produces a contract `ApiError` directly; it is
+        // passed through the transport verbatim as an `ErrorEnvelope`.
+        return Err(HttpError::from_api_error(
+            ApiError::new(
+                "route.validation.missing_field",
+                ErrorStage::Validation,
+                "source is required",
+            )
+            .with_context("field", "source"),
+        ));
     }
     let service_context = Arc::clone(&state.service_context);
     let handle = tokio::runtime::Handle::current();

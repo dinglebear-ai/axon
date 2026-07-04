@@ -132,7 +132,8 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
             .json()
             .await
             .unwrap_or_else(|err| panic!("{method} {path} returned non-JSON auth error: {err}"));
-        assert_eq!(body["kind"], "unauthorized", "{method} {path}");
+        assert_eq!(body["ok"], false, "{method} {path}");
+        assert_eq!(body["error"]["code"], "auth.missing", "{method} {path}");
     }
 
     stop(shutdown, handle).await;
@@ -570,9 +571,10 @@ async fn v1_memory_route_dispatches_validation_errors_without_live_qdrant() {
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["kind"], "bad_request");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
     assert!(
-        body["message"]
+        body["error"]["message"]
             .as_str()
             .is_some_and(|message| message.contains("query is required")),
         "{body}"

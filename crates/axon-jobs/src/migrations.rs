@@ -20,9 +20,10 @@
 //!    (`sources`, `source_generations`, `source_manifests`, `source_items`,
 //!    `document_status`, `cleanup_debt`, `leases`). Runs FIRST so `jobs.source_id`
 //!    can FK to `sources(source_id)` in the same file.
-//! 2. **jobs** — the job runtime tables (`jobs`, `job_events`, watch/freshness,
-//!    plus the legacy `axon_source_*` tables that still back `axon-source-ledger`
-//!    during the cutover). `jobs` FKs `sources`, which ledger created above.
+//! 2. **jobs** — the job runtime tables (`jobs`, `job_events`, watch/freshness).
+//!    `jobs` FKs `sources`, which ledger created above. (The legacy
+//!    `axon_source_*` tables were retired with the `axon-source-ledger` crate;
+//!    migration 0017 is now an inert comment marker.)
 //! 3. **observe**, **graph**, **memory** — orphan domain stores; independent of
 //!    each other, applied after the write-plane tables exist.
 
