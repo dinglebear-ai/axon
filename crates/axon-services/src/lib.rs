@@ -49,6 +49,8 @@ pub use reddit_source::{
 pub mod reddit_target;
 pub use reddit_target::is_reddit_target;
 pub mod refresh;
+pub mod reset;
+pub use reset::reset;
 pub mod registry_acquire;
 pub use registry_acquire::{fetch_registry_dump, is_registry_target, parse_registry_target};
 #[allow(dead_code)]
