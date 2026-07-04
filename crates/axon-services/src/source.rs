@@ -87,7 +87,16 @@ pub async fn index_source(
         .unwrap_or_else(|| ctx.cfg().collection.clone());
     let owner_id = DEFAULT_OWNER_ID;
 
-    let counts = dispatch_kind(kind, ctx.cfg(), runtime, &input, &collection, owner_id).await?;
+    let counts = dispatch_kind(
+        kind,
+        route.scope,
+        ctx.cfg(),
+        runtime,
+        &input,
+        &collection,
+        owner_id,
+    )
+    .await?;
 
     // Write the baseline source graph (source container + document nodes +
     // containment edges) from the just-published manifest. A missing pool or a
@@ -131,6 +140,7 @@ pub async fn index_source(
 /// Route the classified kind to its dispatch function.
 async fn dispatch_kind(
     kind: SourceInputKind,
+    scope: SourceScope,
     cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -152,7 +162,7 @@ async fn dispatch_kind(
             dispatch::dispatch_reddit(runtime, input, collection, owner_id).await
         }
         SourceInputKind::Web => {
-            dispatch::dispatch_web(cfg, runtime, input, collection, owner_id).await
+            dispatch::dispatch_web(cfg, runtime, input, collection, owner_id, scope).await
         }
         SourceInputKind::Session => {
             dispatch::dispatch_session(runtime, input, collection, owner_id).await
