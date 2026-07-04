@@ -17,6 +17,18 @@ pub(super) fn validate_manifest(root: &Path, manifest: &super::Manifest) -> Rele
         if component.tag_prefix.trim().is_empty() {
             release_bail!("{} has an empty tag_prefix", component.id);
         }
+        if component.release_please_path.trim().is_empty() {
+            release_bail!("{} has an empty release_please_path", component.id);
+        }
+        if component.release_please_path != "."
+            && !root.join(&component.release_please_path).is_dir()
+        {
+            release_bail!(
+                "{} release_please_path does not exist: {}",
+                component.id,
+                component.release_please_path
+            );
+        }
         if tag_prefixes.iter().any(|existing| {
             existing.starts_with(&component.tag_prefix)
                 || component.tag_prefix.starts_with(*existing)

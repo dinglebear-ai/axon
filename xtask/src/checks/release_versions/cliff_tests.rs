@@ -6,6 +6,7 @@ fn component(prefix: &str, paths: &[&str]) -> Component {
         id: "test".to_owned(),
         name: "Test".to_owned(),
         tag_prefix: prefix.to_owned(),
+        release_please_path: ".".to_owned(),
         release_workflow: "release.yml".to_owned(),
         shipping_paths: paths.iter().map(|p| p.to_string()).collect(),
         version_source: VersionFile {

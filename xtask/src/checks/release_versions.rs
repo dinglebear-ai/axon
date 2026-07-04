@@ -68,6 +68,7 @@ struct Component {
     id: String,
     name: String,
     tag_prefix: String,
+    release_please_path: String,
     release_workflow: String,
     shipping_paths: Vec<String>,
     version_source: VersionFile,

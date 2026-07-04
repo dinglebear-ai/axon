@@ -16,6 +16,7 @@ fn reads_component_manifest() {
             (
                 component.id.as_str(),
                 component.tag_prefix.as_str(),
+                component.release_please_path.as_str(),
                 component.release_workflow.as_str(),
                 component.shipping_paths.as_slice(),
             )
@@ -27,6 +28,7 @@ fn reads_component_manifest() {
             (
                 "cli",
                 "v",
+                ".",
                 "release.yml",
                 &[
                     "src".to_owned(),
@@ -43,18 +45,21 @@ fn reads_component_manifest() {
             (
                 "palette",
                 "palette-v",
+                "apps/palette-tauri",
                 "palette-release.yml",
                 &["apps/palette-tauri".to_owned()][..],
             ),
             (
                 "android",
                 "android-v",
+                "apps/android",
                 "android-release.yml",
                 &["apps/android".to_owned()][..],
             ),
             (
                 "chrome",
                 "chrome-ext-v",
+                "apps/chrome-extension",
                 "chrome-extension-release.yml",
                 &["apps/chrome-extension".to_owned(), "assets".to_owned()][..],
             ),
@@ -951,6 +956,18 @@ fn bump_palette_updates_source_manifests_and_lockfile() {
         .unwrap(),
         "5.11.0"
     );
+}
+
+#[test]
+fn release_manifest_requires_release_please_path() {
+    let fixture = Fixture::new();
+    let path = fixture.path("release/components.toml");
+    let content = fs::read_to_string(&path).unwrap();
+    fs::write(&path, content.replace("release_please_path = \".\"\n", "")).unwrap();
+
+    let err = plan(fixture.root(), Some("origin/main"), "HEAD", GateMode::Pr)
+        .expect_err("missing release_please_path must fail");
+    assert!(err.to_string().contains("release_please_path"));
 }
 
 #[test]
