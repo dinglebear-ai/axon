@@ -3,9 +3,9 @@
 //! [`index_source`] is the single entrypoint every surface (CLI, MCP, REST)
 //! calls to acquire, normalize, embed, and publish one source. It:
 //!
-//! 1. **Classifies** the request's `source` string into an acquisition class
-//!    ([`classify::classify_source_input`]) — local / git / feed / youtube /
-//!    reddit / web / session / registry, in a fixed, tested order.
+//! 1. **Routes** the request through [`routing::resolve_source_route`], which
+//!    delegates canonicalization, adapter matching, and scope validation to
+//!    `axon-route` before the data plane or acquisition dispatch is touched.
 //! 2. **Guards** on the data plane: source indexing needs a running
 //!    [`TargetLocalSourceRuntime`] (qdrant + tei). When it is absent, a degraded
 //!    [`SourceResult`] (`status = Failed`) with a clear warning is returned
@@ -28,9 +28,10 @@ pub mod result_map;
 pub mod routing;
 
 use axon_api::source::{
-    JobId, LedgerSummary, LifecycleStatus, SourceCounts, SourceGenerationId, SourceId, SourceKind,
-    SourceRequest, SourceResult, SourceScope, SourceWarning,
+    AdapterRef, JobId, LedgerSummary, LifecycleStatus, SourceCounts, SourceGenerationId, SourceId,
+    SourceKind, SourceRequest, SourceResult, SourceScope, SourceWarning,
 };
+use axon_error::ApiError;
 use uuid::Uuid;
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
@@ -61,20 +62,23 @@ pub async fn index_source(
         ));
     }
 
-    let kind = classify::classify_source_input(&input).await;
-    if kind == SourceInputKind::Unsupported {
-        return Ok(unsupported_result(
-            &input,
-            &format!(
-                "source supports local paths, git repository URLs, feed URLs, youtube targets, \
-                 reddit targets, web URLs, session selectors (session:<claude|codex|gemini>:<path>), \
-                 and registry targets (pkg:<npm|pypi|crates>/<package>); {input} is none of these"
-            ),
-        ));
-    }
+    let routed = match routing::resolve_source_route(&request) {
+        Ok(routed) => routed,
+        Err(err) => return Ok(route_error_result(&input, err)),
+    };
+    let kind = routed.kind;
+    let route = routed.route;
 
     let Some(runtime) = ctx.target_local_source_runtime() else {
-        return Ok(degraded_no_data_plane(&input, kind));
+        return Ok(degraded_no_data_plane(
+            &route.source.canonical_uri,
+            route.source.source_kind,
+            AdapterRef {
+                name: route.adapter.name,
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            route.scope,
+        ));
     };
 
     let collection = request
@@ -112,10 +116,13 @@ pub async fn index_source(
     .await;
 
     Ok(to_source_result(
-        source_kind_for(kind),
-        adapter_ref(adapter_name_for(kind)),
-        request.scope.unwrap_or_else(|| default_scope_for(kind)),
-        input,
+        route.source.source_kind,
+        AdapterRef {
+            name: route.adapter.name,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        route.scope,
+        route.source.canonical_uri,
         counts,
         graph,
     ))
@@ -158,21 +165,6 @@ async fn dispatch_kind(
     }
 }
 
-/// Map an acquisition class to its [`SourceKind`] DTO variant.
-fn source_kind_for(kind: SourceInputKind) -> SourceKind {
-    match kind {
-        SourceInputKind::Local => SourceKind::Local,
-        SourceInputKind::Git => SourceKind::Git,
-        SourceInputKind::Feed => SourceKind::Feed,
-        SourceInputKind::Youtube => SourceKind::Youtube,
-        SourceInputKind::Reddit => SourceKind::Reddit,
-        SourceInputKind::Web => SourceKind::Web,
-        SourceInputKind::Session => SourceKind::Session,
-        SourceInputKind::Registry => SourceKind::Registry,
-        SourceInputKind::Unsupported => SourceKind::Web,
-    }
-}
-
 /// Adapter name reported on the result for each family.
 fn adapter_name_for(kind: SourceInputKind) -> &'static str {
     match kind {
@@ -188,32 +180,22 @@ fn adapter_name_for(kind: SourceInputKind) -> &'static str {
     }
 }
 
-/// Default scope for each family when the request omits one.
-fn default_scope_for(kind: SourceInputKind) -> SourceScope {
-    match kind {
-        SourceInputKind::Local => SourceScope::Directory,
-        SourceInputKind::Git => SourceScope::Repo,
-        SourceInputKind::Feed => SourceScope::Feed,
-        SourceInputKind::Youtube => SourceScope::Video,
-        SourceInputKind::Reddit => SourceScope::Subreddit,
-        SourceInputKind::Web => SourceScope::Site,
-        SourceInputKind::Session => SourceScope::File,
-        SourceInputKind::Registry => SourceScope::Package,
-        SourceInputKind::Unsupported => SourceScope::Site,
-    }
-}
-
 /// Build a degraded [`SourceResult`] when the data plane is not configured.
 ///
 /// Mirrors the CLI's `require_data_plane` guard, but as a `Failed`
 /// `SourceResult` with an explanatory warning instead of an `Err`, so the
 /// transport contract (`Ok(SourceResult)`) is preserved.
-fn degraded_no_data_plane(input: &str, kind: SourceInputKind) -> SourceResult {
+fn degraded_no_data_plane(
+    input: &str,
+    kind: SourceKind,
+    adapter: AdapterRef,
+    scope: SourceScope,
+) -> SourceResult {
     failed_result(
         input,
-        source_kind_for(kind),
-        adapter_name_for(kind),
-        default_scope_for(kind),
+        kind,
+        adapter,
+        scope,
         "data_plane_unconfigured",
         "source indexing requires a running data plane (set qdrant_url + tei_url; \
          available under serve/mcp/--wait)",
@@ -225,18 +207,31 @@ fn unsupported_result(input: &str, message: &str) -> SourceResult {
     failed_result(
         input,
         SourceKind::Web,
-        "unsupported",
+        adapter_ref("unsupported"),
         SourceScope::Site,
         "unsupported_source",
         message,
     )
 }
 
+fn route_error_result(input: &str, err: ApiError) -> SourceResult {
+    let mut result = unsupported_result(input, &err.message);
+    result.warnings.clear();
+    result.warnings.push(SourceWarning {
+        code: err.code.0,
+        severity: axon_api::source::Severity::Failed,
+        message: err.message,
+        source_item_key: None,
+        retryable: false,
+    });
+    result
+}
+
 /// Shared constructor for a `Failed` [`SourceResult`] carrying a single warning.
 fn failed_result(
     input: &str,
     kind: SourceKind,
-    adapter: &str,
+    adapter: AdapterRef,
     scope: SourceScope,
     code: &str,
     message: &str,
@@ -255,7 +250,7 @@ fn failed_result(
         source_id: source_id.clone(),
         canonical_uri: input.to_string(),
         source_kind: kind,
-        adapter: adapter_ref(adapter),
+        adapter,
         scope,
         status: LifecycleStatus::Failed,
         ledger: LedgerSummary {
