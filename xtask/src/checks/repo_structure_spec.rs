@@ -22,6 +22,10 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // sidecar tests.
     "crates/axon-retrieval",
     "crates/axon-llm",
+    // Phase 21 / prune crate graduated from PR0 skeleton status: it now owns
+    // prune plans, cleanup debt execution, receipts, safety checks, and
+    // sidecar tests.
+    "crates/axon-prune",
     "crates/axon-adapters",
     // Phase 4 / PR5 route crate graduated from PR0 skeleton status:
     // it now owns source resolving, canonicalization, routing, adapter
@@ -57,17 +61,4 @@ pub struct TargetCrate {
 // NOT listed here once they own real dependencies, sidecar tests, and public
 // API. They move to `REQUIRED_WORKSPACE_MEMBERS`; this list only contains
 // remaining PR0 skeleton crates.
-pub const TARGET_CRATES: &[TargetCrate] = &[TargetCrate {
-    name: "axon-prune",
-    modules: &[
-        "plan",
-        "executor",
-        "debt",
-        "generation",
-        "orphan",
-        "dedupe",
-        "receipt",
-        "safety",
-        "testing",
-    ],
-}];
+pub const TARGET_CRATES: &[TargetCrate] = &[];
