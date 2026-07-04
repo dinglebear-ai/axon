@@ -4,7 +4,7 @@ use sqlx::Row;
 use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
 use crate::sqlite::generation::ensure_source_exists_in_tx;
-use crate::sqlite::util::{cleanup_selector_hash, enum_wire_value, json_error};
+use crate::sqlite::util::{cleanup_selector_hash, enum_wire_value, json_error, timestamp};
 use crate::store::Result;
 use crate::validation::validate_cleanup_debt;
 
@@ -52,6 +52,74 @@ pub(super) async fn cleanup_debt(
         serde_json::from_str(&debt_json).map_err(json_error)
     })
     .transpose()
+}
+
+pub(super) async fn list_pending_cleanup_debt(
+    store: &SqliteLedgerStore,
+    source_id: &SourceId,
+) -> Result<Vec<CleanupDebt>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT debt_json
+        FROM cleanup_debt
+        WHERE source_id = ?1 AND completed_at IS NULL
+        ORDER BY created_at ASC, debt_id ASC
+        "#,
+    )
+    .bind(&source_id.0)
+    .fetch_all(&store.pool)
+    .await
+    .map_err(sqlite_error)?;
+
+    rows.into_iter()
+        .map(|row| {
+            let debt_json: String = row.get("debt_json");
+            serde_json::from_str(&debt_json).map_err(json_error)
+        })
+        .collect()
+}
+
+pub(super) async fn resolve_cleanup_debt(
+    store: &SqliteLedgerStore,
+    debt_id: &CleanupDebtId,
+) -> Result<()> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT debt_json FROM cleanup_debt WHERE debt_id = ?1 AND completed_at IS NULL",
+    )
+    .bind(&debt_id.0)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+
+    // Idempotent: unknown or already-resolved debt is a no-op.
+    let Some(debt_json) = existing else {
+        tx.commit().await.map_err(sqlite_error)?;
+        return Ok(());
+    };
+
+    let mut debt: CleanupDebt = serde_json::from_str(&debt_json).map_err(json_error)?;
+    let now = timestamp();
+    debt.status = LifecycleStatus::Completed;
+    debt.completed_at = Some(now.clone());
+    let updated_json = serde_json::to_string(&debt).map_err(json_error)?;
+
+    sqlx::query(
+        r#"
+        UPDATE cleanup_debt
+        SET status = ?2, completed_at = ?3, debt_json = ?4
+        WHERE debt_id = ?1
+        "#,
+    )
+    .bind(&debt_id.0)
+    .bind(enum_wire_value(LifecycleStatus::Completed)?)
+    .bind(&now.0)
+    .bind(updated_json)
+    .execute(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(())
 }
 
 pub(super) async fn insert_cleanup_debt_in_tx(

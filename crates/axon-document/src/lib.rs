@@ -8,6 +8,7 @@ pub mod chunk_router;
 pub mod code;
 pub mod markdown;
 pub mod metadata;
+mod parse;
 pub mod prepared;
 pub mod preparer;
 pub mod profile;

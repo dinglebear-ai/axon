@@ -10,11 +10,13 @@ graph persistence or chunking. Full contract (owns / API / deps / tests):
 · behavior spec:
 [../../../docs/pipeline-unification/sources/parsing-contract.md](../../../docs/pipeline-unification/sources/parsing-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 7**
-(`axon-parse` for manifests/schemas/sessions/tool outputs, ahead of the
-`axon-graph` boundary). Do not add acquisition, graph persistence, chunking, or
-vector-write behavior here.
+## Status — Phase 7 (wired)
+The parser families below are implemented and now **consumed on the acquisition
+path**: `axon-document`'s `parse.rs` bridge runs `builtins::production_registry()`
+over each `SourceDocument`, so `SourceParseFacts`/`GraphCandidate` flow into
+`PreparedDocument` and drive parser-aware chunk routing. Code symbol extraction
+is currently line-heuristic (tree-sitter AST upgrade is future work). Do not add
+acquisition, graph persistence, chunking, or vector-write behavior here.
 
 ## Module map
 | File | Owns |

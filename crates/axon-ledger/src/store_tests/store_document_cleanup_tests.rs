@@ -430,3 +430,76 @@ async fn fake_publish_creates_cleanup_debt_for_removed_items() {
     assert_eq!(published.publish_state, PublishState::CleanupPending);
     assert_eq!(published.cleanup_debt.len(), 1);
 }
+
+#[tokio::test]
+async fn fake_lists_pending_cleanup_debt_and_resolves_it() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let gen1 = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![
+                manifest_item("README.md", "same"),
+                manifest_item("src/old.rs", "removed"),
+            ],
+        ))
+        .await
+        .unwrap();
+    complete_and_publish(&ledger, completed_generation(gen1.clone())).await;
+
+    let gen2 = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_with_items(
+            &gen2.generation.0,
+            vec![manifest_item("README.md", "same")],
+        ))
+        .await
+        .unwrap();
+    complete_and_publish(&ledger, completed_generation(gen2)).await;
+
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    let debt = &pending[0];
+    assert_eq!(debt.status, LifecycleStatus::Pending);
+    assert!(debt.completed_at.is_none());
+    assert_eq!(debt.generation.as_ref(), Some(&gen1.generation));
+
+    ledger
+        .resolve_cleanup_debt(debt.debt_id.clone())
+        .await
+        .unwrap();
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new("src_a"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let resolved = ledger
+        .cleanup_debt(&debt.debt_id)
+        .await
+        .expect("debt still stored");
+    assert_eq!(resolved.status, LifecycleStatus::Completed);
+    assert!(resolved.completed_at.is_some());
+
+    // Idempotent replays.
+    ledger
+        .resolve_cleanup_debt(debt.debt_id.clone())
+        .await
+        .unwrap();
+    ledger
+        .resolve_cleanup_debt(CleanupDebtId::new("nope"))
+        .await
+        .unwrap();
+}

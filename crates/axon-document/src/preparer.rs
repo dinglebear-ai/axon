@@ -9,6 +9,7 @@ use axon_api::source::{
 
 use crate::chunk::DocumentChunk;
 use crate::chunk_router::ChunkRouter;
+use crate::parse::{DocumentParse, parse_document};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use crate::profile::ChunkingProfile;
 use crate::{code, markdown, metadata, schema, session, text, transcript};
@@ -21,12 +22,26 @@ pub struct DocumentPreparer {
 impl DocumentPreparer {
     pub fn prepare(
         &self,
-        request: PrepareSourceDocumentRequest,
+        mut request: PrepareSourceDocumentRequest,
     ) -> Result<PrepareSourceDocumentResult, String> {
-        let profile = request
-            .profile
-            .map(Ok)
-            .unwrap_or_else(|| self.router.route(&request.document))?;
+        // Activate axon-parse on the acquisition path: when the caller did not
+        // pre-supply parse facts, parse the document here so parser-driven chunk
+        // routing and graph candidates actually flow. Callers that already carry
+        // facts (or explicitly forced a profile) keep their supplied artifacts.
+        let parse = if request.parse_facts.is_empty() {
+            parse_document(&request.document)
+        } else {
+            DocumentParse::default()
+        };
+        merge_parse_artifacts(&mut request, &parse);
+
+        let profile = match request.profile {
+            Some(profile) => profile,
+            None => parse
+                .routed_profile()
+                .map(Ok)
+                .unwrap_or_else(|| self.router.route(&request.document))?,
+        };
         let content = content_text(&request.document);
         let effective_profile = content.force_profile.unwrap_or(profile);
         let build = build_chunks(
@@ -36,7 +51,9 @@ impl DocumentPreparer {
             &request.document.source_item_key,
         );
         let chunks = build.chunks;
-        let prepared_chunks = prepare_chunks(&request, effective_profile, chunks);
+        let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
+            .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
+        let prepared_chunks = prepare_chunks(&request, effective_profile, chunks, parser_stamp);
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
         warnings.extend(build.warnings);
@@ -61,6 +78,20 @@ impl DocumentPreparer {
         validate_prepared_document(&document)?;
         Ok(PrepareSourceDocumentResult { document })
     }
+}
+
+/// Fold parser-produced facts/candidates/diagnostics into the request so they
+/// reach the `PreparedDocument`. No-op when the caller already supplied facts
+/// (in which case `parse` is the default, empty value).
+fn merge_parse_artifacts(request: &mut PrepareSourceDocumentRequest, parse: &DocumentParse) {
+    if !parse.parse_facts.is_empty() {
+        request.parse_facts = parse.parse_facts.clone();
+    }
+    if !parse.graph_candidates.is_empty() {
+        request.graph_candidates = parse.graph_candidates.clone();
+    }
+    request.warnings.extend(parse.warnings.iter().cloned());
+    request.errors.extend(parse.errors.iter().cloned());
 }
 
 struct PreparedContentText {
@@ -210,67 +241,13 @@ fn prepare_chunks(
     request: &PrepareSourceDocumentRequest,
     profile: ChunkingProfile,
     chunks: Vec<DocumentChunk>,
+    parser_stamp: Option<(&str, &str)>,
 ) -> Vec<PreparedChunk> {
     let len = chunks.len();
     let mut prepared: Vec<PreparedChunk> = chunks
         .into_iter()
         .enumerate()
-        .map(|(idx, mut chunk)| {
-            chunk
-                .metadata
-                .insert("chunking_profile".to_string(), profile.as_str().into());
-            let path = chunk
-                .metadata
-                .get("original_path")
-                .and_then(serde_json::Value::as_str)
-                .map(ToOwned::to_owned)
-                .or_else(|| request.document.path.clone());
-            let content_hash = simple_hash(&chunk.content);
-            let chunk_key = stable_chunk_key(
-                request,
-                profile,
-                idx,
-                path.as_deref(),
-                &chunk,
-                &content_hash,
-            );
-            let chunk_id = ChunkId::from(format!("chunk_{}", stable_token(&chunk_key)));
-            let symbol = chunk.symbol.clone();
-            let mut metadata = merge_metadata(&request.document.metadata, chunk.metadata);
-            if profile == ChunkingProfile::CodeSymbol
-                && let Some(symbol) = &symbol
-            {
-                metadata.insert("code_symbol_name".to_string(), symbol.clone().into());
-                metadata.insert(
-                    "code_symbol_kind".to_string(),
-                    code_symbol_kind(&chunk.content).into(),
-                );
-            }
-            PreparedChunk {
-                chunk_id: chunk_id.clone(),
-                chunk_key,
-                document_id: request.document.document_id.clone(),
-                chunk_index: idx as u32,
-                content_hash,
-                embedding_text: None,
-                chunk_locator: ChunkLocator {
-                    canonical_uri: request.document.canonical_uri.clone(),
-                    path,
-                    heading_path: chunk.heading_path,
-                    symbol,
-                    range: chunk.range.clone(),
-                },
-                source_range: chunk.range,
-                content_kind: request.document.content_kind,
-                title: chunk.title.or_else(|| request.document.title.clone()),
-                graph_refs: Vec::new(),
-                parent_chunk_id: None,
-                previous_chunk_id: None,
-                next_chunk_id: None,
-                metadata,
-                content: chunk.content,
-            }
-        })
+        .map(|(idx, chunk)| build_prepared_chunk(request, profile, parser_stamp, idx, chunk))
         .collect();
 
     for idx in 0..len {
@@ -283,6 +260,77 @@ fn prepare_chunks(
     }
 
     prepared
+}
+
+fn build_prepared_chunk(
+    request: &PrepareSourceDocumentRequest,
+    profile: ChunkingProfile,
+    parser_stamp: Option<(&str, &str)>,
+    idx: usize,
+    mut chunk: DocumentChunk,
+) -> PreparedChunk {
+    chunk
+        .metadata
+        .insert("chunking_profile".to_string(), profile.as_str().into());
+    if let Some((parser_id, parser_version)) = parser_stamp {
+        chunk
+            .metadata
+            .insert("parser_id".to_string(), parser_id.into());
+        chunk
+            .metadata
+            .insert("parser_version".to_string(), parser_version.into());
+    }
+    let path = chunk
+        .metadata
+        .get("original_path")
+        .and_then(serde_json::Value::as_str)
+        .map(ToOwned::to_owned)
+        .or_else(|| request.document.path.clone());
+    let content_hash = simple_hash(&chunk.content);
+    let chunk_key = stable_chunk_key(
+        request,
+        profile,
+        idx,
+        path.as_deref(),
+        &chunk,
+        &content_hash,
+    );
+    let chunk_id = ChunkId::from(format!("chunk_{}", stable_token(&chunk_key)));
+    let symbol = chunk.symbol.clone();
+    let mut metadata = merge_metadata(&request.document.metadata, chunk.metadata);
+    if profile == ChunkingProfile::CodeSymbol
+        && let Some(symbol) = &symbol
+    {
+        metadata.insert("code_symbol_name".to_string(), symbol.clone().into());
+        metadata.insert(
+            "code_symbol_kind".to_string(),
+            code_symbol_kind(&chunk.content).into(),
+        );
+    }
+    PreparedChunk {
+        chunk_id,
+        chunk_key,
+        document_id: request.document.document_id.clone(),
+        chunk_index: idx as u32,
+        content_hash,
+        embedding_text: None,
+        chunk_locator: ChunkLocator {
+            canonical_uri: request.document.canonical_uri.clone(),
+            path,
+            heading_path: chunk.heading_path,
+            symbol,
+            range: chunk.range.clone(),
+        },
+        source_range: chunk.range,
+        content_kind: request.document.content_kind,
+        title: chunk.title.or_else(|| request.document.title.clone()),
+        graph_refs: Vec::new(),
+        parent_chunk_id: None,
+        previous_chunk_id: None,
+        next_chunk_id: None,
+        metadata,
+        content: chunk.content,
+    }
 }
 
 pub(crate) fn validate_prepared_document(document: &PreparedDocument) -> Result<(), String> {

@@ -471,6 +471,14 @@ impl LedgerStore for FakeLedgerStore {
         Ok(())
     }
 
+    async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_pending_cleanup_debt(&self.state, &source_id).await
+    }
+
+    async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()> {
+        cleanup::resolve_cleanup_debt(&self.state, &debt_id).await
+    }
+
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
         lease::acquire_lease(&self.state, request).await
     }

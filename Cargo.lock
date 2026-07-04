@@ -621,7 +621,10 @@ name = "axon-document"
 version = "6.2.1"
 dependencies = [
  "axon-api",
+ "axon-parse",
  "serde_json",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -920,6 +923,7 @@ dependencies = [
  "axon-ledger",
  "axon-memory",
  "axon-observe",
+ "axon-prune",
  "axon-retrieval",
  "axon-route",
  "axon-vector",

@@ -36,6 +36,15 @@ pub trait LedgerStore: Send + Sync {
     ) -> Result<SourceGeneration>;
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
+    /// List every not-yet-resolved cleanup-debt entry for a source, oldest
+    /// first. Used by `axon-prune` to drain superseded-generation debt after a
+    /// new generation is committed. A debt is "pending" while its `completed_at`
+    /// timestamp is unset (status alone is advisory).
+    async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>>;
+    /// Mark one cleanup-debt entry resolved: set its status to `Completed` and
+    /// stamp `completed_at`. Idempotent — resolving an already-resolved or
+    /// unknown debt id is a no-op.
+    async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()>;
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>>;
     async fn heartbeat_lease(
         &self,
