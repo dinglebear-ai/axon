@@ -55,7 +55,7 @@ jobs:
   build:
     name: build android apk
     runs-on: ubuntu-latest
-    # Only this job publishes a release; scope contents: write here rather than
+    # Only this job publishes release artifacts; scope contents: write here rather than
     # granting it workflow-wide to every step (build/sign included).
     permissions:
       contents: write
@@ -218,7 +218,7 @@ jobs:
             ${{ steps.package.outputs.apk }}.sha256
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Attach artifacts to release
         # Create a release on real tag pushes; workflow_dispatch is a dry-run
         # unless explicitly called with publish=true on an android-v* tag.
         if: >-
@@ -227,24 +227,13 @@ jobs:
             github.event_name == 'push' ||
             (github.event_name == 'workflow_dispatch' && inputs.publish)
           )
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Android v${{ steps.version.outputs.version }}
-          # Curated body instead of generate_release_notes: the Android app
-          # versions independently, so auto-notes would diff against an unrelated
-          # axon v* tag and dump the whole axon PR history into the app's notes.
-          body: |
-            Axon Android — app v${{ steps.version.outputs.version }}.
-
-            **Install:** download `${{ steps.package.outputs.apk }}` and install it on
-            your device (`adb install` or open it on-device). Signed: `${{ steps.package.outputs.signed }}`.
-
-            **Verify:** `sha256sum -c ${{ steps.package.outputs.apk }}.sha256`
-
-            See `apps/android/README.md` for build and configuration details.
-          files: |
-            ${{ steps.package.outputs.apk }}
-            ${{ steps.package.outputs.apk }}.sha256
-          fail_on_unmatched_files: true
-          # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
-          make_latest: false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" \
+            "${{ steps.package.outputs.apk }}" \
+            "${{ steps.package.outputs.apk }}.sha256" \
+            --clobber

@@ -25,7 +25,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # required to create releases
+  contents: write   # required to upload release artifacts
 
 env:
   CARGO_TERM_COLOR: always
@@ -178,17 +178,23 @@ jobs:
       # break the strict required-artifact release step below.
       - name: Attach signature to release (when present)
         if: ${{ hashFiles('dist/axon-linux-x86_64.tar.gz.minisig') != '' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/axon-linux-x86_64.tar.gz.minisig
-          fail_on_unmatched_files: true
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/axon-linux-x86_64.tar.gz
-            dist/axon-linux-x86_64.tar.gz.sha256
-            dist/axon-windows-x86_64.zip
-            dist/axon-windows-x86_64.zip.sha256
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" dist/axon-linux-x86_64.tar.gz.minisig --clobber
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" \
+            dist/axon-linux-x86_64.tar.gz \
+            dist/axon-linux-x86_64.tar.gz.sha256 \
+            dist/axon-windows-x86_64.zip \
+            dist/axon-windows-x86_64.zip.sha256 \
+            --clobber

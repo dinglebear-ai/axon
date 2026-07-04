@@ -202,27 +202,16 @@ jobs:
           merge-multiple: true
       - name: List artifacts
         run: ls -la dist/
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Palette v${{ needs.version.outputs.version }}
-          # Curated body instead of generate_release_notes: the palette versions
-          # independently, so auto-notes would diff against an unrelated axon v*
-          # tag and dump the whole axon PR history into the palette's notes.
-          body: |
-            Axon Palette — desktop launcher v${{ needs.version.outputs.version }}.
-
-            **Install:** download the binary for your platform and run
-            `axon palette install`, or unpack the portable binary directly.
-
-            **Verify:** `sha256sum -c axon-palette-linux-x86_64.tar.gz.sha256`
-
-            See `apps/palette-tauri/README.md` for build and configuration details.
-          files: |
-            dist/axon-palette-linux-x86_64.tar.gz
-            dist/axon-palette-linux-x86_64.tar.gz.sha256
-            dist/axon-palette-windows-x86_64.zip
-            dist/axon-palette-windows-x86_64.zip.sha256
-          fail_on_unmatched_files: true
-          # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
-          make_latest: false
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" \
+            dist/axon-palette-linux-x86_64.tar.gz \
+            dist/axon-palette-linux-x86_64.tar.gz.sha256 \
+            dist/axon-palette-windows-x86_64.zip \
+            dist/axon-palette-windows-x86_64.zip.sha256 \
+            --clobber
