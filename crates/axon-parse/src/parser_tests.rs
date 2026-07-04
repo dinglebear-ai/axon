@@ -268,7 +268,7 @@ fn production_registry_runs_real_parser_families() {
     assert!(
         env.facts
             .iter()
-            .any(|fact| fact.fact_kind == "env_var" && fact.name == "QDRANT_URL")
+            .any(|fact| fact.fact_kind == "environment_variable" && fact.name == "QDRANT_URL")
     );
     assert!(
         env.facts
