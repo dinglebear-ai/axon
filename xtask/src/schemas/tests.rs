@@ -36,6 +36,14 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/stage.rs",
         "crates/axon-cli/src/schema_registry.rs",
         "crates/axon-core/src/config/schema_registry.rs",
+        "crates/axon-core/src/boundary.rs",
+        "crates/axon-embedding/src/provider.rs",
+        "crates/axon-embedding/src/fake.rs",
+        "crates/axon-llm/src/provider.rs",
+        "crates/axon-llm/src/fake.rs",
+        "crates/axon-adapters/src/boundary.rs",
+        "crates/axon-authz/src/policy.rs",
+        "crates/axon-observe/src/reservation.rs",
         "crates/axon-route/src/capability.rs",
         "crates/axon-web/src/schema_registry.rs",
         "crates/axon-mcp/src/schema_registry.rs",
@@ -43,6 +51,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-graph/src/schema_registry.rs",
         "crates/axon-vectors/src/schema_registry.rs",
         "crates/axon-vectors/src/lib.rs",
+        "crates/axon-vectors/src/store.rs",
         "crates/axon-vectors/src/payload.rs",
         "crates/axon-vectors/src/point.rs",
         "xtask/src/schemas/api_defs.rs",
@@ -58,6 +67,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "docs/pipeline-unification/schemas/error-schema.md",
         "docs/pipeline-unification/schemas/database-schema.md",
         "docs/pipeline-unification/schemas/graph-schema.md",
+        "docs/pipeline-unification/runtime/provider-contract.md",
         "docs/pipeline-unification/sources/metadata-payload.md",
         "docs/pipeline-unification/sources/chunking-contract.md",
         "docs/pipeline-unification/schemas/vector-payload-schema.md",
@@ -117,7 +127,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
         SchemaFamily::Mcp => r#"{"actions":[]}"#,
         SchemaFamily::Config => r#"{"config_keys":[]}"#,
         SchemaFamily::Graph => r#"{"graph_kinds":[]}"#,
-        SchemaFamily::Providers => r#"{"providers":[]}"#,
+        SchemaFamily::Providers => "{}",
         SchemaFamily::VectorPayload => {
             r#"{
   "payload_contract_version": "2026-07-01",
@@ -169,11 +179,23 @@ fn needs_real_fixture(path: &str) -> bool {
     matches!(
         path,
         "crates/axon-api/src/source/vector.rs"
+            | "crates/axon-api/src/source/capability.rs"
+            | "crates/axon-core/src/boundary.rs"
+            | "crates/axon-embedding/src/provider.rs"
+            | "crates/axon-embedding/src/fake.rs"
+            | "crates/axon-llm/src/provider.rs"
+            | "crates/axon-llm/src/fake.rs"
+            | "crates/axon-vectors/src/store.rs"
+            | "crates/axon-adapters/src/boundary.rs"
+            | "crates/axon-authz/src/policy.rs"
+            | "crates/axon-observe/src/reservation.rs"
             | "crates/axon-vectors/src/payload.rs"
             | "crates/axon-vectors/src/point.rs"
+            | "docs/pipeline-unification/runtime/provider-contract.md"
             | "docs/pipeline-unification/sources/metadata-payload.md"
             | "docs/pipeline-unification/sources/chunking-contract.md"
             | "docs/pipeline-unification/schemas/vector-payload-schema.md"
+            | "docs/pipeline-unification/schemas/provider-capability-schema.md"
     )
 }
 
@@ -771,11 +793,235 @@ fn provider_schema_requires_contract_fields() {
         .unwrap(),
     )
     .unwrap();
-    let provider = &value["providers"].as_array().unwrap()[0];
-    assert!(provider.get("health").is_some());
-    assert!(provider.get("limits").is_some());
-    assert!(provider.get("reservation_policy").is_some());
-    assert!(provider.get("degraded_modes").is_some());
+    let required = value["$defs"]["ProviderCapability"]["required"]
+        .as_array()
+        .unwrap();
+    for field in [
+        "health",
+        "limits",
+        "reservation_policy",
+        "reservation_state",
+        "degraded_modes",
+    ] {
+        assert!(
+            required.iter().any(|required| required == field),
+            "ProviderCapability should require {field}"
+        );
+    }
+}
+
+#[test]
+fn provider_schema_is_not_a_skeleton_and_contains_reservation_fields() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Providers(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+
+    let content = std::fs::read_to_string(
+        tmp.path()
+            .join("docs/reference/runtime/provider-capabilities.schema.json"),
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    assert_ne!(
+        value["$defs"]["SchemaFamilyContract"]["properties"]["status"]["const"], "skeleton",
+        "provider capability schema must be generated from real provider DTOs"
+    );
+    assert!(
+        value["$defs"].get("ProviderCapability").is_some(),
+        "ProviderCapability schema definition should be present"
+    );
+    assert!(
+        value["$defs"]["ProviderCapability"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field == "reservation_policy"),
+        "reservation_policy must be a required provider capability field"
+    );
+    assert!(
+        value["$defs"]["ProviderCapability"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field == "reservation_state"),
+        "reservation_state must be a required provider capability field"
+    );
+    assert!(
+        value["$defs"].get("ReservationPolicy").is_some(),
+        "ReservationPolicy schema definition should be present"
+    );
+    assert!(
+        value["$defs"].get("ReservationStateSnapshot").is_some(),
+        "ReservationStateSnapshot schema definition should be present"
+    );
+}
+
+#[test]
+fn phase_3_boundary_inventory() {
+    const BOUNDARIES: &[(&str, &str, &str, &str)] = &[
+        (
+            "LedgerStore",
+            "crates/axon-ledger/src/store.rs",
+            "pub trait LedgerStore",
+            "crates/axon-ledger/src/store/fake.rs",
+        ),
+        (
+            "GraphStore",
+            "crates/axon-graph/src/store.rs",
+            "pub trait GraphStore",
+            "crates/axon-graph/src/store.rs",
+        ),
+        (
+            "MemoryStore",
+            "crates/axon-memory/src/store.rs",
+            "pub trait MemoryStore",
+            "crates/axon-memory/src/store.rs",
+        ),
+        (
+            "VectorStore",
+            "crates/axon-vectors/src/store.rs",
+            "pub trait VectorStore",
+            "crates/axon-vectors/src/store.rs",
+        ),
+        (
+            "ArtifactStore",
+            "crates/axon-core/src/boundary.rs",
+            "pub trait ArtifactStore",
+            "crates/axon-core/src/boundary.rs",
+        ),
+        (
+            "JobStore",
+            "crates/axon-jobs/src/boundary.rs",
+            "pub trait JobStore",
+            "crates/axon-jobs/src/fake_store.rs",
+        ),
+        (
+            "WatchStore",
+            "crates/axon-jobs/src/boundary.rs",
+            "pub trait WatchStore",
+            "crates/axon-jobs/src/fake_store.rs",
+        ),
+        (
+            "ConfigStore",
+            "crates/axon-core/src/boundary.rs",
+            "pub trait ConfigStore",
+            "crates/axon-core/src/boundary.rs",
+        ),
+        (
+            "DocumentCache",
+            "crates/axon-core/src/boundary.rs",
+            "pub trait DocumentCache",
+            "crates/axon-core/src/boundary.rs",
+        ),
+        (
+            "EmbeddingProvider",
+            "crates/axon-embedding/src/provider.rs",
+            "pub trait EmbeddingProvider",
+            "crates/axon-embedding/src/fake.rs",
+        ),
+        (
+            "LlmProvider",
+            "crates/axon-llm/src/provider.rs",
+            "pub trait LlmProvider",
+            "crates/axon-llm/src/fake.rs",
+        ),
+        (
+            "SearchProvider",
+            "crates/axon-adapters/src/boundary.rs",
+            "pub trait SearchProvider",
+            "crates/axon-adapters/src/boundary.rs",
+        ),
+        (
+            "FetchProvider",
+            "crates/axon-adapters/src/boundary.rs",
+            "pub trait FetchProvider",
+            "crates/axon-adapters/src/boundary.rs",
+        ),
+        (
+            "RenderProvider",
+            "crates/axon-adapters/src/boundary.rs",
+            "pub trait RenderProvider",
+            "crates/axon-adapters/src/boundary.rs",
+        ),
+        (
+            "NetworkCaptureProvider",
+            "crates/axon-adapters/src/boundary.rs",
+            "pub trait NetworkCaptureProvider",
+            "crates/axon-adapters/src/boundary.rs",
+        ),
+        (
+            "CredentialProvider",
+            "crates/axon-authz/src/policy.rs",
+            "pub trait CredentialProvider",
+            "crates/axon-authz/src/policy.rs",
+        ),
+        (
+            "HealthProbe",
+            "crates/axon-core/src/boundary.rs",
+            "pub trait HealthProbe",
+            "crates/axon-core/src/boundary.rs",
+        ),
+        (
+            "RateLimiter",
+            "crates/axon-core/src/boundary.rs",
+            "pub trait RateLimiter",
+            "crates/axon-core/src/boundary.rs",
+        ),
+        (
+            "SecurityPolicy",
+            "crates/axon-authz/src/policy.rs",
+            "pub trait SecurityPolicy",
+            "crates/axon-authz/src/policy.rs",
+        ),
+    ];
+
+    for (name, trait_path, trait_marker, fake_path) in BOUNDARIES {
+        let trait_content = workspace_file(trait_path);
+        assert!(
+            trait_content.contains(trait_marker),
+            "{name} owner trait missing from {trait_path}"
+        );
+        let fake_content = workspace_file(fake_path);
+        assert!(
+            fake_content.contains("Fake"),
+            "{name} fake/in-memory boundary missing from {fake_path}"
+        );
+        assert!(
+            fake_content.contains("capabilities") || fake_content.contains("capability"),
+            "{name} fake must report capability or health"
+        );
+        assert!(
+            fake_content.contains("reset")
+                || name.ends_with("Provider")
+                || name == &"SecurityPolicy",
+            "{name} store fake must expose reset/idempotency behavior"
+        );
+    }
+
+    let ledger_store = workspace_file("crates/axon-ledger/src/store.rs");
+    assert!(ledger_store.contains("update_document_status"));
+    assert!(ledger_store.contains("document_status"));
+    assert!(
+        !workspace_file("crates/axon-api/src/source/capability.rs").contains("DocumentStatusStore")
+    );
+    assert!(!workspace_file("crates/axon-ledger/src/store.rs").contains("DocumentStatusStore"));
+
+    let jobs_manifest = workspace_file("crates/axon-jobs/Cargo.toml");
+    assert!(
+        !jobs_manifest.contains("axon-services"),
+        "axon-jobs must not depend on axon-services"
+    );
+}
+
+fn workspace_file(path: &str) -> String {
+    std::fs::read_to_string(workspace_path(path))
+        .unwrap_or_else(|err| panic!("read workspace file {path}: {err}"))
 }
 
 #[test]

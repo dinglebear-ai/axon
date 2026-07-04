@@ -233,6 +233,125 @@ impl MemoryStore for FakeMemoryStore {
         Ok(result_from_record(record, memory_score(record)))
     }
 
+    async fn supersede(&self, request: MemorySupersedeRequest) -> Result<MemoryResult> {
+        let mut state = self.state.lock().await;
+        if !state.records.contains_key(&request.replacement_id) {
+            return Err(missing_memory(&request.replacement_id));
+        }
+        let record = state
+            .records
+            .get_mut(&request.memory_id)
+            .ok_or_else(|| missing_memory(&request.memory_id))?;
+        record.status = MemoryStatus::Superseded;
+        record.superseded_by = Some(request.replacement_id);
+        record.history.push(MemoryHistoryEvent {
+            status: MemoryStatus::Superseded,
+            message: request.reason.unwrap_or_else(|| "superseded".to_string()),
+            timestamp: request.timestamp,
+        });
+        Ok(result_from_record(record, memory_score(record)))
+    }
+
+    async fn contradict(&self, request: MemoryContradictRequest) -> Result<MemoryResult> {
+        let mut state = self.state.lock().await;
+        let reason = request
+            .reason
+            .unwrap_or_else(|| "contradicted by another memory".to_string());
+        {
+            let record = state
+                .records
+                .get_mut(&request.memory_id)
+                .ok_or_else(|| missing_memory(&request.memory_id))?;
+            record.status = MemoryStatus::Contradicted;
+            record.contradicts = Some(request.conflicting_id.clone());
+            record.history.push(MemoryHistoryEvent {
+                status: MemoryStatus::Contradicted,
+                message: reason.clone(),
+                timestamp: request.timestamp.clone(),
+            });
+        }
+        let conflicting = state
+            .records
+            .get_mut(&request.conflicting_id)
+            .ok_or_else(|| missing_memory(&request.conflicting_id))?;
+        conflicting.status = MemoryStatus::Contradicted;
+        conflicting.contradicts = Some(request.memory_id);
+        conflicting.history.push(MemoryHistoryEvent {
+            status: MemoryStatus::Contradicted,
+            message: reason,
+            timestamp: request.timestamp,
+        });
+        Ok(result_from_record(conflicting, memory_score(conflicting)))
+    }
+
+    async fn set_status(&self, request: MemoryStatusRequest) -> Result<MemoryResult> {
+        let mut state = self.state.lock().await;
+        let record = state
+            .records
+            .get_mut(&request.memory_id)
+            .ok_or_else(|| missing_memory(&request.memory_id))?;
+        record.status = request.status;
+        record.history.push(MemoryHistoryEvent {
+            status: request.status,
+            message: request
+                .reason
+                .unwrap_or_else(|| "status updated".to_string()),
+            timestamp: request.timestamp,
+        });
+        Ok(result_from_record(record, memory_score(record)))
+    }
+
+    async fn review(&self, request: MemoryReviewRequest) -> Result<MemoryReviewResult> {
+        let state = self.state.lock().await;
+        let limit = request
+            .limit
+            .and_then(|limit| usize::try_from(limit).ok())
+            .filter(|limit| *limit > 0)
+            .unwrap_or(usize::MAX);
+        let mut skipped_cursor = request.cursor.is_none();
+        let mut memories = Vec::new();
+        let mut next_cursor = None;
+
+        for (memory_id, record) in &state.records {
+            if !skipped_cursor {
+                skipped_cursor = request.cursor.as_deref() == Some(memory_id.0.as_str());
+                continue;
+            }
+            if request
+                .memory_type
+                .is_some_and(|memory_type| record.memory_type != memory_type)
+            {
+                continue;
+            }
+            if request
+                .scope
+                .as_ref()
+                .is_some_and(|scope| &record.scope != scope)
+            {
+                continue;
+            }
+            if request.reason.as_ref().is_some_and(|reason| {
+                !record
+                    .history
+                    .iter()
+                    .any(|event| event.message.contains(reason))
+            }) {
+                continue;
+            }
+            if memories.len() >= limit {
+                next_cursor = Some(memory_id.0.clone());
+                break;
+            }
+            memories.push(record.clone());
+        }
+
+        Ok(MemoryReviewResult {
+            memories,
+            cursor: next_cursor,
+            warnings: Vec::new(),
+        })
+    }
+
     async fn capabilities(&self) -> Result<MemoryStoreCapability> {
         Ok(CapabilityBase {
             name: "fake-memory".to_string(),

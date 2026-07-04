@@ -57,13 +57,31 @@ Exit criteria:
 - [ ] implement `VectorStore`
 - [ ] implement `EmbeddingProvider`
 - [ ] implement `LlmProvider`
-- [ ] add fakes for all stores/providers
+- [ ] implement `ArtifactStore`
+- [ ] implement `JobStore`
+- [ ] implement `ConfigStore`
+- [ ] implement `CredentialProvider`
+- [ ] implement `DocumentCache`
+- [ ] implement `HealthProbe`
+- [ ] implement `RateLimiter`
+- [ ] implement `WatchStore`
+- [ ] implement `SearchProvider`
+- [ ] implement `FetchProvider`
+- [ ] implement `RenderProvider`
+- [ ] implement `NetworkCaptureProvider`
+- [ ] implement `SecurityPolicy`
+- [ ] keep `DocumentStatus` ledger-owned, not a separate store
+- [ ] add strict fakes for all Phase 3 stores/providers
 - [ ] add provider reservations/cooling/health
+- [ ] generate complete provider capability schema and markdown artifacts
+- [ ] enforce `axon-jobs` does not depend on `axon-services`
 
 Exit criteria:
 
-- fake-boundary tests can run without Qdrant, TEI, LLMs, or live network
-- provider saturation is observable and does not overload TEI/LLM backends
+- fake-boundary tests can run without Qdrant, TEI, LLMs, browser, or live network
+- provider saturation is observable and cannot starve interactive query/ask lanes
+- `docs/reference/runtime/provider-capabilities.schema.json` is not a skeleton artifact
+- source routing, URL normalization, authority entrypoints, and adapter registry work remain owned by Phase 4
 
 ## Phase 4: Source Routing And Acquisition
 

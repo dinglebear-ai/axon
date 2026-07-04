@@ -171,3 +171,68 @@ async fn fake_memory_store_rejects_unsupported_search_and_context_options() {
         .unwrap_err();
     assert_eq!(err.code.to_string(), "memory.unsupported_option");
 }
+
+#[tokio::test]
+async fn fake_memory_store_reviews_forgets_supersedes_and_contradicts() {
+    let store = FakeMemoryStore::new();
+    let original = store.remember(request("Original memory")).await.unwrap();
+    let replacement = store.remember(request("Replacement memory")).await.unwrap();
+
+    let forgotten = store
+        .set_status(MemoryStatusRequest {
+            memory_id: original.memory_id.clone(),
+            status: MemoryStatus::Forgotten,
+            reason: Some("user requested deletion".to_string()),
+            timestamp: Timestamp("2026-07-04T00:00:01Z".to_string()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(forgotten.status, MemoryStatus::Forgotten);
+
+    let review = store
+        .review(MemoryReviewRequest {
+            reason: None,
+            memory_type: Some(MemoryType::Fact),
+            scope: None,
+            limit: Some(10),
+            cursor: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(review.memories.len(), 2);
+    assert_eq!(review.memories[0].memory_id, original.memory_id);
+    assert!(review.cursor.is_none());
+
+    let superseded = store
+        .supersede(MemorySupersedeRequest {
+            memory_id: original.memory_id.clone(),
+            replacement_id: replacement.memory_id.clone(),
+            reason: Some("newer fact".to_string()),
+            timestamp: Timestamp("2026-07-04T00:00:02Z".to_string()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(superseded.status, MemoryStatus::Superseded);
+    let original_record = store
+        .get(original.memory_id.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        original_record.superseded_by,
+        Some(replacement.memory_id.clone())
+    );
+
+    let contradicted = store
+        .contradict(MemoryContradictRequest {
+            memory_id: original.memory_id.clone(),
+            conflicting_id: replacement.memory_id.clone(),
+            reason: Some("conflicting facts".to_string()),
+            timestamp: Timestamp("2026-07-04T00:00:03Z".to_string()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(contradicted.status, MemoryStatus::Contradicted);
+    let replacement_record = store.get(replacement.memory_id).await.unwrap().unwrap();
+    assert_eq!(replacement_record.status, MemoryStatus::Contradicted);
+}
