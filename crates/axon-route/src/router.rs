@@ -93,23 +93,21 @@ impl SourceRouter {
             ));
         }
 
-        for candidate in &source.candidate_adapters {
-            let Some(adapter) = self.adapters.find(&candidate.adapter.name) else {
-                return Err(ApiError::new(
-                    "route.source.invalid",
-                    ErrorStage::Routing,
-                    "resolved source references an unregistered adapter",
-                )
-                .with_context("adapter", candidate.adapter.name.clone()));
-            };
-            if adapter.source_kind != source.source_kind {
-                return Err(ApiError::new(
-                    "route.source.invalid",
-                    ErrorStage::Routing,
-                    "resolved source adapter candidate does not match source kind",
-                )
-                .with_context("adapter", candidate.adapter.name.clone()));
-            }
+        let Some(adapter) = self.adapters.find(&source.adapter.name) else {
+            return Err(ApiError::new(
+                "route.source.invalid",
+                ErrorStage::Routing,
+                "resolved source references an unregistered adapter",
+            )
+            .with_context("adapter", source.adapter.name.clone()));
+        };
+        if adapter.source_kind != source.source_kind {
+            return Err(ApiError::new(
+                "route.source.invalid",
+                ErrorStage::Routing,
+                "resolved source adapter does not match source kind",
+            )
+            .with_context("adapter", source.adapter.name.clone()));
         }
 
         Ok(())
@@ -138,46 +136,27 @@ impl SourceRouter {
                 .with_context("adapter", name.to_string())
                 .with_context("source_kind", format!("{:?}", source.source_kind)));
             }
-            let Some(candidate) = source
-                .candidate_adapters
-                .iter()
-                .find(|candidate| candidate.adapter.name == name)
-            else {
+            if source.adapter.name != name {
                 return Err(ApiError::new(
                     "route.adapter.unsupported_source",
                     ErrorStage::Routing,
-                    "requested adapter was not produced by source resolution",
+                    "requested adapter does not match resolved adapter",
                 )
                 .with_context("adapter", name.to_string())
-                .with_context("canonical_uri", source.canonical_uri.clone()));
-            };
-            let has_provider_specific_candidate = source
-                .candidate_adapters
-                .iter()
-                .any(|candidate| candidate.confidence >= 1.0);
-            if has_provider_specific_candidate && candidate.confidence < 1.0 {
-                return Err(ApiError::new(
-                    "route.adapter.unsupported_source",
-                    ErrorStage::Routing,
-                    "requested adapter does not match resolved provider family",
-                )
-                .with_context("adapter", name.to_string())
+                .with_context("resolved_adapter", source.adapter.name.clone())
                 .with_context("canonical_uri", source.canonical_uri.clone()));
             }
             return Ok(adapter);
         }
 
-        source
-            .candidate_adapters
-            .first()
-            .and_then(|candidate| self.adapters.find(&candidate.adapter.name))
-            .ok_or_else(|| {
-                ApiError::new(
-                    "route.adapter.missing",
-                    ErrorStage::Routing,
-                    "no adapter supports resolved source",
-                )
-            })
+        self.adapters.find(&source.adapter.name).ok_or_else(|| {
+            ApiError::new(
+                "route.adapter.missing",
+                ErrorStage::Routing,
+                "resolved adapter is not registered",
+            )
+            .with_context("adapter", source.adapter.name.clone())
+        })
     }
 
     fn validate_options(

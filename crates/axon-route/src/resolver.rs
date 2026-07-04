@@ -1,8 +1,8 @@
 //! Source resolver boundary.
 
 use axon_api::{
-    AdapterCandidate, AuthorityHint, AuthorityLevel, ResolvedSource, Severity, SourceKind,
-    SourceRequest, SourceScope, SourceWarning,
+    AdapterCandidate, AdapterRef, AuthorityLevel, MetadataMap, ResolvedSource, Severity,
+    SourceKind, SourceRequest, SourceScope, SourceWarning,
 };
 use axon_error::{ApiError, ErrorStage};
 
@@ -47,27 +47,23 @@ impl SourceResolver {
         let confidence = authority_record
             .map(|record| record.confidence.clamp(0.0, 1.0))
             .unwrap_or(0.75);
-        let requested_uri = public_requested_uri(request, &canonical);
-        let authority_hint = authority_record.map(|record| AuthorityHint {
-            canonical_uri: Some(canonical.canonical_uri.clone()),
-            authority: record.authority,
-            evidence: record.evidence.clone(),
-        });
+        let source = public_requested_uri(request, &canonical);
+        let adapter = self.selected_adapter(request, &canonical, &candidates)?;
 
         Ok(ResolvedSource {
-            requested_uri,
+            source,
             canonical_uri: canonical.canonical_uri.clone(),
             source_id: source_id(canonical.source_kind, &canonical.canonical_uri),
             source_kind: canonical.source_kind,
-            display_name: canonical.display_name,
-            candidate_adapters: candidates.clone(),
+            adapter,
             default_scope: request.scope.unwrap_or(canonical.default_scope),
             available_scopes: union_available_scopes(&candidates),
             authority,
             confidence,
             reason: canonical.reason,
-            authority_hint,
+            graph: Vec::new(),
             warnings,
+            metadata: MetadataMap::new(),
         })
     }
 
@@ -141,6 +137,91 @@ impl SourceResolver {
         candidates
     }
 
+    fn selected_adapter(
+        &self,
+        request: &SourceRequest,
+        canonical: &canonical::CanonicalSource,
+        candidates: &[AdapterCandidate],
+    ) -> Result<AdapterRef, ApiError> {
+        if candidates.is_empty() {
+            return Err(ApiError::new(
+                "source.resolve.no_adapter",
+                ErrorStage::Resolving,
+                "resolver did not produce an adapter candidate",
+            )
+            .with_context("source", request.source.clone())
+            .with_context("canonical_uri", canonical.canonical_uri.clone()));
+        }
+
+        if let Some(requested_adapter) = request.adapter.as_deref() {
+            return candidates
+                .iter()
+                .find(|candidate| candidate.adapter.name == requested_adapter)
+                .map(|candidate| candidate.adapter.clone())
+                .ok_or_else(|| {
+                    ApiError::new(
+                        "source.resolve.no_adapter",
+                        ErrorStage::Resolving,
+                        "requested adapter was not produced by source resolution",
+                    )
+                    .with_context("source", request.source.clone())
+                    .with_context("adapter", requested_adapter.to_string())
+                    .with_context("canonical_uri", canonical.canonical_uri.clone())
+                });
+        }
+
+        if let Some(adapter_hint) = canonical.adapter_hint.as_deref() {
+            let matches = candidates
+                .iter()
+                .filter(|candidate| candidate.adapter.name == adapter_hint)
+                .collect::<Vec<_>>();
+            return match matches.as_slice() {
+                [candidate] => Ok(candidate.adapter.clone()),
+                [] => Err(ApiError::new(
+                    "source.resolve.no_adapter",
+                    ErrorStage::Resolving,
+                    "canonical source adapter hint did not match a candidate",
+                )
+                .with_context("source", request.source.clone())
+                .with_context("adapter", adapter_hint.to_string())
+                .with_context("canonical_uri", canonical.canonical_uri.clone())),
+                _ => Err(ambiguous_adapter_error(
+                    request,
+                    canonical,
+                    "canonical source adapter hint matched multiple candidates",
+                    candidates,
+                )),
+            };
+        }
+
+        let provider_specific = candidates
+            .iter()
+            .filter(|candidate| candidate.confidence >= 1.0)
+            .collect::<Vec<_>>();
+        match provider_specific.as_slice() {
+            [candidate] => return Ok(candidate.adapter.clone()),
+            [] => {}
+            _ => {
+                return Err(ambiguous_adapter_error(
+                    request,
+                    canonical,
+                    "resolver produced multiple provider-specific adapters",
+                    candidates,
+                ));
+            }
+        }
+
+        match candidates {
+            [candidate] => Ok(candidate.adapter.clone()),
+            _ => Err(ambiguous_adapter_error(
+                request,
+                canonical,
+                "resolver produced multiple adapter candidates without an explicit selection",
+                candidates,
+            )),
+        }
+    }
+
     fn validate_authority_record(
         &self,
         record: &crate::authority::AuthorityRecord,
@@ -180,6 +261,25 @@ impl SourceResolver {
         }
         Ok(())
     }
+}
+
+fn ambiguous_adapter_error(
+    request: &SourceRequest,
+    canonical: &canonical::CanonicalSource,
+    message: &str,
+    candidates: &[AdapterCandidate],
+) -> ApiError {
+    ApiError::new("source.resolve.ambiguous", ErrorStage::Resolving, message)
+        .with_context("source", request.source.clone())
+        .with_context("canonical_uri", canonical.canonical_uri.clone())
+        .with_context(
+            "candidate_adapters",
+            candidates
+                .iter()
+                .map(|candidate| candidate.adapter.name.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+        )
 }
 
 fn uri_matches_kind(uri: &str, kind: SourceKind) -> bool {

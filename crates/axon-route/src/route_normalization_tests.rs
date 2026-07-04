@@ -136,8 +136,8 @@ fn resolver_suppresses_query_secrets_for_git_provider_urls() {
         .expect("gitlab URL resolves");
 
     assert_eq!(resolved.canonical_uri, "gitlab://gitlab.com/group/repo");
-    assert_eq!(resolved.requested_uri, resolved.canonical_uri);
-    assert!(!resolved.requested_uri.contains("AWSAccessKeyId"));
+    assert_eq!(resolved.source, resolved.canonical_uri);
+    assert!(!resolved.source.contains("AWSAccessKeyId"));
     assert!(
         resolved
             .warnings
@@ -193,7 +193,7 @@ fn resolver_preserves_root_local_path_identity() {
         .expect("root path resolves");
 
     assert!(root.canonical_uri.starts_with("local://lp_"));
-    assert_ne!(root.display_name, "");
+    assert_eq!(root.source, "local://redacted");
 }
 
 #[test]
@@ -210,14 +210,14 @@ fn resolver_classifies_prefixed_self_hosted_git_providers() {
         .expect("self-hosted forgejo resolves");
 
     assert_eq!(gitlab.canonical_uri, "gitlab://gitlab.example.com/org/repo");
-    assert_eq!(gitlab.candidate_adapters[0].adapter.name, "gitlab");
+    assert_eq!(gitlab.adapter.name, "gitlab");
     assert_eq!(gitea.canonical_uri, "gitea://gitea.example.com/org/repo");
-    assert_eq!(gitea.candidate_adapters[0].adapter.name, "gitea");
+    assert_eq!(gitea.adapter.name, "gitea");
     assert_eq!(
         forgejo.canonical_uri,
         "gitea://forgejo.example.com/org/repo"
     );
-    assert_eq!(forgejo.candidate_adapters[0].adapter.name, "gitea");
+    assert_eq!(forgejo.adapter.name, "gitea");
 }
 
 #[test]
@@ -249,8 +249,8 @@ fn authority_aliases_preserve_provider_specific_adapter_hints() {
         .resolve(&SourceRequest::new("fastapi"))
         .expect("package alias resolves");
 
-    assert_eq!(github.candidate_adapters[0].adapter.name, "github");
-    assert_eq!(pypi.candidate_adapters[0].adapter.name, "pypi");
+    assert_eq!(github.adapter.name, "github");
+    assert_eq!(pypi.adapter.name, "pypi");
 }
 
 #[test]
@@ -309,13 +309,69 @@ fn resolver_unions_available_scopes_from_all_candidate_adapters() {
     ]);
     let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry);
 
-    let resolved = resolver
-        .resolve(&SourceRequest::new("example.com"))
-        .expect("web resolves");
+    let mut request = SourceRequest::new("example.com");
+    request.adapter = Some("alpha-web".to_string());
+
+    let resolved = resolver.resolve(&request).expect("web resolves");
 
     assert!(resolved.available_scopes.contains(&SourceScope::Site));
     assert!(resolved.available_scopes.contains(&SourceScope::Page));
     assert!(resolved.available_scopes.contains(&SourceScope::Map));
+}
+
+#[test]
+fn ambiguous_web_adapter_candidates_return_typed_error() {
+    let registry = AdapterRegistry::from_adapters(vec![
+        crate::AdapterDefinition::new("web", "1", SourceKind::Web, SourceScope::Site),
+        crate::AdapterDefinition::new("web", "2", SourceKind::Web, SourceScope::Page),
+    ]);
+    let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry);
+
+    let err = resolver
+        .resolve(&SourceRequest::new("example.com"))
+        .expect_err("web adapters without an explicit selection are ambiguous");
+
+    assert_eq!(err.code.0, "source.resolve.ambiguous");
+}
+
+#[test]
+fn ambiguous_registry_adapter_candidates_return_typed_error() {
+    let registry = AdapterRegistry::from_adapters(vec![
+        crate::AdapterDefinition::new("crates", "1", SourceKind::Registry, SourceScope::Package),
+        crate::AdapterDefinition::new("crates", "2", SourceKind::Registry, SourceScope::Package),
+    ]);
+    let resolver = SourceResolver::new(
+        InMemoryAuthorityRegistry::from_records(vec![
+            AuthorityRecord::new(
+                "auth_package",
+                "pkg://crates/example",
+                SourceKind::Registry,
+                AuthorityLevel::Official,
+            )
+            .with_alias("custom-package"),
+        ]),
+        registry,
+    );
+
+    let err = resolver
+        .resolve(&SourceRequest::new("custom-package"))
+        .expect_err("registry adapters without an explicit selection are ambiguous");
+
+    assert_eq!(err.code.0, "source.resolve.ambiguous");
+}
+
+#[test]
+fn empty_adapter_candidates_return_typed_error() {
+    let resolver = SourceResolver::new(
+        InMemoryAuthorityRegistry::default(),
+        AdapterRegistry::from_adapters(Vec::new()),
+    );
+
+    let err = resolver
+        .resolve(&SourceRequest::new("example.com"))
+        .expect_err("empty adapter registry cannot serialize a resolved source");
+
+    assert_eq!(err.code.0, "source.resolve.no_adapter");
 }
 
 #[test]
@@ -356,10 +412,10 @@ fn resolver_redacts_requested_uri_when_input_contains_url_secrets() {
         .expect("secret URL resolves");
 
     assert_eq!(
-        resolved.requested_uri,
+        resolved.source,
         "https://example.com/file?q=rust&token=REDACTED"
     );
-    assert!(!resolved.requested_uri.contains("abc"));
+    assert!(!resolved.source.contains("abc"));
 }
 
 #[test]
@@ -411,7 +467,7 @@ fn resolver_uses_authority_record_confidence() {
 }
 
 #[test]
-fn resolver_reports_authority_evidence() {
+fn resolver_keeps_authority_evidence_out_of_public_resolved_source() {
     let resolver = SourceResolver::new(
         InMemoryAuthorityRegistry::from_records(vec![
             AuthorityRecord::new(
@@ -430,20 +486,10 @@ fn resolver_reports_authority_evidence() {
     let resolved = resolver
         .resolve(&SourceRequest::new("shadcn"))
         .expect("authority resolves");
-    let hint = resolved
-        .authority_hint
-        .as_ref()
-        .expect("authority hint is reported");
 
-    assert_eq!(
-        hint.canonical_uri.as_deref(),
-        Some("https://ui.shadcn.com/docs")
-    );
-    assert_eq!(hint.authority, AuthorityLevel::Official);
-    assert_eq!(hint.evidence.len(), 1);
-    assert_eq!(hint.evidence[0].evidence_kind, "official_docs");
-    assert_eq!(hint.evidence[0].value, "https://ui.shadcn.com/docs");
-    assert_eq!(hint.evidence[0].confidence, 0.94);
+    assert_eq!(resolved.authority, AuthorityLevel::Official);
+    assert_eq!(resolved.confidence, 0.94);
+    assert!(resolved.metadata.is_empty());
 }
 
 #[test]

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::common::*;
 use super::enums::*;
+use super::graph::GraphRef;
 use super::ids::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -96,20 +97,21 @@ impl SourceRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResolvedSource {
-    pub requested_uri: String,
+    pub source: String,
     pub canonical_uri: String,
     pub source_id: SourceId,
     pub source_kind: SourceKind,
-    pub display_name: String,
-    pub candidate_adapters: Vec<AdapterCandidate>,
+    pub adapter: AdapterRef,
     pub default_scope: SourceScope,
     pub available_scopes: Vec<SourceScope>,
     pub authority: AuthorityLevel,
     pub confidence: f32,
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authority_hint: Option<AuthorityHint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graph: Vec<GraphRef>,
     pub warnings: Vec<SourceWarning>,
+    #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
+    pub metadata: MetadataMap,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
