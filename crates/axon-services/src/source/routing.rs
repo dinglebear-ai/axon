@@ -6,6 +6,7 @@ use axon_error::ApiError;
 use axon_route::{
     AdapterRegistry, InMemoryAuthorityRegistry, RouteSecurityPolicy, SourceResolver, SourceRouter,
 };
+use std::sync::OnceLock;
 
 use super::classify::SourceInputKind;
 
@@ -16,10 +17,9 @@ pub struct RoutedSource {
 }
 
 pub fn resolve_source_route(request: &SourceRequest) -> Result<RoutedSource, ApiError> {
-    let registry = AdapterRegistry::target_defaults();
-    let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry.clone());
-    let resolved = resolver.resolve(request)?;
-    let route = SourceRouter::new(registry).route_with_policy(
+    let components = route_components();
+    let resolved = components.resolver.resolve(request)?;
+    let route = components.router.route_with_policy(
         request,
         resolved,
         RouteSecurityPolicy::trusted_tool_execution(),
@@ -27,6 +27,21 @@ pub fn resolve_source_route(request: &SourceRequest) -> Result<RoutedSource, Api
     let kind = source_kind_to_dispatch_kind(route.source.source_kind);
 
     Ok(RoutedSource { kind, route })
+}
+
+struct RouteComponents {
+    resolver: SourceResolver,
+    router: SourceRouter,
+}
+
+fn route_components() -> &'static RouteComponents {
+    static COMPONENTS: OnceLock<RouteComponents> = OnceLock::new();
+    COMPONENTS.get_or_init(|| {
+        let registry = AdapterRegistry::target_defaults();
+        let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry.clone());
+        let router = SourceRouter::new(registry);
+        RouteComponents { resolver, router }
+    })
 }
 
 fn source_kind_to_dispatch_kind(kind: SourceKind) -> SourceInputKind {
