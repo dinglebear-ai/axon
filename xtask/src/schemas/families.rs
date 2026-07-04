@@ -11,7 +11,7 @@ use super::schema_json::{json_string, schema_defs};
 use super::source_input::{SourceInput, source_inputs};
 
 #[path = "api_defs.rs"]
-mod api_defs;
+pub(crate) mod api_defs;
 #[path = "runtime_defs.rs"]
 mod runtime_defs;
 #[path = "vector_payload.rs"]
@@ -83,6 +83,8 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         &[
             "crates/axon-api/src/source.rs",
             "crates/axon-api/src/source/boundary.rs",
+            "crates/axon-api/src/source/common.rs",
+            "crates/axon-api/src/source/capability.rs",
             "crates/axon-api/src/source/document.rs",
             "crates/axon-api/src/source/lifecycle.rs",
             "crates/axon-api/src/source/listing.rs",
@@ -90,11 +92,16 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-api/src/source/graph.rs",
             "crates/axon-api/src/source/ids.rs",
             "crates/axon-api/src/source/job.rs",
+            "crates/axon-api/src/source/provider_io.rs",
+            "crates/axon-api/src/source/prune.rs",
             "crates/axon-api/src/source/stage.rs",
             "crates/axon-api/src/source/state.rs",
             "crates/axon-api/src/source/status.rs",
             "crates/axon-api/src/source/vector.rs",
             "crates/axon-error/src/api_error.rs",
+            "xtask/src/schemas/api_defs.rs",
+            "xtask/src/schemas/registry.rs",
+            "xtask/src/schemas/tests.rs",
         ],
     )?;
     let defs = schema_defs(&api_schema_defs(), Some(enum_defs("axon-api")));
