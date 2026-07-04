@@ -78,6 +78,29 @@ pub(super) fn bump(
         }
     }
 
+    update_release_please_manifest(root, component, &next)?;
     println!("bumped {} to {next}", component.id);
+    Ok(())
+}
+
+fn update_release_please_manifest(
+    root: &Path,
+    component: &Component,
+    next: &str,
+) -> ReleaseResult<()> {
+    let path = root.join(".release-please-manifest.json");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .release_context("failed to read .release-please-manifest.json")?;
+    let mut versions = serde_json::from_str::<std::collections::BTreeMap<String, String>>(&content)
+        .release_context("failed to parse .release-please-manifest.json")?;
+    versions.insert(component.release_please_path.clone(), next.to_owned());
+    let updated = serde_json::to_string_pretty(&versions)
+        .release_context("failed to serialize .release-please-manifest.json")?;
+    std::fs::write(&path, format!("{updated}\n"))
+        .release_context("failed to write .release-please-manifest.json")?;
     Ok(())
 }

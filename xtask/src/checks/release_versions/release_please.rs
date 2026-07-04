@@ -204,16 +204,34 @@ pub(super) fn android_fixup(
         );
     }
 
-    let current = read_gradle_version_name(&content)?;
-    let updated = if current == version {
-        increment_gradle_version_code(&content)?
-    } else {
-        let updated = replace_gradle_version_name(&content, version)?;
-        increment_gradle_version_code(&updated)?
-    };
+    if read_gradle_version_name(&content)? == version
+        && version_code_marker_matches(&content, version)
+    {
+        return Ok(());
+    }
+
+    let renamed = replace_gradle_version_name(&content, version)?;
+    let updated = stamp_version_code_marker(&increment_gradle_version_code(&renamed)?, version)?;
     std::fs::write(&path, updated)
         .with_release_context(|| format!("failed to write {}", version_file.path))?;
     Ok(())
+}
+
+fn version_code_marker_matches(content: &str, version: &str) -> bool {
+    content.lines().any(|line| {
+        let Some((_, suffix)) = line.split_once("x-release-please-version-code") else {
+            return false;
+        };
+        suffix.split_whitespace().next() == Some(version)
+    })
+}
+
+fn stamp_version_code_marker(content: &str, version: &str) -> ReleaseResult<String> {
+    let marker = regex::Regex::new(r"x-release-please-version-code(?:\s+\S+)?")
+        .release_context("invalid release-please versionCode marker regex")?;
+    Ok(marker
+        .replace_all(content, format!("x-release-please-version-code {version}"))
+        .into_owned())
 }
 
 fn run_cargo_update(root: &Path, package: &str, version: &str) -> ReleaseResult<()> {
@@ -254,19 +272,7 @@ fn parse_paths_released(paths_released: &str) -> ReleaseResult<BTreeSet<String>>
                     .release_context("paths_released array entries must be strings")
             })
             .collect::<ReleaseResult<_>>()?,
-        serde_json::Value::Object(paths) => {
-            let mut released_paths = BTreeSet::new();
-            for (path, released) in paths {
-                let released = released.as_bool().with_release_context(|| {
-                    format!("paths_released object value for {path} must be a boolean")
-                })?;
-                if released {
-                    released_paths.insert(path);
-                }
-            }
-            released_paths
-        }
-        _ => release_bail!("paths_released must be a JSON array or object"),
+        _ => release_bail!("paths_released must be a JSON array"),
     };
     Ok(paths)
 }

@@ -19,9 +19,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: write       # required to create release commits and tags
+      issues: write         # required for release-please labels
+      pull-requests: write  # required to create and update release PRs
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       paths_released: ${{ steps.release.outputs.paths_released }}
@@ -48,7 +48,7 @@ jobs:
     if: ${{ needs.release-please.outputs.prs_created == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # required to push generated fixup commits to release PR branches
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: write
+      actions: write  # required to dispatch artifact workflows
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
