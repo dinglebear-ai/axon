@@ -243,6 +243,14 @@ pub struct Config {
     /// Flag: `--scope <page|site|...>`. `None` uses the adapter's default scope.
     pub source_scope: Option<String>,
 
+    /// Stores selected for `axon reset` (`jobs`/`ledger`/`graph`/`memory`/
+    /// `vectors`/`artifacts`). Empty = every store. Flag: `reset --stores a,b`.
+    pub reset_stores: Vec<String>,
+
+    /// Force `axon reset` to stay a dry-run plan even under `--yes`. Flag:
+    /// `reset --dry-run`. Reset is dry-run by default regardless; this pins it.
+    pub reset_dry_run: bool,
+
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
 

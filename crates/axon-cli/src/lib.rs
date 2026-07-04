@@ -9,9 +9,9 @@ use commands::{
     run_ask, run_brand, run_completions, run_config, run_debug, run_dedupe, run_diff, run_doctor,
     run_domains, run_endpoints, run_evaluate, run_extract, run_fresh, run_map, run_mcp, run_memory,
     run_migrate, run_monitor, run_palette, run_purge, run_query, run_refresh, run_research,
-    run_retrieve, run_screenshot, run_search, run_serve, run_sessions, run_setup, run_source,
-    run_sources, run_stats, run_status, run_suggest, run_summarize, run_sync, run_train,
-    run_update, run_watch, start_url_from_cfg,
+    run_reset, run_retrieve, run_screenshot, run_search, run_serve, run_sessions, run_setup,
+    run_source, run_sources, run_stats, run_status, run_suggest, run_summarize, run_sync,
+    run_train, run_update, run_watch, start_url_from_cfg,
 };
 use std::error::Error;
 use std::sync::Arc;
@@ -66,6 +66,9 @@ async fn run_once(
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Serve => run_serve(cfg).await?,
+        // `reset` is dispatched early in `run()` (before any ServiceContext is
+        // built) so its dry-run mutates nothing; it never reaches `run_once`.
+        CommandKind::Reset => unreachable!("reset is dispatched before run_once"),
         CommandKind::Preflight | CommandKind::Smoke | CommandKind::Compose => {
             run_setup(cfg).await?
         }
@@ -188,6 +191,17 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         cfg.collection,
         cfg.performance_profile
     ));
+
+    // `reset` must run BEFORE any ServiceContext is built: constructing the
+    // job runtime opens + migrates the SQLite DB (creating a fresh 42-table
+    // file), which would break reset's dry-run "mutate nothing" guarantee and
+    // make its inventory always report a fully-migrated DB. Reset owns store
+    // lifecycle directly, so it needs no job runtime.
+    if cfg.command == CommandKind::Reset {
+        run_reset(&cfg).await?;
+        log_done("command=reset complete");
+        return Ok(());
+    }
 
     let cfg_arc = Arc::new(cfg);
     // CLI commands use ServiceContext::new() (enqueue-only) unless the command

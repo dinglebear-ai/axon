@@ -1,3 +1,4 @@
+pub(crate) mod cutover;
 pub(crate) mod sqlite;
 
 use crate::config::Config;

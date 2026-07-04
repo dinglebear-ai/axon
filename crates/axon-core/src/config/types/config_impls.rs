@@ -79,6 +79,8 @@ impl Default for Config {
             purge_dry_run: false,
             setup_method: None,
             source_scope: None,
+            reset_stores: Vec::new(),
+            reset_dry_run: false,
             color_choice: super::enums::ColorChoice::Auto,
             watch_mode: false,
             performance_profile: PerformanceProfile::HighStable,

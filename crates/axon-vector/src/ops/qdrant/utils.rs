@@ -33,7 +33,10 @@ pub fn qdrant_base(cfg: &Config) -> &str {
 /// v8: Added normalized pre-chunk planner fields: `chunk_content_kind`,
 ///     `chunk_locator`, `source_range`, `chunking_fallback`, and
 ///     `code_chunk_source`.
-pub const PAYLOAD_SCHEMA_VERSION: u32 = 8;
+///
+/// Single source of truth: `axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION`, so
+/// the vector write path and the doctor/reset cutover check never drift.
+pub const PAYLOAD_SCHEMA_VERSION: u32 = axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION;
 
 pub(crate) fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
     axon_core::config::validate_collection_name(name)

@@ -91,6 +91,8 @@ pub(super) enum CliCommand {
     Completions(CompletionArgs),
     /// Start service runtimes
     Serve(ServeArgs),
+    /// Destructive clean-slate reset of local stores (dry-run by default; requires --yes to mutate)
+    Reset(ResetArgs),
     /// Check host prerequisites and service readiness
     Preflight,
     /// Run crawl/ask smoke checks against the running stack
@@ -251,6 +253,19 @@ pub(super) enum SessionWatchServiceSubcommand {
     Remove,
     /// Print current user systemd status for the service.
     Status,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct ResetArgs {
+    /// Comma-separated stores to reset (jobs, ledger, graph, memory, vectors,
+    /// artifacts). Omit to select every store.
+    #[arg(long, value_name = "STORES", value_delimiter = ',')]
+    pub(super) stores: Vec<String>,
+
+    /// Preview the reset plan without deleting anything. Reset is dry-run by
+    /// default; pass this to keep it a dry-run even alongside --yes.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) dry_run: bool,
 }
 
 #[derive(Debug, Args)]

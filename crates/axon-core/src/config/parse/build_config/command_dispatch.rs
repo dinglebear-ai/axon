@@ -6,7 +6,7 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    FreshSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ServeArgs,
+    FreshSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ResetArgs, ServeArgs,
     ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs,
     SetupAuthMode, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
@@ -85,6 +85,10 @@ pub(super) struct DispatchOutput {
     pub setup_method: Option<String>,
     /// `--scope` override for `axon <source>` / `axon source <input>`.
     pub source_scope: Option<String>,
+    /// `--stores` selection for `axon reset` (empty = all stores).
+    pub reset_stores: Vec<String>,
+    /// `--dry-run` pin for `axon reset`.
+    pub reset_dry_run: bool,
 }
 
 impl DispatchOutput {
@@ -143,6 +147,8 @@ impl DispatchOutput {
             purge_dry_run: false,
             setup_method: None,
             source_scope: None,
+            reset_stores: Vec::new(),
+            reset_dry_run: false,
         }
     }
 }
@@ -298,6 +304,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             ];
         }
         CliCommand::Serve(args) => apply_serve(&mut out, args),
+        CliCommand::Reset(args) => apply_reset(&mut out, args),
         CliCommand::Preflight => out.command = CommandKind::Preflight,
         CliCommand::Smoke => out.command = CommandKind::Smoke,
         CliCommand::Compose(args) => apply_compose(&mut out, args),
@@ -547,6 +554,17 @@ fn apply_serve(out: &mut DispatchOutput, args: ServeArgs) {
             out.command = CommandKind::Serve;
         }
     }
+}
+
+fn apply_reset(out: &mut DispatchOutput, args: ResetArgs) {
+    out.command = CommandKind::Reset;
+    out.reset_stores = args
+        .stores
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    out.reset_dry_run = args.dry_run;
 }
 
 fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {

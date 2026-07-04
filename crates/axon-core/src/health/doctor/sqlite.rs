@@ -49,49 +49,52 @@ pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<
     let vector_mode_mismatch = vector_mode_mismatch_warning(vector_mode_str, cfg);
     let dimension_mismatch = dimension_mismatch_warning(tei_dim, qdrant_vector_size);
 
-    let mut services = Map::new();
-    services.insert("sqlite".to_string(), sqlite);
-    services.insert(
-        "tei".to_string(),
-        tei_service_json(
-            cfg,
-            tei_ok,
-            probes.tei.1,
-            tei_model,
-            tei_summary,
-            probes.tei_latency_ms,
-        ),
-    );
-    services.insert(
-        "qdrant".to_string(),
-        qdrant_service_json(
-            cfg,
-            qdrant_ok,
-            probes.qdrant.1,
-            vector_mode_str,
-            vector_mode_mismatch,
-            qdrant_vector_size,
-            dimension_mismatch.as_deref(),
-        ),
-    );
-    services.insert(
-        "chrome".to_string(),
-        chrome_service_json(cfg, chrome_ok, chrome_detail),
-    );
-    services.insert(
-        "gemini_headless".to_string(),
-        gemini_service_json(cfg, &gemini_probe),
-    );
-    services.insert(
-        "llm".to_string(),
-        llm_service_json(cfg, &gemini_probe, &llm_roundtrip),
-    );
-    if let Some(caps) = codex_caps {
-        services.insert("codex_capabilities".to_string(), caps.to_json());
-    }
+    let services = assemble_services_map(ServicesMapInputs {
+        cfg,
+        sqlite,
+        tei: ServiceProbeParts {
+            ok: tei_ok,
+            detail: probes.tei.1,
+            latency_ms: probes.tei_latency_ms,
+        },
+        tei_model,
+        tei_summary,
+        qdrant_ok,
+        qdrant_detail: probes.qdrant.1,
+        vector_mode_str,
+        vector_mode_mismatch,
+        qdrant_vector_size,
+        dimension_mismatch: dimension_mismatch.as_deref(),
+        chrome_ok,
+        chrome_detail,
+        gemini_probe: &gemini_probe,
+        llm_roundtrip: &llm_roundtrip,
+        codex_caps,
+    });
+
+    // Cutover store-inventory: detect a non-empty or schema-incompatible store
+    // and recommend `axon reset` before unified workers start. Read-only.
+    let cutover_stores =
+        crate::health::doctor::cutover::build_cutover_block(cfg, qdrant_ok, sqlite_ok).await;
+    let reset_recommended = cutover_stores
+        .get("reset_recommended")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let cutover_guidance = cutover_stores
+        .get("guidance")
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
     let effective_qdrant = resolve_host_endpoint(EndpointKind::Qdrant, Some(&cfg.qdrant_url), &[]);
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
+
+    let mut recommendations = vec![
+        "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
+            .to_string(),
+    ];
+    if let Some(guidance) = cutover_guidance {
+        recommendations.push(guidance);
+    }
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
@@ -112,13 +115,13 @@ pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<
                 "remedies": if tei_ok { Vec::<String>::new() } else { vec!["start TEI or configure TEI_URL".to_string()] },
             }
         ],
-        "recommendations": [
-            "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
-        ],
+        "recommendations": recommendations,
         "effective_endpoints": {
             "qdrant": effective_qdrant,
             "embedding": effective_tei,
         },
+        "cutover_stores": cutover_stores,
+        "reset_recommended": reset_recommended,
         "services": Value::Object(services),
         "pipelines": {
             "crawl": true,
@@ -135,6 +138,98 @@ pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<
         "pending_jobs": pending_jobs,
         "all_ok": sqlite_ok && tei_ok && qdrant_ok && vector_mode_mismatch.is_none() && dimension_mismatch.is_none(),
     }))
+}
+
+/// Grouped `(ok, detail, latency)` for the TEI probe leg.
+struct ServiceProbeParts {
+    ok: bool,
+    detail: Option<String>,
+    latency_ms: u64,
+}
+
+/// Inputs for [`assemble_services_map`]. Extracted from `build()` to keep that
+/// function under the monolith function-size cap; pure JSON assembly, no I/O.
+struct ServicesMapInputs<'a> {
+    cfg: &'a Config,
+    sqlite: Value,
+    tei: ServiceProbeParts,
+    tei_model: Option<String>,
+    tei_summary: Option<String>,
+    qdrant_ok: bool,
+    qdrant_detail: Option<String>,
+    vector_mode_str: Option<&'a str>,
+    vector_mode_mismatch: Option<&'a str>,
+    qdrant_vector_size: Option<u64>,
+    dimension_mismatch: Option<&'a str>,
+    chrome_ok: bool,
+    chrome_detail: &'a Option<String>,
+    gemini_probe: &'a (bool, String),
+    llm_roundtrip: &'a (bool, String),
+    codex_caps: Option<crate::llm::codex_app_server::CodexCapabilities>,
+}
+
+/// Build the `services` JSON object from already-collected probe results.
+fn assemble_services_map(inputs: ServicesMapInputs<'_>) -> Map<String, Value> {
+    let ServicesMapInputs {
+        cfg,
+        sqlite,
+        tei,
+        tei_model,
+        tei_summary,
+        qdrant_ok,
+        qdrant_detail,
+        vector_mode_str,
+        vector_mode_mismatch,
+        qdrant_vector_size,
+        dimension_mismatch,
+        chrome_ok,
+        chrome_detail,
+        gemini_probe,
+        llm_roundtrip,
+        codex_caps,
+    } = inputs;
+
+    let mut services = Map::new();
+    services.insert("sqlite".to_string(), sqlite);
+    services.insert(
+        "tei".to_string(),
+        tei_service_json(
+            cfg,
+            tei.ok,
+            tei.detail,
+            tei_model,
+            tei_summary,
+            tei.latency_ms,
+        ),
+    );
+    services.insert(
+        "qdrant".to_string(),
+        qdrant_service_json(
+            cfg,
+            qdrant_ok,
+            qdrant_detail,
+            vector_mode_str,
+            vector_mode_mismatch,
+            qdrant_vector_size,
+            dimension_mismatch,
+        ),
+    );
+    services.insert(
+        "chrome".to_string(),
+        chrome_service_json(cfg, chrome_ok, chrome_detail),
+    );
+    services.insert(
+        "gemini_headless".to_string(),
+        gemini_service_json(cfg, gemini_probe),
+    );
+    services.insert(
+        "llm".to_string(),
+        llm_service_json(cfg, gemini_probe, llm_roundtrip),
+    );
+    if let Some(caps) = codex_caps {
+        services.insert("codex_capabilities".to_string(), caps.to_json());
+    }
+    services
 }
 
 struct ServiceProbes {
