@@ -95,6 +95,14 @@ fn complete_fixture() -> Fixture {
     Fixture { _dir: dir, root }
 }
 
+fn first_target_crate() -> Option<&'static super::repo_structure_spec::TargetCrate> {
+    TARGET_CRATES.first()
+}
+
+fn first_target_path(krate: &super::repo_structure_spec::TargetCrate) -> String {
+    format!("crates/{}", krate.name)
+}
+
 #[test]
 fn complete_fixture_passes() {
     let fixture = complete_fixture();
@@ -103,12 +111,114 @@ fn complete_fixture_passes() {
 
 #[test]
 fn missing_target_crate_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
     let fixture = complete_fixture();
-    fs::remove_dir_all(fixture.root.join("crates/axon-prune")).unwrap();
+    let crate_path = first_target_path(krate);
+    fs::remove_dir_all(fixture.root.join(&crate_path)).unwrap();
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("workspace member path does not exist: crates/axon-prune"),
+        err.contains(&format!(
+            "workspace member path does not exist: {crate_path}"
+        )),
+        "{err}"
+    );
+}
+
+#[test]
+fn missing_target_module_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
+    let Some(module) = krate.modules.first() else {
+        return;
+    };
+    let fixture = complete_fixture();
+    fs::remove_file(
+        fixture
+            .root
+            .join(first_target_path(krate))
+            .join(format!("src/{module}.rs")),
+    )
+    .unwrap();
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(err.contains(&format!("{module}.rs")), "{err}");
+}
+
+#[test]
+fn target_package_name_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
+    let fixture = complete_fixture();
+    write(
+        &fixture
+            .root
+            .join(first_target_path(krate))
+            .join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains(&format!(
+            "PR0 target crate {} must set package.name = \"{}\"",
+            krate.name, krate.name
+        )),
+        "{err}"
+    );
+}
+
+#[test]
+fn missing_target_rust_version_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
+    let fixture = complete_fixture();
+    write(
+        &fixture
+            .root
+            .join(first_target_path(krate))
+            .join("Cargo.toml"),
+        &format!("[package]\nname = \"{}\"\n\n[dependencies]\n", krate.name),
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains(&format!(
+            "PR0 target crate {} must set rust-version.workspace = true",
+            krate.name
+        )),
+        "{err}"
+    );
+}
+
+#[test]
+fn target_dependency_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
+    let fixture = complete_fixture();
+    write(
+        &fixture
+            .root
+            .join(first_target_path(krate))
+            .join("Cargo.toml"),
+        &format!(
+            "[package]\nname = \"{}\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = {{ path = \"../axon-services\" }}\n",
+            krate.name
+        ),
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains(&format!(
+            "PR0 target crate {} must keep [dependencies] empty",
+            krate.name
+        )),
         "{err}"
     );
 }
