@@ -12,6 +12,7 @@ use crate::chunk_router::ChunkRouter;
 use crate::parse::{DocumentParse, parse_document};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use crate::profile::ChunkingProfile;
+use crate::source_range::{SourceRangeBounds, bounds_for_text, validate_source_range};
 use crate::{code, markdown, metadata, schema, session, text, transcript};
 
 #[derive(Debug, Default, Clone)]
@@ -43,6 +44,7 @@ impl DocumentPreparer {
                 .unwrap_or_else(|| self.router.route(&request.document))?,
         };
         let content = content_text(&request.document);
+        let bounds = bounds_for_text(&content.text);
         let effective_profile = content.force_profile.unwrap_or(profile);
         let build = build_chunks(
             effective_profile,
@@ -57,6 +59,19 @@ impl DocumentPreparer {
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
         warnings.extend(build.warnings);
+        let mut document_metadata = request.document.metadata;
+        document_metadata.insert(
+            "normalized_line_count".to_string(),
+            serde_json::json!(bounds.line_count),
+        );
+        document_metadata.insert(
+            "normalized_byte_len".to_string(),
+            serde_json::json!(bounds.byte_len),
+        );
+        document_metadata.insert(
+            "normalized_char_count".to_string(),
+            serde_json::json!(bounds.char_count),
+        );
         let document = PreparedDocument {
             document_id: request.document.document_id,
             source_id: request.document.source_id,
@@ -67,7 +82,7 @@ impl DocumentPreparer {
             chunking_profile: effective_profile.as_str().to_string(),
             chunking_method: effective_profile.as_str().to_string(),
             chunks: prepared_chunks,
-            metadata: request.document.metadata,
+            metadata: document_metadata,
             cleanup_keys: Vec::<CleanupKey>::new(),
             graph_refs: Vec::new(),
             parse_facts: request.parse_facts,
@@ -355,12 +370,42 @@ pub(crate) fn validate_prepared_document(document: &PreparedDocument) -> Result<
         range_errors("source_range", &chunk.source_range, &mut errors);
         range_errors("locator range", &chunk.chunk_locator.range, &mut errors);
     }
+    if let Err(error) = validate_prepared_document_ranges(document) {
+        errors.push(error);
+    }
 
     if errors.is_empty() {
         Ok(())
     } else {
         Err(errors.join("; "))
     }
+}
+
+pub(crate) fn validate_prepared_document_ranges(document: &PreparedDocument) -> Result<(), String> {
+    let Some(bounds) = document_bounds(document) else {
+        return Ok(());
+    };
+    for chunk in &document.chunks {
+        validate_source_range(&chunk.source_range, &bounds)
+            .map_err(|error| format!("chunk {} source_range {error}", chunk.chunk_id.0))?;
+        validate_source_range(&chunk.chunk_locator.range, &bounds)
+            .map_err(|error| format!("chunk {} locator range {error}", chunk.chunk_id.0))?;
+    }
+    for fact in &document.parse_facts {
+        if let Some(range) = &fact.range {
+            validate_source_range(range, &bounds)
+                .map_err(|error| format!("parse fact {} range {error}", fact.name))?;
+        }
+    }
+    Ok(())
+}
+
+fn document_bounds(document: &PreparedDocument) -> Option<SourceRangeBounds> {
+    Some(SourceRangeBounds {
+        line_count: document.metadata.get("normalized_line_count")?.as_u64()? as u32,
+        byte_len: document.metadata.get("normalized_byte_len")?.as_u64()?,
+        char_count: document.metadata.get("normalized_char_count")?.as_u64()?,
+    })
 }
 
 fn range_errors(label: &str, range: &SourceRange, errors: &mut Vec<String>) {
