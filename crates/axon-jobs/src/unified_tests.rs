@@ -740,3 +740,109 @@ fn progress_event(job_id: JobId, sequence: u64, visibility: Visibility) -> Sourc
         error: None,
     }
 }
+
+/// Build a store that also routes transitions into a durable
+/// [`SqliteObservabilitySink`] on the SAME migrated pool (the observability
+/// tables are created by `apply_all_migrations` in `open_sqlite_pool`).
+async fn store_with_observe() -> (
+    SqliteUnifiedJobStore,
+    std::sync::Arc<axon_observe::sink::SqliteObservabilitySink>,
+) {
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    seed_source(&pool).await;
+    let sink = std::sync::Arc::new(
+        axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone()),
+    );
+    let store = SqliteUnifiedJobStore::with_observe_sink(pool, std::sync::Arc::clone(&sink));
+    (store, sink)
+}
+
+#[tokio::test]
+async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
+    let (store, sink) = store_with_observe().await;
+    let job = store.create(create_request()).await.expect("create job");
+
+    // Queued -> Running -> Completed, plus a mid-run progress transition.
+    for (status, phase) in [
+        (LifecycleStatus::Running, PipelinePhase::Embedding),
+        (LifecycleStatus::Running, PipelinePhase::Upserting),
+        (LifecycleStatus::Completed, PipelinePhase::Complete),
+    ] {
+        store
+            .update_status(JobStatusUpdate {
+                job_id: job.job_id,
+                status,
+                phase,
+                stage_id: None,
+                counts: None,
+                current: None,
+                message: Some(format!("{phase:?}")),
+                error: None,
+            })
+            .await
+            .expect("status transition");
+    }
+
+    // Every transition is durably recorded in axon_observe_events, in strictly
+    // increasing per-job sequence order starting at 1.
+    let events = sink
+        .events_for(job.job_id)
+        .await
+        .expect("read observe events");
+    assert_eq!(events.len(), 3, "one observe event per status transition");
+    let sequences: Vec<u64> = events.iter().map(|e| e.sequence).collect();
+    assert_eq!(
+        sequences,
+        vec![1, 2, 3],
+        "monotonic per-job sequence from 1"
+    );
+    assert!(
+        sequences.windows(2).all(|w| w[1] > w[0]),
+        "sequences strictly increase"
+    );
+    assert!(
+        events.iter().all(|e| e.job_id == job.job_id),
+        "all events carry the job id"
+    );
+    assert_eq!(events[2].status, LifecycleStatus::Completed);
+
+    // The heartbeat row was upserted for the job too.
+    let hb = sink
+        .heartbeat_for(job.job_id)
+        .await
+        .expect("read observe heartbeat");
+    assert!(hb.is_some(), "observe heartbeat row exists for the job");
+}
+
+#[tokio::test]
+async fn observe_sink_absent_leaves_status_updates_working() {
+    // The bare `new` constructor disables the observe supplement; status writes
+    // still succeed and nothing is persisted to the observe tables.
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    seed_source(&pool).await;
+    let sink = std::sync::Arc::new(
+        axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone()),
+    );
+    let store = SqliteUnifiedJobStore::new(pool);
+    let job = store.create(create_request()).await.expect("create job");
+
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Embedding,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: Some("running".to_string()),
+            error: None,
+        })
+        .await
+        .expect("status transition without sink");
+
+    let events = sink
+        .events_for(job.job_id)
+        .await
+        .expect("read observe events");
+    assert!(events.is_empty(), "no observe events without a wired sink");
+}

@@ -143,7 +143,14 @@ impl SqliteUnifiedJobStore {
             self.update_stage_status(&mut tx, &status, stage_id, &stage_started_at, &finished_at)
                 .await?;
         }
-        tx.commit().await.map_err(sql_error)
+        tx.commit().await.map_err(sql_error)?;
+
+        // Supplement: record this transition durably in the observability sink
+        // (strictly-increasing per-job sequence + heartbeat). Runs after the
+        // authoritative status write commits; sink errors are logged, not
+        // propagated, so the observe stream never fails the status update.
+        self.observe_status(&status).await;
+        Ok(())
     }
 
     async fn update_stage_status(

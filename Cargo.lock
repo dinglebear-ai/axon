@@ -918,6 +918,8 @@ dependencies = [
  "axon-ingest",
  "axon-jobs",
  "axon-ledger",
+ "axon-memory",
+ "axon-observe",
  "axon-retrieval",
  "axon-route",
  "axon-source-ledger",
