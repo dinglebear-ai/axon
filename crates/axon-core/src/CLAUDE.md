@@ -14,10 +14,23 @@ utilities. Full contract (owns / API / deps / tests):
 ## Status — live crate, ongoing slim (Phase 3+)
 `axon-core` currently holds more than the target assigns it, and works today.
 It is being **slimmed continuously from Phase 3 onward** to exactly the primitive
-set above. `llm/` and `content/` are **leaving tenants**: LLM completion moves out
-to `axon-llm`, and content parsing/chunking moves to `axon-parse` + `axon-document`.
-Do not add provider clients or misc "utils" here — every promoted helper must be
-used by at least two crates and must not create layering pressure.
+set above. The real **LLM completion backends have already left** for `axon-llm`
+(Gemini headless, Codex app-server, OpenAI-compat, dispatch, concurrency). What
+stays in `llm.rs` is only the LLM **DTO/config layer** (`CompletionRequest`,
+`LlmBackendConfig`, `LlmBackendKind`, `SynthesisModelProfile`, `configured_model_*`,
+the `CompletionRunner`/`TextCompleter` traits) — these are embedded in `Config`
+and consumed by config parsing/tuning, so moving them would create a cycle
+(`axon-llm` depends on `axon-core`). `content/` is still a **leaving tenant** →
+`axon-parse` + `axon-document`. Do not add provider clients or misc "utils" here —
+every promoted helper must be used by at least two crates and must not create
+layering pressure.
+
+The `TextCompleter` trait is the injection seam that lets `axon-core`-internal
+callers (the extract LLM fallback in `content/engine.rs`) execute completions
+through the real backends without depending on `axon-llm`: the backend is passed
+in as `Arc<dyn TextCompleter>` by a higher layer. The doctor's LLM legs use the
+same pattern via `health::LlmDoctorProbe` (computed by `axon_llm::build_llm_doctor_probe`
+and injected into `build_doctor_report`).
 
 ## Module map
 Current groups from `crates/axon-core/src/` (target modules in parens):
@@ -30,7 +43,8 @@ Current groups from `crates/axon-core/src/` (target modules in parens):
 | `http.rs` + `http/` | URL/HTTP safety, SSRF preflight, fs guards (`http_safety.rs`/`fs.rs`) |
 | `artifacts.rs` | artifact handle primitives (`ArtifactPath`/`ArtifactKind`) |
 | `health/` · `binary_status.rs` · `endpoints.rs` · `structured/` · `ui/` | diagnostics/feature-flag/test primitives (`diagnostics.rs`/`testing.rs`) |
-| `llm/` · `content/` | **LEAVING** → `axon-llm` / `axon-parse` + `axon-document` |
+| `llm.rs` | LLM **DTO/config layer only** (backends now live in `axon-llm`); embedded in `Config`, so it stays here to avoid a cycle. `TextCompleter`/`CompletionRunner` injection seams. |
+| `content/` | **LEAVING** → `axon-parse` + `axon-document` |
 
 ## Boundary — keep OUT of this crate
 - Pipeline orchestration, source acquisition, parsing, chunking, embedding, vector storage, job scheduling, transport routing, provider clients.

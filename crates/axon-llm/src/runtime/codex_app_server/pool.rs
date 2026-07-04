@@ -37,13 +37,13 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::llm::LlmBackendConfig;
-use crate::llm::codex_app_server::{
+use crate::runtime::CompletionResponse;
+use crate::runtime::LlmBackendConfig;
+use crate::runtime::codex_app_server::{
     cleanup_codex_child, collect_stderr, configure_codex_child_isolation,
     read_bounded_stderr_spawn, stderr_diagnostics_suffix,
 };
-use crate::llm::types::CompletionResponse;
-use crate::logging::{log_info, log_warn};
+use axon_core::logging::{log_info, log_warn};
 
 use super::home;
 use super::protocol::run_init_handshake;

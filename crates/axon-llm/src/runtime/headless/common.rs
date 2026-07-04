@@ -131,7 +131,7 @@ pub(crate) fn redact_for_error(text: &str) -> String {
     redact_secrets(text)
 }
 
-/// JSON-aware wrapper around the shared [`crate::redact`] value redactor.
+/// JSON-aware wrapper around the shared [`axon_core::redact`] value redactor.
 ///
 /// When `text` parses as JSON, sensitive keys are redacted by name (recursively)
 /// and every leaf string value is scrubbed by the shared redactor. Otherwise the
@@ -142,7 +142,7 @@ fn redact_secrets(text: &str) -> String {
         return serde_json::to_string(&redact_secret_json(&value))
             .unwrap_or_else(|_| "[REDACTED]".to_string());
     }
-    crate::redact::redact_secrets(text)
+    axon_core::redact::redact_secrets(text)
 }
 
 fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
@@ -165,7 +165,7 @@ fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(values.iter().map(redact_secret_json).collect())
         }
         serde_json::Value::String(value) => {
-            serde_json::Value::String(crate::redact::redact_secrets(value))
+            serde_json::Value::String(axon_core::redact::redact_secrets(value))
         }
         value => value.clone(),
     }

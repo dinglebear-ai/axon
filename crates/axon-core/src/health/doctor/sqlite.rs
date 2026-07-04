@@ -4,8 +4,8 @@ use crate::config::Config;
 use crate::endpoints::{EndpointKind, resolve_host_endpoint};
 use crate::health::browser_diagnostics_pattern;
 use crate::health::doctor::{
-    build_browser_runtime, probe_llm_roundtrip, probe_tei_info, tei_info_summary,
-    tei_model_from_info, timed_probe,
+    LlmDoctorProbe, build_browser_runtime, probe_tei_info, tei_info_summary, tei_model_from_info,
+    timed_probe,
 };
 use crate::http::internal_service_http_client;
 use crate::http::with_path;
@@ -15,26 +15,22 @@ use std::error::Error;
 use std::time::Duration;
 
 /// SQLite-runtime doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
-pub(super) async fn build(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<dyn Error>> {
+///
+/// The LLM legs (round-trip, gemini validation, codex capabilities) are executed
+/// by the caller through `axon-llm` and injected via [`LlmDoctorProbe`], because
+/// the real backends live in `axon-llm` (which depends on `axon-core`).
+pub(super) async fn build(
+    cfg: &Config,
+    pending_jobs: i64,
+    llm_probe: LlmDoctorProbe,
+) -> Result<Value, Box<dyn Error>> {
     let diagnostics = browser_diagnostics_pattern();
-    // Run service probes, LLM round-trip, and (for Codex) capability probe
-    // concurrently so none of the bounded probes serialise behind each other.
-    let is_codex = cfg.llm_backend == crate::llm::LlmBackendKind::CodexAppServer;
-    let codex_backend = crate::llm::LlmBackendConfig::from_config(cfg);
-    let (probes, llm_roundtrip, codex_caps) = spider::tokio::join!(
-        collect_service_probes(cfg),
-        probe_llm_roundtrip(cfg),
-        async {
-            if is_codex {
-                Some(crate::llm::codex_app_server::probe_codex_capabilities(&codex_backend).await)
-            } else {
-                None
-            }
-        }
-    );
+    let probes = collect_service_probes(cfg).await;
+    let llm_roundtrip = llm_probe.roundtrip;
+    let codex_caps = llm_probe.codex_capabilities;
     let sqlite = sqlite_diagnostics(&cfg.sqlite_path).await;
     let sqlite_ok = sqlite.get("ok").and_then(Value::as_bool).unwrap_or(false);
-    let gemini_probe = probe_gemini_headless(cfg);
+    let gemini_probe = llm_probe.gemini_validation;
     let tei_model = probes.tei_info.0.as_ref().and_then(tei_model_from_info);
     let tei_summary = probes.tei_info.0.as_ref().and_then(tei_info_summary);
     let tei_dim = probes.tei_info.0.as_ref().and_then(tei_embedding_dim);
@@ -165,7 +161,7 @@ struct ServicesMapInputs<'a> {
     chrome_detail: &'a Option<String>,
     gemini_probe: &'a (bool, String),
     llm_roundtrip: &'a (bool, String),
-    codex_caps: Option<crate::llm::codex_app_server::CodexCapabilities>,
+    codex_caps: Option<Value>,
 }
 
 /// Build the `services` JSON object from already-collected probe results.
@@ -227,7 +223,7 @@ fn assemble_services_map(inputs: ServicesMapInputs<'_>) -> Map<String, Value> {
         llm_service_json(cfg, gemini_probe, llm_roundtrip),
     );
     if let Some(caps) = codex_caps {
-        services.insert("codex_capabilities".to_string(), caps.to_json());
+        services.insert("codex_capabilities".to_string(), caps);
     }
     services
 }
@@ -430,17 +426,6 @@ fn llm_service_json(
         "config_valid": validation.0,
         "config_detail": validation.1,
     })
-}
-
-fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
-    let gemini_backend = crate::llm::LlmBackendConfig::from_config(cfg);
-    match crate::llm::headless::gemini::validate_config(&gemini_backend) {
-        Ok(()) => (
-            true,
-            "Gemini headless command validation passed".to_string(),
-        ),
-        Err(err) => (false, err.to_string()),
-    }
 }
 
 async fn probe_collection_info_if_reachable(

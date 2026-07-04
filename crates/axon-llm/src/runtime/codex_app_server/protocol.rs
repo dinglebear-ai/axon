@@ -14,7 +14,7 @@
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 
-use crate::llm::{CompletionRequest, CompletionResponse, ReasoningEffort, UsageSnapshot};
+use crate::runtime::{CompletionRequest, CompletionResponse, ReasoningEffort, UsageSnapshot};
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 
@@ -358,7 +358,7 @@ impl CodexStreamState {
 }
 
 pub(super) fn sanitize_protocol_error(text: &str) -> String {
-    let mut redacted = crate::llm::headless::common::redact_for_error(text);
+    let mut redacted = crate::runtime::headless::common::redact_for_error(text);
     if redacted.len() > PROTOCOL_ERROR_LIMIT {
         truncate_utf8_boundary(&mut redacted, PROTOCOL_ERROR_LIMIT);
         redacted.push_str("...");

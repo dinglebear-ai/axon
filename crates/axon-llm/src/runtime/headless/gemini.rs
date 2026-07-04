@@ -6,7 +6,7 @@ use super::common::{
     kill_and_wait, read_bounded_stderr, redacted_stderr_tail,
 };
 use super::env::apply_env_allowlist;
-use crate::llm::{CompletionRequest, CompletionResponse, LlmBackendConfig};
+use crate::runtime::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use std::error::Error as StdError;
 use std::fs;
 use std::io;
@@ -412,7 +412,7 @@ fn mise_resolve_gemini() -> Option<String> {
 /// returns `None` so resolution falls back to the bare program name.
 fn validated_program_path(path: String) -> Option<String> {
     if !Path::new(&path).is_absolute() {
-        crate::logging::log_warn(&format!(
+        axon_core::logging::log_warn(&format!(
             "resolved gemini program {path:?} is not an absolute path; falling back to PATH lookup"
         ));
         return None;
@@ -420,14 +420,14 @@ fn validated_program_path(path: String) -> Option<String> {
     let metadata = match fs::metadata(&path) {
         Ok(meta) => meta,
         Err(err) => {
-            crate::logging::log_warn(&format!(
+            axon_core::logging::log_warn(&format!(
                 "resolved gemini program {path:?} is not accessible ({err}); falling back to PATH lookup"
             ));
             return None;
         }
     };
     if !metadata.is_file() {
-        crate::logging::log_warn(&format!(
+        axon_core::logging::log_warn(&format!(
             "resolved gemini program {path:?} is not a regular file; falling back to PATH lookup"
         ));
         return None;
@@ -436,7 +436,7 @@ fn validated_program_path(path: String) -> Option<String> {
     {
         use std::os::unix::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o002 != 0 {
-            crate::logging::log_warn(&format!(
+            axon_core::logging::log_warn(&format!(
                 "resolved gemini program {path:?} is world-writable; falling back to PATH lookup"
             ));
             return None;

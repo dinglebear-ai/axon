@@ -89,59 +89,32 @@ where
     (value, elapsed_ms(start))
 }
 
-/// Hard ceiling on how long the doctor LLM round-trip is allowed to take.
-/// Independent of `completion_timeout_secs` (which can be 300s) so `doctor`
-/// stays fast and never hangs on an unreachable backend.
-const LLM_PROBE_TIMEOUT_SECS: u64 = 12;
-
-/// Deep LLM probe: attempt a minimal real completion through the configured
-/// backend (gemini-headless or openai-compat — both dispatch via
-/// `core::llm::complete_text`). This catches the most common production failure
-/// that the shallow command-presence check misses: expired Gemini credentials
-/// or an unreachable OpenAI-compatible endpoint.
+/// Precomputed LLM-leg results for the doctor report.
 ///
-/// Non-fatal and bounded: returns `(ok, detail)` and is wrapped in a hard
-/// timeout. Any error — including timeout — is reported as `(false, detail)`,
-/// never propagated, so a broken LLM leg degrades the report instead of
-/// failing `doctor`.
-pub(super) async fn probe_llm_roundtrip(cfg: &Config) -> (bool, String) {
-    use crate::llm::{CompletionRequest, LlmBackendConfig, complete_text};
-    use std::time::Duration;
+/// The real LLM backends live in `axon-llm`, which depends on `axon-core`, so
+/// `axon-core` cannot execute a completion itself without a crate cycle. The
+/// caller (a crate above `axon-llm`, e.g. `axon-services`) runs the bounded
+/// LLM probes via `axon_llm::doctor_probe` and injects the results here. When a
+/// caller has no LLM access it can pass [`LlmDoctorProbe::unavailable`].
+#[derive(Debug, Clone)]
+pub struct LlmDoctorProbe {
+    /// Deep round-trip: `(ok, detail)` from a minimal real completion.
+    pub roundtrip: (bool, String),
+    /// Shallow gemini-headless command/config validation: `(ok, detail)`.
+    pub gemini_validation: (bool, String),
+    /// Codex capability document JSON, when the backend is codex-app-server.
+    pub codex_capabilities: Option<Value>,
+}
 
-    // Build a request from cfg but clamp the per-call timeout to the probe
-    // ceiling so a misconfigured long timeout can't stall the doctor.
-    let mut backend = LlmBackendConfig::from_config(cfg);
-    backend.completion_timeout_secs = backend
-        .completion_timeout_secs
-        .clamp(1, LLM_PROBE_TIMEOUT_SECS);
-
-    let req = CompletionRequest {
-        system_prompt: Some("Reply with the single word: ok".to_string()),
-        user_prompt: "ping".to_string(),
-        model: None,
-        stream: false,
-        effort: None,
-        backend,
-    };
-
-    let probe = complete_text(req);
-    match tokio::time::timeout(Duration::from_secs(LLM_PROBE_TIMEOUT_SECS), probe).await {
-        Ok(Ok(resp)) => {
-            let preview: String = resp.text.trim().chars().take(40).collect();
-            (
-                true,
-                format!("LLM round-trip succeeded (reply: {preview:?})"),
-            )
+impl LlmDoctorProbe {
+    /// Placeholder used when the caller cannot run LLM probes.
+    #[must_use]
+    pub fn unavailable() -> Self {
+        Self {
+            roundtrip: (false, "LLM probe not run".to_string()),
+            gemini_validation: (false, "LLM probe not run".to_string()),
+            codex_capabilities: None,
         }
-        Ok(Err(err)) => {
-            // Truncate so a verbose upstream body doesn't bloat the report.
-            let detail: String = err.to_string().chars().take(240).collect();
-            (false, format!("LLM round-trip failed: {detail}"))
-        }
-        Err(_) => (
-            false,
-            format!("LLM round-trip timed out after {LLM_PROBE_TIMEOUT_SECS}s"),
-        ),
     }
 }
 
@@ -204,8 +177,12 @@ impl DoctorReport {
     }
 }
 
-pub async fn build_doctor_report(cfg: &Config, pending_jobs: i64) -> Result<Value, Box<dyn Error>> {
-    sqlite::build(cfg, pending_jobs).await
+pub async fn build_doctor_report(
+    cfg: &Config,
+    pending_jobs: i64,
+    llm_probe: LlmDoctorProbe,
+) -> Result<Value, Box<dyn Error>> {
+    sqlite::build(cfg, pending_jobs, llm_probe).await
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 use crate::store::now_ms;
 use axon_api::diff::DiffResult;
 use axon_core::config::Config;
-use axon_core::llm::{self, CompletionRequest};
+use axon_llm::{self as llm, CompletionRequest};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 

@@ -1,8 +1,8 @@
 use axon_api::AskResult;
 use axon_core::ask_explain::{CorpusHealthDiagnostic, CorpusHealthKind};
 use axon_core::config::Config;
-use axon_core::llm;
 use axon_core::logging::{log_info, log_warn};
+use axon_llm as llm;
 
 mod assemble;
 mod context;
@@ -26,7 +26,8 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
     let backend = llm::LlmBackendConfig::from_config(cfg);
     match backend.kind {
         llm::LlmBackendKind::GeminiHeadless => {
-            llm::headless::gemini::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
+            llm::runtime::headless::gemini::validate_config(&backend)
+                .map_err(|e| anyhow::anyhow!("{e}"))
         }
         llm::LlmBackendKind::OpenAiCompat => {
             backend
@@ -46,7 +47,8 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
             Ok(())
         }
         llm::LlmBackendKind::CodexAppServer => {
-            llm::codex_app_server::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
+            llm::runtime::codex_app_server::validate_config(&backend)
+                .map_err(|e| anyhow::anyhow!("{e}"))
         }
     }
 }

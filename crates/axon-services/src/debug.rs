@@ -1,13 +1,14 @@
 use crate::types::DebugResult;
 use axon_core::config::Config;
 use axon_core::health::build_doctor_report;
-use axon_core::llm::{self, CompletionRequest};
+use axon_llm::{self as llm, CompletionRequest};
 use std::error::Error;
 
 #[must_use = "debug_report returns a Result that should be handled"]
 pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResult, Box<dyn Error>> {
     let pending_jobs = axon_jobs::store::count_pending_jobs(&cfg.sqlite_path).await;
-    let doctor_report = build_doctor_report(cfg, pending_jobs).await?;
+    let llm_probe = axon_llm::build_llm_doctor_probe(cfg).await;
+    let doctor_report = build_doctor_report(cfg, pending_jobs, llm_probe).await?;
 
     let prompt = format!(
         "Analyze this Axon doctor report and provide actionable troubleshooting guidance.\n\

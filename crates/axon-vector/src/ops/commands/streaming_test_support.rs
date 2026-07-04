@@ -1,5 +1,5 @@
 use super::*;
-use axon_core::llm::{self, CompletionRunner};
+use axon_llm::{self as llm, CompletionRunner};
 
 fn extract_sse_token(data: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
