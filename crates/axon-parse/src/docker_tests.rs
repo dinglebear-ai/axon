@@ -1,7 +1,7 @@
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::docker::docker_facts;
+use crate::docker::{docker_facts, docker_parse_items};
 use crate::parser::ParseInput;
 
 fn input(path: &str, text: &str) -> ParseInput {
@@ -31,6 +31,104 @@ fn input(path: &str, text: &str) -> ParseInput {
     }
 }
 
+fn parse_fixture(path: &str, text: &str) -> crate::parser::ParseResult {
+    let input = input(path, text);
+    let (facts, graph_candidates) = docker_parse_items(&input);
+    crate::parser::ParseResult {
+        header: crate::parser::stage_header(&input, LifecycleStatus::Completed, Vec::new(), None),
+        document_id: input.document.document_id.clone(),
+        facts,
+        graph_candidates,
+        parser_id: "docker_manifest".to_string(),
+        parser_version: crate::facts::PARSER_VERSION.to_string(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
+    }
+}
+
+fn has_fact(result: &crate::parser::ParseResult, fact_kind: &str, name: &str) -> bool {
+    result
+        .facts
+        .iter()
+        .any(|fact| fact.fact_kind == fact_kind && fact.name == name)
+}
+
+#[test]
+fn dockerfile_parser_emits_image_endpoint_env_and_graph_candidates() {
+    let result = parse_fixture(
+        "Dockerfile",
+        "FROM qdrant/qdrant:v1.13.1\nENV QDRANT__SERVICE__API_KEY=\nEXPOSE 6333\n",
+    );
+
+    assert!(has_fact(
+        &result,
+        "docker_base_image",
+        "qdrant/qdrant:v1.13.1"
+    ));
+    assert!(has_fact(
+        &result,
+        "secret_reference",
+        "QDRANT__SERVICE__API_KEY"
+    ));
+    assert!(has_fact(&result, "network_endpoint", "6333"));
+    assert!(result.graph_candidates.iter().any(|candidate| {
+        candidate
+            .nodes
+            .iter()
+            .any(|node| node.node_kind == "container_image_tag")
+    }));
+    assert!(
+        result
+            .graph_candidates
+            .iter()
+            .all(|candidate| axon_graph::candidate::validate_candidate(candidate).is_ok())
+    );
+}
+
+#[test]
+fn compose_parser_emits_service_image_port_volume_and_env_graph_candidates() {
+    let result = parse_fixture(
+        "docker-compose.yml",
+        r#"
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.13.1
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__API_KEY:
+volumes:
+  qdrant-data:
+"#,
+    );
+
+    assert!(has_fact(&result, "runtime_service", "qdrant"));
+    assert!(has_fact(
+        &result,
+        "container_image_tag",
+        "qdrant/qdrant:v1.13.1"
+    ));
+    assert!(has_fact(&result, "network_endpoint", "6333:6333"));
+    assert!(has_fact(
+        &result,
+        "volume_mount",
+        "qdrant-data:/qdrant/storage"
+    ));
+    assert!(has_fact(
+        &result,
+        "secret_reference",
+        "QDRANT__SERVICE__API_KEY"
+    ));
+    assert!(
+        result
+            .graph_candidates
+            .iter()
+            .all(|candidate| axon_graph::candidate::validate_candidate(candidate).is_ok())
+    );
+}
+
 #[test]
 fn extracts_dockerfile_and_compose_facts() {
     let dockerfile = docker_facts(&input(
@@ -39,15 +137,16 @@ fn extracts_dockerfile_and_compose_facts() {
     ));
     assert_eq!(dockerfile[0].name, "rust:1.86");
     assert_eq!(dockerfile[0].fact_kind, "docker_base_image");
-    assert_eq!(dockerfile[1].fact_kind, "docker_env");
-    assert_eq!(dockerfile[2].value["port"], "8080");
+    assert_eq!(dockerfile[1].fact_kind, "environment_variable");
+    assert_eq!(dockerfile[2].fact_kind, "network_endpoint");
+    assert_eq!(dockerfile[2].value["docker_port"], "8080");
 
     let compose = docker_facts(&input(
         "docker-compose.yaml",
         "services:\n  api:\n    image: ghcr.io/acme/api:latest\n    ports:\n      - \"8080:80\"\n",
     ));
-    assert_eq!(compose[0].fact_kind, "compose_service");
+    assert_eq!(compose[0].fact_kind, "runtime_service");
     assert_eq!(compose[0].name, "api");
-    assert_eq!(compose[1].fact_kind, "compose_image");
-    assert_eq!(compose[2].value["port"], "8080:80");
+    assert_eq!(compose[1].fact_kind, "container_image_tag");
+    assert_eq!(compose[2].value["docker_port"], "8080:80");
 }
