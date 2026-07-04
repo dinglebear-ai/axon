@@ -12,6 +12,7 @@
 //! and serializes the typed result as JSON. Errors flow through
 //! `error::map_service_error`.
 
+use super::super::super::json::Json;
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
 use super::types::{MapBody, QueryBody, RetrieveBody, SearchBody, SuggestBody, UrlsBody};
@@ -20,7 +21,6 @@ use axon_services::search as search_svc;
 use axon_services::transport;
 use axon_services::{map as map_svc, summarize as summarize_svc};
 use axum::{
-    Json,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},

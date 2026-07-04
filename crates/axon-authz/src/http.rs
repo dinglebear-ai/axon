@@ -32,15 +32,24 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::{AXON_FULL_ACCESS_SCOPE, AXON_READ_SCOPE, AXON_WRITE_SCOPE};
+use crate::{
+    AXON_ADMIN_SCOPE, AXON_EXECUTE_SCOPE, AXON_FULL_ACCESS_SCOPE, AXON_LOCAL_SCOPE,
+    AXON_READ_SCOPE, AXON_WRITE_SCOPE,
+};
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use lab_auth::{AuthLayer, state::AuthState};
 
+/// The scope required to reach a route/action, mapped to its OAuth scope string.
+///
+/// `Admin`, `Execute`, and `Local` are fine-grained scopes that are NOT implied
+/// by broad read/write (see [`crate::scope_satisfies`] and the auth contract).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AxonScope {
     Read,
     Write,
     Admin,
+    Execute,
+    Local,
 }
 
 impl AxonScope {
@@ -48,24 +57,52 @@ impl AxonScope {
         match self {
             Self::Read => AXON_READ_SCOPE,
             Self::Write => AXON_WRITE_SCOPE,
-            Self::Admin => AXON_FULL_ACCESS_SCOPE,
+            // Admin routes require the dedicated `axon:admin` scope. This is a
+            // real scope string (not the read+write combo) so `axon:write`
+            // callers cannot reach prune/reset/provider-config routes.
+            Self::Admin => AXON_ADMIN_SCOPE,
+            Self::Execute => AXON_EXECUTE_SCOPE,
+            Self::Local => AXON_LOCAL_SCOPE,
         }
     }
 }
 
-#[allow(dead_code)]
+/// Map a source-surface action (`action` + optional `subaction`) to the
+/// minimum scope required, keyed on the current clean-break source routes.
+///
+/// Returns:
+/// - `None` for actions that carry no scope requirement (e.g. `help`).
+/// - `Some("__deny__")` for unknown actions (fail closed).
+/// - `Some(scope)` otherwise.
+///
+/// This is the source-surface mapping used by the REST auth tests; the MCP
+/// server maintains its own `MCP_ACTION_SPECS` table. It is keyed on the
+/// unified source surface (`sources`, `resolve`, `watch`, `prune`, `reset`,
+/// retrieval, and tool/local execution) rather than the removed legacy verbs
+/// (`crawl`/`scrape`/`embed`/`ingest`/`extract`), which fold into `sources`.
 pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'static str> {
     let scope = match action {
         "help" => return None,
-        "crawl" | "extract" | "embed" | "ingest" => match subaction.unwrap_or("start") {
-            "status" | "list" => AxonScope::Read,
-            _ => AxonScope::Write,
-        },
-        "scrape" | "summarize" | "endpoints" | "brand" | "diff" => AxonScope::Write,
-        "query" | "retrieve" | "sources" | "domains" | "stats" | "status" | "doctor" | "search"
-        | "map" => AxonScope::Read,
-        "evaluate" | "suggest" | "research" | "ask" | "screenshot" => AxonScope::Write,
-        "migrate" | "dedupe" => AxonScope::Admin,
+        // Read surface: discovery, listing, status, and pure retrieval.
+        "sources" | "resolve" | "query" | "retrieve" | "status" | "doctor" | "domains"
+        | "stats" | "capabilities" | "adapters" | "providers" | "collections" | "jobs" => {
+            match subaction {
+                // Mutating sub-verbs on otherwise-read families require write.
+                Some("create" | "refresh" | "delete" | "cancel" | "retry") => AxonScope::Write,
+                _ => AxonScope::Read,
+            }
+        }
+        // Web read+synthesis surface (no acquisition side effects by default).
+        "search" | "research" | "ask" | "chat" | "evaluate" | "suggest" | "map" => AxonScope::Read,
+        // Write surface: the unified source lifecycle + watch + write-y ops.
+        "source" | "watch" | "memory" | "summarize" | "endpoints" | "brand" | "diff"
+        | "screenshot" | "extract" | "upload" => AxonScope::Write,
+        // Admin surface: destructive/prune/reset/provider config.
+        "prune" | "reset" | "dedupe" | "purge" | "migrate" => AxonScope::Admin,
+        // Tool-execution sources (CLI/MCP tool adapters) require `axon:execute`.
+        "cli_tool" | "mcp_tool" | "exec" => AxonScope::Execute,
+        // Local filesystem sources require `axon:local`.
+        "local" => AxonScope::Local,
         _ => return Some("__deny__"),
     };
     Some(scope.as_str())

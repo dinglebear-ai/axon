@@ -9,6 +9,8 @@ mod api_error;
 mod error;
 #[path = "server/handlers.rs"]
 mod handlers;
+#[path = "server/json.rs"]
+mod json;
 #[path = "server/openapi.rs"]
 mod openapi;
 #[path = "server/openapi_jobs.rs"]

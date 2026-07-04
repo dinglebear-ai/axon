@@ -15,6 +15,7 @@ mod payload_redaction;
 pub mod point;
 pub mod qdrant;
 pub mod query;
+pub mod redactor;
 mod sparse;
 pub mod store;
 mod store_helpers;

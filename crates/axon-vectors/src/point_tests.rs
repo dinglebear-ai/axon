@@ -64,11 +64,14 @@ fn prepared_document_and_embeddings_build_validated_points() {
 }
 
 #[test]
-fn absolute_local_chunk_locator_paths_skip_forbidden_chunk() {
+fn absolute_local_chunk_locator_paths_skip_the_chunk() {
     let mut document = test_prepared_document();
     document.chunks[0].chunk_locator.path = Some("/home/jmagar/workspace/private.rs".to_string());
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
+    // A `ForbiddenValue` (absolute local path in the locator) is a per-chunk
+    // concern: the secret-bearing chunk is skipped (not indexed), and the rest
+    // of the document still builds. The whole source must not fail.
     let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
         .unwrap();
@@ -380,11 +383,51 @@ fn document_body_examples_do_not_trigger_metadata_redaction_guardrails() {
 }
 
 #[test]
-fn document_body_secret_examples_skip_forbidden_chunk() {
+fn clean_document_stamps_redaction_status_clean() {
+    let document = test_prepared_document();
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let batch = builder(test_collection_spec(3), document, embeddings)
+        .build()
+        .unwrap();
+
+    // No secret in metadata or body → the Redactor pass changed nothing, so the
+    // status is `clean` (derived from the real pass, not hardcoded).
+    assert_eq!(batch.points[0].payload["redaction_status"], "clean");
+}
+
+#[test]
+fn secret_metadata_value_is_redacted_and_status_reflects_it() {
+    let mut document = test_prepared_document();
+    // A secret-shaped value in an allowed source-family metadata field (not a
+    // forbidden field name, not the retrievable body) is scrubbed rather than
+    // skipped, and the payload records `redaction_status = redacted`.
+    document.chunks[0].metadata.insert(
+        "web_title".to_string(),
+        json!("authorization: bearer abcdef0123456789abcdef0123"),
+    );
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let batch = builder(test_collection_spec(3), document, embeddings)
+        .build()
+        .unwrap();
+
+    assert_eq!(batch.points[0].payload["web_title"], "[REDACTED]");
+    assert_eq!(batch.points[0].payload["redaction_status"], "redacted");
+    // The other chunk carried no secret and stays clean.
+    assert_eq!(batch.points[1].payload["redaction_status"], "clean");
+}
+
+#[test]
+fn document_body_secret_examples_skip_the_chunk() {
     let mut document = test_prepared_document();
     document.chunks[0].content = "TOKEN=value".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
+    // A secret in the retrievable body (`chunk_text`) trips the `ForbiddenValue`
+    // validator. The Redactor deliberately does NOT mask the body, so the chunk
+    // is skipped (not indexed) rather than laundered — the sibling chunk still
+    // builds. This is the secret-skip guarantee the redaction work preserves.
     let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
         .unwrap();

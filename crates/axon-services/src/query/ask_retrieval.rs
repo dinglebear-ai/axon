@@ -113,7 +113,7 @@ pub(crate) async fn retrieval_ask_context(
     }
 
     let retrieval_started = std::time::Instant::now();
-    let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg);
+    let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg).await;
 
     // The ask/evaluate path fetches a wider candidate pool than plain `query`
     // before trimming to the context entries synthesis will read.
@@ -260,7 +260,7 @@ type ResolvedStores = (
 
 /// Resolve the read-plane stores + provider identity, preferring the context's
 /// attached runtime (`serve`/`mcp`/`--wait`); otherwise build from `cfg`.
-fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
+async fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
     if let Some(target) = ctx.target_local_source_runtime() {
         return (
             Arc::clone(&target.vector_store),
@@ -270,7 +270,7 @@ fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
             target.embedding_dimensions,
         );
     }
-    let stores = build_read_stores_from_config(cfg);
+    let stores = build_read_stores_from_config(cfg).await;
     (
         stores.vector_store,
         stores.embedding_provider,

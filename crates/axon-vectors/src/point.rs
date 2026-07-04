@@ -1,15 +1,20 @@
 //! Vector point batch construction.
 
+mod build_helpers;
+
 use std::collections::BTreeSet;
 use std::fmt;
 
 use axon_api::source::*;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::payload::{
     VECTOR_PAYLOAD_CONTRACT_VERSION, VectorPayload, VectorPayloadValidationError,
+};
+use build_helpers::{
+    apply_redaction, chunk_hash, chunk_locator_json, insert_default_string, source_range_json,
+    stable_point_id,
 };
 
 pub const MODULE_NAME: &str = "point";
@@ -426,7 +431,6 @@ fn build_payload(
         source_range_json(&chunk.source_range),
     );
     insert_default_string(&mut metadata, "visibility", "internal");
-    insert_default_string(&mut metadata, "redaction_status", "clean");
     metadata.insert("job_id".to_string(), json!(job_id.0.to_string()));
     metadata.insert(
         "embedding_batch_id".to_string(),
@@ -452,22 +456,16 @@ fn build_payload(
     );
     metadata.insert("vector_namespace".to_string(), json!(collection.dense.name));
 
+    // Run the contract Redactor over the assembled metadata and stamp an
+    // accurate `redaction_status` (`clean` vs `redacted`) BEFORE validation.
+    let metadata = apply_redaction(metadata, chunk);
+
     VectorPayload::try_from_metadata(metadata)
         .map(|payload| payload.into_metadata())
         .map_err(|source| VectorPointBatchBuildError::Payload {
             chunk_id: chunk.chunk_id.clone(),
             source,
         })
-}
-
-fn insert_default_string(metadata: &mut MetadataMap, field: &str, value: &str) {
-    if !metadata
-        .get(field)
-        .and_then(|existing| existing.as_str())
-        .is_some_and(|existing| !existing.trim().is_empty())
-    {
-        metadata.insert(field.to_string(), json!(value));
-    }
 }
 
 const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] = &[
@@ -480,62 +478,3 @@ const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] = &[
     "parser_id",
     "parser_version",
 ];
-
-fn stable_point_id(
-    collection: &str,
-    vector_namespace: &str,
-    document_id: &DocumentId,
-    chunk_id: &ChunkId,
-    source_generation: &SourceGenerationId,
-) -> VectorPointId {
-    let key = format!(
-        "{collection}\0{vector_namespace}\0{}\0{}\0{}",
-        document_id.0, chunk_id.0, source_generation.0
-    );
-    VectorPointId::new(Uuid::new_v5(&Uuid::NAMESPACE_URL, key.as_bytes()).to_string())
-}
-
-/// `sha256:<hex>` over the normalized chunk text plus a stable serialization of
-/// the chunk locator (canonical URI, path, heading path, symbol, and source
-/// range). Per the vector-payload contract, `chunk_hash` changes when either the
-/// chunk text or its source range/locator changes, so both feed the digest.
-fn chunk_hash(chunk: &PreparedChunk, locator: &ChunkLocator) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(chunk.content.as_bytes());
-    hasher.update([0u8]);
-    // A canonical (deterministic) JSON serialization of the locator — including
-    // its source range — is stable across transports and stores.
-    hasher.update(chunk_locator_json(locator).to_string().as_bytes());
-    format!("sha256:{}", hex::encode(hasher.finalize()))
-}
-
-fn chunk_locator_json(locator: &ChunkLocator) -> Value {
-    json!({
-        "canonical_uri": locator.canonical_uri,
-        "path": locator.path,
-        "heading_path": locator.heading_path,
-        "symbol": locator.symbol,
-        "range": source_range_json(&locator.range),
-    })
-}
-
-fn source_range_json(range: &SourceRange) -> Value {
-    json!({
-        "line_start": range.line_start,
-        "line_end": range.line_end,
-        "byte_start": range.byte_start,
-        "byte_end": range.byte_end,
-        "char_start": range.char_start,
-        "char_end": range.char_end,
-        "time_start_ms": range.time_start_ms,
-        "time_end_ms": range.time_end_ms,
-        "dom_selector": range.dom_selector,
-        "json_pointer": range.json_pointer,
-        "yaml_path": range.yaml_path,
-        "xml_xpath": range.xml_xpath,
-        "csv_row": range.csv_row,
-        "session_turn_id": range.session_turn_id,
-        "turn_start": range.turn_start,
-        "turn_end": range.turn_end,
-    })
-}

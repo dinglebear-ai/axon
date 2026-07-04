@@ -57,7 +57,12 @@ pub(super) fn router(
         .merge(super::openapi::docs_router())
         .merge(panel_routes())
         .merge(rest_routes)
-        .fallback(super::super::static_assets::serve_static)
+        // Unknown paths: API prefixes get the contract `ErrorEnvelope` 404;
+        // everything else falls through to the SPA static-asset server.
+        .fallback(api_aware_not_found)
+        // Known path, wrong method → enveloped 405 (axum otherwise returns an
+        // empty-body 405).
+        .method_not_allowed_fallback(super::json::method_not_allowed_fallback)
         .layer(middleware::from_fn(security_headers))
         .with_state((state, Arc::clone(&cfg)))
 }
@@ -192,6 +197,20 @@ pub(super) async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::rest_capabilities())
 }
 
+/// Router fallback for unrouted paths.
+///
+/// API surfaces (`/v1/*`, `/api/*`) return the contract `ErrorEnvelope` 404 so
+/// clients never receive the SPA `index.html` for a mistyped API route. All
+/// other paths fall through to the static-asset SPA server (which itself serves
+/// `index.html` for client-side routing).
+async fn api_aware_not_found(uri: axum::http::Uri) -> Response {
+    let path = uri.path();
+    if path.starts_with("/v1/") || path.starts_with("/api/") {
+        return super::json::not_found_fallback().await;
+    }
+    super::super::static_assets::serve_static(uri).await
+}
+
 async fn v1_actions_removed() -> HttpError {
     HttpError::new(
         StatusCode::NOT_FOUND,
@@ -261,9 +280,21 @@ where
 }
 
 async fn jsonize_auth_error(request: Request<Body>, next: middleware::Next) -> Response {
-    let response = next.run(request).await;
+    let mut response = next.run(request).await;
     let status = response.status();
     if status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN {
+        return response;
+    }
+    // A response our own error boundary already built (handler `HttpError`,
+    // per-source `auth.forbidden`, scope-guard) carries the envelope marker and
+    // must NOT be flattened into a generic `{unauthorized|forbidden}` — that
+    // would drop richer detail like `required_scope`. Only bare auth-layer
+    // 401/403s (which lack the marker) get normalized here.
+    if response
+        .headers_mut()
+        .remove(super::api_error::ERROR_ENVELOPE_MARKER)
+        .is_some()
+    {
         return response;
     }
     let kind = if status == StatusCode::UNAUTHORIZED {
@@ -368,6 +399,12 @@ async fn require_scope(
 
 async fn security_headers(request: Request<Body>, next: middleware::Next) -> Response {
     let mut response = next.run(request).await;
+    // Strip the internal error-envelope marker so it never reaches clients.
+    // `jsonize_auth_error` already removes it on the auth paths it touches; this
+    // is the catch-all for every other enveloped error response.
+    response
+        .headers_mut()
+        .remove(super::api_error::ERROR_ENVELOPE_MARKER);
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_SECURITY_POLICY,

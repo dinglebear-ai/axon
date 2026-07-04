@@ -18,6 +18,20 @@ use crate::capability::{EmbeddingCapabilityConfig, available_embedding_provider_
 use crate::provider::{EmbeddingProvider, Result};
 use client::{TeiClient, TeiClientParams};
 
+/// Provider-derived embedding identity: the `model_id` reported by TEI `/info`
+/// and the output dimensionality measured with a probe embed.
+///
+/// Returned by [`TeiEmbeddingProvider::derive_embedding_identity`]. Callers use
+/// this to stamp the vector-payload `embedding_model`/`embedding_dimensions`
+/// fields and size the Qdrant collection from the live provider rather than a
+/// hardcoded constant, falling back to config only when the provider is
+/// unreachable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivedEmbeddingIdentity {
+    pub model: String,
+    pub dimensions: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeiEmbeddingConfig {
     pub endpoint: String,
@@ -34,6 +48,11 @@ pub struct TeiEmbeddingConfig {
 /// client's default `tei_max_retries = 5`.
 const MAX_ATTEMPTS: usize = 6;
 
+/// Deterministic single-token input used to measure the provider's output
+/// dimensionality (TEI `/info` does not expose it). A stable input keeps the
+/// measured length reproducible across probes.
+const DIMENSION_PROBE_INPUT: &str = "axon";
+
 #[derive(Debug, Clone)]
 pub struct TeiEmbeddingProvider {
     config: TeiEmbeddingConfig,
@@ -46,6 +65,34 @@ impl TeiEmbeddingProvider {
 
     pub fn config(&self) -> &TeiEmbeddingConfig {
         &self.config
+    }
+
+    /// Derive the embedding model + dimensions from the live TEI endpoint.
+    ///
+    /// Fetches `/info` for `model_id` and issues a single probe `/embed` to
+    /// measure the true output dimensionality (TEI does not report dimensions in
+    /// `/info`). Any transport failure is surfaced to the caller, which falls
+    /// back to the configured model/dimensions. Deterministic probe text keeps
+    /// the measured length stable.
+    pub async fn derive_embedding_identity(&self) -> Result<DerivedEmbeddingIdentity> {
+        let client = self.build_client()?;
+        let info = client.fetch_info().await?;
+        let dimensions = client.probe_dimensions(DIMENSION_PROBE_INPUT).await?;
+        let model = info
+            .model_id
+            .filter(|id| !id.trim().is_empty())
+            .unwrap_or_else(|| self.config.model.clone());
+        Ok(DerivedEmbeddingIdentity { model, dimensions })
+    }
+
+    fn build_client(&self) -> Result<TeiClient> {
+        TeiClient::new(TeiClientParams {
+            endpoint: self.config.endpoint.clone(),
+            provider_id: "tei".to_string(),
+            max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
+            max_attempts: MAX_ATTEMPTS,
+            request_timeout: self.config.timeout,
+        })
     }
 
     fn error(&self, code: &str, message: &str) -> ApiError {
@@ -86,13 +133,7 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
         }
 
         let texts = self.request_texts(&batch);
-        let client = TeiClient::new(TeiClientParams {
-            endpoint: self.config.endpoint.clone(),
-            provider_id: "tei".to_string(),
-            max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
-            max_attempts: MAX_ATTEMPTS,
-            request_timeout: self.config.timeout,
-        })?;
+        let client = self.build_client()?;
 
         let started = Instant::now();
         let outcome = client.embed_all(&texts).await?;

@@ -11,6 +11,32 @@ pub(crate) fn forbidden_field_name(field: &str) -> bool {
         .any(|fragment| normalized.contains(fragment))
 }
 
+/// Field names that are secret-shaped but not in the hard forbidden-field list
+/// (which trips a fatal `ForbiddenField`). The [`crate::redactor::Redactor`]
+/// drops these; the payload validator does not, so redaction runs first.
+pub(crate) fn secret_like_field_name(field: &str) -> bool {
+    let normalized = field.to_ascii_lowercase();
+    SECRET_LIKE_FIELD_FRAGMENTS
+        .iter()
+        .any(|fragment| normalized.contains(fragment))
+        || normalized.ends_with("_token")
+        || normalized == "authorization"
+        || normalized == "proxy-authorization"
+}
+
+/// Whether a free-text string carries a secret-shaped value. Reuses the same
+/// value detectors the payload validator applies to `chunk_text`, so the
+/// redactor and validator agree on what a secret looks like.
+pub(crate) fn value_contains_secret(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    FORBIDDEN_VALUE_FRAGMENTS
+        .iter()
+        .any(|fragment| normalized.contains(fragment))
+        || raw_dotenv_assignment(value)
+        || contains_bare_secret_token(value)
+        || normalized.contains("adapter_response")
+}
+
 pub(crate) fn validate_forbidden_value(
     path: &str,
     value: &Value,
@@ -124,6 +150,13 @@ fn is_token_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
 }
 
+/// Whether a free-text value looks like an absolute local filesystem path
+/// (`/home/...`, `~/...`, `C:\...`, …). Used by the [`crate::redactor::Redactor`]
+/// to redact sensitive local paths when the surface does not allow them.
+pub(crate) fn value_is_absolute_local_path(value: &str) -> bool {
+    absolute_local_path("", value)
+}
+
 fn absolute_local_path(_path: &str, value: &str) -> bool {
     let normalized = value.to_ascii_lowercase();
     let trimmed = value.trim();
@@ -181,6 +214,23 @@ pub const FORBIDDEN_FIELD_FRAGMENTS: &[&str] = &[
     "html_blob",
     "adapter_response",
     "response_blob",
+];
+
+/// Field-name fragments that classify as `sensitive` and are dropped by the
+/// redactor. Broader than [`FORBIDDEN_FIELD_FRAGMENTS`] (which is fatal): these
+/// are scrubbed non-fatally so an adapter that stamps e.g. `access_token`
+/// metadata drops that field rather than failing the whole index.
+pub const SECRET_LIKE_FIELD_FRAGMENTS: &[&str] = &[
+    "secret",
+    "credential",
+    "password",
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "private_key",
+    "client_secret",
 ];
 
 pub const FORBIDDEN_VALUE_FRAGMENTS: &[&str] = &[
