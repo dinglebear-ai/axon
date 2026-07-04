@@ -12,8 +12,8 @@ use crate::qdrant::{
 };
 use crate::store::VectorStore;
 use crate::testing::{
-    test_collection_spec, test_embedding_result_for, test_prepared_document,
-    test_vector_build_context,
+    test_collection_spec, test_collection_spec_hybrid, test_embedding_result_for,
+    test_prepared_document, test_vector_build_context,
 };
 
 #[test]
@@ -349,7 +349,7 @@ fn empty_array_filter_values_convert_to_match_none_qdrant_filter() {
 
 #[test]
 fn vector_point_batch_converts_to_qdrant_points_without_dropping_payload_fields() {
-    let mut spec = test_collection_spec(3);
+    let mut spec = test_collection_spec_hybrid(3);
     spec.dense.name = "dense_docs".to_string();
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
@@ -469,12 +469,8 @@ fn sparse_vectors_for_dense_only_collections_are_rejected_before_qdrant_conversi
 
 #[test]
 fn vector_point_batch_merges_batch_level_sparse_vectors_by_chunk_id() {
-    let mut spec = test_collection_spec(3);
+    let mut spec = test_collection_spec_hybrid(3);
     spec.dense.name = "dense_docs".to_string();
-    spec.sparse = Some(SparseVectorConfig {
-        name: "bm42".to_string(),
-        modifier: SparseVectorModifier::Idf,
-    });
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
     let mut batch = VectorPointBatchBuilder::new(
@@ -485,6 +481,9 @@ fn vector_point_batch_merges_batch_level_sparse_vectors_by_chunk_id() {
     )
     .build()
     .unwrap();
+    for point in &mut batch.points {
+        point.sparse_vector = None;
+    }
     batch.sparse_vectors = Some(vec![SparseVector {
         chunk_id: batch.points[0].chunk_id.clone(),
         indices: vec![2],
@@ -540,7 +539,7 @@ fn malformed_sparse_vectors_are_rejected_before_qdrant_conversion() {
 
 #[test]
 fn invalid_payloads_are_rejected_before_qdrant_conversion() {
-    let spec = test_collection_spec(3);
+    let spec = test_collection_spec_hybrid(3);
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
     let mut batch = VectorPointBatchBuilder::new(
@@ -560,7 +559,7 @@ fn invalid_payloads_are_rejected_before_qdrant_conversion() {
 
 #[test]
 fn duplicate_points_are_rejected_before_qdrant_conversion() {
-    let spec = test_collection_spec(3);
+    let spec = test_collection_spec_hybrid(3);
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
     let mut batch = VectorPointBatchBuilder::new(

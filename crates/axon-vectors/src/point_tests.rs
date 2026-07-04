@@ -64,22 +64,17 @@ fn prepared_document_and_embeddings_build_validated_points() {
 }
 
 #[test]
-fn absolute_local_chunk_locator_paths_fail_payload_validation() {
+fn absolute_local_chunk_locator_paths_skip_forbidden_chunk() {
     let mut document = test_prepared_document();
     document.chunks[0].chunk_locator.path = Some("/home/jmagar/workspace/private.rs".to_string());
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let err = builder(test_collection_spec(3), document, embeddings)
+    let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
-        .unwrap_err();
+        .unwrap();
 
-    assert!(matches!(
-        err,
-        VectorPointBatchBuildError::Payload {
-            chunk_id,
-            source: crate::payload::VectorPayloadValidationError::ForbiddenValue { field },
-        } if chunk_id == ChunkId::new("chunk-web-1") && field == "chunk_locator.path"
-    ));
+    assert_eq!(batch.points.len(), 1);
+    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-2"));
 }
 
 #[test]
@@ -385,22 +380,17 @@ fn document_body_examples_do_not_trigger_metadata_redaction_guardrails() {
 }
 
 #[test]
-fn document_body_secret_examples_fail_before_vector_point_build() {
+fn document_body_secret_examples_skip_forbidden_chunk() {
     let mut document = test_prepared_document();
     document.chunks[0].content = "TOKEN=value".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let err = builder(test_collection_spec(3), document, embeddings)
+    let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
-        .unwrap_err();
+        .unwrap();
 
-    assert!(matches!(
-        err,
-        VectorPointBatchBuildError::Payload {
-            chunk_id,
-            source: crate::payload::VectorPayloadValidationError::ForbiddenValue { field }
-        } if chunk_id == ChunkId::new("chunk-web-1") && field == "chunk_text"
-    ));
+    assert_eq!(batch.points.len(), 1);
+    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-2"));
 }
 
 #[test]
