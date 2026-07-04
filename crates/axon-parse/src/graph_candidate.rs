@@ -102,6 +102,99 @@ pub fn graph_candidate(
     }
 }
 
+pub fn candidate_edge(
+    input: &ParseInput,
+    parser_id: &str,
+    candidate_kind: &str,
+    from_node_kind: &str,
+    from_stable_key: &str,
+    to_node_kind: &str,
+    to_stable_key: &str,
+    edge_kind: &str,
+    evidence_kind: &str,
+    line: Option<u32>,
+    quote: Option<String>,
+) -> GraphCandidate {
+    let evidence_range = line.map(|line| SourceRange {
+        line_start: Some(line),
+        line_end: Some(line),
+        byte_start: None,
+        byte_end: None,
+        char_start: None,
+        char_end: None,
+        time_start_ms: None,
+        time_end_ms: None,
+        dom_selector: None,
+        json_pointer: None,
+        yaml_path: None,
+        xml_xpath: None,
+        csv_row: None,
+        session_turn_id: None,
+        turn_start: None,
+        turn_end: None,
+    });
+    let candidate_token = stable_token(&format!(
+        "{}:{}:{to_stable_key}:{line:?}",
+        input.document.canonical_uri, candidate_kind
+    ));
+    let evidence_token = stable_token(&format!(
+        "{candidate_kind}:{to_stable_key}:{line:?}:{quote:?}"
+    ));
+
+    GraphCandidate {
+        candidate_id: format!("cand_{candidate_kind}_{candidate_token}"),
+        job_id: input.job_id,
+        source_id: input.document.source_id.clone(),
+        source_item_key: input.document.source_item_key.clone(),
+        item_canonical_uri: input.document.canonical_uri.clone(),
+        document_id: Some(input.document.document_id.clone()),
+        kind: candidate_kind.to_string(),
+        merge_key: Some(format!(
+            "{candidate_kind}:{}:{to_stable_key}",
+            input.document.canonical_uri
+        )),
+        producer: GraphCandidateProducer {
+            adapter: "axon-parse".to_string(),
+            parser: Some(parser_id.to_string()),
+            version: PARSER_VERSION.to_string(),
+        },
+        nodes: vec![
+            GraphNodeCandidate {
+                node_kind: from_node_kind.to_string(),
+                stable_key: from_stable_key.to_string(),
+                label: input.document.source_item_key.0.clone(),
+                properties: MetadataMap::new(),
+            },
+            GraphNodeCandidate {
+                node_kind: to_node_kind.to_string(),
+                stable_key: to_stable_key.to_string(),
+                label: to_stable_key.to_string(),
+                properties: MetadataMap::new(),
+            },
+        ],
+        edges: vec![GraphEdgeCandidate {
+            edge_kind: edge_kind.to_string(),
+            from_stable_key: from_stable_key.to_string(),
+            to_stable_key: to_stable_key.to_string(),
+            properties: MetadataMap::new(),
+        }],
+        evidence: vec![GraphEvidence {
+            evidence_id: format!("ev_{evidence_token}"),
+            evidence_kind: evidence_kind.to_string(),
+            source_id: input.document.source_id.clone(),
+            source_item_key: input.document.source_item_key.clone(),
+            document_id: Some(input.document.document_id.clone()),
+            chunk_id: None,
+            range: evidence_range,
+            quote,
+            confidence: 0.9,
+            metadata: MetadataMap::new(),
+        }],
+        confidence: 0.9,
+        metadata: MetadataMap::new(),
+    }
+}
+
 fn stable_token(value: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in value.bytes() {

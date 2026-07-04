@@ -87,6 +87,18 @@ fn unknown_edge_kind_is_rejected() {
 }
 
 #[test]
+fn candidate_validation_rejects_unknown_evidence_kind() {
+    let mut c = base_candidate();
+    c.evidence[0].evidence_kind = "tool_result".to_string();
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(
+        err.message.contains("unknown graph evidence kind"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
 fn edge_referencing_missing_stable_key_is_rejected() {
     let mut c = base_candidate();
     c.edges[0].to_stable_key = "pkg:not-in-candidate".to_string();
