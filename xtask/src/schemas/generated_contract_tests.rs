@@ -115,6 +115,7 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
         "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/listing.rs",
+        "crates/axon-api/src/source/job_listing.rs",
         "crates/axon-api/src/source/state.rs",
         "crates/axon-api/src/source/status.rs",
         "crates/axon-api/src/source/vector.rs",

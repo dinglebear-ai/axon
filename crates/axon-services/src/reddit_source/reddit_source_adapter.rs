@@ -24,14 +24,7 @@ pub(super) fn resolve_adapter_run(
     let scope = scope_for(&target);
     let source_id = route_source_id(SourceKind::Reddit, &canonical_uri);
     let adapter = reddit_adapter_ref();
-    let plan = source_plan(
-        input,
-        &target,
-        &canonical_uri,
-        &source_id,
-        adapter.clone(),
-        scope,
-    );
+    let plan = source_plan(input, &canonical_uri, &source_id, adapter.clone(), scope);
     Ok(RedditAdapterRun {
         source_id,
         adapter,
@@ -101,7 +94,7 @@ pub(super) fn source_summary(
     SourceSummary {
         source_id: run.source_id.clone(),
         canonical_uri: run.plan.route.source.canonical_uri.clone(),
-        display_name: run.plan.route.source.display_name.clone(),
+        display_name: reddit_display_name(&run.plan.route.source.canonical_uri),
         source_kind: SourceKind::Reddit,
         adapter: run.adapter.clone(),
         authority: AuthorityLevel::Inferred,
@@ -116,10 +109,20 @@ pub(super) fn source_summary(
         },
         created_at: timestamp(),
         updated_at: timestamp(),
+        graph_node_ids: Vec::new(),
+        last_refreshed_at: None,
+        user_label: None,
         tags: vec![format!("{:?}", run.scope).to_ascii_lowercase()],
         watch_id: None,
         last_job_id: Some(input.job_id),
     }
+}
+
+fn reddit_display_name(canonical_uri: &str) -> String {
+    canonical_uri
+        .strip_prefix("reddit://")
+        .unwrap_or(canonical_uri)
+        .to_string()
 }
 
 fn reddit_adapter_ref() -> AdapterRef {
@@ -147,16 +150,8 @@ fn scope_for(target: &RedditTarget) -> SourceScope {
     }
 }
 
-fn display_name_for(target: &RedditTarget) -> String {
-    match target {
-        RedditTarget::Subreddit(name) => format!("r/{name}"),
-        RedditTarget::Thread(permalink) => permalink.clone(),
-    }
-}
-
 fn source_plan(
     input: &RedditSourceIndexInput,
-    target: &RedditTarget,
     canonical_uri: &str,
     source_id: &SourceId,
     adapter: AdapterRef,
@@ -169,24 +164,19 @@ fn source_plan(
         request: source,
         route: RoutePlan {
             source: ResolvedSource {
-                requested_uri,
+                source: requested_uri,
                 canonical_uri: canonical_uri.to_string(),
                 source_id: source_id.clone(),
                 source_kind: SourceKind::Reddit,
-                display_name: display_name_for(target),
-                candidate_adapters: vec![AdapterCandidate {
-                    adapter: adapter.clone(),
-                    supported_scopes: vec![scope],
-                    confidence: 1.0,
-                    reason: "target reddit source".to_string(),
-                }],
+                adapter: adapter.clone(),
                 default_scope: scope,
                 available_scopes: vec![scope],
                 authority: AuthorityLevel::Inferred,
                 confidence: 1.0,
                 reason: "target reddit source".to_string(),
-                authority_hint: None,
+                graph: Vec::new(),
                 warnings: Vec::new(),
+                metadata: MetadataMap::new(),
             },
             adapter,
             scope,

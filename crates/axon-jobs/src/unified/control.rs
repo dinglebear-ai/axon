@@ -177,10 +177,12 @@ impl SqliteUnifiedJobStore {
             0
         };
         Ok(JobRecoveryResult {
+            recovered: 0,
+            job_ids: Vec::new(),
+            warnings: Vec::new(),
             jobs_scanned: scanned,
             jobs_requeued: 0,
             jobs_failed: failed,
-            warnings: Vec::new(),
         })
     }
 
@@ -241,6 +243,10 @@ impl SqliteUnifiedJobStore {
             jobs_pruned
         };
         Ok(JobCleanupResult {
+            matched: jobs_pruned,
+            deleted,
+            dry_run: request.dry_run,
+            warnings: Vec::new(),
             jobs_pruned: deleted,
             events_pruned,
             heartbeats_pruned,

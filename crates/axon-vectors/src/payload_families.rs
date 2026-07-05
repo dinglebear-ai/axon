@@ -33,6 +33,7 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
             "feed_entry_link",
             "feed_entry_published",
             "feed_entry_author",
+            "structured_parse_error",
         ],
     ),
     (

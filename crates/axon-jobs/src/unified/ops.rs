@@ -120,11 +120,18 @@ impl SqliteUnifiedJobStore {
 
         sqlx::query(
             "UPDATE jobs SET
+                source_id = COALESCE(?, source_id),
                 status = ?, phase = ?, counts_json = ?, current_json = ?,
                 last_error_json = ?, updated_at = ?,
                 started_at = COALESCE(started_at, ?),
                 finished_at = COALESCE(?, finished_at)
              WHERE job_id = ?",
+        )
+        .bind(
+            status
+                .source_id
+                .as_ref()
+                .map(|source_id| source_id.0.as_str()),
         )
         .bind(enum_name(status.status)?)
         .bind(enum_name(status.phase)?)
@@ -335,7 +342,7 @@ impl SqliteUnifiedJobStore {
             .map(row_to_event)
             .collect::<Result<Vec<_>>>()?;
         Ok(JobEventPage {
-            last_sequence: events.last().map(|event| event.sequence),
+            last_sequence: events.last().map(|event| event.sequence).unwrap_or(0),
             limit,
             next_cursor: None,
             events,

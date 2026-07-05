@@ -130,10 +130,13 @@ pub struct DocumentStatus {
     pub document_id: DocumentId,
     pub source_id: SourceId,
     pub source_item_key: SourceItemKey,
-    pub generation: SourceGenerationId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<SourceGenerationId>,
     pub status: DocumentLifecycleStatus,
     pub updated_at: Timestamp,
+    #[serde(skip)]
     pub chunk_count: u32,
+    #[serde(skip)]
     pub vector_point_count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<SourceError>,

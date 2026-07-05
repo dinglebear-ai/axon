@@ -116,7 +116,7 @@
   },
   {
     "method": "POST",
-    "path": "/v1/scrape",
+    "path": "/v1/sources",
     "requiresAuth": true
   },
   {
@@ -171,76 +171,6 @@
   },
   {
     "method": "POST",
-    "path": "/v1/crawl",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/crawl",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/crawl/{id}",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/crawl/{id}/cancel",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/crawl/cleanup",
-    "requiresAuth": true
-  },
-  {
-    "method": "DELETE",
-    "path": "/v1/crawl",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/crawl/recover",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/embed",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/embed",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/embed/{id}",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/embed/{id}/cancel",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/embed/cleanup",
-    "requiresAuth": true
-  },
-  {
-    "method": "DELETE",
-    "path": "/v1/embed",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/embed/recover",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
     "path": "/v1/extract",
     "requiresAuth": true
   },
@@ -272,46 +202,6 @@
   {
     "method": "POST",
     "path": "/v1/extract/recover",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/ingest",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/ingest/sessions/prepared",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/ingest",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/ingest/{id}",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/ingest/{id}/cancel",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/ingest/cleanup",
-    "requiresAuth": true
-  },
-  {
-    "method": "DELETE",
-    "path": "/v1/ingest",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/ingest/recover",
     "requiresAuth": true
   },
   {

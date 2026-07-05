@@ -12,6 +12,7 @@ async fn fake_job_store_tracks_status_events_and_heartbeats() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: Some(SourceId::new("src_docs")),
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -29,8 +30,8 @@ async fn fake_job_store_tracks_status_events_and_heartbeats() {
             .await
             .unwrap()
             .unwrap()
-            .phase,
-        PipelinePhase::Embedding
+            .source_id,
+        Some(SourceId::new("src_docs"))
     );
 
     assert_eq!(
@@ -70,6 +71,7 @@ async fn fake_job_store_rejects_unknown_jobs_and_terminal_restarts() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Completed,
             phase: PipelinePhase::Complete,
@@ -85,6 +87,7 @@ async fn fake_job_store_rejects_unknown_jobs_and_terminal_restarts() {
     let err = JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -255,6 +258,7 @@ async fn fake_job_store_filters_events_and_resets_job_ids_only() {
             phase: Some(PipelinePhase::Embedding),
             severity: Some(Severity::Warning),
             visibility: Some(Visibility::Redacted),
+            after_sequence: Some(1),
             since_sequence: Some(1),
             limit: Some(10),
             cursor: None,
@@ -272,6 +276,7 @@ async fn fake_job_store_filters_events_and_resets_job_ids_only() {
             phase: None,
             severity: None,
             visibility: Some(Visibility::Internal),
+            after_sequence: None,
             since_sequence: None,
             limit: Some(10),
             cursor: None,
@@ -363,6 +368,7 @@ async fn fake_job_store_defaults_events_to_public_visibility_and_clamps_limits()
             phase: None,
             severity: None,
             visibility: None,
+            after_sequence: None,
             since_sequence: None,
             limit: Some(u32::MAX),
             cursor: None,
@@ -438,6 +444,8 @@ async fn fake_job_store_recovery_honors_staleness_cutoff() {
         &store,
         JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: None,
             older_than_seconds: Some(360),
             dry_run: false,
             allow_without_cutoff: false,
@@ -475,6 +483,7 @@ async fn fake_job_store_filters_events_by_visibility() {
             phase: None,
             severity: None,
             visibility: Some(Visibility::Redacted),
+            after_sequence: None,
             since_sequence: None,
             limit: Some(10),
             cursor: None,
@@ -530,6 +539,8 @@ async fn fake_job_store_controls_cancel_retry_recover_cleanup_and_artifacts() {
         &store,
         JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: None,
             older_than_seconds: None,
             dry_run: false,
             allow_without_cutoff: true,
@@ -557,6 +568,10 @@ async fn fake_job_store_controls_cancel_retry_recover_cleanup_and_artifacts() {
     let cleanup = JobStore::cleanup(
         &store,
         JobCleanupRequest {
+            kind: None,
+            older_than: None,
+            status: None,
+            limit: None,
             older_than_seconds: None,
             dry_run: false,
             confirm_all_terminal: true,
@@ -583,6 +598,7 @@ fn empty_counts() -> StageCounts {
 fn status_update(job_id: JobId, status: LifecycleStatus) -> JobStatusUpdate {
     JobStatusUpdate {
         job_id,
+        source_id: None,
         status,
         phase: match status {
             LifecycleStatus::Queued => PipelinePhase::Queued,
@@ -716,6 +732,7 @@ async fn fake_watch_store_creates_updates_lists_and_records_history() {
             embed: None,
             scope: Some(SourceScope::Repo),
             options: None,
+            collection: None,
         },
     )
     .await
@@ -745,13 +762,14 @@ async fn fake_watch_store_creates_updates_lists_and_records_history() {
         &store,
         WatchHistoryRequest {
             watch_id: watch.watch_id,
+            status: None,
             limit: Some(10),
             cursor: None,
         },
     )
     .await
     .unwrap();
-    assert_eq!(history.runs.len(), 1);
+    assert_eq!(history.jobs.len(), 1);
     let listed = WatchStore::list(
         &store,
         WatchListRequest {
@@ -817,6 +835,7 @@ async fn fake_watch_store_rejects_dangling_run_links() {
         &store,
         WatchHistoryRequest {
             watch_id: WatchId::new("missing"),
+            status: None,
             limit: None,
             cursor: None,
         },

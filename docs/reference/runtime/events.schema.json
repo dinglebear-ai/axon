@@ -82,10 +82,7 @@
         "last_sequence": {
           "format": "uint64",
           "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
+          "type": "integer"
         },
         "limit": {
           "format": "uint32",
@@ -101,7 +98,7 @@
       },
       "required": [
         "events",
-        "limit"
+        "last_sequence"
       ],
       "title": "JobEventPage",
       "type": "object"

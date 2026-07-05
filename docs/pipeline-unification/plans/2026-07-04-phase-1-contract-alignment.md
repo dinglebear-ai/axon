@@ -31,7 +31,34 @@
 - `docs/pipeline-unification/foundation/types/stage-result-contract.md:14-220` defines `StageResultHeader`, `StageExecutionResult<T>`, concrete stage result wrappers, and success/degraded/failed fixture expectations.
 - `docs/pipeline-unification/schemas/api-dto-schema.md:189-205` defines minimum generated `$defs`.
 - `docs/pipeline-unification/delivery/surface-removal-contract.md:132-150` defines removed DTO/request fields and replacements.
-- GitHub issue #298 Phase 1 checklist lines 224-244 are the tracker entries this plan must make truthful.
+- GitHub issue #298 live Phase 1 checklist is the tracker this plan must make defensible. Do not rely on stale line numbers; re-read the live section with `gh issue view 298 --json body --jq .body` before implementation closeout.
+
+## Checklist Coverage Gate
+
+Before Phase 1 can be claimed complete, the implementation must prove every live
+issue #298 Phase 1 bullet, not just the narrow DTO spike:
+
+- `SourceRequest`, `ResolvedSource`, and `SourceResult` match `api-contract.md`.
+- Canonical enums are Rust-owned, closed, schema-generated, and drift-checked
+  against `enum-contract.md`.
+- `ApiError`/source error projections live in `axon-error`/`axon-api`, not in
+  transports or domain internals.
+- All wire DTOs and enum projections are exported through `axon-api`; domain
+  crates may expose builders or internal structs only when they convert at the
+  boundary.
+- Serde, schemars, and utoipa coverage exists for registered public DTOs.
+- Minimal and full `SourceRequest` fixtures validate, and invalid/legacy request
+  fixtures fail.
+- The full Phase 1 API DTO catalog is either registered as contract-exact or
+  explicitly listed in `PHASE_1_DEFERRED_API_DEFS` with owner plan and blocking
+  reason. Do not silently omit a required `$defs` name.
+- The concrete stage/result wrappers named by `stage-result-contract.md` exist
+  with success, degraded, and failed fixtures.
+- External request DTOs use typed IDs/newtypes and `serde(deny_unknown_fields)`,
+  except explicit `options`/`metadata` extension maps.
+- Removed legacy request shapes for old embed/ingest/crawl/scrape/code-search
+  and destructive purge fields are rejected from generated API DTO schemas by
+  schema-aware `$defs`/property checks.
 
 ## Engineering Review Corrections
 

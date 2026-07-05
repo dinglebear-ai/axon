@@ -237,7 +237,7 @@ fn stage_header(job_id: JobId, phase: PipelinePhase) -> StageResultHeader {
 fn route_plan(adapter_name: &str, source_kind: SourceKind, scope: SourceScope) -> RoutePlan {
     RoutePlan {
         source: ResolvedSource {
-            requested_uri: "local://redacted".to_string(),
+            source: "local://redacted".to_string(),
             canonical_uri: match source_kind {
                 SourceKind::Local => "local://lp_test".to_string(),
                 SourceKind::Web => "https://example.com/".to_string(),
@@ -249,23 +249,18 @@ fn route_plan(adapter_name: &str, source_kind: SourceKind, scope: SourceScope) -
                 _ => "src_test",
             }),
             source_kind,
-            display_name: "test source".to_string(),
-            candidate_adapters: vec![AdapterCandidate {
-                adapter: AdapterRef {
-                    name: adapter_name.to_string(),
-                    version: "test".to_string(),
-                },
-                supported_scopes: vec![scope],
-                confidence: 1.0,
-                reason: "test adapter".to_string(),
-            }],
+            adapter: AdapterRef {
+                name: adapter_name.to_string(),
+                version: "test".to_string(),
+            },
             default_scope: scope,
             available_scopes: vec![scope],
             authority: AuthorityLevel::Inferred,
             confidence: 1.0,
             reason: "test source".to_string(),
-            authority_hint: None,
+            graph: Vec::new(),
             warnings: Vec::new(),
+            metadata: MetadataMap::new(),
         },
         adapter: AdapterRef {
             name: adapter_name.to_string(),

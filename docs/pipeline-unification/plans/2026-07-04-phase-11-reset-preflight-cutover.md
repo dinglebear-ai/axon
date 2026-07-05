@@ -14,8 +14,10 @@ The Lavra engineering review found that reset execution needed stronger plan bin
 
 ## Global Constraints
 
-- Source of truth: `docs/pipeline-unification/delivery/cutover-contract.md`, `delivery/testing-contract.md`, `delivery/surface-removal-contract.md`, `runtime/job-contract.md`, and `runtime/auth-contract.md`.
+- Source of truth: live issue #298 Phase 11, `docs/pipeline-unification/delivery/cutover-contract.md`, `delivery/testing-contract.md`, `delivery/surface-removal-contract.md`, `runtime/pruning-contract.md`, `runtime/job-contract.md`, `runtime/auth-contract.md`, `runtime/storage-contract.md`, `runtime/schema-contract.md`, `runtime/ledger-contract.md`, `runtime/observability-contract.md`, `configuration/env-contract.md`, and `configuration/config-contract.md`.
 - `axon reset --dry-run`, `axon reset --yes`, reset receipts, and incompatible-store blockers must be proven before old storage code is deleted.
+- Move cleanup/dedupe/purge behavior into `axon-prune`; reset remains a separate destructive clean-slate flow owned by reset services.
+- Remove old split crates and root domain modules only after replacement paths pass and reset/preflight blockers are implemented: `axon-vector`, `axon-code-index`, `axon-crawl`, `axon-ingest`, `axon-extract`, and non-bootstrap root `src/*` modules.
 - Destructive reset/prune execution requires `axon:admin`; dry-run may be read-only.
 - Reset/prune execution binds to a reusable plan id and explicit confirmation.
 - Destructive execution must also bind the enqueue-time `AuthSnapshot`, config snapshot id, store inventory epoch/checksum, selectors, estimates, and plan TTL. Re-estimate before the first destructive chunk and fail if stores changed.
@@ -27,6 +29,9 @@ The Lavra engineering review found that reset execution needed stronger plan bin
 - Startup preflight vector-store inspection must have strict timeouts and cacheable results so normal startup does not block indefinitely on slow Qdrant inspection.
 - Reset and prune are separate destructive flows. Implement reset first; prune receipts/audit can follow unless old-crate deletion directly depends on prune.
 - Reset should be receipt-driven and idempotent. Chunked resumability is required for large prune and for reset only where a backend cannot delete a whole store atomically.
+- Fresh SQLite schema and fresh Qdrant collection/payload/index shape must be recreated and validated after reset. Old job-family tables, old code-index generations, and old vector payload shape must be absent.
+- `axon doctor`, `axon preflight --config`, worker startup, REST reset/preflight routes, and CLI reset/preflight commands must report the same blockers and remediation guidance.
+- Use forward-only schema migrations after the new schema lands. Do not add old-data migrations, payload backfills, compatibility readers, dual-write old/new stores, or route tombstones.
 
 ---
 
@@ -83,7 +88,7 @@ Expected: missing reset inventory fields fail.
 
 - [ ] **Step 3: Implement DTOs**
 
-Reset plan includes selected stores, SQLite table row estimates, Qdrant collection/point estimates, artifact file estimates, config validation results, OAuth/static token guidance, incompatible-store blockers, confirmation text, and receipt artifact path.
+Reset plan includes selected stores, SQLite table row estimates, Qdrant collection/point estimates, artifact file estimates, config validation results, OAuth/static token guidance, incompatible-store blockers, schema/payload recreation targets, confirmation text, receipt artifact path, plan TTL, inventory checksum, config snapshot id, and enqueue-time auth snapshot id.
 
 - [ ] **Step 4: Run DTO tests**
 
@@ -137,13 +142,17 @@ Expected: dry-run/admin/plan-id behavior fails until implemented.
 
 - [ ] **Step 3: Implement plan-first execution**
 
-`reset --dry-run` creates a reusable plan and receipt preview. `reset --yes --plan-id <id>` executes the plan as a reset job with admin snapshot. CLI can create and execute in one command only when the generated plan id is bound to the same normalized body.
+`reset --dry-run` reports counts without mutation and may store only explicit plan/receipt-preview artifacts. `reset --yes --plan-id <id>` executes the plan as a reset job with admin snapshot. CLI can create and execute in one command only when the generated plan id is bound to the same normalized body, config snapshot, auth snapshot, selectors, estimates, inventory checksum, and unexpired TTL.
 
 - [ ] **Step 4: Implement chunked execution**
 
-Chunk SQLite deletes by table/key ranges, Qdrant deletes by collection/page selectors, and artifact deletes by directory entries. Each chunk writes receipt progress and can resume from the last completed chunk.
+Re-estimate before the first destructive chunk and fail if stores changed. Chunk SQLite deletes by table/key ranges, Qdrant deletes by collection/page selectors, and artifact deletes by directory entries. Each chunk writes receipt progress and can resume from the last completed chunk.
 
-- [ ] **Step 5: Run reset tests**
+- [ ] **Step 5: Recreate fresh stores and validate target shape**
+
+After destructive reset, initialize the fresh SQLite schema, recreate the Qdrant collection with target payload indexes, invalidate old auth/token cache state or surface re-auth guidance, and write created-shape details into the receipt.
+
+- [ ] **Step 6: Run reset tests**
 
 Run:
 
@@ -152,7 +161,7 @@ cargo test -p axon-services reset --no-fail-fast
 cargo test -p axon-cli reset --no-fail-fast
 ```
 
-Expected: dry-run, admin enforcement, plan-id binding, chunking, and receipts pass.
+Expected: dry-run, admin enforcement, plan-id binding, chunking, fresh schema/Qdrant shape, auth guidance, and receipts pass.
 
 ---
 
@@ -191,13 +200,17 @@ Expected: audit and receipt fields fail until implemented.
 
 - [ ] **Step 3: Implement prune receipts**
 
-Prune plans include selectors, estimated SQLite rows, Qdrant points, artifact files, risk flags, confirmation requirements, chunk plan, and receipt artifact target. Execution updates receipt after every chunk.
+Prune plans include selectors, estimated SQLite rows, Qdrant points, artifact files, risk flags, confirmation requirements, generation fences, chunk plan, and receipt artifact target. Execution updates receipt after every chunk.
 
-- [ ] **Step 4: Run prune tests**
+- [ ] **Step 4: Move old purge/dedupe/cleanup behavior behind prune**
+
+Route purge, dedupe, job/cache retention, cleanup debt, vector deletes, artifact deletes, graph orphan cleanup, and memory forgetting cleanup through `axon-prune` plans. Delete ad hoc direct Qdrant/SQLite/filesystem destructive paths once prune coverage exists.
+
+- [ ] **Step 5: Run prune tests**
 
 Run: `cargo test -p axon-services prune --no-fail-fast`
 
-Expected: prune lifecycle, audit events, and resumable receipts pass.
+Expected: prune lifecycle, audit events, generation fencing, idempotent cleanup-debt retries, and resumable receipts pass.
 
 ---
 
@@ -233,17 +246,21 @@ Expected: startup does not yet block all incompatible stores.
 
 - [ ] **Step 3: Implement store inventory**
 
-Preflight inventories jobs, ledger/source/code-index/watch/memory tables, graph, vectors, artifacts, config files, OAuth/static token settings, generated schemas, and Qdrant payload/index shape.
+Preflight inventories jobs, legacy job-family tables, ledger/source/code-index/watch/memory tables, graph, vectors, artifacts, config files, OAuth/static token settings, generated schemas, and Qdrant payload/index shape. Vector-store inspection uses bounded count APIs, strict timeouts, and cacheable results.
 
 - [ ] **Step 4: Block unified workers**
 
-Doctor/startup returns an actionable report and does not spawn source/watch/reset/prune workers until reset succeeds or a developer override is explicitly set.
+Doctor/startup returns an actionable report and does not spawn source/watch/source-job/prune workers until reset succeeds or a developer override is explicitly set. Reset planning may remain available so operators can recover.
 
-- [ ] **Step 5: Run blocker tests**
+- [ ] **Step 5: Add fresh-shape blocker tests**
+
+Assert old job-family tables, old code-index generations, stale watch rows, old Qdrant payload shape, missing target Qdrant indexes, and stale generated schema manifests are all reported with reset/reindex remediation.
+
+- [ ] **Step 6: Run blocker tests**
 
 Run: `cargo test -p axon-services preflight incompatible --no-fail-fast`
 
-Expected: incompatible stores block workers before side effects.
+Expected: incompatible stores block workers before side effects, reset remains recoverable, and fresh stores pass.
 
 ---
 
@@ -291,7 +308,7 @@ Expected: stale key reporting and dry-run behavior fail until implemented.
 
 - [ ] **Step 3: Implement config validation and rewrite preview**
 
-Use the same removed-key registry as generated schemas. Preserve `.env` and `config.toml`; rewrite only with explicit non-dry-run confirmation and report every changed key/path.
+Use the same removed-key registry as generated schemas. Preserve `.env` and `config.toml`; rewrite only with explicit non-dry-run confirmation and report every changed key/path, placement error, redacted secret, and restart/reload requirement.
 
 - [ ] **Step 4: Run config tests**
 
@@ -335,7 +352,7 @@ Expected: existing PR0 skeleton validation fails the end-state expectations.
 
 - [ ] **Step 3: Implement end-state checks**
 
-Validate real target-crate dependencies, required fixtures/generated artifacts, removed-crate absence after cutover, generated schema source manifests, and public surface removal checks.
+Validate real target-crate dependencies, required fixtures/generated artifacts, removed-crate absence after cutover, root bootstrap-only state, generated schema/doc source manifests, public surface removal checks, and no non-bootstrap root `src/*` domain modules.
 
 - [ ] **Step 4: Run structure tests**
 
@@ -355,6 +372,7 @@ Run:
 cargo test -p axon-services reset preflight prune --no-fail-fast
 cargo test -p axon-cli reset preflight setup --no-fail-fast
 cargo test -p axon-jobs reset prune --no-fail-fast
+cargo test -p axon-web reset preflight --no-fail-fast
 cargo test -p xtask check_repo_structure --no-fail-fast
 ```
 
@@ -366,7 +384,14 @@ Run:
 
 ```bash
 cargo xtask schemas generate --check
+cargo xtask docs generate --check
 cargo xtask check
 ```
 
-Expected: generated artifacts and repo structure are current.
+Expected: generated artifacts, docs, reset/preflight/prune contracts, and repo structure are current.
+
+- [ ] **Step 3: Run Tier 5 reset/preflight cutover cases**
+
+Run: `cargo test --workspace tier5 --no-fail-fast`
+
+Expected: incompatible store block, reset dry-run, reset yes, fresh SQLite/Qdrant shape, removed config validation, canonical local/web reindex, ask/query retrieval from target payloads, and provider backpressure cases pass or are explicitly tracked as Phase 12 blockers.

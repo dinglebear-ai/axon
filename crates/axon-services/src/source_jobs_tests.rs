@@ -33,6 +33,7 @@ async fn target_source_job_services_delegate_to_job_store() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -106,6 +107,7 @@ async fn target_source_job_services_delegate_to_job_store() {
         &store,
         JobEventListRequest {
             job_id: job.job_id,
+            after_sequence: None,
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),
@@ -133,6 +135,7 @@ async fn target_source_job_services_delegate_to_job_store() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Canceled,
             phase: PipelinePhase::Canceled,
@@ -176,6 +179,8 @@ async fn target_source_job_services_delegate_to_job_store() {
         &store,
         JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: Some(10),
             older_than_seconds: None,
             dry_run: false,
             allow_without_cutoff: true,
@@ -188,8 +193,12 @@ async fn target_source_job_services_delegate_to_job_store() {
     let cleanup = cleanup_jobs(
         &store,
         JobCleanupRequest {
-            older_than_seconds: None,
             dry_run: true,
+            kind: Some(JobKind::Source),
+            older_than: None,
+            status: None,
+            limit: Some(10),
+            older_than_seconds: None,
             confirm_all_terminal: true,
         },
     )

@@ -142,6 +142,7 @@ pub struct SourceEnrichment {
     pub chunk_hints: Vec<ChunkHint>,
     pub graph_candidates: Vec<GraphCandidate>,
     pub artifacts: Vec<ArtifactRef>,
+    pub warnings: Vec<SourceWarning>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

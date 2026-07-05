@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make issue #298 Phase 4 truthful by routing the live source entrypoint through `axon-route`, enforcing route/scope validation before acquisition, and reconciling the Phase 4 tracker/docs with the pipeline-unification contracts.
+**Goal:** Make issue #298 Phase 4 defensible against the source-of-truth contracts by routing the live source entrypoint through `axon-route`, enforcing route/scope validation before acquisition, and clearly separating route-time registry completion from later source-family acquisition ports.
 
 **Architecture:** Keep `axon-route` as the sole resolver/router owner and keep acquisition in `axon-services`/adapter bridges. Add a small `axon-services::source::routing` boundary that converts `SourceRequest -> RoutePlan -> dispatch family`, then use that route metadata for result mapping and validation. Reconcile docs and the GitHub issue so Phase 4 means resolver/router/runtime routing, while broad source-family acquisition remains tracked by the later source-family PRs.
 
@@ -34,12 +34,40 @@ Apply these corrections before implementation:
 
 ## Source Of Truth
 
-- Issue #298 Phase 4 currently checks lines for resolver/router, adapter docs, item URI normalization, and map routing.
-- `docs/pipeline-unification/delivery/implementation-plan.md:118-137` defines Phase 4 narrowly: resolver, router, adapter capability/scopes registry, normalization, authority mapping, and map.
-- `docs/pipeline-unification/delivery/implementation-checklist.md:68-81` currently broadens Phase 4 into source acquisition ports and `SourceDocument` emission.
-- `docs/pipeline-unification/crates/axon-route/README.md:88-92` says every source request passes through route before acquisition.
-- `docs/pipeline-unification/sources/adapter-scopes.md:407-462` defines scope validation and adapter registry completeness.
+- Issue #298 live Phase 4 checklist is the tracker, but the docs packet is the contract source of truth when tracker wording is broader than the phase boundary. Re-read the live section with `gh issue view 298 --json body --jq .body` before closeout.
+- `docs/pipeline-unification/delivery/implementation-plan.md` Phase 4 defines the phase narrowly: resolver, router, adapter capability/scopes registry, normalization, authority mapping, and map.
+- `docs/pipeline-unification/delivery/implementation-checklist.md` currently broadens Phase 4 into source acquisition ports and `SourceDocument` emission; this plan must split that wording instead of hiding source-family work inside Phase 4.
+- `docs/pipeline-unification/crates/axon-route/README.md` says every source request passes through route before acquisition.
+- `docs/pipeline-unification/crates/axon-adapters/README.md` owns acquisition and requires adapters to emit `SourceDocument`; this is source-family port work unless a route-only test explicitly proves the behavior without acquisition.
+- `docs/pipeline-unification/sources/url-normalization.md` defines canonical URI/source id/item URI rules and requires unsupported scope, invalid option, unsafe tool, and map-without-embed validation before acquisition.
+- `docs/pipeline-unification/sources/adapter-scopes.md` defines scope validation and the full target adapter registry; route-time generated references may be a subset and must be labeled as such.
 - Live code at `crates/axon-services/src/source.rs` currently calls `classify::classify_source_input` before dispatch, so runtime routing is incomplete even though `axon-route` exists.
+
+## Checklist Coverage Gate
+
+Before Phase 4 can be claimed complete, the plan implementation must prove or
+explicitly move every live issue #298 Phase 4 bullet:
+
+- `axon-route` owns source resolution, canonicalization, source id construction,
+  authority mapping, adapter matching, and scope validation.
+- Acquisition implementations are behind `axon-adapters::SourceAdapter` where
+  they are implemented; unfinished source-family acquisition remains tracked by
+  PRs 12-16 and must not be checked as complete under Phase 4.
+- `SourceResolver`, `SourceRouter`, and a route-time adapter capability/scopes
+  registry are implemented and tested.
+- URI/URL/path/package/repo/session/tool inputs normalize before acquisition.
+- Canonical URI/source id route normalization covers web, local, git, package,
+  feed, reddit, youtube, session, upload, CLI, and MCP inputs at route time.
+- Item URI normalization after acquisition is verified only for source families
+  actually ported; otherwise it remains with the relevant source-family PR.
+- Lexical URL rules, scheme-less docs domains, package/registry normalization,
+  local path privacy, CLI/MCP normalization, authority mapping, confidence,
+  evidence, and ambiguity warnings are fixture-tested.
+- Unsupported scopes, invalid options, missing credentials, unsafe CLI/MCP
+  execution, and map-without-embed are rejected or degraded before acquisition
+  according to `adapter-scopes.md` and security policy.
+- `map` remains a first-class action/route and maps to source scope behavior
+  without writing vectors by default.
 
 ## File Structure
 
@@ -807,15 +835,17 @@ If none of those files changed, skip the commit and record this in the final han
 Schema/reference artifacts were already current; no generator commit was needed.
 ```
 
-### Task 7: Update GitHub Issue #298 Phase 4 Tracker
+### Task 7: Prepare GitHub Issue #298 Phase 4 Tracker Reconciliation
 
 **Files:**
 - No repo file changes.
-- External update: GitHub issue #298.
+- Optional external update: GitHub issue #298, only after verified code/docs land
+  and Jacob explicitly authorizes issue mutation.
 
 **Interfaces:**
 - Consumes: completed commits and verification evidence from Tasks 1-6.
-- Produces: issue #298 body/comment where Phase 4 checkboxes accurately match code and docs.
+- Produces: a ready issue #298 body/comment patch where Phase 4 checkboxes
+  accurately match code and docs.
 
 - [ ] **Step 1: Capture current issue body**
 
@@ -877,9 +907,9 @@ diff -u /tmp/axon-298-before.md /tmp/axon-298-body.md | sed -n '1,220p'
 
 Expected: diff only changes Phase 4 wording/checklist and does not alter unrelated sections.
 
-- [ ] **Step 4: Edit issue body**
+- [ ] **Step 4: Edit issue body only when authorized**
 
-Run:
+Run only after Jacob explicitly asks for the issue update:
 
 ```bash
 gh issue edit 298 --repo jmagar/axon --body-file /tmp/axon-298-body.md
@@ -887,9 +917,9 @@ gh issue edit 298 --repo jmagar/axon --body-file /tmp/axon-298-body.md
 
 Expected: command exits 0.
 
-- [ ] **Step 5: Add an audit comment**
+- [ ] **Step 5: Add an audit comment only when authorized**
 
-Run:
+Run only after Jacob explicitly asks for an issue comment:
 
 ```bash
 cat > /tmp/axon-298-phase-4-alignment-comment.md <<'EOF'
@@ -968,7 +998,7 @@ Run:
 gh issue view 298 --repo jmagar/axon --json body --jq .body | sed -n '/### Phase 4:/,/### Phase 5:/p'
 ```
 
-Expected: Phase 4 contains route-first implementation proof and source-family acquisition items are no longer checked as Phase 4 complete.
+Expected if issue mutation was authorized: Phase 4 contains route-first implementation proof and source-family acquisition items are no longer checked as Phase 4 complete. If issue mutation was not authorized, record that the prepared patch still needs to be applied.
 
 - [ ] **Step 5: Inspect working tree**
 
@@ -985,13 +1015,15 @@ Expected: only intentional changes remain. Existing unrelated untracked files ma
 Report:
 
 ```text
-Phase 4 is aligned in code, docs, and issue #298.
+Phase 4 is aligned in code and docs; issue #298 reconciliation is either applied
+or prepared for Jacob approval.
 
 Key changes:
 - `index_source` routes through `SourceResolver`/`SourceRouter` before acquisition dispatch.
 - Unsupported scopes fail at routing before data-plane checks.
 - Phase 4 docs now separate route-time completion from source-family acquisition ports.
-- Issue #298 Phase 4 tracker was reconciled with the source-family PR breakdown.
+- Issue #298 Phase 4 tracker was reconciled with the source-family PR breakdown,
+  or a prepared patch is ready if issue mutation was not authorized.
 
 Verification:
 - cargo test -p axon-services source_routing --locked

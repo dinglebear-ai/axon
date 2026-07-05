@@ -124,6 +124,7 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
 
     let invalid = store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Completed,
             phase: PipelinePhase::Complete,
@@ -148,6 +149,7 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
     };
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -186,6 +188,7 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
         .expect("stage plan created");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Waiting,
             phase: PipelinePhase::Embedding,
@@ -234,6 +237,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),
+            after_sequence: None,
             since_sequence: None,
             limit: Some(10),
             cursor: None,
@@ -242,7 +246,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
         .expect("list events");
     assert_eq!(public_events.events.len(), 1);
     assert_eq!(public_events.events[0].sequence, 2);
-    assert_eq!(public_events.last_sequence, Some(2));
+    assert_eq!(public_events.last_sequence, 2);
 
     let default_events = store
         .events(JobEventListRequest {
@@ -250,6 +254,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
             phase: None,
             severity: None,
             visibility: None,
+            after_sequence: None,
             since_sequence: None,
             limit: Some(u32::MAX),
             cursor: None,
@@ -286,6 +291,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),
+            after_sequence: None,
             since_sequence: None,
             limit: Some(10),
             cursor: None,
@@ -361,6 +367,7 @@ async fn heartbeat_cannot_resurrect_terminal_job() {
     let job = store.create(create_request()).await.expect("create job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -374,6 +381,7 @@ async fn heartbeat_cannot_resurrect_terminal_job() {
         .expect("running");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Completed,
             phase: PipelinePhase::Complete,
@@ -421,6 +429,7 @@ async fn recovery_honors_staleness_cutoff() {
         .expect("create job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -451,6 +460,8 @@ async fn recovery_honors_staleness_cutoff() {
     let recovery = store
         .recover(JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: None,
             older_than_seconds: Some(360),
             dry_run: false,
             allow_without_cutoff: false,
@@ -491,6 +502,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     let job = store.create(create_request()).await.expect("create job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -518,6 +530,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
 
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Canceled,
             phase: PipelinePhase::Canceled,
@@ -596,6 +609,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         .expect("create running job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: running.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -625,6 +639,8 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     let recovery = store
         .recover(JobRecoveryRequest {
             kind: Some(JobKind::Source),
+            stale_before: None,
+            limit: None,
             older_than_seconds: None,
             dry_run: false,
             allow_without_cutoff: true,
@@ -675,6 +691,10 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
 
     let cleanup = store
         .cleanup(JobCleanupRequest {
+            kind: None,
+            older_than: None,
+            status: None,
+            limit: None,
             older_than_seconds: None,
             dry_run: false,
             confirm_all_terminal: true,
@@ -770,6 +790,7 @@ async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
     ] {
         store
             .update_status(JobStatusUpdate {
+                source_id: None,
                 job_id: job.job_id,
                 status,
                 phase,
@@ -828,6 +849,7 @@ async fn observe_sink_absent_leaves_status_updates_working() {
 
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,

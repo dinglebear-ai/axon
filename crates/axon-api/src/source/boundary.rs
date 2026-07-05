@@ -6,8 +6,10 @@ use super::common::*;
 use super::document::SourceDocument;
 use super::enums::*;
 use super::ids::*;
+use super::job_listing::{JobSummary, WatchSummary};
 use super::lifecycle::JobDescriptor;
-use super::listing::{JobSummary, Page, WatchSummary};
+use super::listing::Page;
+use super::vector::CollectionSpec;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -41,6 +43,87 @@ pub struct ArtifactReadResult {
     pub content: Option<ContentRef>,
     #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
     pub metadata: MetadataMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactListRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<SourceId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<JobId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ArtifactKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactResult {
+    pub artifacts: Vec<ArtifactRef>,
+    pub limit: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+    pub warnings: Vec<SourceWarning>,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadPurpose {
+    SourceArtifact,
+    Import,
+    Evaluation,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UploadCreateRequest {
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+    pub purpose: UploadPurpose,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<SourceId>,
+    #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
+    pub metadata: MetadataMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UploadResult {
+    pub artifact: ArtifactRef,
+    pub status: LifecycleStatus,
+    pub warnings: Vec<SourceWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CollectionListRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CollectionResult {
+    pub collections: Vec<CollectionSpec>,
+    pub limit: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+    pub warnings: Vec<SourceWarning>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -179,13 +262,16 @@ pub struct WatchHistoryRequest {
     pub watch_id: WatchId,
     pub limit: Option<u32>,
     pub cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<LifecycleStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WatchHistoryResult {
-    pub runs: Vec<JobDescriptor>,
-    pub warnings: Vec<SourceWarning>,
+    pub watch_id: WatchId,
+    pub jobs: Vec<JobDescriptor>,
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
