@@ -66,8 +66,8 @@ fn extracts_markdown_heading_facts_and_candidates() {
 
     let candidate = &candidates[1];
     assert_eq!(candidate.kind, "markdown_heading");
-    assert_eq!(candidate.nodes[1].node_kind, "markdown_heading");
-    assert_eq!(candidate.edges[0].edge_kind, "declares");
+    assert_eq!(candidate.nodes[1].node_kind, "artifact");
+    assert_eq!(candidate.edges[0].edge_kind, "source_indexed_as");
     assert_eq!(
         candidate.evidence[0].quote.as_deref(),
         Some("## Source Pipeline")

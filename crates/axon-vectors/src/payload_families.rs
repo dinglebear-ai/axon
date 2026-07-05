@@ -5,7 +5,8 @@
 //! source families land.
 
 pub const VECTOR_SOURCE_FAMILIES: &[&str] = &[
-    "code", "web", "package", "session", "graph", "memory", "feed", "social", "media",
+    "code", "web", "package", "session", "graph", "memory", "feed", "social", "media", "local",
+    "tool", "docker", "env",
 ];
 
 pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
@@ -98,4 +99,32 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
         "memory",
         &["memory_id", "memory_importance", "memory_status"],
     ),
+    (
+        "local",
+        &[
+            "local_checkout",
+            "local_path_key",
+            "local_git_remote",
+            "local_git_commit",
+        ],
+    ),
+    (
+        "tool",
+        &[
+            "tool_name",
+            "tool_action",
+            "tool_side_effect_class",
+            "tool_output_artifact_id",
+        ],
+    ),
+    (
+        "docker",
+        &[
+            "docker_image",
+            "docker_service",
+            "docker_port",
+            "docker_volume",
+        ],
+    ),
+    ("env", &["env_key", "env_secret_reference"]),
 ];

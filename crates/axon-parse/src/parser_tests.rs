@@ -246,6 +246,152 @@ fn production_registry_runs_real_parser_families() {
     )));
     assert_eq!(markdown.parser_id, "markdown_headings");
     assert_eq!(markdown.facts[0].fact_kind, "markdown_heading");
+
+    let docker = registry.parse(&input(source_doc(
+        ContentKind::PlainText,
+        Some("Dockerfile"),
+        None,
+        "FROM qdrant/qdrant:v1.13.1\nEXPOSE 6333\n",
+    )));
+    assert_eq!(docker.parser_id, "docker_manifest");
+    assert!(docker.facts.iter().any(|fact| {
+        fact.fact_kind == "docker_base_image" && fact.name == "qdrant/qdrant:v1.13.1"
+    }));
+
+    let env = registry.parse(&input(source_doc(
+        ContentKind::PlainText,
+        Some(".env.example"),
+        None,
+        "QDRANT_URL=http://localhost:6333\nOPENAI_API_KEY=\n",
+    )));
+    assert_eq!(env.parser_id, "env_example");
+    assert!(
+        env.facts
+            .iter()
+            .any(|fact| fact.fact_kind == "environment_variable" && fact.name == "QDRANT_URL")
+    );
+    assert!(
+        env.facts
+            .iter()
+            .any(|fact| { fact.fact_kind == "secret_reference" && fact.name == "OPENAI_API_KEY" })
+    );
+}
+
+#[test]
+fn parser_family_completeness_routes_phase_7_fixtures() {
+    let registry = production_registry();
+    let cases = [
+        (
+            "Cargo.toml",
+            ContentKind::Toml,
+            "[package]\nname = \"axon\"\n[dependencies]\ntokio = \"1\"\n",
+            "manifest",
+        ),
+        (
+            "Cargo.lock",
+            ContentKind::Toml,
+            "[[package]]\nname = \"tokio\"\n",
+            "manifest",
+        ),
+        (
+            "lib.rs",
+            ContentKind::Code,
+            "pub fn run() {}\n",
+            "code_symbols",
+        ),
+        (
+            "package.json",
+            ContentKind::Json,
+            r#"{"dependencies":{"vite":"7"}}"#,
+            "manifest",
+        ),
+        (
+            "pnpm-lock.yaml",
+            ContentKind::Yaml,
+            "dependencies:\n  vite: 7.0.0\n",
+            "manifest",
+        ),
+        (
+            "index.ts",
+            ContentKind::Code,
+            "export function run() {}\n",
+            "code_symbols",
+        ),
+        (
+            "pyproject.toml",
+            ContentKind::Toml,
+            "[project]\ndependencies = [\"requests\"]\n",
+            "manifest",
+        ),
+        (
+            "requirements.txt",
+            ContentKind::PlainText,
+            "requests==2\n",
+            "manifest",
+        ),
+        (
+            "module.py",
+            ContentKind::Code,
+            "def run():\n    pass\n",
+            "code_symbols",
+        ),
+        (
+            "Dockerfile",
+            ContentKind::PlainText,
+            "FROM alpine:3\n",
+            "docker_manifest",
+        ),
+        (
+            "docker-compose.yml",
+            ContentKind::Yaml,
+            "services:\n  api:\n    image: alpine:3\n",
+            "docker_manifest",
+        ),
+        (
+            ".env.example",
+            ContentKind::PlainText,
+            "PORT=3000\n",
+            "env_example",
+        ),
+        (
+            "openapi.yaml",
+            ContentKind::Yaml,
+            "openapi: 3.1.0\npaths: {}\n",
+            "api_schema",
+        ),
+        (
+            "schema.graphql",
+            ContentKind::PlainText,
+            "type Query { ping: String }\n",
+            "api_schema",
+        ),
+        (
+            "session.jsonl",
+            ContentKind::Transcript,
+            r#"{"type":"message","role":"user","content":"hi"}"#,
+            "session_jsonl",
+        ),
+        (
+            "tool-output.jsonl",
+            ContentKind::Structured,
+            r#"{"tool":"shell","action":"exec","output":"ok"}"#,
+            "tool_output_jsonl",
+        ),
+        (
+            "mcp-tool-schema.json",
+            ContentKind::Json,
+            r#"{"name":"axon","inputSchema":{"type":"object"}}"#,
+            "api_schema",
+        ),
+    ];
+
+    for (path, kind, text, expected_parser) in cases {
+        let result = registry.parse(&input(source_doc(kind, Some(path), None, text)));
+        assert_eq!(
+            result.parser_id, expected_parser,
+            "{path} should route to {expected_parser}"
+        );
+    }
 }
 
 #[test]

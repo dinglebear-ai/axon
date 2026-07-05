@@ -1,7 +1,7 @@
 use super::*;
 use axon_api::source::{
     GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate, GraphEvidence, GraphNodeCandidate,
-    JobId, MetadataMap, SourceId, SourceItemKey,
+    JobId, MetadataMap, SourceId, SourceItemKey, SourceRange,
 };
 use uuid::Uuid;
 
@@ -84,6 +84,44 @@ fn unknown_edge_kind_is_rejected() {
         "{}",
         err.message
     );
+}
+
+#[test]
+fn candidate_validation_rejects_unknown_evidence_kind() {
+    let mut c = base_candidate();
+    c.evidence[0].evidence_kind = "tool_result".to_string();
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(
+        err.message.contains("unknown graph evidence kind"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn candidate_validation_rejects_invalid_evidence_source_range() {
+    let mut c = base_candidate();
+    c.evidence[0].range = Some(SourceRange {
+        line_start: Some(10),
+        line_end: Some(3),
+        byte_start: None,
+        byte_end: None,
+        char_start: None,
+        char_end: None,
+        time_start_ms: None,
+        time_end_ms: None,
+        dom_selector: None,
+        json_pointer: None,
+        yaml_path: None,
+        xml_xpath: None,
+        csv_row: None,
+        session_turn_id: None,
+        turn_start: None,
+        turn_end: None,
+    });
+
+    let err = validate_candidate(&c).expect_err("invalid source range rejected");
+    assert!(err.message.contains("invalid source range"));
 }
 
 #[test]

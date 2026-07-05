@@ -120,6 +120,16 @@ fn classify_field_bands() {
 }
 
 #[test]
+fn unknown_adapter_metadata_defaults_to_internal() {
+    let redactor = DefaultRedactor::new();
+
+    assert_eq!(
+        redactor.classify_field("adapter_blob", &json!({ "raw": "not classified" })),
+        Visibility::Internal
+    );
+}
+
+#[test]
 fn redact_text_scrubs_secrets_and_local_paths() {
     let r = DefaultRedactor::new();
     let c = ctx();

@@ -7,6 +7,27 @@ use crate::graph_candidate::graph_candidate;
 use crate::parser::ParseInput;
 
 #[test]
+fn parser_graph_candidate_uses_closed_source_graph_registry() {
+    let input = input("src-a", "Dockerfile", "file:///repo/Dockerfile");
+
+    let candidate = crate::graph_candidate::candidate_edge(
+        &input,
+        "docker_manifest",
+        "container_manifest",
+        "local_checkout",
+        "local://repo",
+        "container_image",
+        "docker:library/postgres",
+        "repo_uses_container_image",
+        "container_manifest",
+        Some(1),
+        Some("FROM postgres:16".to_string()),
+    );
+
+    axon_graph::candidate::validate_candidate(&candidate).expect("candidate is contract-valid");
+}
+
+#[test]
 fn graph_candidate_keys_are_source_scoped_and_collision_resistant() {
     let left = graph_candidate(
         &input("src-a", "foo-bar", "file:///repo-a/foo.rs"),
@@ -37,6 +58,7 @@ fn graph_candidate_keys_are_source_scoped_and_collision_resistant() {
     assert_ne!(left.nodes[1].stable_key, right.nodes[1].stable_key);
     assert_ne!(left.candidate_id, other_source.candidate_id);
     assert_ne!(left.nodes[0].stable_key, other_source.nodes[0].stable_key);
+    axon_graph::candidate::validate_candidate(&left).expect("legacy helper is contract-valid");
 }
 
 #[test]

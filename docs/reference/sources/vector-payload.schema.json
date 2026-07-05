@@ -926,6 +926,76 @@
               "required": [
                 "memory_status"
               ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
             }
           ]
         }
@@ -1214,6 +1284,76 @@
               "required": [
                 "memory_status"
               ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
             }
           ]
         }
@@ -1472,6 +1612,76 @@
               "required": [
                 "memory_status"
               ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
             }
           ]
         }
@@ -1724,6 +1934,76 @@
             {
               "required": [
                 "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
               ]
             }
           ]
@@ -2027,6 +2307,76 @@
             {
               "required": [
                 "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
               ]
             }
           ]
@@ -2336,6 +2686,76 @@
               "required": [
                 "memory_status"
               ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
             }
           ]
         }
@@ -2638,6 +3058,76 @@
             {
               "required": [
                 "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
               ]
             }
           ]
@@ -2947,6 +3437,76 @@
               "required": [
                 "memory_status"
               ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
             }
           ]
         }
@@ -3255,6 +3815,1578 @@
               "required": [
                 "graph_confidence"
               ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "local"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "tool"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "docker"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_secret_reference"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "env"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
             }
           ]
         }
@@ -3337,6 +5469,18 @@
       "minLength": 1,
       "type": "string"
     },
+    "docker_image": {
+      "type": "string"
+    },
+    "docker_port": {
+      "type": "string"
+    },
+    "docker_service": {
+      "type": "string"
+    },
+    "docker_volume": {
+      "type": "string"
+    },
     "document_id": {
       "minLength": 1,
       "type": "string",
@@ -3376,6 +5520,12 @@
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "env_key": {
+      "type": "string"
+    },
+    "env_secret_reference": {
+      "type": "string"
     },
     "feed_entry_author": {
       "type": "string"
@@ -3433,6 +5583,18 @@
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "local_checkout": {
+      "type": "string"
+    },
+    "local_git_commit": {
+      "type": "string"
+    },
+    "local_git_remote": {
+      "type": "string"
+    },
+    "local_path_key": {
+      "type": "string"
     },
     "manifest": {
       "type": "boolean"
@@ -3542,7 +5704,11 @@
         "memory",
         "feed",
         "social",
-        "media"
+        "media",
+        "local",
+        "tool",
+        "docker",
+        "env"
       ],
       "minLength": 1,
       "type": "string",
@@ -3582,6 +5748,18 @@
       "type": "string"
     },
     "title": {
+      "type": "string"
+    },
+    "tool_action": {
+      "type": "string"
+    },
+    "tool_name": {
+      "type": "string"
+    },
+    "tool_output_artifact_id": {
+      "type": "string"
+    },
+    "tool_side_effect_class": {
       "type": "string"
     },
     "url": {
@@ -4452,6 +6630,324 @@
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal"
+      },
+      {
+        "chunk_hash": "chunk_hash",
+        "chunk_id": "chunk-local-0",
+        "chunk_key": "local-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/local",
+          "heading_path": [
+            "local heading"
+          ],
+          "path": "/local",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:localhash",
+        "content_kind": "content_kind",
+        "document_id": "doc-local",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-local",
+        "local_checkout": "local_checkout",
+        "local_git_commit": "local_git_commit",
+        "local_git_remote": "local_git_remote",
+        "local_path_key": "local_path_key",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
+        "source_family": "local",
+        "source_generation": "gen-local-7",
+        "source_id": "src-local",
+        "source_item_key": "local-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
+        "visibility": "internal"
+      },
+      {
+        "chunk_hash": "chunk_hash",
+        "chunk_id": "chunk-tool-0",
+        "chunk_key": "tool-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/tool",
+          "heading_path": [
+            "tool heading"
+          ],
+          "path": "/tool",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:toolhash",
+        "content_kind": "content_kind",
+        "document_id": "doc-tool",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-tool",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
+        "source_family": "tool",
+        "source_generation": "gen-tool-7",
+        "source_id": "src-tool",
+        "source_item_key": "tool-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "tool_action": "tool_action",
+        "tool_name": "tool_name",
+        "tool_output_artifact_id": "tool_output_artifact_id",
+        "tool_side_effect_class": "tool_side_effect_class",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
+        "visibility": "internal"
+      },
+      {
+        "chunk_hash": "chunk_hash",
+        "chunk_id": "chunk-docker-0",
+        "chunk_key": "docker-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/docker",
+          "heading_path": [
+            "docker heading"
+          ],
+          "path": "/docker",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:dockerhash",
+        "content_kind": "content_kind",
+        "docker_image": "docker_image",
+        "docker_port": "docker_port",
+        "docker_service": "docker_service",
+        "docker_volume": "docker_volume",
+        "document_id": "doc-docker",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-docker",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
+        "source_family": "docker",
+        "source_generation": "gen-docker-7",
+        "source_id": "src-docker",
+        "source_item_key": "docker-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
+        "visibility": "internal"
+      },
+      {
+        "chunk_hash": "chunk_hash",
+        "chunk_id": "chunk-env-0",
+        "chunk_key": "env-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/env",
+          "heading_path": [
+            "env heading"
+          ],
+          "path": "/env",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "collection": "axon",
+        "committed_generation": "uncommitted",
+        "content_hash": "sha256:envhash",
+        "content_kind": "content_kind",
+        "document_id": "doc-env",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "env_key": "env_key",
+        "env_secret_reference": "env_secret_reference",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-env",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
+        "source_family": "env",
+        "source_generation": "gen-env-7",
+        "source_id": "src-env",
+        "source_item_key": "env-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
+        "visibility": "internal"
       }
     ],
     "generated_by": "cargo xtask schemas vector-payload",
@@ -4625,6 +7121,11 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
+        "checksum": "sha256:935c16dcd58bac358bcb78eb1e72634941709135d7148adcb8cbe3c09e6e7808",
+        "kind": "rust_module",
+        "path": "crates/axon-vectors/src/payload_families.rs"
+      },
+      {
         "checksum": "sha256:506dbcd5fc7edafa752b990da56f6177cb68810a74b59c6b2b3ddb937ce4d112",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
@@ -4761,6 +7262,40 @@
           "memory_status"
         ],
         "source_family": "memory"
+      },
+      {
+        "fields": [
+          "local_checkout",
+          "local_path_key",
+          "local_git_remote",
+          "local_git_commit"
+        ],
+        "source_family": "local"
+      },
+      {
+        "fields": [
+          "tool_name",
+          "tool_action",
+          "tool_side_effect_class",
+          "tool_output_artifact_id"
+        ],
+        "source_family": "tool"
+      },
+      {
+        "fields": [
+          "docker_image",
+          "docker_service",
+          "docker_port",
+          "docker_volume"
+        ],
+        "source_family": "docker"
+      },
+      {
+        "fields": [
+          "env_key",
+          "env_secret_reference"
+        ],
+        "source_family": "env"
       }
     ]
   }
