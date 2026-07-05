@@ -44,6 +44,8 @@ pub struct JobCreateRequest {
 #[serde(deny_unknown_fields)]
 pub struct JobStatusUpdate {
     pub job_id: JobId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<SourceId>,
     pub status: LifecycleStatus,
     pub phase: PipelinePhase,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -704,6 +704,11 @@
             },
             {
               "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
                 "reddit_author"
               ]
             },
@@ -1310,6 +1315,11 @@
             },
             {
               "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
                 "video_id"
               ]
             },
@@ -1563,6 +1573,11 @@
             },
             {
               "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
                 "reddit_author"
               ]
             },
@@ -1807,6 +1822,11 @@
             {
               "required": [
                 "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
               ]
             },
             {
@@ -2105,6 +2125,11 @@
             {
               "required": [
                 "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
               ]
             },
             {
@@ -2412,6 +2437,11 @@
             },
             {
               "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
                 "reddit_author"
               ]
             },
@@ -2706,6 +2736,11 @@
             {
               "required": [
                 "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
               ]
             },
             {
@@ -3013,6 +3048,11 @@
             },
             {
               "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
                 "reddit_author"
               ]
             },
@@ -3229,6 +3269,10 @@
     "channel_url": {
       "type": "string"
     },
+    "chunk_content_kind": {
+      "minLength": 1,
+      "type": "string"
+    },
     "chunk_hash": {
       "minLength": 1,
       "type": "string"
@@ -3247,6 +3291,18 @@
       "$ref": "#/$defs/ChunkLocator"
     },
     "chunk_text": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "chunking_fallback": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "chunking_fallback_from": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "code_chunk_source": {
       "minLength": 1,
       "type": "string"
     },
@@ -3520,6 +3576,9 @@
     },
     "source_type": {
       "minLength": 1,
+      "type": "string"
+    },
+    "structured_parse_error": {
       "type": "string"
     },
     "title": {
@@ -3808,6 +3867,7 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "structured_parse_error": "structured_parse_error",
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal"
@@ -4560,7 +4620,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:c0699b368629fff2354088e568c95eb1fb10efdbd4d3817f3d336dbc1d3e5060",
+        "checksum": "sha256:f937be4f83651ef06d4a28ce6a1b9e104f3405542337abceeb406e28089cc967",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -4613,7 +4673,8 @@
           "feed_entry_id",
           "feed_entry_link",
           "feed_entry_published",
-          "feed_entry_author"
+          "feed_entry_author",
+          "structured_parse_error"
         ],
         "source_family": "feed"
       },

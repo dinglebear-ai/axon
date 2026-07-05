@@ -33,6 +33,7 @@ async fn target_source_job_services_delegate_to_job_store() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -134,6 +135,7 @@ async fn target_source_job_services_delegate_to_job_store() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Canceled,
             phase: PipelinePhase::Canceled,

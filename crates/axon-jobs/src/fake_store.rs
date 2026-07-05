@@ -149,6 +149,9 @@ impl JobStore for FakeJobWatchStore {
                 .get_mut(&status.job_id)
                 .ok_or_else(|| missing_job(status.job_id))?;
             validate_transition(status.job_id, job.status, status.status)?;
+            if let Some(source_id) = status.source_id.clone() {
+                job.source_id = Some(source_id);
+            }
             job.status = status.status;
             job.phase = status.phase;
             job.counts = status.counts;

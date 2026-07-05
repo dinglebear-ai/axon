@@ -34,6 +34,7 @@ pub async fn index_web_source_with_job(
     // it explicitly here.
     jobs.update_status(JobStatusUpdate {
         job_id: input.job_id,
+        source_id: None,
         status: LifecycleStatus::Running,
         phase: PipelinePhase::Preparing,
         stage_id: None,
@@ -110,6 +111,7 @@ async fn record_terminal_status(
 ) -> anyhow::Result<()> {
     jobs.update_status(JobStatusUpdate {
         job_id,
+        source_id: None,
         status,
         phase: PipelinePhase::Complete,
         stage_id: None,
