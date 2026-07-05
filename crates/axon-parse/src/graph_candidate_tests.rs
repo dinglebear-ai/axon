@@ -58,6 +58,7 @@ fn graph_candidate_keys_are_source_scoped_and_collision_resistant() {
     assert_ne!(left.nodes[1].stable_key, right.nodes[1].stable_key);
     assert_ne!(left.candidate_id, other_source.candidate_id);
     assert_ne!(left.nodes[0].stable_key, other_source.nodes[0].stable_key);
+    axon_graph::candidate::validate_candidate(&left).expect("legacy helper is contract-valid");
 }
 
 #[test]

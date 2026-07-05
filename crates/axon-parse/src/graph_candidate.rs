@@ -21,7 +21,7 @@ pub fn graph_candidate(
         "source_id={}|item={}|uri={}",
         input.document.source_id.0, input.document.source_item_key.0, input.document.canonical_uri
     );
-    let file_key = format!("source_item:{}", stable_token(&source_scope));
+    let file_key = format!("repo_file:{}", stable_token(&source_scope));
     let item_identity = format!("{source_scope}|kind={kind}|name={name}");
     let item_token = stable_token(&item_identity);
     let candidate_id = format!("cand_{kind}_{item_token}");
@@ -50,27 +50,27 @@ pub fn graph_candidate(
         },
         nodes: vec![
             GraphNodeCandidate {
-                node_kind: "source_item".to_string(),
+                node_kind: "repo_file".to_string(),
                 stable_key: file_key.clone(),
                 label: input.document.source_item_key.0.clone(),
                 properties: MetadataMap::new(),
             },
             GraphNodeCandidate {
-                node_kind: kind.to_string(),
+                node_kind: "artifact".to_string(),
                 stable_key: item_key.clone(),
                 label: name.to_string(),
                 properties: MetadataMap::new(),
             },
         ],
         edges: vec![GraphEdgeCandidate {
-            edge_kind: "declares".to_string(),
+            edge_kind: "source_indexed_as".to_string(),
             from_stable_key: file_key,
             to_stable_key: item_key,
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
             evidence_id,
-            evidence_kind: "source_line".to_string(),
+            evidence_kind: "text_mention".to_string(),
             source_id: input.document.source_id.clone(),
             source_item_key: input.document.source_item_key.clone(),
             document_id: Some(input.document.document_id.clone()),
