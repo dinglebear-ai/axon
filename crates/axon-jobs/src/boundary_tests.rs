@@ -12,6 +12,7 @@ async fn fake_job_store_tracks_status_events_and_heartbeats() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: Some(SourceId::new("src_docs")),
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -29,8 +30,8 @@ async fn fake_job_store_tracks_status_events_and_heartbeats() {
             .await
             .unwrap()
             .unwrap()
-            .phase,
-        PipelinePhase::Embedding
+            .source_id,
+        Some(SourceId::new("src_docs"))
     );
 
     assert_eq!(
@@ -70,6 +71,7 @@ async fn fake_job_store_rejects_unknown_jobs_and_terminal_restarts() {
     JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Completed,
             phase: PipelinePhase::Complete,
@@ -85,6 +87,7 @@ async fn fake_job_store_rejects_unknown_jobs_and_terminal_restarts() {
     let err = JobStore::update_status(
         &store,
         JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -595,6 +598,7 @@ fn empty_counts() -> StageCounts {
 fn status_update(job_id: JobId, status: LifecycleStatus) -> JobStatusUpdate {
     JobStatusUpdate {
         job_id,
+        source_id: None,
         status,
         phase: match status {
             LifecycleStatus::Queued => PipelinePhase::Queued,

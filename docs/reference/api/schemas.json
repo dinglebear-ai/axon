@@ -8326,6 +8326,16 @@
         "phase": {
           "$ref": "#/$defs/JobStatusUpdate_PipelinePhase"
         },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobStatusUpdate_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "stage_id": {
           "anyOf": [
             {
@@ -8528,6 +8538,9 @@
         "retryable"
       ],
       "type": "object"
+    },
+    "JobStatusUpdate_SourceId": {
+      "type": "string"
     },
     "JobStatusUpdate_SourceItemKey": {
       "type": "string"
@@ -26579,7 +26592,7 @@
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:5bcbacf1cab2c1e653f62954264864a2f9b5706c7c5af966f1e9cb0ad53e5a2d",
+        "checksum": "sha256:ee5f54981304ff9c41f97caa6c410510e2a0167112649ce8fab3da5efb2f7965",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job.rs"
       },

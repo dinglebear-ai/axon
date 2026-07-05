@@ -55,7 +55,7 @@ Payload validation applies metadata and locator guardrails before vector writes.
 | Family | Fields |
 |---|---|
 | `code` | `code_language`, `code_symbol_name`, `code_symbol_kind`, `code_file_type`, `manifest`, `git_provider`, `git_host`, `git_repo`, `git_owner`, `git_web_url` |
-| `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author` |
+| `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
 | `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth` |
@@ -118,7 +118,7 @@ Vector payload docs are paired with the DTO definitions in `docs/reference/api/s
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
-| `crates/axon-vectors/src/payload.rs` | `sha256:c0699b368629fff2354088e568c95eb1fb10efdbd4d3817f3d336dbc1d3e5060` |
+| `crates/axon-vectors/src/payload.rs` | `sha256:f937be4f83651ef06d4a28ce6a1b9e104f3405542337abceeb406e28089cc967` |
 | `crates/axon-vectors/src/point.rs` | `sha256:506dbcd5fc7edafa752b990da56f6177cb68810a74b59c6b2b3ddb937ce4d112` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:ef84517d66acc0e35fe0b432df3cee52fc07e6643006003eca0ec0c29a5cde7f` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |

@@ -124,6 +124,7 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
 
     let invalid = store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Completed,
             phase: PipelinePhase::Complete,
@@ -148,6 +149,7 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
     };
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -186,6 +188,7 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
         .expect("stage plan created");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Waiting,
             phase: PipelinePhase::Embedding,
@@ -364,6 +367,7 @@ async fn heartbeat_cannot_resurrect_terminal_job() {
     let job = store.create(create_request()).await.expect("create job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -377,6 +381,7 @@ async fn heartbeat_cannot_resurrect_terminal_job() {
         .expect("running");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Completed,
             phase: PipelinePhase::Complete,
@@ -424,6 +429,7 @@ async fn recovery_honors_staleness_cutoff() {
         .expect("create job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -496,6 +502,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     let job = store.create(create_request()).await.expect("create job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -523,6 +530,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
 
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Canceled,
             phase: PipelinePhase::Canceled,
@@ -601,6 +609,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         .expect("create running job");
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: running.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
@@ -781,6 +790,7 @@ async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
     ] {
         store
             .update_status(JobStatusUpdate {
+                source_id: None,
                 job_id: job.job_id,
                 status,
                 phase,
@@ -839,6 +849,7 @@ async fn observe_sink_absent_leaves_status_updates_working() {
 
     store
         .update_status(JobStatusUpdate {
+            source_id: None,
             job_id: job.job_id,
             status: LifecycleStatus::Running,
             phase: PipelinePhase::Embedding,
