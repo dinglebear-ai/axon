@@ -172,22 +172,20 @@ fn router_preserves_stricter_safety_class_than_source_minimum() {
 }
 
 #[test]
-fn router_selects_adapters_deterministically() {
+fn resolver_requires_canonical_adapter_hint_to_match_registry() {
     let registry = AdapterRegistry::from_adapters(vec![
         crate::AdapterDefinition::new("zeta", "1", SourceKind::Web, SourceScope::Site)
             .with_scope(SourceScope::Page),
         crate::AdapterDefinition::new("alpha", "1", SourceKind::Web, SourceScope::Site)
             .with_scope(SourceScope::Page),
     ]);
-    let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry.clone());
-    let router = SourceRouter::new(registry);
+    let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry);
     let request = SourceRequest::new("example.com");
-    let resolved = resolver.resolve(&request).expect("web source resolves");
 
-    let route = router.route(&request, resolved).expect("route resolves");
+    let err = resolver
+        .resolve(&request)
+        .expect_err("web source requires a matching web adapter hint");
 
-    assert_eq!(route.adapter.name, "alpha");
-    assert_eq!(route.scope, SourceScope::Site);
-    assert_eq!(route.safety_class, SafetyClass::PublicNetwork);
-    assert!(route.refresh_supported);
+    assert_eq!(err.code.0, "source.resolve.no_adapter");
+    assert_eq!(err.stage, axon_error::ErrorStage::Resolving);
 }

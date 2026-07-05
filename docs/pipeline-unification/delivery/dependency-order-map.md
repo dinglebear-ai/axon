@@ -47,6 +47,9 @@ Contract packet
 
 ## “Do Not Start X Until Y” List
 
+- Source-family ports must not bypass
+  `axon-services::source::routing::resolve_source_route`; acquisition receives
+  an already validated route plan or a source-family bridge derived from it.
 - Do not delete `embed`, `ingest`, `scrape`, `crawl`, or
   `code-search-watch` public surfaces until source routing, source jobs,
   generated schemas, and removal checks exist.
