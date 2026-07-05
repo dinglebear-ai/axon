@@ -23,6 +23,9 @@ impl ChunkRouter {
         if is_tool_output(doc) {
             return Ok(ChunkingProfile::ToolOutput);
         }
+        if is_session_turns(doc) {
+            return Ok(ChunkingProfile::SessionTurns);
+        }
         if is_env_example(doc) {
             return Ok(ChunkingProfile::StructuredRecords);
         }
@@ -151,6 +154,13 @@ fn is_tool_output(doc: &SourceDocument) -> bool {
         .as_deref()
         .or_else(|| doc.canonical_uri.rsplit('/').next())
         .is_some_and(|path| path.rsplit('/').next().unwrap_or(path) == "tool-output.jsonl")
+}
+
+fn is_session_turns(doc: &SourceDocument) -> bool {
+    doc.path
+        .as_deref()
+        .or_else(|| doc.canonical_uri.rsplit('/').next())
+        .is_some_and(|path| path.rsplit('/').next().unwrap_or(path) == "session.jsonl")
 }
 
 fn is_api_schema(doc: &SourceDocument) -> bool {

@@ -110,6 +110,61 @@ fn router_selects_phase_7_parser_profiles_by_path() {
 }
 
 #[test]
+fn chunk_profile_completeness_covers_required_profiles() {
+    let cases = [
+        (
+            source_doc(ContentKind::Code, "pub fn run() {}\n").with_path("src/lib.rs"),
+            ChunkingProfile::CodeSymbol,
+        ),
+        (
+            source_doc(ContentKind::PlainText, "FROM alpine\n").with_path("Dockerfile"),
+            ChunkingProfile::CodeManifest,
+        ),
+        (
+            source_doc(ContentKind::Markdown, "# Heading\n"),
+            ChunkingProfile::MarkdownSections,
+        ),
+        (
+            source_doc(ContentKind::Html, "<article>Body</article>"),
+            ChunkingProfile::HtmlArticle,
+        ),
+        (
+            source_doc(ContentKind::PlainText, "plain text"),
+            ChunkingProfile::PlainTextWindows,
+        ),
+        (
+            source_doc(ContentKind::Transcript, "user: hi"),
+            ChunkingProfile::TranscriptSegments,
+        ),
+        (
+            source_doc(ContentKind::PlainText, "PORT=3000").with_path(".env.example"),
+            ChunkingProfile::StructuredRecords,
+        ),
+        (
+            source_doc(ContentKind::Yaml, "openapi: 3.1.0").with_path("openapi.yaml"),
+            ChunkingProfile::ApiSchema,
+        ),
+        (
+            source_doc(ContentKind::PlainText, r#"{"tool":"shell"}"#)
+                .with_path("tool-output.jsonl"),
+            ChunkingProfile::ToolOutput,
+        ),
+        (
+            source_doc(ContentKind::PlainText, r#"{"role":"user"}"#).with_path("session.jsonl"),
+            ChunkingProfile::SessionTurns,
+        ),
+        (
+            source_doc(ContentKind::BinaryMetadata, "meta"),
+            ChunkingProfile::AtomicMetadata,
+        ),
+    ];
+
+    for (doc, expected) in cases {
+        assert_eq!(ChunkRouter::default().route(&doc).unwrap(), expected);
+    }
+}
+
+#[test]
 fn router_ignores_generic_profile_metadata() {
     let mut doc = source_doc(ContentKind::PlainText, "release profile text");
     doc.metadata = metadata([("profile", json!("production"))]);
