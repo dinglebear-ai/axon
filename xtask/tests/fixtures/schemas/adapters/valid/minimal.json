@@ -1,0 +1,12 @@
+{
+  "x-axon": {
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas adapters",
+    "owner_crates": ["axon-route", "axon-adapters"],
+    "source_inputs": [],
+    "clean_break": true,
+    "registry_status": "fixture",
+    "adapters": [],
+    "source_family_matrix": []
+  }
+}

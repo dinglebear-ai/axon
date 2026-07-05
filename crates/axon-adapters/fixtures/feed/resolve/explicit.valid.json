@@ -1,0 +1,25 @@
+{
+  "adapter": "feed",
+  "adapter_version": "1",
+  "canonical_uri": "https://example.com/feed.xml",
+  "confidence": 1.0,
+  "fixture_kind": "resolve.explicit",
+  "graph": {
+    "optional_fact_kinds": [
+      "author",
+      "link"
+    ],
+    "required_fact_kinds": [
+      "feed",
+      "feed_entry"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/feed.xml#item-1",
+  "metadata_family": "feed",
+  "redaction_status": "clean",
+  "requested_uri": "https://example.com/feed.xml",
+  "scope": "feed",
+  "source_canonical_uri": "https://example.com/feed.xml",
+  "source_id": "src-feed",
+  "source_item_key": "feed-item-1"
+}

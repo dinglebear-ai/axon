@@ -1,0 +1,45 @@
+{
+  "adapter": "git",
+  "adapter_version": "1",
+  "cleanup_debt_behavior": "removed-items-create-cleanup-debt",
+  "counts": {
+    "chunks": 1,
+    "documents": 1,
+    "items": 1,
+    "vectors": 1
+  },
+  "fixture_kind": "source-job.published-generation",
+  "generation_publish_state": "published",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "repository",
+      "revision"
+    ]
+  },
+  "item_canonical_uri": "https://github.com/jmagar/axon.git#item-1",
+  "job_id": "job-git-published",
+  "metadata_family": "git",
+  "provider_degradation_behavior": "optional-provider-warnings-do-not-block-publish",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://github.com/jmagar/axon.git",
+  "source_id": "src-git",
+  "source_item_key": "git-item-1",
+  "stage_sequence": [
+    "resolving",
+    "routing",
+    "discovering",
+    "fetching",
+    "normalizing",
+    "parsing",
+    "graphing",
+    "preparing",
+    "embedding",
+    "upserting",
+    "publishing"
+  ]
+}

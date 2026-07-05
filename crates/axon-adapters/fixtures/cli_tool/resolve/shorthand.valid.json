@@ -1,0 +1,24 @@
+{
+  "adapter": "cli_tool",
+  "adapter_version": "1",
+  "canonical_uri": "tool:rg --help",
+  "confidence": 0.85,
+  "fixture_kind": "resolve.shorthand",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "tool"
+    ]
+  },
+  "item_canonical_uri": "tool:rg --help#item-1",
+  "metadata_family": "tool",
+  "redaction_status": "clean",
+  "requested_uri": "cli_tool:example",
+  "scope": "tool",
+  "source_canonical_uri": "tool:rg --help",
+  "source_id": "src-cli_tool",
+  "source_item_key": "cli_tool-item-1"
+}

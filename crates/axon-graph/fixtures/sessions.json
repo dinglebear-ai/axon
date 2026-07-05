@@ -1,0 +1,27 @@
+{
+  "adapter": "sessions",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "session",
+      "turn"
+    ]
+  },
+  "graph_candidates": [
+    {
+      "candidate_id": "sessions-node-1",
+      "confidence": 1.0,
+      "kind": "session"
+    }
+  ],
+  "item_canonical_uri": "session:codex:/sessions/one.jsonl#item-1",
+  "metadata_family": "session",
+  "redaction_status": "clean",
+  "source_canonical_uri": "session:codex:/sessions/one.jsonl",
+  "source_id": "src-sessions",
+  "source_item_key": "sessions-item-1"
+}

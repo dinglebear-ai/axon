@@ -1,0 +1,7 @@
+{
+  "source": "mcp://server/tool",
+  "execution_mode": "metadata_only",
+  "expected_tool_call_count": 0,
+  "content_kind": "structured",
+  "redaction_status": "clean"
+}

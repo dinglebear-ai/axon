@@ -1,0 +1,7 @@
+{
+  "requested_url": "https://example.com/redirect",
+  "final_url": "http://127.0.0.1/admin",
+  "render_modes": ["http", "chrome"],
+  "expected_error_code": "security.ssrf_denied",
+  "side_effects_allowed": false
+}

@@ -1,0 +1,23 @@
+{
+  "adapter": "registry",
+  "adapter_version": "1",
+  "expected_error_code": "source.resolve_ambiguous",
+  "fixture_kind": "resolve.ambiguous",
+  "graph": {
+    "optional_fact_kinds": [
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "package",
+      "version"
+    ]
+  },
+  "item_canonical_uri": "pkg:npm/axon#item-1",
+  "metadata_family": "package",
+  "redaction_status": "clean",
+  "requested_uri": "example",
+  "source_canonical_uri": "pkg:npm/axon",
+  "source_id": "src-registry",
+  "source_item_key": "registry-item-1"
+}

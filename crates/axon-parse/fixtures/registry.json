@@ -1,0 +1,28 @@
+{
+  "adapter": "registry",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "package",
+      "version"
+    ]
+  },
+  "item_canonical_uri": "pkg:npm/axon#item-1",
+  "metadata_family": "package",
+  "parse_facts": [
+    {
+      "confidence": 1.0,
+      "fact_kind": "package",
+      "name": "registry-fact"
+    }
+  ],
+  "parser_family": "package",
+  "redaction_status": "clean",
+  "source_canonical_uri": "pkg:npm/axon",
+  "source_id": "src-registry",
+  "source_item_key": "registry-item-1"
+}

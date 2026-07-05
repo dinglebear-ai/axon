@@ -21,34 +21,54 @@ fn payload_required_fields_from_source() -> Vec<String> {
 }
 
 #[test]
-fn adapter_schema_family_is_not_emitted_as_phase_2_artifact() {
+fn adapter_schema_family_emits_source_family_matrix_artifact() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
 
+    let value = generated_json(tmp.path(), "docs/reference/sources/adapter-scopes.json");
+    let matrix = value["x-axon"]["source_family_matrix"]
+        .as_array()
+        .expect("source family matrix records");
+
     assert!(
-        !tmp.path()
-            .join("docs/reference/sources/adapter-scopes.json")
-            .exists(),
-        "Phase 2 does not define an adapters schema family"
-    );
-    assert!(
-        !tmp.path()
+        tmp.path()
             .join("docs/reference/sources/adapter-scopes.md")
-            .exists(),
-        "Phase 2 does not define an adapters schema family"
+            .exists()
     );
+    assert!(
+        matrix
+            .iter()
+            .any(|record| record["adapter"] == "cli_tool" && record["may_execute_tools"] == true)
+    );
+    assert!(
+        matrix
+            .iter()
+            .any(|record| record["adapter"] == "mcp_tool" && record["may_execute_tools"] == true)
+    );
+    assert!(matrix.iter().any(|record| record["integration"] == "memory"
+        && record["vector_namespace"] == "memory"
+        && record["is_source_adapter"] == false));
 }
 
 #[test]
-fn adapter_schema_markdown_is_not_emitted_as_phase_2_artifact() {
-    let tmp = fixture_repo();
-    generate(tmp.path()).unwrap();
+fn generated_adapter_capability_artifact_contains_tool_and_memory_contracts() {
+    let artifact = super::families::adapters::generate_adapter_capability_artifact().unwrap();
+    let value: serde_json::Value = serde_json::from_str(&artifact.content).unwrap();
+    let matrix = value["x-axon"]["source_family_matrix"]
+        .as_array()
+        .expect("source family matrix records");
 
+    assert!(matrix.iter().any(|record| record["adapter"] == "cli_tool"));
+    assert!(matrix.iter().any(|record| record["adapter"] == "mcp_tool"));
     assert!(
-        !tmp.path()
-            .join("docs/reference/sources/adapter-scopes.json")
-            .exists(),
-        "Phase 2 does not define an adapters schema family"
+        matrix
+            .iter()
+            .any(|record| record["integration"] == "memory")
+    );
+    assert!(
+        matrix
+            .iter()
+            .any(|record| record["may_execute_tools"] == true)
     );
 }
 

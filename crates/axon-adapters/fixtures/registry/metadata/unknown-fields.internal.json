@@ -1,0 +1,24 @@
+{
+  "adapter": "registry",
+  "adapter_version": "1",
+  "fixture_kind": "metadata.unknown-fields",
+  "graph": {
+    "optional_fact_kinds": [
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "package",
+      "version"
+    ]
+  },
+  "internal_metadata": {
+    "unknown_private_field": "kept-internal"
+  },
+  "item_canonical_uri": "pkg:npm/axon#item-1",
+  "metadata_family": "package",
+  "redaction_status": "clean",
+  "source_canonical_uri": "pkg:npm/axon",
+  "source_id": "src-registry",
+  "source_item_key": "registry-item-1"
+}

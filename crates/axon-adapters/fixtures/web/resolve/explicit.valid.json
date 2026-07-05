@@ -1,0 +1,25 @@
+{
+  "adapter": "web",
+  "adapter_version": "1",
+  "canonical_uri": "https://example.com/docs",
+  "confidence": 1.0,
+  "fixture_kind": "resolve.explicit",
+  "graph": {
+    "optional_fact_kinds": [
+      "link",
+      "structured_data"
+    ],
+    "required_fact_kinds": [
+      "web_page",
+      "canonical_url"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/docs#item-1",
+  "metadata_family": "web",
+  "redaction_status": "clean",
+  "requested_uri": "https://example.com/docs",
+  "scope": "page",
+  "source_canonical_uri": "https://example.com/docs",
+  "source_id": "src-web",
+  "source_item_key": "web-item-1"
+}

@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 anyhow = "1"
 axon-api = { path = "../crates/axon-api" }
+axon-adapters = { path = "../crates/axon-adapters" }
 axon-cli = { path = "../crates/axon-cli" }
 axon-core = { path = "../crates/axon-core" }
 axon-error = { path = "../crates/axon-error" }

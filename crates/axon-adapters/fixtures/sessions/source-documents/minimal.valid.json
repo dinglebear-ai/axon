@@ -1,0 +1,24 @@
+{
+  "adapter": "sessions",
+  "adapter_version": "1",
+  "content": "# sessions\nFixture content.",
+  "content_kind": "markdown",
+  "fixture_kind": "source-document.minimal",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "session",
+      "turn"
+    ]
+  },
+  "item_canonical_uri": "session:codex:/sessions/one.jsonl#item-1",
+  "metadata_family": "session",
+  "redaction_status": "clean",
+  "source_canonical_uri": "session:codex:/sessions/one.jsonl",
+  "source_id": "src-sessions",
+  "source_item_key": "sessions-item-1",
+  "title": "sessions fixture document"
+}

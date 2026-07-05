@@ -1,0 +1,47 @@
+{
+  "chunk_hash": "sha256:chunk-git",
+  "chunk_id": "chunk-git-1",
+  "chunk_locator": {
+    "canonical_uri": "https://github.com/jmagar/axon.git#item-1",
+    "heading_path": [],
+    "path": "https://github.com/jmagar/axon.git#item-1",
+    "range": {
+      "line_end": 2,
+      "line_start": 1
+    },
+    "symbol": null
+  },
+  "chunk_text": "git fixture chunk text",
+  "code_language": "rust",
+  "collection": "axon",
+  "committed_generation": "gen-git-1",
+  "content_hash": "sha256:content-git",
+  "content_kind": "markdown",
+  "document_id": "doc-git-1",
+  "document_status": "ready",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000043",
+  "embedding_dimensions": 1024,
+  "embedding_model": "text-embedding-test",
+  "embedding_profile": "document",
+  "embedding_provider": "tei",
+  "item_canonical_uri": "https://github.com/jmagar/axon.git#item-1",
+  "job_id": "00000000-0000-0000-0000-000000000009",
+  "payload_contract_version": "2026-07-01",
+  "redaction_status": "clean",
+  "source_adapter": "git",
+  "source_canonical_uri": "https://github.com/jmagar/axon.git",
+  "source_family": "code",
+  "source_generation": "gen-git-1",
+  "source_id": "src-git",
+  "source_item_key": "git-item-1",
+  "source_kind": "code",
+  "source_range": {
+    "line_end": 2,
+    "line_start": 1
+  },
+  "source_scope": "repo",
+  "vector_namespace": "source:code",
+  "vector_point_id": "vpt-git-1",
+  "visibility": "public"
+}

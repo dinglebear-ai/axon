@@ -1,0 +1,27 @@
+{
+  "adapter": "local",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "graph_candidates": [
+    {
+      "candidate_id": "local-node-1",
+      "confidence": 1.0,
+      "kind": "document"
+    }
+  ],
+  "item_canonical_uri": "file:///workspace/README.md#item-1",
+  "metadata_family": "local",
+  "redaction_status": "clean",
+  "source_canonical_uri": "file:///workspace/README.md",
+  "source_id": "src-local",
+  "source_item_key": "local-item-1"
+}

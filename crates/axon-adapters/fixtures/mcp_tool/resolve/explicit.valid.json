@@ -1,0 +1,25 @@
+{
+  "adapter": "mcp_tool",
+  "adapter_version": "1",
+  "canonical_uri": "mcp://labby/search",
+  "confidence": 1.0,
+  "fixture_kind": "resolve.explicit",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "external_resource"
+    ],
+    "required_fact_kinds": [
+      "mcp_server",
+      "mcp_tool"
+    ]
+  },
+  "item_canonical_uri": "mcp://labby/search#item-1",
+  "metadata_family": "mcp",
+  "redaction_status": "clean",
+  "requested_uri": "mcp://labby/search",
+  "scope": "tool",
+  "source_canonical_uri": "mcp://labby/search",
+  "source_id": "src-mcp_tool",
+  "source_item_key": "mcp_tool-item-1"
+}

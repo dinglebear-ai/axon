@@ -1,0 +1,23 @@
+{
+  "adapter": "youtube",
+  "adapter_version": "1",
+  "expected_error_code": "source.resolve_ambiguous",
+  "fixture_kind": "resolve.ambiguous",
+  "graph": {
+    "optional_fact_kinds": [
+      "channel",
+      "playlist",
+      "transcript_segment"
+    ],
+    "required_fact_kinds": [
+      "video"
+    ]
+  },
+  "item_canonical_uri": "youtube:abc123#item-1",
+  "metadata_family": "youtube",
+  "redaction_status": "clean",
+  "requested_uri": "example",
+  "source_canonical_uri": "youtube:abc123",
+  "source_id": "src-youtube",
+  "source_item_key": "youtube-item-1"
+}

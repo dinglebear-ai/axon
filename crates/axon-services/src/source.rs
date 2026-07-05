@@ -32,7 +32,9 @@ use axon_api::source::{
     AdapterRef, JobId, LedgerSummary, LifecycleStatus, SourceCounts, SourceGenerationId, SourceId,
     SourceKind, SourceRequest, SourceResult, SourceScope, SourceWarning,
 };
+use axon_core::http::validate_url;
 use axon_error::ApiError;
+use std::fmt;
 use uuid::Uuid;
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
@@ -42,6 +44,110 @@ use result_map::{IndexCounts, adapter_ref, to_source_result};
 /// Stable owner id used to lease sources indexed through this orchestrator when
 /// the request does not carry its own. Matches the CLI's historical owner id.
 const DEFAULT_OWNER_ID: &str = "cli";
+
+/// One bounded batch boundary in the source pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourcePipelineBatch {
+    pub batch_id: usize,
+    pub item_count: usize,
+    pub chunk_count: usize,
+    pub byte_count: usize,
+    pub provider_reservation_id: Option<String>,
+    pub elapsed_ms: u64,
+}
+
+/// Build the canonical bounded batch plan shared by source-family ports.
+///
+/// Source adapters stream item/document candidates. The service layer applies
+/// this boundary before prepare, embedding, vector upsert, and graph writes so
+/// no public source path needs to collect the whole source before downstream
+/// stages can make progress.
+pub fn plan_source_pipeline_batches(
+    item_count: usize,
+    batch_size: usize,
+) -> anyhow::Result<Vec<SourcePipelineBatch>> {
+    if batch_size == 0 {
+        anyhow::bail!("source pipeline batch size must be greater than zero");
+    }
+
+    Ok((0..item_count)
+        .collect::<Vec<_>>()
+        .chunks(batch_size)
+        .enumerate()
+        .map(|(batch_id, chunk)| SourcePipelineBatch {
+            batch_id,
+            item_count: chunk.len(),
+            chunk_count: chunk.len(),
+            byte_count: 0,
+            provider_reservation_id: None,
+            elapsed_ms: 0,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceSecurityError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl fmt::Display for SourceSecurityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for SourceSecurityError {}
+
+/// Enforce SSRF policy before HTTP fetch, Chrome render, artifact writes, jobs,
+/// graph writes, or vector writes can be created for network sources.
+pub fn enforce_network_source_policy(urls: &[&str]) -> Result<(), SourceSecurityError> {
+    for url in urls {
+        validate_url(url).map_err(|err| SourceSecurityError {
+            code: "security.ssrf_denied",
+            message: format!("network source denied before side effects: {err}"),
+        })?;
+    }
+    Ok(())
+}
+
+/// Enforce local-source scope and high-risk path policy before filesystem reads.
+pub fn enforce_local_source_policy(
+    path: &str,
+    has_local_scope: bool,
+) -> Result<(), SourceSecurityError> {
+    if !has_local_scope {
+        return Err(SourceSecurityError {
+            code: "auth.scope_required",
+            message: "local source requires axon:local or trusted local context".to_string(),
+        });
+    }
+    if is_secret_like_local_path(path) {
+        return Err(SourceSecurityError {
+            code: "security.local_secret_denied",
+            message: "secret-like local path denied before side effects".to_string(),
+        });
+    }
+    Ok(())
+}
+
+pub fn redact_local_path_for_public_payload(path: &str) -> String {
+    if path.starts_with('/') || path.starts_with("~/") {
+        "[redacted-local-path]".to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn is_secret_like_local_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with("/.env")
+        || lower.contains("/.ssh/")
+        || lower.contains("/.codex/")
+        || lower.contains("/.gemini/")
+        || lower.contains("browser-profile")
+        || lower.contains("cloud")
+}
 
 /// Acquire, normalize, embed, and publish one source through the unified
 /// pipeline.
@@ -307,3 +413,11 @@ fn failed_result(
 #[cfg(test)]
 #[path = "source_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "source_batch_tests.rs"]
+mod source_batch_tests;
+
+#[cfg(test)]
+#[path = "source_security_tests.rs"]
+mod source_security_tests;

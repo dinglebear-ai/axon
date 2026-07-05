@@ -1,0 +1,7 @@
+{
+  "requested_url": "https://attacker-controlled.example.com/",
+  "final_url": "http://10.0.0.2/admin",
+  "render_modes": ["http", "chrome"],
+  "expected_error_code": "security.ssrf_denied",
+  "side_effects_allowed": false
+}

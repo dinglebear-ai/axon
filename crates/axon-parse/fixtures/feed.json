@@ -1,0 +1,28 @@
+{
+  "adapter": "feed",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "author",
+      "link"
+    ],
+    "required_fact_kinds": [
+      "feed",
+      "feed_entry"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/feed.xml#item-1",
+  "metadata_family": "feed",
+  "parse_facts": [
+    {
+      "confidence": 1.0,
+      "fact_kind": "feed",
+      "name": "feed-fact"
+    }
+  ],
+  "parser_family": "feed",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/feed.xml",
+  "source_id": "src-feed",
+  "source_item_key": "feed-item-1"
+}

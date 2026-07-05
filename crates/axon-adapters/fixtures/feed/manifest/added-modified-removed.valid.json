@@ -1,0 +1,35 @@
+{
+  "adapter": "feed",
+  "adapter_version": "1",
+  "fixture_kind": "manifest.diff",
+  "graph": {
+    "optional_fact_kinds": [
+      "author",
+      "link"
+    ],
+    "required_fact_kinds": [
+      "feed",
+      "feed_entry"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/feed.xml#item-1",
+  "items": [
+    {
+      "source_item_key": "feed-added",
+      "status": "added"
+    },
+    {
+      "source_item_key": "feed-modified",
+      "status": "modified"
+    },
+    {
+      "source_item_key": "feed-removed",
+      "status": "removed"
+    }
+  ],
+  "metadata_family": "feed",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/feed.xml",
+  "source_id": "src-feed",
+  "source_item_key": "feed-item-1"
+}

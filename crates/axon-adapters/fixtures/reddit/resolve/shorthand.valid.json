@@ -1,0 +1,25 @@
+{
+  "adapter": "reddit",
+  "adapter_version": "1",
+  "canonical_uri": "reddit:r/axon/comments/abc",
+  "confidence": 0.85,
+  "fixture_kind": "resolve.shorthand",
+  "graph": {
+    "optional_fact_kinds": [
+      "author",
+      "subreddit"
+    ],
+    "required_fact_kinds": [
+      "thread",
+      "comment"
+    ]
+  },
+  "item_canonical_uri": "reddit:r/axon/comments/abc#item-1",
+  "metadata_family": "reddit",
+  "redaction_status": "clean",
+  "requested_uri": "reddit:example",
+  "scope": "thread",
+  "source_canonical_uri": "reddit:r/axon/comments/abc",
+  "source_id": "src-reddit",
+  "source_item_key": "reddit-item-1"
+}

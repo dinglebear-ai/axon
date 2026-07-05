@@ -1,0 +1,7 @@
+{
+  "source": "tool:rg --help",
+  "execution_mode": "metadata_only",
+  "expected_documents": 1,
+  "expected_execution_count": 0,
+  "redaction_status": "clean"
+}

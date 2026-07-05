@@ -1,0 +1,23 @@
+{
+  "memory_id": "mem_phase9_shared_pipeline",
+  "content": "Remember that memory documents use shared preparation, vector payload validation, graph candidates, and memory namespace retrieval.",
+  "source_family": "memory",
+  "vector_namespace": "memory",
+  "metadata_families": ["memory", "retrieval", "graph"],
+  "prepared_chunks": [
+    {
+      "chunk_id": "mem_phase9_shared_pipeline:chunk:0",
+      "content_kind": "markdown",
+      "text": "Remember that memory documents use shared preparation, vector payload validation, graph candidates, and memory namespace retrieval."
+    }
+  ],
+  "graph": {
+    "required_fact_kinds": ["memory_document"],
+    "optional_fact_kinds": ["memory_link", "supersedes"]
+  },
+  "retrieval_filter": {
+    "namespace": "memory"
+  },
+  "source_adapter_row": false,
+  "source_ledger_generation": null
+}

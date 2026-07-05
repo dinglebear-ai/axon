@@ -1,0 +1,48 @@
+{
+  "chunk_hash": "sha256:chunk-local",
+  "chunk_id": "chunk-local-1",
+  "chunk_locator": {
+    "canonical_uri": "file:///workspace/README.md#item-1",
+    "heading_path": [],
+    "path": "file:///workspace/README.md#item-1",
+    "range": {
+      "line_end": 2,
+      "line_start": 1
+    },
+    "symbol": null
+  },
+  "chunk_text": "local fixture chunk text",
+  "collection": "axon",
+  "committed_generation": "gen-local-1",
+  "content_hash": "sha256:content-local",
+  "content_kind": "markdown",
+  "document_id": "doc-local-1",
+  "document_status": "ready",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000043",
+  "embedding_dimensions": 1024,
+  "embedding_model": "text-embedding-test",
+  "embedding_profile": "document",
+  "embedding_provider": "tei",
+  "item_canonical_uri": "file:///workspace/README.md#item-1",
+  "job_id": "00000000-0000-0000-0000-000000000009",
+  "local_checkout": "fixture",
+  "local_path_key": "README.md",
+  "payload_contract_version": "2026-07-01",
+  "redaction_status": "clean",
+  "source_adapter": "local",
+  "source_canonical_uri": "file:///workspace/README.md",
+  "source_family": "local",
+  "source_generation": "gen-local-1",
+  "source_id": "src-local",
+  "source_item_key": "local-item-1",
+  "source_kind": "local",
+  "source_range": {
+    "line_end": 2,
+    "line_start": 1
+  },
+  "source_scope": "file",
+  "vector_namespace": "source:local",
+  "vector_point_id": "vpt-local-1",
+  "visibility": "public"
+}

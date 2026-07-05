@@ -1,0 +1,14 @@
+[
+  {
+    "family": "registry",
+    "variant": "hex",
+    "reason": "family contract covered by npm, crates, pypi, and docker fixtures in this slice",
+    "follow_up": "provider-specific hardening fixture"
+  },
+  {
+    "family": "git",
+    "variant": "gitea_private_enterprise",
+    "reason": "family contract covered by generic git, github, gitlab, gitea, and forgejo target fixtures in this slice",
+    "follow_up": "provider-specific auth and rate-limit hardening fixture"
+  }
+]

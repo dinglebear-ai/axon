@@ -1,0 +1,23 @@
+{
+  "adapter": "feed",
+  "adapter_version": "1",
+  "expected_error_code": "auth.scope_required",
+  "fixture_kind": "auth.missing-scope",
+  "graph": {
+    "optional_fact_kinds": [
+      "author",
+      "link"
+    ],
+    "required_fact_kinds": [
+      "feed",
+      "feed_entry"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/feed.xml#item-1",
+  "metadata_family": "feed",
+  "redaction_status": "clean",
+  "required_scope": "axon:write",
+  "source_canonical_uri": "https://example.com/feed.xml",
+  "source_id": "src-feed",
+  "source_item_key": "feed-item-1"
+}

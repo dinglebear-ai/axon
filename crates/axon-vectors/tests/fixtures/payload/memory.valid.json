@@ -36,7 +36,7 @@
   "memory_importance": 5,
   "memory_status": "active",
   "vector_point_id": "vpt-memory-1",
-  "vector_namespace": "source:memory",
+  "vector_namespace": "memory",
   "source_canonical_uri": "https://example.com/item",
   "content_kind": "markdown",
   "content_hash": "sha256:content-memory",
