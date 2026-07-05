@@ -39,7 +39,7 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `collection` | `string; minLength=1` |
 | `vector_point_id` | `string; minLength=1` |
 | `vector_namespace` | `string; minLength=1` |
-| `source_family` | `string; enum=code|web|package|session|graph|memory|feed|social|media; minLength=1` |
+| `source_family` | `string; enum=code|web|package|session|graph|memory|feed|social|media|local|tool|docker|env; minLength=1` |
 | `source_kind` | `string; minLength=1` |
 | `source_adapter` | `string; minLength=1` |
 | `source_scope` | `string; minLength=1` |
@@ -105,6 +105,10 @@ Payload validation rejects secret field fragments and secret value fragments bef
 | `session` | `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |
 | `memory` | `memory_id`, `memory_importance`, `memory_status` |
+| `local` | `local_checkout`, `local_path_key`, `local_git_remote`, `local_git_commit` |
+| `tool` | `tool_name`, `tool_action`, `tool_side_effect_class`, `tool_output_artifact_id` |
+| `docker` | `docker_image`, `docker_service`, `docker_port`, `docker_volume` |
+| `env` | `env_key`, `env_secret_reference` |
 
 ## Indexable Payload Fields
 
