@@ -38,3 +38,7 @@ pub use context::VerticalContext;
 pub use error::VerticalError;
 pub use registry::{dispatch_by_name, dispatch_by_url, list as list_extractors};
 pub use types::{ExtractorInfo, ScrapedDoc};
+
+#[cfg(test)]
+#[path = "vertical_parse_facts_tests.rs"]
+mod vertical_parse_facts_tests;

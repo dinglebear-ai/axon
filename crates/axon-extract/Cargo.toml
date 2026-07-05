@@ -47,6 +47,7 @@ module_inception = "allow"              # src/crawl.rs: acceptable module name
 test-util = []
 
 [dev-dependencies]
+axon-graph = { path = "../axon-graph" }
 axon-core = { path = "../axon-core", features = ["test-util"] }
 httpmock = "0.8"
 serial_test = "3"
