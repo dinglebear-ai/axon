@@ -1,5 +1,4 @@
 use super::*;
-use axon_api::source::*;
 use serde_json::json;
 
 #[test]
@@ -65,7 +64,7 @@ fn delete_body_for_points_lists_ids() {
         collection: "axon".to_string(),
         point_ids: vec![VectorPointId::new("p1"), VectorPointId::new("p2")],
     };
-    let body = delete_body(&selector);
+    let body = delete_body(&selector).expect("delete body");
     assert_eq!(body["points"], json!(["p1", "p2"]));
 }
 
@@ -75,7 +74,7 @@ fn delete_body_for_chunks_uses_any_match_filter() {
         collection: "axon".to_string(),
         chunk_ids: vec![ChunkId::new("c1")],
     };
-    let body = delete_body(&selector);
+    let body = delete_body(&selector).expect("delete body");
     assert_eq!(body["filter"]["must"][0]["key"], json!("chunk_id"));
     assert_eq!(body["filter"]["must"][0]["match"]["any"], json!(["c1"]));
 }
@@ -87,10 +86,30 @@ fn delete_body_for_generation_fences_on_source_and_generation() {
         source_id: SourceId::new("src"),
         generation: SourceGenerationId::new("7"),
     };
-    let body = delete_body(&selector);
+    let body = delete_body(&selector).expect("delete body");
     let must = body["filter"]["must"].as_array().expect("must array");
     assert_eq!(must.len(), 2);
     let keys: Vec<&str> = must.iter().filter_map(|c| c["key"].as_str()).collect();
     assert!(keys.contains(&"source_id"));
     assert!(keys.contains(&"source_generation"));
+    let generation = must
+        .iter()
+        .find(|condition| condition["key"] == "source_generation")
+        .expect("source generation condition");
+    assert_eq!(generation["match"]["value"], json!(7));
+}
+
+#[test]
+fn generation_delete_uses_server_side_count_and_filter_delete() {
+    let filter = generation_delete_filter(&SourceId::new("src"), &SourceGenerationId::new("7"))
+        .expect("generation filter");
+    let count_body = json!({
+        "filter": filter,
+        "exact": true,
+    });
+    let delete_body = json!({ "filter": filter });
+
+    assert_eq!(count_body["filter"]["must"].as_array().unwrap().len(), 2);
+    assert_eq!(count_body["exact"], json!(true));
+    assert_eq!(delete_body["filter"], count_body["filter"]);
 }

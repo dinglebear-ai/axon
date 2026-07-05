@@ -15,6 +15,7 @@ use crate::collection::{
     check_collection_drift, normalize_collection_spec, validate_collection_spec,
 };
 use crate::filter::{selector_collection, validate_delete_selector};
+use crate::payload::generation_payload_i64;
 use crate::store::{Result, VectorStore};
 use crate::store_helpers::{delete_result, stage_header};
 
@@ -149,7 +150,11 @@ impl VectorStore for QdrantVectorStore {
         let collection = selector_collection(&selector).to_string();
         self.require_collection_spec(&http, &collection, stage)
             .await?;
-        let body = delete_body(&selector);
+        if let VectorDeleteSelector::Generation { .. } = &selector {
+            return delete_generation_points_server_side(&http, &collection, &selector, stage)
+                .await;
+        }
+        let body = delete_body(&selector)?;
         let url = http
             .endpoint()
             .collection_path(&collection, "points/delete?wait=true");
@@ -211,18 +216,82 @@ struct DeleteResponse {
     _result: Option<serde_json::Value>,
 }
 
-fn delete_body(selector: &VectorDeleteSelector) -> serde_json::Value {
+#[derive(serde::Deserialize)]
+struct CountResult {
+    #[serde(default)]
+    count: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct CountResponse {
+    result: CountResult,
+}
+
+async fn delete_generation_points_server_side(
+    http: &QdrantHttp,
+    collection: &str,
+    selector: &VectorDeleteSelector,
+    stage: axon_error::ErrorStage,
+) -> Result<VectorStoreDeleteResult> {
+    let VectorDeleteSelector::Generation {
+        source_id,
+        generation,
+        ..
+    } = selector
+    else {
+        return Ok(delete_result(collection.to_string(), 0));
+    };
+
+    let filter = generation_delete_filter(source_id, generation)?;
+    let count_url = http.endpoint().collection_path(collection, "points/count");
+    let delete_url = http
+        .endpoint()
+        .collection_path(collection, "points/delete?wait=true");
+    let count_body = serde_json::json!({
+        "filter": filter,
+        "exact": true,
+    });
+    let count: CountResponse = http
+        .post_json(
+            stage,
+            &count_url,
+            &count_body,
+            "qdrant_delete_generation_count",
+        )
+        .await?;
+
+    let body = serde_json::json!({ "filter": filter });
+    let _ack: DeleteResponse = http
+        .post_json(stage, &delete_url, &body, "qdrant_delete_generation_filter")
+        .await?;
+
+    Ok(delete_result(collection.to_string(), count.result.count))
+}
+
+fn generation_delete_filter(
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<serde_json::Value> {
+    Ok(eq2_filter_json(
+        "source_id",
+        &source_id.0,
+        "source_generation",
+        &generation_payload_i64(generation, "source_generation")?,
+    ))
+}
+
+fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
     match selector {
-        VectorDeleteSelector::Points { point_ids, .. } => serde_json::json!({
+        VectorDeleteSelector::Points { point_ids, .. } => Ok(serde_json::json!({
             "points": point_ids.iter().map(|id| id.0.clone()).collect::<Vec<_>>()
-        }),
+        })),
         VectorDeleteSelector::Chunks { chunk_ids, .. } => {
             let ids = chunk_ids.iter().map(|id| id.0.clone()).collect::<Vec<_>>();
-            serde_json::json!({
+            Ok(serde_json::json!({
                 "filter": {
                     "must": [{ "key": "chunk_id", "match": { "any": ids } }]
                 }
-            })
+            }))
         }
         VectorDeleteSelector::Source {
             source_id,
@@ -234,24 +303,19 @@ fn delete_body(selector: &VectorDeleteSelector) -> serde_json::Value {
                     "source_id",
                     &source_id.0,
                     "source_generation",
-                    &generation.0,
+                    &generation_payload_i64(generation, "source_generation")?,
                 ),
                 None => eq_filter_json("source_id", &source_id.0),
             };
-            serde_json::json!({ "filter": filter })
+            Ok(serde_json::json!({ "filter": filter }))
         }
         VectorDeleteSelector::Generation {
             source_id,
             generation,
             ..
-        } => serde_json::json!({
-            "filter": eq2_filter_json(
-                "source_id",
-                &source_id.0,
-                "source_generation",
-                &generation.0,
-            )
-        }),
+        } => Ok(serde_json::json!({
+            "filter": generation_delete_filter(source_id, generation)?
+        })),
         VectorDeleteSelector::Document {
             document_id,
             generation,
@@ -262,19 +326,19 @@ fn delete_body(selector: &VectorDeleteSelector) -> serde_json::Value {
                     "document_id",
                     &document_id.0,
                     "source_generation",
-                    &generation.0,
+                    &generation_payload_i64(generation, "source_generation")?,
                 ),
                 None => eq_filter_json("document_id", &document_id.0),
             };
-            serde_json::json!({ "filter": filter })
+            Ok(serde_json::json!({ "filter": filter }))
         }
         VectorDeleteSelector::CanonicalUri {
             canonical_uri,
             match_prefix,
             ..
-        } => serde_json::json!({
+        } => Ok(serde_json::json!({
             "filter": canonical_uri_filter_json(canonical_uri, *match_prefix)
-        }),
+        })),
         VectorDeleteSelector::Filter { filter, .. } => {
             let must = filter
                 .as_object()
@@ -287,7 +351,7 @@ fn delete_body(selector: &VectorDeleteSelector) -> serde_json::Value {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            serde_json::json!({ "filter": { "must": must } })
+            Ok(serde_json::json!({ "filter": { "must": must } }))
         }
     }
 }

@@ -326,7 +326,7 @@ fn non_finite_dense_vectors_fail_before_payload_build() {
 }
 
 #[test]
-fn opaque_source_generation_builds_keyword_payload_fields() {
+fn source_generation_builds_integer_payload_fields() {
     let mut document = test_prepared_document();
     document.generation = SourceGenerationId::new("gen_0001");
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
@@ -335,11 +335,8 @@ fn opaque_source_generation_builds_keyword_payload_fields() {
         .build()
         .unwrap();
 
-    assert_eq!(batch.points[0].payload["source_generation"], "gen_0001");
-    assert_eq!(
-        batch.points[0].payload["committed_generation"],
-        "uncommitted"
-    );
+    assert_eq!(batch.points[0].payload["source_generation"], 1);
+    assert!(batch.points[0].payload["committed_generation"].is_null());
 }
 
 #[test]

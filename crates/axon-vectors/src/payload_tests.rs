@@ -76,8 +76,11 @@ fn valid_payload_fixtures_pass_required_field_and_registry_validation() {
                 "{name} missing {field}"
             );
         }
-        assert!(payload.metadata()["source_generation"].is_string());
-        assert!(payload.metadata()["committed_generation"].is_string());
+        assert!(payload.metadata()["source_generation"].is_i64());
+        assert!(
+            payload.metadata()["committed_generation"].is_i64()
+                || payload.metadata()["committed_generation"].is_null()
+        );
     }
 }
 
@@ -359,7 +362,7 @@ fn invalid_discriminators_are_not_echoed_in_error_messages() {
 }
 
 #[test]
-fn source_generation_fields_must_be_non_empty_strings() {
+fn source_generation_fields_must_be_non_negative_integers() {
     let mut metadata = fixture("web.valid.json");
     metadata.insert("source_generation".to_string(), serde_json::json!(""));
 

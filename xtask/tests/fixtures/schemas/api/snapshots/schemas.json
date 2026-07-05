@@ -12232,7 +12232,13 @@
     "PruneExecuteRequest_ArtifactId": {
       "type": "string"
     },
+    "PruneExecuteRequest_ChunkId": {
+      "type": "string"
+    },
     "PruneExecuteRequest_CleanupDebtId": {
+      "type": "string"
+    },
+    "PruneExecuteRequest_DocumentId": {
       "type": "string"
     },
     "PruneExecuteRequest_GraphEdgeId": {
@@ -12570,6 +12576,16 @@
         },
         "target": {
           "$ref": "#/$defs/PruneExecuteRequest_PruneTargetKind"
+        },
+        "vector_selector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PruneExecuteRequest_VectorDeleteSelector"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -12646,6 +12662,192 @@
       ],
       "type": "object"
     },
+    "PruneExecuteRequest_VectorDeleteSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "generation": {
+              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "document_id": {
+              "$ref": "#/$defs/PruneExecuteRequest_DocumentId"
+            },
+            "generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_ids": {
+              "items": {
+                "$ref": "#/$defs/PruneExecuteRequest_ChunkId"
+              },
+              "type": "array"
+            },
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "chunks",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "chunk_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "points",
+              "type": "string"
+            },
+            "point_ids": {
+              "items": {
+                "$ref": "#/$defs/PruneExecuteRequest_VectorPointId"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "point_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "canonical_uri": {
+              "type": "string"
+            },
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "canonical_uri",
+              "type": "string"
+            },
+            "match_prefix": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "canonical_uri",
+            "match_prefix"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "filter": true,
+            "kind": {
+              "const": "filter",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "filter"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PruneExecuteRequest_VectorPointId": {
+      "type": "string"
+    },
     "PrunePlan": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -12694,7 +12896,13 @@
     "PrunePlan_ArtifactId": {
       "type": "string"
     },
+    "PrunePlan_ChunkId": {
+      "type": "string"
+    },
     "PrunePlan_CleanupDebtId": {
+      "type": "string"
+    },
+    "PrunePlan_DocumentId": {
       "type": "string"
     },
     "PrunePlan_GraphEdgeId": {
@@ -12989,6 +13197,16 @@
         },
         "target": {
           "$ref": "#/$defs/PrunePlan_PruneTargetKind"
+        },
+        "vector_selector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrunePlan_VectorDeleteSelector"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -13064,6 +13282,192 @@
         "retryable"
       ],
       "type": "object"
+    },
+    "PrunePlan_VectorDeleteSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PrunePlan_SourceGenerationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PrunePlan_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "generation": {
+              "$ref": "#/$defs/PrunePlan_SourceGenerationId"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PrunePlan_SourceId"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "source_id",
+            "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "document_id": {
+              "$ref": "#/$defs/PrunePlan_DocumentId"
+            },
+            "generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PrunePlan_SourceGenerationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "document_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "chunk_ids": {
+              "items": {
+                "$ref": "#/$defs/PrunePlan_ChunkId"
+              },
+              "type": "array"
+            },
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "chunks",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "chunk_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "points",
+              "type": "string"
+            },
+            "point_ids": {
+              "items": {
+                "$ref": "#/$defs/PrunePlan_VectorPointId"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "point_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "canonical_uri": {
+              "type": "string"
+            },
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "canonical_uri",
+              "type": "string"
+            },
+            "match_prefix": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "canonical_uri",
+            "match_prefix"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "filter": true,
+            "kind": {
+              "const": "filter",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection",
+            "filter"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrunePlan_VectorPointId": {
+      "type": "string"
     },
     "PruneRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -26622,7 +27026,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:a159865889ad70abc235a124c174652728a6aed56d5dc13a6011728ca5f98c2a",
+        "checksum": "sha256:5f98e4a52fe7dd507955161917635f3c1bcaf7839737ea03c3c0378551e26233",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },

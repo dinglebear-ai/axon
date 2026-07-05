@@ -28,7 +28,7 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/lifecycle.rs` | `sha256:04755fecf0a574f9d07bbe72c6053592703a07ab14de3d4c28dd5083f7219828` |
 | `crates/axon-api/src/source/listing.rs` | `sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb` |
 | `crates/axon-api/src/source/provider_io.rs` | `sha256:a5728db42e846a995b35eb01a2d6e34751ba825e630b324852c16e36d4d2ec91` |
-| `crates/axon-api/src/source/prune.rs` | `sha256:a159865889ad70abc235a124c174652728a6aed56d5dc13a6011728ca5f98c2a` |
+| `crates/axon-api/src/source/prune.rs` | `sha256:5f98e4a52fe7dd507955161917635f3c1bcaf7839737ea03c3c0378551e26233` |
 | `crates/axon-api/src/source/stage.rs` | `sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8` |
 | `crates/axon-api/src/source/state.rs` | `sha256:9c7d65b7d3a4e163d2f3e8c60806713466909fef2822b79566eda77575faf63b` |
 | `crates/axon-api/src/source/status.rs` | `sha256:75d4a2a43c699a17343689d6d57c0f4e3eb2c254718ae5f31f9b5fe1f5111616` |

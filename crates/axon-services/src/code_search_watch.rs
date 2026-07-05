@@ -2,7 +2,6 @@ mod event;
 mod roots;
 use crate::context::ServiceContext;
 use crate::query;
-use crate::query::CodeSearchRefreshBackend;
 use crate::types::CodeSearchCaller;
 use anyhow::Result;
 use axon_core::config::CodeSearchWatchConfig;
@@ -13,11 +12,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-pub use axon_code_index::{ReindexProgress, ReindexProgressSink};
 pub use event::{
     CodeSearchWatchDryRunPlan, CodeSearchWatchDryRunRoot, CodeSearchWatchEvent,
     CodeSearchWatchEventSink,
 };
+pub use query::{ReindexProgress, ReindexProgressSink};
 use roots::{
     build_code_search_watch_dry_run_plan, code_search_watch_dirs, code_search_watch_dirty_roots,
     discover_code_search_watch_roots_for_dirs,
@@ -205,13 +204,10 @@ async fn refresh_code_search_watch_root(
         reason,
     });
     let progress = WatchProgressSink { events };
-    let backend = query::default_code_search_refresh_backend(ctx);
-    let target_refresh = matches!(backend, CodeSearchRefreshBackend::TargetLocalSource);
-    let refresh = query::refresh_code_search_index_with_backend(
+    let refresh = query::refresh_code_search_index_with_progress(
         ctx,
         Some(root),
         CodeSearchCaller::Cli,
-        backend,
         Some(&progress),
     )
     .await;
@@ -225,9 +221,8 @@ async fn refresh_code_search_watch_root(
             let target_source_generation = result.target_source_generation;
             let failed_refresh = status != "fresh" || warning.is_some();
             let failed_initial = reason == "initial" && failed_refresh;
-            let failed_target_refresh = target_refresh && failed_refresh;
             let warning_message = warning.clone();
-            if failed_initial || failed_target_refresh {
+            if failed_initial || failed_refresh {
                 let error = format!(
                     "local code index refresh failed for {}: {}",
                     root.display(),

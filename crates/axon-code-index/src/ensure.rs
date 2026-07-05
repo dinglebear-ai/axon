@@ -6,7 +6,7 @@ use dashmap::DashMap;
 use tokio::sync::Mutex;
 
 use crate::config::{CodeIndexIdentity, freshness_ttl, reindex_timeout};
-use crate::indexer::{finish_completed_generation, reindex_changed_files, retry_cleanup_debt};
+use crate::indexer::{finish_completed_generation, reindex_changed_files};
 use crate::manifest::{ManifestOptions, build_manifest};
 use crate::progress::ReindexProgressSink;
 use crate::store::CodeIndexStore;
@@ -185,9 +185,6 @@ async fn refresh_under_lease_inner(
         .await
         .map_err(|err| RefreshError::Failed(err.to_string()))?;
     if diff.is_empty() {
-        retry_cleanup_debt(cfg, store, identity)
-            .await
-            .map_err(|err| RefreshError::Failed(err.to_string()))?;
         store
             .touch_last_checked(identity)
             .await

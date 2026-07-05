@@ -36,6 +36,6 @@ Provider capabilities report health, limits, cooling, reservation policy, reserv
 | `crates/axon-llm/src/fake.rs` | `sha256:434f6306076a521876554880cc676663e7cd94b3998e4c80422f263df3d92a06` |
 | `crates/axon-llm/src/provider.rs` | `sha256:a1600254dc8b409227437eff91ec012a17adb0ee42766564bd7431036b2ed359` |
 | `crates/axon-observe/src/reservation.rs` | `sha256:508c71fd4073569d1bd1f272d0d827cd63990ba16db5a202017b7664e06920df` |
-| `crates/axon-vectors/src/store.rs` | `sha256:07bde62482e684f9745e8d5c795bad7c60ef17c90ea915bfd58ddb32139177a6` |
+| `crates/axon-vectors/src/store.rs` | `sha256:dcb2623f2d3757a17c364cf377dc5d746524a9a439608f051e09e5e00a43be6b` |
 | `docs/pipeline-unification/runtime/provider-contract.md` | `sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73` |
 | `docs/pipeline-unification/schemas/provider-capability-schema.md` | `sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f` |

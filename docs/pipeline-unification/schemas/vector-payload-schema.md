@@ -183,6 +183,8 @@ The generated schema emits a Qdrant index plan:
     { "field_name": "chunk_id", "field_schema": "keyword" },
     { "field_name": "source_generation", "field_schema": "integer" },
     { "field_name": "committed_generation", "field_schema": "integer" },
+    { "field_name": "visibility", "field_schema": "keyword" },
+    { "field_name": "redaction_status", "field_schema": "keyword" },
     { "field_name": "content_kind", "field_schema": "keyword" },
     { "field_name": "document_status", "field_schema": "keyword" },
     { "field_name": "job_id", "field_schema": "keyword" },

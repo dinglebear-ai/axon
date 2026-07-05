@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 use crate::config::{CodeIndexIdentity, max_indexed_file_bytes};
 use crate::manifest::{FileDiff, FileManifestEntry, ManifestSnapshot};
@@ -30,38 +29,20 @@ pub(crate) async fn reindex_changed_files(
         ReindexRunOptions {
             generation,
             progress,
-            test_deletes: None,
         },
     )
     .await
 }
 
-pub(crate) async fn retry_cleanup_debt(
-    cfg: &Config,
-    store: &CodeIndexStore,
-    identity: &CodeIndexIdentity,
-) -> anyhow::Result<()> {
-    cleanup_debt(Some(cfg), store, identity, None).await
-}
-
 pub(crate) async fn finish_completed_generation(
-    cfg: &Config,
+    _cfg: &Config,
     store: &CodeIndexStore,
     identity: &CodeIndexIdentity,
     manifest: &ManifestSnapshot,
     generation: i64,
     progress: Option<&dyn ReindexProgressSink>,
 ) -> anyhow::Result<ReindexSummary> {
-    finish_completed_generation_inner(
-        Some(cfg),
-        store,
-        identity,
-        manifest,
-        generation,
-        progress,
-        None,
-    )
-    .await
+    finish_completed_generation_inner(store, identity, manifest, generation, progress).await
 }
 
 async fn reindex_changed_files_inner(
@@ -133,9 +114,6 @@ async fn reindex_changed_files_inner(
             cleanup_paths: cleanup_paths.len(),
         },
     );
-    store
-        .add_cleanup_debt(identity, previous_generation, &cleanup_paths)
-        .await?;
     tracing::info!(
         project_key = %identity.project_key,
         generation,
@@ -148,7 +126,6 @@ async fn reindex_changed_files_inner(
         generation,
         "code-search reindex commit done"
     );
-    cleanup_debt(cfg, store, identity, options.test_deletes).await?;
     tracing::info!(
         project_key = %identity.project_key,
         generation,
@@ -374,50 +351,12 @@ async fn prepare_local_code_doc(
         .map_err(|err| anyhow::anyhow!("prepare local code source document failed: {err}"))
 }
 
-async fn cleanup_debt(
-    cfg: Option<&Config>,
-    store: &CodeIndexStore,
-    identity: &CodeIndexIdentity,
-    test_deletes: Option<Arc<Mutex<Vec<String>>>>,
-) -> anyhow::Result<()> {
-    let debt = store.cleanup_debt(identity).await?;
-    for (generation, paths) in debt {
-        if generation <= 0 || paths.is_empty() {
-            store
-                .clear_cleanup_debt(identity, generation, &paths)
-                .await?;
-            continue;
-        }
-        if let Some(cfg) = cfg {
-            axon_vector::ops::qdrant::qdrant_delete_local_code_files_for_generation(
-                cfg,
-                &identity.project_key,
-                generation,
-                &paths,
-            )
-            .await?;
-        }
-        if let Some(deletes) = &test_deletes {
-            deletes
-                .lock()
-                .map_err(|err| anyhow::anyhow!("cleanup delete tracker lock poisoned: {err}"))?
-                .extend(paths.iter().cloned());
-        }
-        store
-            .clear_cleanup_debt(identity, generation, &paths)
-            .await?;
-    }
-    Ok(())
-}
-
 async fn finish_completed_generation_inner(
-    cfg: Option<&Config>,
     store: &CodeIndexStore,
     identity: &CodeIndexIdentity,
     manifest: &ManifestSnapshot,
     generation: i64,
     progress: Option<&dyn ReindexProgressSink>,
-    test_deletes: Option<Arc<Mutex<Vec<String>>>>,
 ) -> anyhow::Result<ReindexSummary> {
     let previous_generation = generation.saturating_sub(1);
     let cleanup_paths = manifest
@@ -439,12 +378,8 @@ async fn finish_completed_generation_inner(
             cleanup_paths: cleanup_paths.len(),
         },
     );
-    store
-        .add_cleanup_debt(identity, previous_generation, &cleanup_paths)
-        .await?;
     emit_progress(progress, ReindexProgress::CommitStarted { generation });
     store.commit_generation(identity, generation).await?;
-    cleanup_debt(cfg, store, identity, test_deletes).await?;
     emit_progress(progress, ReindexProgress::Finished { generation });
     Ok(ReindexSummary::default())
 }
@@ -456,7 +391,6 @@ pub(crate) async fn reindex_changed_files_for_test(
     manifest: &ManifestSnapshot,
     diff: &FileDiff,
     generation: i64,
-    deletes: Arc<Mutex<Vec<String>>>,
 ) -> anyhow::Result<ReindexSummary> {
     reindex_changed_files_inner(
         None,
@@ -467,7 +401,6 @@ pub(crate) async fn reindex_changed_files_for_test(
         ReindexRunOptions {
             generation,
             progress: None,
-            test_deletes: Some(deletes),
         },
     )
     .await
@@ -479,16 +412,6 @@ pub(crate) async fn finish_completed_generation_for_test(
     identity: &CodeIndexIdentity,
     manifest: &ManifestSnapshot,
     generation: i64,
-    deletes: Arc<Mutex<Vec<String>>>,
 ) -> anyhow::Result<ReindexSummary> {
-    finish_completed_generation_inner(
-        None,
-        store,
-        identity,
-        manifest,
-        generation,
-        None,
-        Some(deletes),
-    )
-    .await
+    finish_completed_generation_inner(store, identity, manifest, generation, None).await
 }

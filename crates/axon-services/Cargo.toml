@@ -18,7 +18,6 @@ axon-extract = { path = "../axon-extract" }
 axon-memory = { path = "../axon-memory" }
 axon-jobs = { path = "../axon-jobs" }
 axon-observe = { path = "../axon-observe" }
-axon-code-index = { path = "../axon-code-index" }
 axon-adapters = { path = "../axon-adapters" }
 axon-route = { path = "../axon-route" }
 axon-document = { path = "../axon-document" }

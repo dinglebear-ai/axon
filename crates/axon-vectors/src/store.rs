@@ -16,6 +16,7 @@ use crate::filter::{
     matches_delete_selector, matches_search_filters, selector_collection, validate_delete_selector,
     validate_search_filters,
 };
+use crate::payload::generation_payload_i64;
 use crate::store_helpers::{
     delete_result, dot_score, payload_string, sparse_dot_score, stage_header,
 };
@@ -303,13 +304,13 @@ impl VectorStore for FakeVectorStore {
         let mut points_written = 0;
         for point in points.values_mut() {
             let point_source = payload_string(&point.payload, "source_id");
-            let point_generation = payload_string(&point.payload, "source_generation");
             if point_source.as_deref() == Some(source_id.0.as_str())
-                && point_generation.as_deref() == Some(generation.0.as_str())
+                && payload_generation_matches(&point.payload, "source_generation", &generation)
             {
-                point
-                    .payload
-                    .insert("committed_generation".to_string(), json!(generation.0));
+                point.payload.insert(
+                    "committed_generation".to_string(),
+                    json!(generation_payload_i64(&generation, "committed_generation")?),
+                );
                 point
                     .payload
                     .insert("document_status".to_string(), json!("published"));
@@ -461,6 +462,17 @@ impl VectorStore for FakeVectorStore {
     async fn capabilities(&self) -> Result<ProviderCapability> {
         self.capabilities_inner().await
     }
+}
+
+fn payload_generation_matches(
+    payload: &MetadataMap,
+    field: &str,
+    generation: &SourceGenerationId,
+) -> bool {
+    let Ok(expected) = generation_payload_i64(generation, field) else {
+        return false;
+    };
+    payload.get(field).and_then(serde_json::Value::as_i64) == Some(expected)
 }
 
 impl FakeVectorStore {

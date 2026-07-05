@@ -24,3 +24,6 @@ pub const CRATE_NAME: &str = "axon-retrieval";
 #[cfg(test)]
 #[path = "engine_tests.rs"]
 mod engine_tests;
+#[cfg(test)]
+#[path = "generation_tests.rs"]
+mod generation_tests;

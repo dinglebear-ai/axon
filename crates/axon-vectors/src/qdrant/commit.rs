@@ -13,6 +13,7 @@ use serde::Deserialize;
 use super::QdrantVectorStore;
 use super::http::QdrantHttp;
 use super::store_impl::request_usage;
+use crate::payload::generation_payload_i64;
 use crate::store::Result;
 use crate::store_helpers::stage_header;
 
@@ -32,17 +33,18 @@ pub async fn mark_generation_committed_rest(
         .require_collection_spec(http, &collection, stage)
         .await?;
 
+    let generation_value = generation_payload_i64(&generation, "source_generation")?;
     let filter = super::convert::eq2_filter_json(
         "source_id",
         &source_id.0,
         "source_generation",
-        &generation.0,
+        generation_value,
     );
     let matched = count_points(http, &collection, &filter, stage).await?;
 
     let body = serde_json::json!({
         "payload": {
-            "committed_generation": generation.0,
+            "committed_generation": generation_value,
             "document_status": "published",
         },
         "filter": filter,
@@ -90,11 +92,15 @@ pub async fn mark_unchanged_items_committed_rest(
         return Ok(empty_commit(collection));
     }
 
+    let previous_generation_value =
+        generation_payload_i64(&previous_generation, "committed_generation")?;
+    let committed_generation_value =
+        generation_payload_i64(&committed_generation, "committed_generation")?;
     let filter = super::convert::eq2_filter_json(
         "source_id",
         &source_id.0,
         "committed_generation",
-        &previous_generation.0,
+        previous_generation_value,
     );
     let points = scroll_points(http, &collection, &filter, stage).await?;
 
@@ -108,11 +114,11 @@ pub async fn mark_unchanged_items_committed_rest(
         let mut payload = payload;
         payload.insert(
             "source_generation".to_string(),
-            serde_json::Value::from(committed_generation.0.clone()),
+            serde_json::Value::from(committed_generation_value),
         );
         payload.insert(
             "committed_generation".to_string(),
-            serde_json::Value::from(committed_generation.0.clone()),
+            serde_json::Value::from(committed_generation_value),
         );
         payload.insert(
             "document_status".to_string(),

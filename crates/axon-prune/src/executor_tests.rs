@@ -2,6 +2,7 @@ use super::*;
 use axon_api::source::enums::LifecycleStatus;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneSelector, PruneTargetKind};
+use axon_api::source::vector::VectorDeleteSelector;
 
 use crate::plan::PrunePlanner;
 use crate::testing::{FakePruneTarget, FakeScopeSource, cleanup_debt_estimate};
@@ -14,6 +15,35 @@ fn source_sel() -> PruneSelector {
 
 fn cleanup_plan() -> axon_api::source::prune::PrunePlan {
     PrunePlanner::new(FakeScopeSource::new(cleanup_debt_estimate())).resolve(&source_sel())
+}
+
+#[test]
+fn generation_cleanup_uses_prune_plan_and_vector_delete_selector() {
+    let selector = PruneSelector::Generation {
+        source_id: SourceId::new("src_local_repo"),
+        generation: SourceGenerationId::new("42"),
+    };
+    let plan = PrunePlanner::new(FakeScopeSource::new(
+        axon_api::source::prune::PruneEstimate {
+            vector_points: 42,
+            ledger_generations: 1,
+            ..Default::default()
+        },
+    ))
+    .resolve(&selector);
+
+    assert!(plan.destructive);
+    assert!(plan.requires_admin);
+    assert!(plan.steps.iter().any(|step| {
+        matches!(
+            step.vector_selector.as_ref(),
+            Some(VectorDeleteSelector::Generation {
+                source_id,
+                generation,
+                ..
+            }) if source_id.0 == "src_local_repo" && generation.0 == "42"
+        )
+    }));
 }
 
 #[tokio::test]

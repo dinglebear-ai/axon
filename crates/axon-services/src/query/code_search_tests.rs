@@ -3,7 +3,6 @@ use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::test_support::NoopServiceRuntime;
 use crate::types::{CodeSearchCaller, CodeSearchFreshness, CodeSearchResult};
 use axon_api::source::*;
-use axon_code_index::{FreshnessWarning, ReindexProgress, ReindexProgressSink};
 use axon_core::config::Config;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
@@ -125,11 +124,10 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
     );
     let progress = RecordingReindexProgress::default();
 
-    let refreshed = refresh_code_search_index_with_backend(
+    let refreshed = refresh_code_search_index_with_progress(
         &ctx,
         Some(repo.path()),
         CodeSearchCaller::Cli,
-        CodeSearchRefreshBackend::TargetLocalSource,
         Some(&progress),
     )
     .await
@@ -186,11 +184,10 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
             8,
         ));
 
-    let refreshed = refresh_code_search_index_with_backend(
+    let refreshed = refresh_code_search_index_with_progress(
         &ctx,
         Some(repo.path()),
         CodeSearchCaller::Cli,
-        CodeSearchRefreshBackend::TargetLocalSource,
         None,
     )
     .await
@@ -211,6 +208,9 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
         .expect("fresh src point");
     stale_point.point_id = VectorPointId::new("stale-src-lib");
     stale_point.chunk_id = ChunkId::new("stale-src-lib");
+    if let Some(sparse_vector) = stale_point.sparse_vector.as_mut() {
+        sparse_vector.chunk_id = stale_point.chunk_id.clone();
+    }
     stale_point.vector = vec![100.0; 8];
     stale_point
         .payload
@@ -221,10 +221,10 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     );
     stale_point
         .payload
-        .insert("source_generation".to_string(), serde_json::json!("old"));
+        .insert("source_generation".to_string(), serde_json::json!(0));
     stale_point
         .payload
-        .insert("committed_generation".to_string(), serde_json::json!("old"));
+        .insert("committed_generation".to_string(), serde_json::json!(0));
     let stale_batch_id = stale_point
         .payload
         .get("embedding_batch_id")
@@ -313,19 +313,13 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
         ),
     );
 
-    refresh_code_search_index_with_backend(
-        &ctx,
-        Some(repo.path()),
-        CodeSearchCaller::Cli,
-        CodeSearchRefreshBackend::TargetLocalSource,
-        None,
-    )
-    .await
-    .expect("initial target refresh");
+    refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
+        .await
+        .expect("initial target refresh");
     std::fs::write(repo.path().join("bad.rs"), [0xff, 0xfe, 0xfd]).expect("bad source file");
     let progress = RecordingReindexProgress::default();
 
-    let err = code_search_with_progress(
+    let searched = code_search_with_progress(
         &ctx,
         "target_answer",
         CodeSearchOptions {
@@ -339,11 +333,18 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
         Some(&progress),
     )
     .await
-    .expect_err("ensure_fresh target search should fail on refresh failure");
+    .expect("ensure_fresh target search should fall back after refresh failure");
+    assert_eq!(searched.freshness.status, "stale");
     assert!(
-        err.to_string().contains("valid UTF-8"),
-        "unexpected error: {err:#}"
+        searched
+            .freshness
+            .warning
+            .as_deref()
+            .is_some_and(|warning| warning.contains("valid UTF-8")),
+        "refresh failure warning should mention the indexing failure: {searched:#?}"
     );
+    assert_eq!(searched.results.len(), 1);
+    assert_eq!(searched.results[0].file_path.as_deref(), Some("lib.rs"));
     let progress_events = progress.events.lock().expect("progress lock").clone();
     assert!(matches!(
         progress_events.first(),
@@ -393,11 +394,10 @@ async fn target_code_search_refresh_reports_stale_when_runtime_missing() {
     let service_jobs = Arc::new(NoopServiceRuntime);
     let ctx = ServiceContext::from_runtime(cfg, service_jobs);
 
-    let refreshed = refresh_code_search_index_with_backend(
+    let refreshed = refresh_code_search_index_with_progress(
         &ctx,
         Some(repo.path()),
         CodeSearchCaller::Cli,
-        CodeSearchRefreshBackend::TargetLocalSource,
         None,
     )
     .await

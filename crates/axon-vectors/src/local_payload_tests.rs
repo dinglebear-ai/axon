@@ -74,8 +74,8 @@ fn local_payload_includes_target_source_lineage_fields() {
     assert_eq!(payload["source_kind"], "local");
     assert_eq!(payload["source_adapter"], "local");
     assert_eq!(payload["source_scope"], "directory");
-    assert_eq!(payload["source_generation"], "gen_local_0001");
-    assert_eq!(payload["committed_generation"], "uncommitted");
+    assert_eq!(payload["source_generation"], 1);
+    assert!(payload["committed_generation"].is_null());
     assert_eq!(payload["source_item_key"], "docs/README.md");
     assert_eq!(payload["item_canonical_uri"], expected_canonical_uri);
     assert_eq!(
@@ -127,10 +127,7 @@ fn point_build_never_marks_generation_committed_before_publish() {
         .build()
         .unwrap();
 
-    assert_eq!(
-        batch.points[0].payload["committed_generation"],
-        "uncommitted"
-    );
+    assert!(batch.points[0].payload["committed_generation"].is_null());
 }
 
 #[test]

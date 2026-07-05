@@ -3,6 +3,8 @@
 use axon_api::source::*;
 use serde_json::Value;
 
+use crate::payload::generation_payload_i64;
+
 pub const SOURCE_ID: &str = "source_id";
 pub const SOURCE_GENERATION: &str = "source_generation";
 pub const COMMITTED_GENERATION: &str = "committed_generation";
@@ -204,7 +206,7 @@ fn value_kind(value: &Value) -> &'static str {
 fn payload_matches_str(payload: &MetadataMap, field: &str, expected: &str) -> bool {
     payload
         .get(field)
-        .is_some_and(|actual| value_matches_str(actual, expected))
+        .is_some_and(|actual| value_matches_str(field, actual, expected))
 }
 
 fn payload_matches_value(payload: &MetadataMap, field: &str, expected: &Value) -> bool {
@@ -213,9 +215,9 @@ fn payload_matches_value(payload: &MetadataMap, field: &str, expected: &Value) -
             .iter()
             .any(|expected| payload_matches_value(payload, field, expected));
     }
-    payload
-        .get(field)
-        .is_some_and(|actual| actual == expected || value_matches_string_value(actual, expected))
+    payload.get(field).is_some_and(|actual| {
+        actual == expected || value_matches_string_value(field, actual, expected)
+    })
 }
 
 fn payload_matches_path_prefix(payload: &MetadataMap, expected: &Value) -> bool {
@@ -241,12 +243,17 @@ fn payload_matches_path_prefix(payload: &MetadataMap, expected: &Value) -> bool 
     .any(|path| path == prefix.trim_end_matches('/') || path.starts_with(&prefix))
 }
 
-fn value_matches_string_value(actual: &Value, expected: &Value) -> bool {
+fn value_matches_string_value(field: &str, actual: &Value, expected: &Value) -> bool {
     expected
         .as_str()
-        .is_some_and(|expected| value_matches_str(actual, expected))
+        .is_some_and(|expected| value_matches_str(field, actual, expected))
 }
 
-fn value_matches_str(actual: &Value, expected: &str) -> bool {
+fn value_matches_str(field: &str, actual: &Value, expected: &str) -> bool {
     actual.as_str() == Some(expected)
+        || matches!(field, SOURCE_GENERATION | COMMITTED_GENERATION)
+            && actual.as_i64().is_some_and(|actual| {
+                generation_payload_i64(&SourceGenerationId::new(expected), "generation_filter")
+                    == Ok(actual)
+            })
 }

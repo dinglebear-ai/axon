@@ -211,18 +211,15 @@ async fn failed_partial_generation_is_not_reused_for_deleted_file_cleanup() {
     let next_generation = store.next_generation(&identity).await.unwrap();
     assert_eq!(next_generation, 2);
 
-    let deletes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     indexer::reindex_changed_files_for_test(
         &store,
         &identity,
         &empty_manifest,
         &diff,
         next_generation,
-        deletes.clone(),
     )
     .await
     .unwrap();
-    assert_eq!(deletes.lock().unwrap().as_slice(), &["lib.rs"]);
     assert_eq!(
         store.committed_generation(&identity).await.unwrap(),
         Some(next_generation)
@@ -287,22 +284,14 @@ async fn completed_uncommitted_generation_can_be_finished_without_reindex() {
         Some(generation)
     );
 
-    let deletes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    indexer::finish_completed_generation_for_test(
-        &store,
-        &identity,
-        &manifest,
-        generation,
-        deletes.clone(),
-    )
-    .await
-    .unwrap();
+    indexer::finish_completed_generation_for_test(&store, &identity, &manifest, generation)
+        .await
+        .unwrap();
 
     assert_eq!(
         store.committed_generation(&identity).await.unwrap(),
         Some(generation)
     );
-    assert!(deletes.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -345,18 +334,9 @@ async fn empty_file_deletes_old_vectors_and_marks_current_hash() {
             .unwrap();
     let diff = store.diff_manifest(&identity, &manifest).await.unwrap();
 
-    let deletes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    indexer::reindex_changed_files_for_test(
-        &store,
-        &identity,
-        &manifest,
-        &diff,
-        7,
-        deletes.clone(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(deletes.lock().unwrap().as_slice(), &["lib.rs"]);
+    indexer::reindex_changed_files_for_test(&store, &identity, &manifest, &diff, 7)
+        .await
+        .unwrap();
     assert!(
         !store
             .lookup_file(&identity, "lib.rs")
@@ -368,7 +348,7 @@ async fn empty_file_deletes_old_vectors_and_marks_current_hash() {
 }
 
 #[tokio::test]
-async fn changed_refresh_cleans_previous_generation_for_complete_snapshot() {
+async fn changed_refresh_no_longer_owns_previous_generation_cleanup() {
     let dir = tempdir().unwrap();
     tokio::fs::write(dir.path().join("a.rs"), "pub fn alpha() {}\n")
         .await
@@ -385,40 +365,15 @@ async fn changed_refresh_cleans_previous_generation_for_complete_snapshot() {
             .unwrap();
     let diff = store.diff_manifest(&identity, &manifest).await.unwrap();
 
-    let deletes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    indexer::reindex_changed_files_for_test(
-        &store,
-        &identity,
-        &manifest,
-        &diff,
-        7,
-        deletes.clone(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        deletes.lock().unwrap().as_slice(),
-        &["a.rs".to_string(), "b.rs".to_string()]
-    );
-    assert_eq!(store.cleanup_debt(&identity).await.unwrap().len(), 0);
-}
-
-#[tokio::test]
-#[cfg(feature = "test-util")]
-async fn concurrent_refresh_cannot_delete_newer_generation() {
-    let body = axon_vector::ops::qdrant::local_code_batch_delete_body_for_test(
-        "project-1",
-        41,
-        &["src/lib.rs".to_string()],
-    );
-    let must = body["filter"]["must"].as_array().unwrap();
+    indexer::reindex_changed_files_for_test(&store, &identity, &manifest, &diff, 7)
+        .await
+        .unwrap();
     assert!(
-        must.iter()
-            .any(|c| c["key"] == "local_generation" && c["match"]["value"] == 41)
-    );
-    assert!(
-        must.iter()
-            .any(|c| c["key"] == "local_index_version" && c["match"]["value"] == 1)
+        store
+            .committed_generation(&identity)
+            .await
+            .unwrap()
+            .is_some()
     );
 }
 

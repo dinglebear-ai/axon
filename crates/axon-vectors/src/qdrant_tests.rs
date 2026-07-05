@@ -4,6 +4,7 @@ use qdrant_client::qdrant::{
 };
 use serde_json::json;
 
+use crate::collection::{normalize_collection_spec, required_retrieval_payload_indexes};
 use crate::filter::SEARCH_GENERATION_FIELD;
 use crate::point::VectorPointBatchBuilder;
 use crate::qdrant::{
@@ -72,17 +73,30 @@ fn collection_spec_rejects_zero_dimensions_before_qdrant_conversion() {
 
 #[test]
 fn payload_index_specs_convert_to_qdrant_index_requests() {
-    let spec = test_collection_spec(3);
+    let mut spec = test_collection_spec(3);
+    spec.payload_indexes = required_retrieval_payload_indexes();
+    let spec = normalize_collection_spec(spec);
     let indexes = qdrant_payload_index_requests(&spec);
 
     assert!(indexes.iter().any(|index| {
         index.collection_name == "axon-test"
             && index.field_name == "source_generation"
-            && index.field_type == Some(FieldType::Keyword as i32)
+            && index.field_type == Some(FieldType::Integer as i32)
             && index.wait == Some(true)
     }));
     assert!(indexes.iter().any(|index| {
         index.field_name == "source_id" && index.field_type == Some(FieldType::Keyword as i32)
+    }));
+    assert!(indexes.iter().any(|index| {
+        index.field_name == "committed_generation"
+            && index.field_type == Some(FieldType::Integer as i32)
+    }));
+    assert!(indexes.iter().any(|index| {
+        index.field_name == "visibility" && index.field_type == Some(FieldType::Keyword as i32)
+    }));
+    assert!(indexes.iter().any(|index| {
+        index.field_name == "redaction_status"
+            && index.field_type == Some(FieldType::Keyword as i32)
     }));
 }
 
@@ -142,7 +156,7 @@ fn source_generation_and_document_filters_convert_to_qdrant_filters() {
             .r#match
             .as_ref()
             .and_then(|value| value.match_value.as_ref()),
-        Some(r#match::MatchValue::Keyword(value)) if value == "7"
+        Some(r#match::MatchValue::Integer(value)) if *value == 7
     ));
 
     request.filters.clear();
@@ -151,7 +165,7 @@ fn source_generation_and_document_filters_convert_to_qdrant_filters() {
 }
 
 #[test]
-fn qdrant_filter_rejects_path_prefix_until_live_prefix_wiring_exists() {
+fn qdrant_filter_converts_path_prefix_to_source_path_should_filter() {
     let request = VectorSearchRequest {
         collection: "axon-test".to_string(),
         query: "docs".to_string(),
@@ -169,16 +183,23 @@ fn qdrant_filter_rejects_path_prefix_until_live_prefix_wiring_exists() {
         metadata: MetadataMap::new(),
     };
 
-    let err = qdrant_filter(&request).unwrap_err();
+    let filter = qdrant_filter(&request)
+        .expect("path prefix filter")
+        .unwrap();
+    let nested = filter
+        .must
+        .iter()
+        .find_map(|condition| match condition.condition_one_of.as_ref()? {
+            qdrant_client::qdrant::condition::ConditionOneOf::Filter(filter) => Some(filter),
+            _ => None,
+        })
+        .expect("nested path-prefix filter");
 
-    assert_eq!(
-        err.code.to_string(),
-        "vector.qdrant.path_prefix_unsupported"
-    );
+    assert_eq!(nested.should.len(), 2);
 }
 
 #[test]
-fn opaque_generation_filter_is_converted_as_keyword() {
+fn opaque_generation_filter_is_rejected_before_qdrant_conversion() {
     let request = VectorSearchRequest {
         collection: "axon-test".to_string(),
         query: "docs".to_string(),
@@ -192,20 +213,9 @@ fn opaque_generation_filter_is_converted_as_keyword() {
         metadata: MetadataMap::new(),
     };
 
-    let filter = qdrant_filter(&request).unwrap().unwrap();
-    let condition::ConditionOneOf::Field(field) = filter.must[0].condition_one_of.as_ref().unwrap()
-    else {
-        panic!("expected search generation field condition");
-    };
-    assert_eq!(field.key, SEARCH_GENERATION_FIELD);
+    let err = qdrant_filter(&request).unwrap_err();
 
-    assert!(matches!(
-        field
-            .r#match
-            .as_ref()
-            .and_then(|value| value.match_value.as_ref()),
-        Some(r#match::MatchValue::Keyword(value)) if value == "gen-7"
-    ));
+    assert_eq!(err.code.to_string(), "vector.invalid_generation");
 }
 
 #[test]

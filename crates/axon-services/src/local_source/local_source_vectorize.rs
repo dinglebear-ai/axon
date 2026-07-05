@@ -8,11 +8,11 @@ use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder}
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
-use super::LocalSourceIndexInput;
 use super::local_source_adapter::{LocalAdapterRun, normalize_changed_documents, timestamp};
 use super::local_source_progress::{
     LocalSourceProgress, progress_error_context, record_progress_with_reservations,
 };
+use super::{LocalSourceIndexInput, LocalSourceSelectionPolicy};
 
 const LOCAL_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
 const LOCAL_CHANGED_CHUNK_BATCH_SIZE: usize = 512;
@@ -216,7 +216,7 @@ async fn vectorize_documents(
         }
     };
     drop(embedding_reservation);
-    let point_batch = vector_point_batch_for_documents(collection, &documents, &embeddings)?;
+    let point_batch = vector_point_batch_for_documents(input, collection, &documents, &embeddings)?;
     let vector_reservation = reserve_vector(input).await?;
     record_progress_with_reservations(
         progress,
@@ -340,6 +340,7 @@ fn embedding_batch_for_documents(
 }
 
 fn vector_point_batch_for_documents(
+    input: &LocalSourceIndexInput,
     collection: CollectionSpec,
     documents: &[PreparedDocument],
     embeddings: &EmbeddingResult,
@@ -352,11 +353,22 @@ fn vector_point_batch_for_documents(
         .map(|vector| (vector.chunk_id.clone(), vector))
         .collect::<std::collections::BTreeMap<_, _>>();
     for document in documents {
+        let mut document = document.clone();
+        if input.selection_policy == LocalSourceSelectionPolicy::CodeSearch {
+            document
+                .metadata
+                .insert("visibility".to_string(), serde_json::json!("public"));
+            for chunk in &mut document.chunks {
+                chunk
+                    .metadata
+                    .insert("visibility".to_string(), serde_json::json!("public"));
+            }
+        }
         let document_embeddings =
-            embedding_result_for_document(embeddings, document, &vectors_by_chunk);
+            embedding_result_for_document(embeddings, &document, &vectors_by_chunk);
         let batch = VectorPointBatchBuilder::new(
             collection.clone(),
-            document.clone(),
+            document,
             document_embeddings,
             VectorPointBatchBuildContext {
                 embedded_at: timestamp(),

@@ -1,7 +1,8 @@
 use axon_api::source::SourceGenerationId;
-use axon_code_index::ReindexProgress;
 use serde::Serialize;
 use std::path::PathBuf;
+
+use super::ReindexProgress;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]

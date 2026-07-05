@@ -103,7 +103,7 @@ where
                 limit: plan.limit,
                 dense_vector: Some(dense_vector),
                 sparse_vector: Some(sparse_vector),
-                filters: search_filters(&plan),
+                filters: search_filters(&plan)?,
                 hybrid: Some(true),
                 generation: plan.generation.clone(),
                 graph_refs: Vec::new(),
@@ -215,7 +215,7 @@ where
     }
 }
 
-fn search_filters(plan: &RetrievalPlan) -> MetadataMap {
+pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiError> {
     let mut filters = MetadataMap::new();
     filters.insert(
         "visibility".to_string(),
@@ -227,6 +227,10 @@ fn search_filters(plan: &RetrievalPlan) -> MetadataMap {
         ),
     );
     filters.insert("redaction_status".to_string(), serde_json::json!("clean"));
+    filters.insert(
+        "document_status".to_string(),
+        serde_json::json!("published"),
+    );
     if let Some(source_id) = &plan.source_id {
         filters.insert("source_id".to_string(), serde_json::json!(source_id.0));
     }
@@ -236,7 +240,7 @@ fn search_filters(plan: &RetrievalPlan) -> MetadataMap {
             serde_json::json!(plan.namespace_filters),
         );
     }
-    filters
+    Ok(filters)
 }
 
 fn visibility_value(visibility: &Visibility) -> &'static str {
