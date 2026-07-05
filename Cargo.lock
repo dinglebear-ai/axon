@@ -928,6 +928,7 @@ dependencies = [
  "axon-crawl",
  "axon-document",
  "axon-embedding",
+ "axon-error",
  "axon-extract",
  "axon-graph",
  "axon-ingest",

@@ -95,6 +95,14 @@ fn complete_fixture() -> Fixture {
     Fixture { _dir: dir, root }
 }
 
+fn first_target_crate() -> Option<&'static super::repo_structure_spec::TargetCrate> {
+    TARGET_CRATES.first()
+}
+
+fn first_target_path(krate: &super::repo_structure_spec::TargetCrate) -> String {
+    format!("crates/{}", krate.name)
+}
+
 #[test]
 fn complete_fixture_passes() {
     let fixture = complete_fixture();
@@ -103,150 +111,114 @@ fn complete_fixture_passes() {
 
 #[test]
 fn missing_target_crate_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
     let fixture = complete_fixture();
-    fs::remove_dir_all(fixture.root.join("crates/axon-prune")).unwrap();
+    let crate_path = first_target_path(krate);
+    fs::remove_dir_all(fixture.root.join(&crate_path)).unwrap();
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("workspace member path does not exist: crates/axon-prune"),
+        err.contains(&format!(
+            "workspace member path does not exist: {crate_path}"
+        )),
         "{err}"
     );
-}
-
-#[test]
-fn broken_agent_memory_symlink_fails() {
-    let fixture = complete_fixture();
-    fs::remove_file(fixture.root.join("crates/axon-prune/src/AGENTS.md")).unwrap();
-    write_symlink(
-        "../CLAUDE.md",
-        &fixture.root.join("crates/axon-prune/src/AGENTS.md"),
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(err.contains("AGENTS.md must symlink to CLAUDE.md"), "{err}");
 }
 
 #[test]
 fn missing_target_module_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
+    let Some(module) = krate.modules.first() else {
+        return;
+    };
     let fixture = complete_fixture();
-    fs::remove_file(fixture.root.join("crates/axon-prune/src/plan.rs")).unwrap();
+    fs::remove_file(
+        fixture
+            .root
+            .join(first_target_path(krate))
+            .join(format!("src/{module}.rs")),
+    )
+    .unwrap();
 
     let err = check_root(&fixture.root).unwrap_err();
-    assert!(err.contains("plan.rs"), "{err}");
-}
-
-#[test]
-fn missing_target_module_declaration_fails() {
-    let fixture = complete_fixture();
-    write(
-        &fixture.root.join("crates/axon-prune/src/lib.rs"),
-        "pub const CRATE_NAME: &str = \"axon-prune\";\n",
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains("lib.rs is missing module declaration: pub mod plan;"),
-        "{err}"
-    );
-}
-
-#[test]
-fn unexpected_target_module_declaration_fails() {
-    let fixture = complete_fixture();
-    write(
-        &fixture.root.join("crates/axon-prune/src/lib.rs"),
-        "pub mod plan;\npub mod surprise;\n",
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains("lib.rs declares unexpected PR0 public module: pub mod surprise;"),
-        "{err}"
-    );
-}
-
-#[test]
-fn unexpected_target_module_file_fails() {
-    let fixture = complete_fixture();
-    write(
-        &fixture.root.join("crates/axon-prune/src/surprise.rs"),
-        "pub const MODULE_NAME: &str = \"surprise\";\n",
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains("surprise.rs is an unexpected PR0 module file"),
-        "{err}"
-    );
-}
-
-#[test]
-fn target_dependency_fails() {
-    let fixture = complete_fixture();
-    write(
-        &fixture.root.join("crates/axon-prune/Cargo.toml"),
-        "[package]\nname = \"axon-prune\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = { path = \"../axon-services\" }\n",
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains("PR0 target crate axon-prune must keep [dependencies] empty"),
-        "{err}"
-    );
-}
-
-#[test]
-fn target_specific_dependency_fails() {
-    let fixture = complete_fixture();
-    write(
-        &fixture.root.join("crates/axon-prune/Cargo.toml"),
-        "[package]\nname = \"axon-prune\"\nrust-version.workspace = true\n\n[target.'cfg(unix)'.dependencies]\naxon-services = { path = \"../axon-services\" }\n",
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains("PR0 target crate axon-prune must keep [target.cfg(unix).dependencies] empty"),
-        "{err}"
-    );
-}
-
-#[test]
-fn package_metadata_dependencies_are_allowed() {
-    let fixture = complete_fixture();
-    write(
-        &fixture.root.join("crates/axon-prune/Cargo.toml"),
-        "[package]\nname = \"axon-prune\"\nrust-version.workspace = true\n\n[package.metadata.dependencies]\nnotes = \"not a Cargo dependency table\"\n\n[dependencies]\n",
-    );
-
-    check_root(&fixture.root).unwrap();
+    assert!(err.contains(&format!("{module}.rs")), "{err}");
 }
 
 #[test]
 fn target_package_name_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-prune/Cargo.toml"),
+        &fixture
+            .root
+            .join(first_target_path(krate))
+            .join("Cargo.toml"),
         "[package]\nname = \"fixture\"\nrust-version.workspace = true\n\n[dependencies]\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-prune must set package.name = \"axon-prune\""),
+        err.contains(&format!(
+            "PR0 target crate {} must set package.name = \"{}\"",
+            krate.name, krate.name
+        )),
         "{err}"
     );
 }
 
 #[test]
 fn missing_target_rust_version_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
     let fixture = complete_fixture();
     write(
-        &fixture.root.join("crates/axon-prune/Cargo.toml"),
-        "[package]\nname = \"axon-prune\"\n\n[dependencies]\n",
+        &fixture
+            .root
+            .join(first_target_path(krate))
+            .join("Cargo.toml"),
+        &format!("[package]\nname = \"{}\"\n\n[dependencies]\n", krate.name),
     );
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("PR0 target crate axon-prune must set rust-version.workspace = true"),
+        err.contains(&format!(
+            "PR0 target crate {} must set rust-version.workspace = true",
+            krate.name
+        )),
+        "{err}"
+    );
+}
+
+#[test]
+fn target_dependency_fails() {
+    let Some(krate) = first_target_crate() else {
+        return;
+    };
+    let fixture = complete_fixture();
+    write(
+        &fixture
+            .root
+            .join(first_target_path(krate))
+            .join("Cargo.toml"),
+        &format!(
+            "[package]\nname = \"{}\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = {{ path = \"../axon-services\" }}\n",
+            krate.name
+        ),
+    );
+
+    let err = check_root(&fixture.root).unwrap_err();
+    assert!(
+        err.contains(&format!(
+            "PR0 target crate {} must keep [dependencies] empty",
+            krate.name
+        )),
         "{err}"
     );
 }

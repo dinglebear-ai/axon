@@ -378,6 +378,7 @@ pub async fn dispatch_web(
     input: &str,
     collection: &str,
     owner_id: &str,
+    scope: SourceScope,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!("command=source collection={collection} kind=web"));
     let crawl = crawl_for_source(cfg, input)
@@ -392,8 +393,7 @@ pub async fn dispatch_web(
     ));
     let index_input = WebSourceIndexInput {
         source: input.to_string(),
-        // Site is the default web acquisition scope: a crawled subtree.
-        scope: SourceScope::Site,
+        scope,
         manifest_path: Some(crawl.manifest_path.clone()),
         markdown_root: Some(crawl.markdown_root.clone()),
         map_urls: Vec::new(),

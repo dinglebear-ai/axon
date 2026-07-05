@@ -6,6 +6,11 @@ Last Modified: 2026-06-30
 This is the target adapter/scope registry contract. Current source handling is
 still split across command-specific services and source classifiers.
 
+The generated reference at `docs/reference/sources/adapter-scopes.md` may show
+the route-time subset currently compiled into `axon-route`. The target matrix in
+this file remains the full contract for future adapter/source-family ports.
+Issue tracker checkboxes must distinguish those two states.
+
 Adapters declare source kinds, supported scopes, default scope rules,
 capabilities, option schemas, credential requirements, watch/refresh behavior,
 chunking/parser hints, graph fact support, degraded modes, and safety policy
