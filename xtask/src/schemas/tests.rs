@@ -565,27 +565,181 @@ fn targeted_family_checks_do_not_require_hidden_aggregate_generation() {
 }
 
 #[test]
-fn removed_surface_drift_fails_generation() {
-    for (path, token) in [
-        ("docs/reference/cli/commands.json", "\"embed\""),
-        ("docs/reference/cli/commands.json", "\"code-search\""),
-        ("docs/reference/mcp/tool-schema.json", "\"vertical_scrape\""),
-        ("docs/reference/mcp/tool-schema.json", "\"crawl\""),
-        ("docs/reference/rest/openapi.json", "\"/v1/embed\""),
-        ("docs/reference/rest/openapi.json", "\"/v1/scrape\""),
-        (
-            "docs/reference/config/env.schema.json",
-            "\"AXON_MCP_HTTP_TOKEN\"",
+fn removed_surface_registry_matches_contract() {
+    let registry = removed::removed_surface_registry();
+
+    assert!(
+        registry
+            .cli_commands
+            .iter()
+            .any(|command| command.name == "embed")
+    );
+    assert!(
+        registry
+            .cli_commands
+            .iter()
+            .any(|command| command.name == "code-search-watch")
+    );
+    assert!(
+        registry
+            .mcp_actions
+            .iter()
+            .any(|action| action.name == "vertical_scrape")
+    );
+    assert!(registry.rest_routes.iter().any(|route| {
+        route.method == "POST" && route.path == "/v1/embed" && route.operation_id == "embed"
+    }));
+    assert!(
+        registry
+            .config_keys
+            .iter()
+            .any(|key| key.name == "AXON_MCP_HTTP_TOKEN")
+    );
+    assert!(registry.generated_clients.contains(&"web"));
+    assert!(registry.generated_clients.contains(&"palette"));
+    assert!(registry.generated_clients.contains(&"android"));
+    assert!(registry.generated_clients.contains(&"chrome-extension"));
+}
+
+#[test]
+fn removed_surface_checker_reports_structural_findings() {
+    let artifacts = vec![
+        artifact::SchemaArtifact::new(
+            "docs/reference/cli/commands.json",
+            serde_json::json!({
+                "commands": [{"name": "embed"}, {"name": "query"}]
+            })
+            .to_string(),
         ),
-    ] {
-        let artifacts = vec![artifact::SchemaArtifact::new(
-            path,
-            format!("{{\"title\":{token}}}"),
-        )];
-        let err = registry::check_removed_surface_drift(&artifacts)
-            .expect_err("removed surface token should fail");
-        assert!(err.to_string().contains("removed public surface token"));
-    }
+        artifact::SchemaArtifact::new(
+            "docs/reference/mcp/tool-schema.json",
+            serde_json::json!({
+                "actions": [{"action": "vertical_scrape"}, {"action": "query"}]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/rest/openapi.json",
+            serde_json::json!({
+                "routes": [
+                    {"method": "POST", "path": "/v1/embed", "operation_id": "embed"},
+                    {"method": "POST", "path": "/v1/query", "operation_id": "query"}
+                ]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/config/env.schema.json",
+            serde_json::json!({
+                "config_keys": [{"env_key": "AXON_MCP_HTTP_TOKEN", "key": "auth.token"}]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/api/schemas.json",
+            serde_json::json!({
+                "$defs": {
+                    "CodeSearchRequest": {
+                        "properties": {
+                            "cwd": {"type": "string"}
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "apps/web/generated/client-operations.json",
+            serde_json::json!({
+                "client": "web",
+                "operations": [{"operation_id": "watch_run"}]
+            })
+            .to_string(),
+        ),
+    ];
+
+    let report = removed::removed_surface_absence_report(&artifacts);
+    let findings = report
+        .findings
+        .iter()
+        .map(|finding| (finding.category, finding.surface.as_str()))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert!(findings.contains(&("CLI command", "embed")));
+    assert!(findings.contains(&("MCP action", "vertical_scrape")));
+    assert!(findings.contains(&("REST route", "POST /v1/embed")));
+    assert!(findings.contains(&("REST operation", "embed")));
+    assert!(findings.contains(&("config key", "AXON_MCP_HTTP_TOKEN")));
+    assert!(findings.contains(&("DTO schema", "CodeSearchRequest")));
+    assert!(findings.contains(&("DTO field", "CodeSearchRequest.cwd")));
+    assert!(findings.contains(&("generated client operation", "watch_run")));
+
+    let err = removed::assert_removed_surface_absent(&report)
+        .expect_err("present removed surfaces should be reported");
+    assert!(err.to_string().contains("replacement"));
+}
+
+#[test]
+fn removed_surface_checker_accepts_absent_canonical_artifacts() {
+    let artifacts = vec![
+        artifact::SchemaArtifact::new(
+            "docs/reference/cli/commands.json",
+            serde_json::json!({
+                "commands": [{"name": "source"}, {"name": "query"}]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/mcp/tool-schema.json",
+            serde_json::json!({
+                "actions": [{"action": "source"}, {"action": "query"}]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/rest/openapi.json",
+            serde_json::json!({
+                "routes": [
+                    {
+                        "method": "POST",
+                        "path": "/v1/sources",
+                        "operation_id": "create_source"
+                    },
+                    {
+                        "method": "POST",
+                        "path": "/v1/watches/{watch_id}/exec",
+                        "operation_id": "exec_watch"
+                    }
+                ]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/config/env.schema.json",
+            serde_json::json!({
+                "config_keys": [{"env_key": "AXON_HTTP_TOKEN", "key": "auth.token"}]
+            })
+            .to_string(),
+        ),
+        artifact::SchemaArtifact::new(
+            "docs/reference/api/schemas.json",
+            serde_json::json!({
+                "$defs": {
+                    "QueryRequest": {
+                        "properties": {
+                            "filters": {"type": "object"}
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        ),
+    ];
+
+    let report = removed::removed_surface_absence_report(&artifacts);
+
+    assert!(report.is_clean());
+    removed::assert_removed_surface_absent(&report).unwrap();
 }
 
 #[test]
@@ -1120,7 +1274,7 @@ fn cross_checks_detect_dangling_refs() {
 
 #[test]
 fn cross_checks_detect_removed_surface_drift() {
-    removed_surface_drift_fails_generation();
+    removed_surface_checker_reports_structural_findings();
 }
 
 #[test]
