@@ -2,26 +2,20 @@ name: palette-release
 
 # Releases the Tauri axon-palette independently of the main axon `v*` releases.
 #
-# Triggered by pushing a palette-specific tag whose version matches the
-# `version` in apps/palette-tauri/src-tauri/tauri.conf.json, e.g.:
-#
-#   git tag palette-v5.9.1 && git push origin palette-v5.9.1
-#
+# Run by release-please after it creates a palette-specific tag whose version
+# matches the `version` in apps/palette-tauri/src-tauri/tauri.conf.json.
 # Builds the portable palette binary for Linux + Windows, packages each with a
 # SHA256 checksum, and publishes a GitHub Release with both artifacts attached.
 #
 # Manual workflow_dispatch builds + packages the binaries and uploads them to
 # the run as artifacts for inspection, but does NOT create a Release unless
-# explicitly called with publish=true on a palette-v* tag. auto-tag.yml
-# dispatches this workflow with publish=true after creating a new palette-v*
-# tag, because tags pushed with GITHUB_TOKEN do not trigger tag-push workflows.
+# explicitly called with publish=true on a palette-v* tag. release-please.yml
+# dispatches this workflow after release-please creates the GitHub Release.
 on:
-  push:
-    tags: ["palette-v*"]
   workflow_dispatch:
     inputs:
       publish:
-        description: "Create the GitHub Release when running on a palette-v* tag"
+        description: "Attach artifacts to an existing release-please palette-v* release"
         type: boolean
         default: false
 
@@ -65,8 +59,9 @@ jobs:
             exit 1
           fi
 
-          # On a real tag push, the tag version must match tauri.conf.json so a
-          # release can never ship a binary the tag disagrees with.
+          # On release-please dispatch, the tag version must match
+          # tauri.conf.json so a release can never ship a binary the tag
+          # disagrees with.
           if [[ "${GITHUB_REF}" == refs/tags/palette-v* ]]; then
             tag_version="${GITHUB_REF#refs/tags/palette-v}"
             if [[ "$tag_version" != "$version" ]]; then
@@ -184,15 +179,12 @@ jobs:
     name: publish github release
     needs: [version, palette-linux, palette-windows]
     runs-on: ubuntu-latest
-    # Create a release on real tag pushes. workflow_dispatch remains a dry-run
-    # unless explicitly called with publish=true on a palette-v* tag (used by
-    # auto-tag).
+    # Attach artifacts only when release-please dispatches this workflow on an
+    # existing palette-v* release tag.
     if: >-
       startsWith(github.ref, 'refs/tags/palette-v') &&
-      (
-        github.event_name == 'push' ||
-        (github.event_name == 'workflow_dispatch' && inputs.publish)
-      )
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish
     permissions:
       contents: write
     steps:
@@ -202,27 +194,16 @@ jobs:
           merge-multiple: true
       - name: List artifacts
         run: ls -la dist/
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Palette v${{ needs.version.outputs.version }}
-          # Curated body instead of generate_release_notes: the palette versions
-          # independently, so auto-notes would diff against an unrelated axon v*
-          # tag and dump the whole axon PR history into the palette's notes.
-          body: |
-            Axon Palette — desktop launcher v${{ needs.version.outputs.version }}.
-
-            **Install:** download the binary for your platform and run
-            `axon palette install`, or unpack the portable binary directly.
-
-            **Verify:** `sha256sum -c axon-palette-linux-x86_64.tar.gz.sha256`
-
-            See `apps/palette-tauri/README.md` for build and configuration details.
-          files: |
-            dist/axon-palette-linux-x86_64.tar.gz
-            dist/axon-palette-linux-x86_64.tar.gz.sha256
-            dist/axon-palette-windows-x86_64.zip
-            dist/axon-palette-windows-x86_64.zip.sha256
-          fail_on_unmatched_files: true
-          # Keep the repo's "Latest release" badge pointing at axon `v*` releases.
-          make_latest: false
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" \
+            dist/axon-palette-linux-x86_64.tar.gz \
+            dist/axon-palette-linux-x86_64.tar.gz.sha256 \
+            dist/axon-palette-windows-x86_64.zip \
+            dist/axon-palette-windows-x86_64.zip.sha256 \
+            --clobber

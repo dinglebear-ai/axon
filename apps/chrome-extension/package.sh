@@ -2,11 +2,8 @@
 #
 # Package the Axon Chrome extension into a distributable ZIP.
 #
-# The `assets/` entry in this directory is a symlink into the monorepo's
-# top-level `assets/`. Chrome's "Load unpacked" follows that symlink locally,
-# but a distributable ZIP (and the Chrome Web Store) requires real files with
-# no symlinks. This script stages the runtime files, copies only the assets
-# actually referenced by the manifest/HTML/JS as real files, and zips them.
+# assets/ contains real extension-owned files so release-please can detect
+# Chrome release changes from a single package path.
 #
 # Usage:
 #   ./package.sh            # -> dist/axon-<version>.zip
@@ -36,8 +33,8 @@ for f in manifest.json *.html *.js *.css; do
   [[ -e "$f" ]] && cp "$f" "$stage/"
 done
 
-# Discover the assets actually referenced, then copy each as a real file
-# (cp dereferences the symlink), preserving its relative path under the stage.
+# Discover the assets actually referenced, then copy each into the stage,
+# preserving its relative path under the stage.
 # Use a read loop instead of `mapfile` so bash 3.2 (macOS system bash) works.
 refs=()
 while IFS= read -r ref; do

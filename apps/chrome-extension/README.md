@@ -37,10 +37,10 @@ For a distributable ZIP (sharing or Chrome Web Store upload):
 # or: just package-extension
 ```
 
-The version is read from `manifest.json`. The `assets/` entry here is a symlink
-into the monorepo's top-level `assets/`; "Load unpacked" follows it locally, but
-a ZIP must contain real files. `package.sh` ships the runtime files and copies the
-referenced assets as real files (no symlinks), omitting dev-only files
+The version is read from `manifest.json`. Runtime assets live under this
+extension directory as real files so release-please sees Chrome release changes
+inside one package path. `package.sh` ships the runtime files and copies the
+referenced assets into the staging directory, omitting dev-only files
 (`README.md`, `package.sh`).
 
 ## Release It

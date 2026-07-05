@@ -1,6 +1,6 @@
 name: release
 
-# Triggered when you push a version tag (e.g. `git tag v2.0.0 && git push origin v2.0.0`).
+# Run by release-please after it creates an axon version tag.
 # Builds the axon CLI for Linux + Windows, packages each with a SHA256 checksum,
 # and publishes a GitHub Release with both artifacts attached.
 #
@@ -9,23 +9,19 @@ name: release
 # release so that a palette-only change does not require a CLI version bump and
 # vice-versa.
 #
-# Manual workflow_dispatch builds everything but skips the Release creation by
-# default (artifacts are still uploaded to the workflow run for inspection).
-# auto-tag.yml dispatches this workflow with publish=true after creating a new
-# v* tag, because tags pushed with GITHUB_TOKEN do not trigger tag-push
-# workflows.
+# Manual workflow_dispatch builds everything but skips attaching artifacts by
+# default. release-please.yml dispatches this workflow with publish=true on the
+# newly created v* tag after release-please creates the GitHub Release.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       publish:
-        description: "Create the GitHub Release when running on a v* tag"
+        description: "Attach artifacts to an existing release-please v* release"
         type: boolean
         default: false
 
 permissions:
-  contents: write   # required to create releases
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -155,14 +151,12 @@ jobs:
     name: publish github release
     needs: [axon-linux, axon-windows]
     runs-on: ubuntu-latest
-    # Create a release on real tag pushes. workflow_dispatch remains a dry-run
-    # unless explicitly called with publish=true on a v* tag (used by auto-tag).
+    # Attach artifacts only when release-please dispatches this workflow on an
+    # existing v* release tag.
     if: >-
       startsWith(github.ref, 'refs/tags/v') &&
-      (
-        github.event_name == 'push' ||
-        (github.event_name == 'workflow_dispatch' && inputs.publish)
-      )
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish
     permissions:
       contents: write
     steps:
@@ -178,17 +172,23 @@ jobs:
       # break the strict required-artifact release step below.
       - name: Attach signature to release (when present)
         if: ${{ hashFiles('dist/axon-linux-x86_64.tar.gz.minisig') != '' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/axon-linux-x86_64.tar.gz.minisig
-          fail_on_unmatched_files: true
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/axon-linux-x86_64.tar.gz
-            dist/axon-linux-x86_64.tar.gz.sha256
-            dist/axon-windows-x86_64.zip
-            dist/axon-windows-x86_64.zip.sha256
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" dist/axon-linux-x86_64.tar.gz.minisig --clobber
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null
+          gh release upload "$tag" \
+            dist/axon-linux-x86_64.tar.gz \
+            dist/axon-linux-x86_64.tar.gz.sha256 \
+            dist/axon-windows-x86_64.zip \
+            dist/axon-windows-x86_64.zip.sha256 \
+            --clobber

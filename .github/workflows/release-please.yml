@@ -1,0 +1,122 @@
+name: release-please
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-main
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # required to create release commits and tags
+      issues: write         # required for release-please labels
+      pull-requests: write  # required to create and update release PRs
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      prs: ${{ steps.release.outputs.prs }}
+      cli_tag: ${{ steps.release.outputs.tag_name }}
+      palette_tag: ${{ steps.release.outputs['apps/palette-tauri--tag_name'] }}
+      android_tag: ${{ steps.release.outputs['apps/android--tag_name'] }}
+      chrome_tag: ${{ steps.release.outputs['apps/chrome-extension--tag_name'] }}
+    steps:
+      - name: Require release-please token
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: test -n "$RELEASE_PLEASE_TOKEN"
+      - uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release-pr-fixups:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # required to push generated fixup commits to release PR branches
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: xtask
+      - name: Apply release PR fixups
+        env:
+          PRS: ${{ needs.release-please.outputs.prs }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          base_ref="$(git rev-parse --abbrev-ref HEAD)"
+          jq -c '.[]' <<<"$PRS" | while read -r pr; do
+            branch="$(jq -r '.headBranchName' <<<"$pr")"
+            files="$(jq -r '.files[]?' <<<"$pr")"
+            git fetch origin "$branch"
+            git checkout "$branch"
+            cargo xtask release-please-fixup-plan --files "$files" --json > fixup-plan.json
+            while read -r fixup; do
+              component="$(jq -r '.id' <<<"$fixup")"
+              version="$(jq -r '.version' <<<"$fixup")"
+              cargo xtask release-please-fixups --component "$component" --version "$version"
+            done < <(jq -c '.[]' fixup-plan.json)
+            cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
+            if ! git diff --quiet; then
+              git add Cargo.lock apps/palette-tauri/src-tauri/Cargo.lock apps/android/app/build.gradle.kts
+              git commit -m "chore: apply release-please fixups"
+              git push origin HEAD:"$branch"
+            fi
+            git checkout "$base_ref"
+          done
+
+  dispatch-artifacts:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write  # required to dispatch artifact workflows
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: xtask
+      - name: Build dispatch plan
+        env:
+          RELEASE_OUTPUTS: ${{ toJson(needs.release-please.outputs) }}
+        run: |
+          cargo xtask release-please-dispatch-plan \
+            --release-outputs "$RELEASE_OUTPUTS" \
+            --json > dispatch-plan.json
+          jq . dispatch-plan.json
+      - name: Dispatch artifact workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          jq -c '.[]' dispatch-plan.json | while read -r item; do
+            workflow="$(jq -r '.workflow' <<<"$item")"
+            tag="$(jq -r '.tag' <<<"$item")"
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null
+            gh workflow run "$workflow" --ref "$tag" -f publish=true
+          done

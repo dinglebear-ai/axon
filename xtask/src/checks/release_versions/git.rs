@@ -2,6 +2,7 @@ use super::files::read_gradle_version_code;
 use super::{Component, GateMode, ReleaseContext, ReleaseResult, VersionKind};
 use semver::Version;
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -47,6 +48,21 @@ pub(super) fn component_changed_since_ref(
         return Ok(false);
     }
 
+    if component.id == "android"
+        && changed
+            .iter()
+            .all(|path| path == "apps/android/app/build.gradle.kts")
+        && android_release_please_marker_only(root, base, head)?
+    {
+        return Ok(false);
+    }
+
+    if component.id == "chrome"
+        && chrome_release_please_asset_bootstrap_only(root, base, head, &changed)?
+    {
+        return Ok(false);
+    }
+
     if component.id == "cli"
         && changed.iter().all(|path| path == "Cargo.lock")
         && cargo_lock_only_xtask_package_changed(root, base, head)?
@@ -55,6 +71,100 @@ pub(super) fn component_changed_since_ref(
     }
 
     Ok(true)
+}
+
+fn android_release_please_marker_only(root: &Path, base: &str, head: &str) -> ReleaseResult<bool> {
+    let path = "apps/android/app/build.gradle.kts";
+    let before = git_show(root, base, path)?;
+    let after = git_show(root, head, path)?;
+    Ok(strip_android_release_please_markers(&before)
+        == strip_android_release_please_markers(&after))
+}
+
+fn strip_android_release_please_markers(content: &str) -> String {
+    content
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            trimmed != "// x-release-please-start-version" && trimmed != "// x-release-please-end"
+        })
+        .map(|line| {
+            line.strip_suffix(" // x-release-please-version-code")
+                .unwrap_or(line)
+                .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn chrome_release_please_asset_bootstrap_only(
+    root: &Path,
+    base: &str,
+    head: &str,
+    changed: &[String],
+) -> ReleaseResult<bool> {
+    if !changed.iter().all(|path| {
+        path == "apps/chrome-extension/package.sh"
+            || path == "apps/chrome-extension/assets"
+            || path.starts_with("apps/chrome-extension/assets/")
+    }) {
+        return Ok(false);
+    }
+
+    if changed
+        .iter()
+        .any(|path| path == "apps/chrome-extension/package.sh")
+        && !non_comment_shell_equal(root, base, head, "apps/chrome-extension/package.sh")?
+    {
+        return Ok(false);
+    }
+
+    let asset_paths = changed
+        .iter()
+        .filter(|path| {
+            path.as_str() == "apps/chrome-extension/assets"
+                || path.starts_with("apps/chrome-extension/assets/")
+        })
+        .collect::<Vec<_>>();
+    if asset_paths.is_empty() {
+        return Ok(true);
+    }
+
+    let tree = git_output(root, &["ls-tree", base, "apps/chrome-extension/assets"])?;
+    if !tree.starts_with("120000 blob") {
+        return Ok(false);
+    }
+
+    for path in asset_paths {
+        if path.as_str() == "apps/chrome-extension/assets" {
+            continue;
+        }
+        let top_level = path.replacen("apps/chrome-extension/assets/", "assets/", 1);
+        let after = fs::read(root.join(path))
+            .with_release_context(|| format!("failed to read {}", path))?;
+        let original = fs::read(root.join(&top_level))
+            .with_release_context(|| format!("failed to read {}", top_level))?;
+        if after != original {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn non_comment_shell_equal(root: &Path, base: &str, head: &str, path: &str) -> ReleaseResult<bool> {
+    let before = git_show(root, base, path)?;
+    let after = git_show(root, head, path)?;
+    Ok(shell_without_comments(&before) == shell_without_comments(&after))
+}
+
+fn shell_without_comments(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 /// A component's own `CHANGELOG.md` lives inside its shipping paths, but editing

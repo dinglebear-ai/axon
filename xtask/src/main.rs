@@ -84,22 +84,26 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Bump all version-bearing files for one component. Level is auto-derived
-    /// from conventional commits (via git-cliff) when omitted.
-    BumpVersion {
-        component: String,
-        #[arg(value_enum)]
-        level: Option<checks::release_versions::BumpLevel>,
-        /// Skip git-cliff changelog generation (stamp an empty heading instead).
+    /// Apply release-please postprocessing for files it cannot update directly.
+    ReleasePleaseFixups {
         #[arg(long)]
-        skip_changelog: bool,
+        component: String,
+        #[arg(long)]
+        version: String,
     },
-    /// Regenerate a component's full changelog from scoped git history.
-    RegenChangelog {
-        component: String,
-        /// Output path for the changelog file.
+    /// Print release-please postprocessing needed for a release PR file list.
+    ReleasePleaseFixupPlan {
         #[arg(long)]
-        output: String,
+        files: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the artifact workflow dispatch plan from release-please outputs.
+    ReleasePleaseDispatchPlan {
+        #[arg(long)]
+        release_outputs: String,
+        #[arg(long)]
+        json: bool,
     },
     /// Benchmark embedding a local corpus through axon, TEI, and Qdrant.
     BenchEmbed {
@@ -177,19 +181,23 @@ fn main() -> Result<()> {
             checks::release_versions::print_plans(&plans, json)?;
             Ok(())
         }
-        Command::BumpVersion {
-            component,
-            level,
-            skip_changelog,
-        } => Ok(checks::release_versions::bump(
-            &root,
-            &component,
-            level,
-            skip_changelog,
-        )?),
-        Command::RegenChangelog { component, output } => Ok(
-            checks::release_versions::regen_changelog(&root, &component, &output)?,
+        Command::ReleasePleaseFixups { component, version } => Ok(
+            checks::release_versions::release_please_fixups(&root, &component, &version)?,
         ),
+        Command::ReleasePleaseFixupPlan { files, json } => {
+            let items = checks::release_versions::release_please_fixup_plan(&root, &files)?;
+            checks::release_versions::print_release_please_fixup_plan(&items, json)?;
+            Ok(())
+        }
+        Command::ReleasePleaseDispatchPlan {
+            release_outputs,
+            json,
+        } => {
+            let items =
+                checks::release_versions::release_please_dispatch_plan(&root, &release_outputs)?;
+            checks::release_versions::print_release_please_dispatch_plan(&items, json)?;
+            Ok(())
+        }
         Command::BenchEmbed {
             corpus,
             axon_bin,

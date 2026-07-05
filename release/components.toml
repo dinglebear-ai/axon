@@ -4,6 +4,7 @@ schema_version = 1
 id = "cli"
 name = "Axon CLI"
 tag_prefix = "v"
+release_please_path = "."
 release_workflow = "release.yml"
 shipping_paths = [
   "src",
@@ -32,6 +33,7 @@ version_files = [
 id = "palette"
 name = "Desktop Palette"
 tag_prefix = "palette-v"
+release_please_path = "apps/palette-tauri"
 release_workflow = "palette-release.yml"
 shipping_paths = ["apps/palette-tauri"]
 version_source = { kind = "json_version", path = "apps/palette-tauri/src-tauri/tauri.conf.json", json_pointer = "/version" }
@@ -47,6 +49,7 @@ version_files = [
 id = "android"
 name = "Android APK"
 tag_prefix = "android-v"
+release_please_path = "apps/android"
 release_workflow = "android-release.yml"
 shipping_paths = ["apps/android"]
 version_source = { kind = "gradle_version_name", path = "apps/android/app/build.gradle.kts" }
@@ -60,8 +63,9 @@ version_files = [
 id = "chrome"
 name = "Chrome Extension"
 tag_prefix = "chrome-ext-v"
+release_please_path = "apps/chrome-extension"
 release_workflow = "chrome-extension-release.yml"
-shipping_paths = ["apps/chrome-extension", "assets"]
+shipping_paths = ["apps/chrome-extension"]
 version_source = { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" }
 version_files = [
   { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" },
