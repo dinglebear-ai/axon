@@ -1,10 +1,8 @@
 //! Source document preparation entry point.
 
-use std::collections::HashSet;
-
 use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
-    Severity, SourceItemKey, SourceRange, SourceWarning,
+    Severity, SourceItemKey, SourceWarning,
 };
 
 use crate::chunk::DocumentChunk;
@@ -12,8 +10,15 @@ use crate::chunk_router::ChunkRouter;
 use crate::parse::{DocumentParse, parse_document};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use crate::profile::ChunkingProfile;
-use crate::source_range::{SourceRangeBounds, bounds_for_text, validate_source_range};
+use crate::source_range::bounds_for_text;
 use crate::{code, markdown, metadata, schema, session, text, transcript};
+
+mod validation;
+#[cfg(test)]
+pub(crate) use validation::validate_prepared_document;
+#[cfg(test)]
+pub(crate) use validation::validate_prepared_document_ranges_against_bounds;
+use validation::validate_prepared_document_with_bounds;
 
 #[derive(Debug, Default, Clone)]
 pub struct DocumentPreparer {
@@ -59,19 +64,7 @@ impl DocumentPreparer {
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
         warnings.extend(build.warnings);
-        let mut document_metadata = request.document.metadata;
-        document_metadata.insert(
-            "normalized_line_count".to_string(),
-            serde_json::json!(bounds.line_count),
-        );
-        document_metadata.insert(
-            "normalized_byte_len".to_string(),
-            serde_json::json!(bounds.byte_len),
-        );
-        document_metadata.insert(
-            "normalized_char_count".to_string(),
-            serde_json::json!(bounds.char_count),
-        );
+        let document_metadata = request.document.metadata;
         let document = PreparedDocument {
             document_id: request.document.document_id,
             source_id: request.document.source_id,
@@ -90,7 +83,7 @@ impl DocumentPreparer {
             warnings,
             errors: request.errors,
         };
-        validate_prepared_document(&document)?;
+        validate_prepared_document_with_bounds(&document, &bounds, &content.text)?;
         Ok(PrepareSourceDocumentResult { document })
     }
 }
@@ -346,85 +339,6 @@ fn build_prepared_chunk(
         metadata,
         content: chunk.content,
     }
-}
-
-pub(crate) fn validate_prepared_document(document: &PreparedDocument) -> Result<(), String> {
-    let mut errors = Vec::new();
-    let mut chunk_ids = HashSet::new();
-    let mut chunk_keys = HashSet::new();
-
-    if document.chunks.is_empty() {
-        errors.push("prepared document has no chunks".to_string());
-    }
-
-    for chunk in &document.chunks {
-        if !chunk_ids.insert(chunk.chunk_id.clone()) {
-            errors.push(format!("duplicate chunk id: {}", chunk.chunk_id.0));
-        }
-        if !chunk_keys.insert(chunk.chunk_key.clone()) {
-            errors.push(format!("duplicate chunk key: {}", chunk.chunk_key));
-        }
-        if chunk.content.trim().is_empty() {
-            errors.push(format!("empty content after trim: {}", chunk.chunk_id.0));
-        }
-        range_errors("source_range", &chunk.source_range, &mut errors);
-        range_errors("locator range", &chunk.chunk_locator.range, &mut errors);
-    }
-    if let Err(error) = validate_prepared_document_ranges(document) {
-        errors.push(error);
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors.join("; "))
-    }
-}
-
-pub(crate) fn validate_prepared_document_ranges(document: &PreparedDocument) -> Result<(), String> {
-    let Some(bounds) = document_bounds(document) else {
-        return Ok(());
-    };
-    for chunk in &document.chunks {
-        validate_source_range(&chunk.source_range, &bounds)
-            .map_err(|error| format!("chunk {} source_range {error}", chunk.chunk_id.0))?;
-        validate_source_range(&chunk.chunk_locator.range, &bounds)
-            .map_err(|error| format!("chunk {} locator range {error}", chunk.chunk_id.0))?;
-    }
-    for fact in &document.parse_facts {
-        if let Some(range) = &fact.range {
-            validate_source_range(range, &bounds)
-                .map_err(|error| format!("parse fact {} range {error}", fact.name))?;
-        }
-    }
-    Ok(())
-}
-
-fn document_bounds(document: &PreparedDocument) -> Option<SourceRangeBounds> {
-    Some(SourceRangeBounds {
-        line_count: document.metadata.get("normalized_line_count")?.as_u64()? as u32,
-        byte_len: document.metadata.get("normalized_byte_len")?.as_u64()?,
-        char_count: document.metadata.get("normalized_char_count")?.as_u64()?,
-    })
-}
-
-fn range_errors(label: &str, range: &SourceRange, errors: &mut Vec<String>) {
-    if starts_after(range.line_start, range.line_end) {
-        errors.push(format!("{label} line_start > line_end"));
-    }
-    if starts_after(range.byte_start, range.byte_end) {
-        errors.push(format!("{label} byte_start > byte_end"));
-    }
-    if starts_after(range.char_start, range.char_end) {
-        errors.push(format!("{label} char_start > char_end"));
-    }
-    if starts_after(range.time_start_ms, range.time_end_ms) {
-        errors.push(format!("{label} time_start_ms > time_end_ms"));
-    }
-}
-
-fn starts_after<T: Ord>(start: Option<T>, end: Option<T>) -> bool {
-    start.zip(end).is_some_and(|(start, end)| start > end)
 }
 
 fn merge_metadata(doc: &MetadataMap, mut chunk: MetadataMap) -> MetadataMap {

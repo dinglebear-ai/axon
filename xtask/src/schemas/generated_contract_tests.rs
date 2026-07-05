@@ -371,6 +371,7 @@ fn generated_vector_payload_source_inputs_cover_builder_contract_and_api_vector_
 
     for path in [
         "crates/axon-vectors/src/payload.rs",
+        "crates/axon-vectors/src/payload_families.rs",
         "crates/axon-vectors/src/point.rs",
         "crates/axon-api/src/source/vector.rs",
         "docs/pipeline-unification/sources/metadata-payload.md",

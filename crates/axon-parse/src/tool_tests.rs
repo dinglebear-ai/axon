@@ -61,6 +61,7 @@ fn tool_output_parser_defaults_to_metadata_only_and_redacts_io() {
     assert!(!serialized.contains("Bearer abc"));
     assert!(!serialized.contains("ghp_secret"));
     assert!(!serialized.contains("password=secret"));
+    assert!(!result.graph_candidates.is_empty());
     assert!(
         result
             .graph_candidates
@@ -150,4 +151,21 @@ fn extracts_artifact_reference_for_oversized_output() {
         "artifact://tool-output/artifact_123"
     );
     assert_eq!(artifact_fact.value["size_bytes"], 90000);
+}
+
+#[test]
+fn redacts_secret_bearing_external_resource_uris() {
+    let result = parse_fixture(
+        "tool-output.jsonl",
+        r#"{"tool":"http","action":"get","resources":[{"uri":"https://user:secret@example.com/path?token=ghp_secret&ok=1"}]}"#,
+    );
+
+    assert!(has_fact(
+        &result,
+        "external_resource",
+        "https://[REDACTED]@example.com/path?[REDACTED]"
+    ));
+    let serialized = serde_json::to_string(&result).expect("serialize parse result");
+    assert!(!serialized.contains("ghp_secret"));
+    assert!(!serialized.contains("user:secret"));
 }
