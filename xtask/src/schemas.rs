@@ -3,6 +3,7 @@ mod artifact_index;
 mod cross_check;
 mod families;
 pub mod registry;
+mod removed;
 mod report;
 mod schema_json;
 mod source_input;
@@ -176,9 +177,12 @@ fn run_families(root: &Path, families: Vec<SchemaFamily>, args: &SchemaGenerateA
         let validation_report =
             validate::validate_family(root, family, &artifact_index, validation_mode)?;
         let mut structural_drift = Vec::new();
-        if let Err(err) = registry::check_removed_surface_drift(&artifacts) {
-            structural_drift.push(err.to_string());
-        }
+        let removed_surface_report = removed::removed_surface_absence_report(&artifacts);
+        let structural_warnings =
+            match removed::assert_removed_surface_absent(&removed_surface_report) {
+                Ok(()) => Vec::new(),
+                Err(err) => err.to_string().lines().map(str::to_owned).collect(),
+            };
         if let Err(err) = registry::check_enum_projection_drift(&artifacts) {
             structural_drift.push(err.to_string());
         }
@@ -187,30 +191,30 @@ fn run_families(root: &Path, families: Vec<SchemaFamily>, args: &SchemaGenerateA
         }
         if args.print {
             print_artifacts(&artifacts)?;
-            reports.push(
-                FamilyReport::from_drift(family, artifacts.len(), structural_drift)
-                    .with_validation_counts(&validation_report),
-            );
+            let mut report = FamilyReport::from_drift(family, artifacts.len(), structural_drift)
+                .with_validation_counts(&validation_report);
+            report.warnings.extend(structural_warnings);
+            reports.push(report);
             continue;
         }
         if args.check {
             let mut drift = collect_drift(root, &artifacts)?;
             drift.extend(structural_drift);
-            reports.push(
-                FamilyReport::from_drift(family, artifacts.len(), drift)
-                    .with_validation_counts(&validation_report),
-            );
+            let mut report = FamilyReport::from_drift(family, artifacts.len(), drift)
+                .with_validation_counts(&validation_report);
+            report.warnings.extend(structural_warnings);
+            reports.push(report);
         } else if structural_drift.is_empty() {
             write_artifacts(root, &artifacts)?;
-            reports.push(
-                FamilyReport::ok(family, artifacts.len())
-                    .with_validation_counts(&validation_report),
-            );
+            let mut report = FamilyReport::ok(family, artifacts.len())
+                .with_validation_counts(&validation_report);
+            report.warnings.extend(structural_warnings);
+            reports.push(report);
         } else {
-            reports.push(
-                FamilyReport::from_drift(family, artifacts.len(), structural_drift)
-                    .with_validation_counts(&validation_report),
-            );
+            let mut report = FamilyReport::from_drift(family, artifacts.len(), structural_drift)
+                .with_validation_counts(&validation_report);
+            report.warnings.extend(structural_warnings);
+            reports.push(report);
         }
     }
 
