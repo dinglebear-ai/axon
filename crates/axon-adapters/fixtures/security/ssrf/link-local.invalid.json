@@ -1,0 +1,6 @@
+{
+  "requested_url": "http://169.254.169.254/latest/meta-data",
+  "render_modes": ["http", "chrome"],
+  "expected_error_code": "security.ssrf_denied",
+  "side_effects_allowed": false
+}

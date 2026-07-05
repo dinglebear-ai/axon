@@ -1,0 +1,35 @@
+{
+  "adapter": "sessions",
+  "adapter_version": "1",
+  "fixture_kind": "manifest.diff",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "session",
+      "turn"
+    ]
+  },
+  "item_canonical_uri": "session:codex:/sessions/one.jsonl#item-1",
+  "items": [
+    {
+      "source_item_key": "sessions-added",
+      "status": "added"
+    },
+    {
+      "source_item_key": "sessions-modified",
+      "status": "modified"
+    },
+    {
+      "source_item_key": "sessions-removed",
+      "status": "removed"
+    }
+  ],
+  "metadata_family": "session",
+  "redaction_status": "clean",
+  "source_canonical_uri": "session:codex:/sessions/one.jsonl",
+  "source_id": "src-sessions",
+  "source_item_key": "sessions-item-1"
+}

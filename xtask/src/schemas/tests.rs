@@ -45,6 +45,11 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-authz/src/policy.rs",
         "crates/axon-observe/src/reservation.rs",
         "crates/axon-route/src/capability.rs",
+        "crates/axon-adapters/src/family_matrix.rs",
+        "crates/axon-adapters/src/onboarding.rs",
+        "crates/axon-adapters/src/spec.rs",
+        "crates/axon-adapters/src/web.rs",
+        "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
         "crates/axon-web/src/schema_registry.rs",
         "crates/axon-mcp/src/schema_registry.rs",
         "crates/axon-observe/src/schema_registry.rs",
@@ -53,6 +58,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-vectors/src/lib.rs",
         "crates/axon-vectors/src/store.rs",
         "crates/axon-vectors/src/payload.rs",
+        "crates/axon-vectors/src/payload_families.rs",
         "crates/axon-vectors/src/point.rs",
         "xtask/src/schemas/api_defs.rs",
         "xtask/src/schemas/registry.rs",
@@ -72,6 +78,8 @@ pub(super) fn fixture_repo() -> TempDir {
         "docs/pipeline-unification/sources/chunking-contract.md",
         "docs/pipeline-unification/schemas/vector-payload-schema.md",
         "docs/pipeline-unification/schemas/provider-capability-schema.md",
+        "docs/pipeline-unification/sources/adapter-scopes.md",
+        "docs/pipeline-unification/sources/new-source-contract.md",
     ] {
         if needs_real_fixture(path) {
             copy_workspace_fixture(tmp.path(), path);
@@ -128,6 +136,20 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
         SchemaFamily::Config => r#"{"config_keys":[]}"#,
         SchemaFamily::Graph => r#"{"graph_kinds":[]}"#,
         SchemaFamily::Providers => "{}",
+        SchemaFamily::Adapters => {
+            r#"{
+  "x-axon": {
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas adapters",
+    "owner_crates": ["axon-route", "axon-adapters"],
+    "source_inputs": [],
+    "clean_break": true,
+    "registry_status": "fixture",
+    "adapters": [],
+    "source_family_matrix": []
+  }
+}"#
+        }
         SchemaFamily::VectorPayload => {
             r#"{
   "payload_contract_version": "2026-07-01",
@@ -190,7 +212,9 @@ fn needs_real_fixture(path: &str) -> bool {
             | "crates/axon-authz/src/policy.rs"
             | "crates/axon-observe/src/reservation.rs"
             | "crates/axon-vectors/src/payload.rs"
+            | "crates/axon-vectors/src/payload_families.rs"
             | "crates/axon-vectors/src/point.rs"
+            | "crates/axon-adapters/fixtures/provider-variant-exceptions.json"
             | "docs/pipeline-unification/runtime/provider-contract.md"
             | "docs/pipeline-unification/sources/metadata-payload.md"
             | "docs/pipeline-unification/sources/chunking-contract.md"
@@ -275,6 +299,8 @@ fn generate_writes_all_required_family_artifacts() {
         "docs/reference/sources/vector-payload.md",
         "docs/reference/runtime/provider-capabilities.schema.json",
         "docs/reference/runtime/provider-capabilities.md",
+        "docs/reference/sources/adapter-scopes.json",
+        "docs/reference/sources/adapter-scopes.md",
     ] {
         assert!(tmp.path().join(path).exists(), "{path} should be generated");
     }
@@ -334,12 +360,12 @@ fn phase_2_rejects_validation_only_or_deferred_families() {
 }
 
 #[test]
-fn adapters_are_not_a_phase_2_schema_family() {
+fn adapters_are_a_schema_family() {
     assert!(
-        !families::all_families()
+        families::all_families()
             .iter()
             .any(|family| family.as_str() == "adapters"),
-        "adapters is not defined by docs/pipeline-unification/schemas/README.md"
+        "adapters must be generated as the Phase 9 source capability family"
     );
 }
 
@@ -1387,6 +1413,7 @@ fn schema_cli_accepts_required_commands_and_flags() {
         SchemaCommand::Graph(SchemaGenerateArgs::default()),
         SchemaCommand::VectorPayload(SchemaGenerateArgs::default()),
         SchemaCommand::Providers(SchemaGenerateArgs::default()),
+        SchemaCommand::Adapters(SchemaGenerateArgs::default()),
     ] {
         run(tmp.path(), SchemasArgs { command }).expect("schema command should succeed");
     }

@@ -10,6 +10,8 @@ use super::rel;
 use super::schema_json::{json_string, schema_defs};
 use super::source_input::source_inputs;
 
+#[path = "adapters.rs"]
+pub(crate) mod adapters;
 #[path = "api_defs.rs"]
 pub(crate) mod api_defs;
 #[path = "families/bundles.rs"]
@@ -67,6 +69,7 @@ pub fn all_families() -> Vec<SchemaFamily> {
         SchemaFamily::Graph,
         SchemaFamily::VectorPayload,
         SchemaFamily::Providers,
+        SchemaFamily::Adapters,
     ]
 }
 
@@ -92,6 +95,7 @@ impl FamilyGenerator for Generator {
             SchemaFamily::Database => runtime_defs::database_artifacts(root),
             SchemaFamily::Graph => graph_artifacts(root),
             SchemaFamily::Providers => provider_capabilities::provider_artifacts(root),
+            SchemaFamily::Adapters => adapters::adapter_artifacts(root),
         }
     }
 }

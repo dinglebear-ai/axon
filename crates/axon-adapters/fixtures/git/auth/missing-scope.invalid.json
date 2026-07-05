@@ -1,0 +1,24 @@
+{
+  "adapter": "git",
+  "adapter_version": "1",
+  "expected_error_code": "auth.scope_required",
+  "fixture_kind": "auth.missing-scope",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "repository",
+      "revision"
+    ]
+  },
+  "item_canonical_uri": "https://github.com/jmagar/axon.git#item-1",
+  "metadata_family": "git",
+  "redaction_status": "clean",
+  "required_scope": "axon:write",
+  "source_canonical_uri": "https://github.com/jmagar/axon.git",
+  "source_id": "src-git",
+  "source_item_key": "git-item-1"
+}

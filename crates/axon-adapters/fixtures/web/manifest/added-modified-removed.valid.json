@@ -1,0 +1,35 @@
+{
+  "adapter": "web",
+  "adapter_version": "1",
+  "fixture_kind": "manifest.diff",
+  "graph": {
+    "optional_fact_kinds": [
+      "link",
+      "structured_data"
+    ],
+    "required_fact_kinds": [
+      "web_page",
+      "canonical_url"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/docs#item-1",
+  "items": [
+    {
+      "source_item_key": "web-added",
+      "status": "added"
+    },
+    {
+      "source_item_key": "web-modified",
+      "status": "modified"
+    },
+    {
+      "source_item_key": "web-removed",
+      "status": "removed"
+    }
+  ],
+  "metadata_family": "web",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/docs",
+  "source_id": "src-web",
+  "source_item_key": "web-item-1"
+}

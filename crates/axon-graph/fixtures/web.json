@@ -1,0 +1,27 @@
+{
+  "adapter": "web",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "link",
+      "structured_data"
+    ],
+    "required_fact_kinds": [
+      "web_page",
+      "canonical_url"
+    ]
+  },
+  "graph_candidates": [
+    {
+      "candidate_id": "web-node-1",
+      "confidence": 1.0,
+      "kind": "web_page"
+    }
+  ],
+  "item_canonical_uri": "https://example.com/docs#item-1",
+  "metadata_family": "web",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/docs",
+  "source_id": "src-web",
+  "source_item_key": "web-item-1"
+}

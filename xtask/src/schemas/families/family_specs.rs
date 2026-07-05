@@ -11,7 +11,9 @@ pub(super) fn spec_for(family: SchemaFamily) -> FamilySpec {
         SchemaFamily::Graph => graph_spec(),
         SchemaFamily::VectorPayload => vector_payload_spec(),
         SchemaFamily::Providers => providers_spec(),
-        SchemaFamily::Api | SchemaFamily::Errors => unreachable!("real generator"),
+        SchemaFamily::Api | SchemaFamily::Errors | SchemaFamily::Adapters => {
+            unreachable!("real generator")
+        }
     }
 }
 

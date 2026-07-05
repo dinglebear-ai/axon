@@ -32,3 +32,7 @@ pub const CRATE_NAME: &str = "axon-memory";
 #[cfg(test)]
 #[path = "store_tests.rs"]
 mod store_tests;
+
+#[cfg(test)]
+#[path = "shared_pipeline_tests.rs"]
+mod shared_pipeline_tests;

@@ -1,0 +1,7 @@
+{
+  "path": "/home/jmagar/.axon/.env",
+  "required_scope": "axon:local",
+  "expected_error_code": "auth.scope_required",
+  "redacted_public_path": "[redacted-local-path]",
+  "side_effects_allowed": false
+}

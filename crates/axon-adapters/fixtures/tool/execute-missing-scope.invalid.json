@@ -1,0 +1,6 @@
+{
+  "source": "tool:rg --help",
+  "execution_mode": "execute",
+  "expected_error_code": "auth.scope_required",
+  "redaction_status": "clean"
+}

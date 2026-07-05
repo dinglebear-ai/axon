@@ -1,0 +1,49 @@
+{
+  "chunk_hash": "sha256:chunk-reddit",
+  "chunk_id": "chunk-reddit-1",
+  "chunk_locator": {
+    "canonical_uri": "reddit:r/axon/comments/abc#item-1",
+    "heading_path": [],
+    "path": "reddit:r/axon/comments/abc#item-1",
+    "range": {
+      "line_end": 2,
+      "line_start": 1
+    },
+    "symbol": null
+  },
+  "chunk_text": "reddit fixture chunk text",
+  "collection": "axon",
+  "committed_generation": "gen-reddit-1",
+  "content_hash": "sha256:content-reddit",
+  "content_kind": "markdown",
+  "document_id": "doc-reddit-1",
+  "document_status": "ready",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000043",
+  "embedding_dimensions": 1024,
+  "embedding_model": "text-embedding-test",
+  "embedding_profile": "document",
+  "embedding_provider": "tei",
+  "item_canonical_uri": "reddit:r/axon/comments/abc#item-1",
+  "job_id": "00000000-0000-0000-0000-000000000009",
+  "payload_contract_version": "2026-07-01",
+  "redaction_status": "clean",
+  "reddit_author": "fixture_user",
+  "reddit_kind": "thread",
+  "reddit_permalink": "reddit:r/axon/comments/abc",
+  "source_adapter": "reddit",
+  "source_canonical_uri": "reddit:r/axon/comments/abc",
+  "source_family": "social",
+  "source_generation": "gen-reddit-1",
+  "source_id": "src-reddit",
+  "source_item_key": "reddit-item-1",
+  "source_kind": "social",
+  "source_range": {
+    "line_end": 2,
+    "line_start": 1
+  },
+  "source_scope": "thread",
+  "vector_namespace": "source:social",
+  "vector_point_id": "vpt-reddit-1",
+  "visibility": "public"
+}

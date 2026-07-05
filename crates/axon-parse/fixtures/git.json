@@ -1,0 +1,29 @@
+{
+  "adapter": "git",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "repository",
+      "revision"
+    ]
+  },
+  "item_canonical_uri": "https://github.com/jmagar/axon.git#item-1",
+  "metadata_family": "git",
+  "parse_facts": [
+    {
+      "confidence": 1.0,
+      "fact_kind": "repository",
+      "name": "git-fact"
+    }
+  ],
+  "parser_family": "code",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://github.com/jmagar/axon.git",
+  "source_id": "src-git",
+  "source_item_key": "git-item-1"
+}

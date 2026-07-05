@@ -1,0 +1,35 @@
+{
+  "adapter": "youtube",
+  "adapter_version": "1",
+  "fixture_kind": "manifest.diff",
+  "graph": {
+    "optional_fact_kinds": [
+      "channel",
+      "playlist",
+      "transcript_segment"
+    ],
+    "required_fact_kinds": [
+      "video"
+    ]
+  },
+  "item_canonical_uri": "youtube:abc123#item-1",
+  "items": [
+    {
+      "source_item_key": "youtube-added",
+      "status": "added"
+    },
+    {
+      "source_item_key": "youtube-modified",
+      "status": "modified"
+    },
+    {
+      "source_item_key": "youtube-removed",
+      "status": "removed"
+    }
+  ],
+  "metadata_family": "youtube",
+  "redaction_status": "clean",
+  "source_canonical_uri": "youtube:abc123",
+  "source_id": "src-youtube",
+  "source_item_key": "youtube-item-1"
+}

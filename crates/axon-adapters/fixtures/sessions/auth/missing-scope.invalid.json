@@ -1,0 +1,23 @@
+{
+  "adapter": "sessions",
+  "adapter_version": "1",
+  "expected_error_code": "auth.scope_required",
+  "fixture_kind": "auth.missing-scope",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "session",
+      "turn"
+    ]
+  },
+  "item_canonical_uri": "session:codex:/sessions/one.jsonl#item-1",
+  "metadata_family": "session",
+  "redaction_status": "clean",
+  "required_scope": "axon:write",
+  "source_canonical_uri": "session:codex:/sessions/one.jsonl",
+  "source_id": "src-sessions",
+  "source_item_key": "sessions-item-1"
+}

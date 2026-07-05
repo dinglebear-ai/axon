@@ -1,0 +1,7 @@
+{
+  "source": "mcp://server/tool",
+  "execution_mode": "execute",
+  "input_contains": "authorization",
+  "vector_payload_must_not_contain": ["authorization", "Bearer secret"],
+  "redaction_status": "redacted"
+}

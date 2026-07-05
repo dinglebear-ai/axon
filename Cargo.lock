@@ -846,8 +846,10 @@ name = "axon-memory"
 version = "6.2.2"
 dependencies = [
  "async-trait",
+ "axon-adapters",
  "axon-api",
  "axon-error",
+ "axon-retrieval",
  "rusqlite",
  "serde_json",
  "tokio",
@@ -9489,6 +9491,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axon-adapters",
  "axon-api",
  "axon-cli",
  "axon-core",

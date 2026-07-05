@@ -1,0 +1,43 @@
+{
+  "adapter": "cli_tool",
+  "adapter_version": "1",
+  "cleanup_debt_behavior": "removed-items-create-cleanup-debt",
+  "counts": {
+    "chunks": 1,
+    "documents": 1,
+    "items": 1,
+    "vectors": 1
+  },
+  "fixture_kind": "source-job.published-generation",
+  "generation_publish_state": "published",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "tool"
+    ]
+  },
+  "item_canonical_uri": "tool:rg --help#item-1",
+  "job_id": "job-cli_tool-published",
+  "metadata_family": "tool",
+  "provider_degradation_behavior": "optional-provider-warnings-do-not-block-publish",
+  "redaction_status": "clean",
+  "source_canonical_uri": "tool:rg --help",
+  "source_id": "src-cli_tool",
+  "source_item_key": "cli_tool-item-1",
+  "stage_sequence": [
+    "resolving",
+    "routing",
+    "discovering",
+    "fetching",
+    "normalizing",
+    "parsing",
+    "graphing",
+    "preparing",
+    "embedding",
+    "upserting",
+    "publishing"
+  ]
+}

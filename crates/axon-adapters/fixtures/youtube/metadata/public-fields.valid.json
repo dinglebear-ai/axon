@@ -1,0 +1,25 @@
+{
+  "adapter": "youtube",
+  "adapter_version": "1",
+  "fixture_kind": "metadata.public-fields",
+  "graph": {
+    "optional_fact_kinds": [
+      "channel",
+      "playlist",
+      "transcript_segment"
+    ],
+    "required_fact_kinds": [
+      "video"
+    ]
+  },
+  "item_canonical_uri": "youtube:abc123#item-1",
+  "metadata_family": "youtube",
+  "public_metadata": {
+    "metadata_kind": "video",
+    "source_family": "media"
+  },
+  "redaction_status": "clean",
+  "source_canonical_uri": "youtube:abc123",
+  "source_id": "src-youtube",
+  "source_item_key": "youtube-item-1"
+}

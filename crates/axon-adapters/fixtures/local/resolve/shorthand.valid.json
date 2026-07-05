@@ -1,0 +1,25 @@
+{
+  "adapter": "local",
+  "adapter_version": "1",
+  "canonical_uri": "file:///workspace/README.md",
+  "confidence": 0.85,
+  "fixture_kind": "resolve.shorthand",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "file:///workspace/README.md#item-1",
+  "metadata_family": "local",
+  "redaction_status": "clean",
+  "requested_uri": "local:example",
+  "scope": "file",
+  "source_canonical_uri": "file:///workspace/README.md",
+  "source_id": "src-local",
+  "source_item_key": "local-item-1"
+}

@@ -1,0 +1,24 @@
+{
+  "adapter": "web",
+  "adapter_version": "1",
+  "content": "# web\nFixture content.",
+  "content_kind": "markdown",
+  "fixture_kind": "source-document.minimal",
+  "graph": {
+    "optional_fact_kinds": [
+      "link",
+      "structured_data"
+    ],
+    "required_fact_kinds": [
+      "web_page",
+      "canonical_url"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/docs#item-1",
+  "metadata_family": "web",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/docs",
+  "source_id": "src-web",
+  "source_item_key": "web-item-1",
+  "title": "web fixture document"
+}

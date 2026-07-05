@@ -1,0 +1,50 @@
+{
+  "chunk_hash": "sha256:chunk-youtube",
+  "chunk_id": "chunk-youtube-1",
+  "chunk_locator": {
+    "canonical_uri": "youtube:abc123#item-1",
+    "heading_path": [],
+    "path": "youtube:abc123#item-1",
+    "range": {
+      "line_end": 2,
+      "line_start": 1
+    },
+    "symbol": null
+  },
+  "chunk_text": "youtube fixture chunk text",
+  "collection": "axon",
+  "committed_generation": "gen-youtube-1",
+  "content_hash": "sha256:content-youtube",
+  "content_kind": "markdown",
+  "document_id": "doc-youtube-1",
+  "document_status": "ready",
+  "embedded_at": "2026-07-01T12:00:00Z",
+  "embedding_batch_id": "00000000-0000-0000-0000-000000000043",
+  "embedding_dimensions": 1024,
+  "embedding_model": "text-embedding-test",
+  "embedding_profile": "document",
+  "embedding_provider": "tei",
+  "item_canonical_uri": "youtube:abc123#item-1",
+  "job_id": "00000000-0000-0000-0000-000000000009",
+  "payload_contract_version": "2026-07-01",
+  "redaction_status": "clean",
+  "segment_kind": "transcript",
+  "source_adapter": "youtube",
+  "source_canonical_uri": "youtube:abc123",
+  "source_family": "media",
+  "source_generation": "gen-youtube-1",
+  "source_id": "src-youtube",
+  "source_item_key": "youtube-item-1",
+  "source_kind": "media",
+  "source_range": {
+    "line_end": 2,
+    "line_start": 1
+  },
+  "source_scope": "video",
+  "title": "Fixture video",
+  "url": "youtube:abc123",
+  "vector_namespace": "source:media",
+  "vector_point_id": "vpt-youtube-1",
+  "video_id": "abc123",
+  "visibility": "public"
+}

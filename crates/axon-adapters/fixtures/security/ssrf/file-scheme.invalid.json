@@ -1,0 +1,6 @@
+{
+  "requested_url": "file:///etc/passwd",
+  "render_modes": ["http", "chrome"],
+  "expected_error_code": "security.ssrf_denied",
+  "side_effects_allowed": false
+}

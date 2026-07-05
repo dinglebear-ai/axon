@@ -48,6 +48,8 @@ enum SchemaCommand {
     VectorPayload(SchemaGenerateArgs),
     /// Generate/check only the provider schema family.
     Providers(SchemaGenerateArgs),
+    /// Generate/check only the source adapter capability schema family.
+    Adapters(SchemaGenerateArgs),
 }
 
 #[derive(Debug, Args, Clone, Default)]
@@ -92,6 +94,7 @@ pub enum SchemaFamily {
     Graph,
     VectorPayload,
     Providers,
+    Adapters,
 }
 
 impl Serialize for SchemaFamily {
@@ -117,6 +120,7 @@ impl SchemaFamily {
             Self::Graph => "graph",
             Self::VectorPayload => "vector-payload",
             Self::Providers => "providers",
+            Self::Adapters => "adapters",
         }
     }
 }
@@ -137,6 +141,7 @@ pub fn run(root: &Path, args: SchemasArgs) -> Result<()> {
             run_single_family(root, SchemaFamily::VectorPayload, &args)
         }
         SchemaCommand::Providers(args) => run_single_family(root, SchemaFamily::Providers, &args),
+        SchemaCommand::Adapters(args) => run_single_family(root, SchemaFamily::Adapters, &args),
     }
 }
 

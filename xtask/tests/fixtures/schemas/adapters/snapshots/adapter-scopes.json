@@ -1,0 +1,1373 @@
+{
+  "$defs": {
+    "AdapterCapability": {
+      "additionalProperties": true,
+      "properties": {
+        "allowed_option_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "chunking_hints": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "credential_requirements": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "default_scope": {
+          "type": "string"
+        },
+        "execution_affinity": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "option_schema_id": {
+          "type": "string"
+        },
+        "parser_hints": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "provider_requirements": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "refresh_supported": {
+          "type": "boolean"
+        },
+        "safety_class": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "supported_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        },
+        "watch_supported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "source_kind",
+        "default_scope",
+        "supported_scopes",
+        "watch_supported",
+        "refresh_supported"
+      ],
+      "type": "object"
+    },
+    "SourceFamilyCapability": {
+      "additionalProperties": true,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "credential_requirements": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "default_scope": {
+          "type": "string"
+        },
+        "degraded_modes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "family": {
+          "type": "string"
+        },
+        "integration": {
+          "type": "string"
+        },
+        "is_source_adapter": {
+          "type": "boolean"
+        },
+        "may_access_local_paths": {
+          "type": "boolean"
+        },
+        "may_call_render_provider": {
+          "type": "boolean"
+        },
+        "may_execute_tools": {
+          "type": "boolean"
+        },
+        "may_perform_network_fetches": {
+          "type": "boolean"
+        },
+        "metadata_families": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "option_schema": {
+          "type": "string"
+        },
+        "optional_graph_fact_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "parser_families": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "refresh_supported": {
+          "type": "boolean"
+        },
+        "required_graph_fact_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scopes": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "shorthand_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "supported_schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vector_namespace": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "watch_supported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "family",
+        "version",
+        "source_kinds",
+        "vector_namespace",
+        "is_source_adapter",
+        "may_execute_tools"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://axon.local/schemas/sources/adapter-scopes.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated route-time adapter scope and capability registry.",
+  "properties": {
+    "x-axon": {
+      "additionalProperties": false,
+      "properties": {
+        "adapters": {
+          "items": {
+            "$ref": "#/$defs/AdapterCapability"
+          },
+          "type": "array"
+        },
+        "clean_break": {
+          "const": true
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "generated_by": {
+          "const": "cargo xtask schemas adapters"
+        },
+        "owner_crates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "registry_status": {
+          "type": "string"
+        },
+        "source_family_matrix": {
+          "items": {
+            "$ref": "#/$defs/SourceFamilyCapability"
+          },
+          "type": "array"
+        },
+        "source_inputs": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "generated_by",
+        "owner_crates",
+        "source_inputs",
+        "clean_break",
+        "registry_status",
+        "adapters",
+        "source_family_matrix"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "x-axon"
+  ],
+  "title": "AxonAdapterScopeRegistry",
+  "type": "object",
+  "x-axon": {
+    "adapters": [
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "tool",
+        "execution_affinity": "worker",
+        "name": "cli",
+        "option_schema_id": "adapter:cli:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "tool_execution",
+        "source_kind": "cli_tool",
+        "supported_scopes": [
+          "tool"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "package",
+        "execution_affinity": "worker",
+        "name": "crates",
+        "option_schema_id": "adapter:crates:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "registry",
+        "supported_scopes": [
+          "package",
+          "version"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "package",
+        "execution_affinity": "worker",
+        "name": "docker",
+        "option_schema_id": "adapter:docker:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "registry",
+        "supported_scopes": [
+          "package",
+          "version"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "feed",
+        "execution_affinity": "worker",
+        "name": "feed",
+        "option_schema_id": "adapter:feed:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "feed",
+        "supported_scopes": [
+          "feed"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "repo",
+        "execution_affinity": "worker",
+        "name": "git",
+        "option_schema_id": "adapter:git:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "git",
+        "supported_scopes": [
+          "repo",
+          "branch"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "repo",
+        "execution_affinity": "worker",
+        "name": "gitea",
+        "option_schema_id": "adapter:gitea:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "git",
+        "supported_scopes": [
+          "repo",
+          "branch",
+          "issue",
+          "pull_request",
+          "release"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "repo",
+        "execution_affinity": "worker",
+        "name": "github",
+        "option_schema_id": "adapter:github:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "git",
+        "supported_scopes": [
+          "repo",
+          "branch",
+          "issue",
+          "pull_request",
+          "release"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "repo",
+        "execution_affinity": "worker",
+        "name": "gitlab",
+        "option_schema_id": "adapter:gitlab:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "git",
+        "supported_scopes": [
+          "repo",
+          "branch",
+          "issue",
+          "merge_request",
+          "release"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [
+          "include_globs",
+          "exclude_globs",
+          "respect_gitignore",
+          "follow_symlinks",
+          "max_file_bytes",
+          "binary_policy",
+          "watch_policy"
+        ],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "directory",
+        "execution_affinity": "worker",
+        "name": "local",
+        "option_schema_id": "adapter:local:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "local_filesystem",
+        "source_kind": "local",
+        "supported_scopes": [
+          "directory",
+          "file",
+          "workspace",
+          "repo",
+          "map"
+        ],
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "tool",
+        "execution_affinity": "worker",
+        "name": "mcp",
+        "option_schema_id": "adapter:mcp:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "tool_execution",
+        "source_kind": "mcp_tool",
+        "supported_scopes": [
+          "tool"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "package",
+        "execution_affinity": "worker",
+        "name": "npm",
+        "option_schema_id": "adapter:npm:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "registry",
+        "supported_scopes": [
+          "package",
+          "version"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "package",
+        "execution_affinity": "worker",
+        "name": "pypi",
+        "option_schema_id": "adapter:pypi:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "registry",
+        "supported_scopes": [
+          "package",
+          "version"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [
+          {
+            "credential_kind": "api_key",
+            "reason": "Reddit API credentials are required before acquisition",
+            "required": true
+          }
+        ],
+        "default_scope": "subreddit",
+        "execution_affinity": "worker",
+        "name": "reddit",
+        "option_schema_id": "adapter:reddit:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "authenticated_network",
+        "source_kind": "reddit",
+        "supported_scopes": [
+          "subreddit",
+          "thread",
+          "comment"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "thread",
+        "execution_affinity": "worker",
+        "name": "session",
+        "option_schema_id": "adapter:session:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "session",
+        "supported_scopes": [
+          "thread"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "file",
+        "execution_affinity": "worker",
+        "name": "upload",
+        "option_schema_id": "adapter:upload:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "upload",
+        "supported_scopes": [
+          "file"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [
+          "manifest_path",
+          "markdown_root",
+          "map_urls"
+        ],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "site",
+        "execution_affinity": "worker",
+        "name": "web",
+        "option_schema_id": "adapter:web:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "web",
+        "supported_scopes": [
+          "site",
+          "page",
+          "docs",
+          "map"
+        ],
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "video",
+        "execution_affinity": "worker",
+        "name": "youtube",
+        "option_schema_id": "adapter:youtube:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "public_network",
+        "source_kind": "youtube",
+        "supported_scopes": [
+          "video",
+          "playlist",
+          "channel"
+        ],
+        "version": "1",
+        "watch_supported": false
+      }
+    ],
+    "clean_break": true,
+    "contract_version": "2026-06-30",
+    "generated_by": "cargo xtask schemas adapters",
+    "owner_crates": [
+      "axon-route",
+      "axon-adapters"
+    ],
+    "registry_status": "route-time implemented subset",
+    "source_family_matrix": [
+      {
+        "adapter": "local",
+        "credential_requirements": [],
+        "default_scope": "file",
+        "degraded_modes": [
+          "permission-denied",
+          "file-too-large",
+          "symlink-outside-root"
+        ],
+        "family": "local",
+        "is_source_adapter": true,
+        "may_access_local_paths": true,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": false,
+        "metadata_families": [
+          "local",
+          "filesystem",
+          "security"
+        ],
+        "option_schema": "local-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "symbol",
+          "dependency"
+        ],
+        "parser_families": [
+          "markdown",
+          "code",
+          "manifest"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "document",
+          "filesystem_path"
+        ],
+        "scopes": [
+          {
+            "notes": "single trusted local file",
+            "required": true,
+            "scope": "file"
+          },
+          {
+            "notes": "trusted contained directory walk",
+            "required": true,
+            "scope": "directory"
+          },
+          {
+            "notes": "trusted workspace source",
+            "required": false,
+            "scope": "workspace"
+          }
+        ],
+        "shorthand_patterns": [
+          "./path",
+          "../path",
+          "/absolute/path",
+          "~/<path>"
+        ],
+        "source_kinds": [
+          "local"
+        ],
+        "supported_schemes": [
+          "file"
+        ],
+        "vector_namespace": "source:local",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "git",
+        "credential_requirements": [],
+        "default_scope": "repo",
+        "degraded_modes": [
+          "shallow-clone",
+          "missing-provider-token",
+          "rate-limited"
+        ],
+        "family": "git",
+        "is_source_adapter": true,
+        "may_access_local_paths": true,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "git",
+          "repository",
+          "security"
+        ],
+        "option_schema": "git-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "symbol",
+          "dependency",
+          "release"
+        ],
+        "parser_families": [
+          "code",
+          "manifest",
+          "markdown"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "repository",
+          "revision"
+        ],
+        "scopes": [
+          {
+            "notes": "repository snapshot",
+            "required": true,
+            "scope": "repo"
+          },
+          {
+            "notes": "branch-specific snapshot",
+            "required": false,
+            "scope": "branch"
+          },
+          {
+            "notes": "provider-specific hardening",
+            "required": false,
+            "scope": "org"
+          }
+        ],
+        "shorthand_patterns": [
+          "github:owner/repo",
+          "gitlab:owner/repo",
+          "owner/repo"
+        ],
+        "source_kinds": [
+          "git"
+        ],
+        "supported_schemes": [
+          "git",
+          "ssh",
+          "http",
+          "https"
+        ],
+        "vector_namespace": "source:git",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "web",
+        "credential_requirements": [],
+        "default_scope": "page",
+        "degraded_modes": [
+          "http-only",
+          "render-unavailable",
+          "thin-content"
+        ],
+        "family": "web",
+        "is_source_adapter": true,
+        "may_access_local_paths": false,
+        "may_call_render_provider": true,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "web",
+          "http",
+          "security"
+        ],
+        "option_schema": "web-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "link",
+          "structured_data"
+        ],
+        "parser_families": [
+          "html",
+          "markdown"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "web_page",
+          "canonical_url"
+        ],
+        "scopes": [
+          {
+            "notes": "single URL",
+            "required": true,
+            "scope": "page"
+          },
+          {
+            "notes": "site crawl",
+            "required": true,
+            "scope": "site"
+          },
+          {
+            "notes": "URL discovery",
+            "required": true,
+            "scope": "map"
+          }
+        ],
+        "shorthand_patterns": [
+          "https://example.com/path"
+        ],
+        "source_kinds": [
+          "web"
+        ],
+        "supported_schemes": [
+          "http",
+          "https"
+        ],
+        "vector_namespace": "source:web",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "feed",
+        "credential_requirements": [],
+        "default_scope": "feed",
+        "degraded_modes": [
+          "malformed-entry",
+          "linked-page-unavailable",
+          "rate-limited"
+        ],
+        "family": "feed",
+        "is_source_adapter": true,
+        "may_access_local_paths": false,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "feed",
+          "web",
+          "security"
+        ],
+        "option_schema": "feed-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "author",
+          "link"
+        ],
+        "parser_families": [
+          "feed",
+          "html",
+          "markdown"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "feed",
+          "feed_entry"
+        ],
+        "scopes": [
+          {
+            "notes": "RSS/Atom/JSON feed",
+            "required": true,
+            "scope": "feed"
+          },
+          {
+            "notes": "linked entry page",
+            "required": false,
+            "scope": "page"
+          }
+        ],
+        "shorthand_patterns": [
+          "feed:https://example.com/feed.xml",
+          "rss:<url>"
+        ],
+        "source_kinds": [
+          "feed"
+        ],
+        "supported_schemes": [
+          "http",
+          "https",
+          "feed",
+          "rss",
+          "atom"
+        ],
+        "vector_namespace": "source:feed",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "youtube",
+        "credential_requirements": [],
+        "default_scope": "video",
+        "degraded_modes": [
+          "metadata-only",
+          "transcript-unavailable",
+          "rate-limited"
+        ],
+        "family": "youtube",
+        "is_source_adapter": true,
+        "may_access_local_paths": false,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "youtube",
+          "video",
+          "security"
+        ],
+        "option_schema": "youtube-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "channel",
+          "playlist",
+          "transcript_segment"
+        ],
+        "parser_families": [
+          "transcript"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "video"
+        ],
+        "scopes": [
+          {
+            "notes": "single video transcript/metadata",
+            "required": true,
+            "scope": "video"
+          },
+          {
+            "notes": "playlist items",
+            "required": true,
+            "scope": "playlist"
+          },
+          {
+            "notes": "channel hardening",
+            "required": false,
+            "scope": "channel"
+          }
+        ],
+        "shorthand_patterns": [
+          "youtube:<video-id>",
+          "youtu.be/<video-id>"
+        ],
+        "source_kinds": [
+          "youtube"
+        ],
+        "supported_schemes": [
+          "http",
+          "https",
+          "youtube",
+          "youtu"
+        ],
+        "vector_namespace": "source:youtube",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "reddit",
+        "credential_requirements": [],
+        "default_scope": "thread",
+        "degraded_modes": [
+          "public-json-unavailable",
+          "comments-truncated",
+          "rate-limited"
+        ],
+        "family": "reddit",
+        "is_source_adapter": true,
+        "may_access_local_paths": false,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "reddit",
+          "thread",
+          "security"
+        ],
+        "option_schema": "reddit-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "author",
+          "subreddit"
+        ],
+        "parser_families": [
+          "markdown"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "thread",
+          "comment"
+        ],
+        "scopes": [
+          {
+            "notes": "subreddit listing",
+            "required": true,
+            "scope": "subreddit"
+          },
+          {
+            "notes": "thread and comments",
+            "required": true,
+            "scope": "thread"
+          },
+          {
+            "notes": "comment permalink",
+            "required": false,
+            "scope": "comment"
+          }
+        ],
+        "shorthand_patterns": [
+          "r/<subreddit>",
+          "reddit:<subreddit>",
+          "reddit:<thread-url>"
+        ],
+        "source_kinds": [
+          "reddit"
+        ],
+        "supported_schemes": [
+          "http",
+          "https",
+          "reddit"
+        ],
+        "vector_namespace": "source:reddit",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "sessions",
+        "credential_requirements": [],
+        "default_scope": "file",
+        "degraded_modes": [
+          "unknown-export-format",
+          "partial-turn",
+          "redacted-secret"
+        ],
+        "family": "sessions",
+        "is_source_adapter": true,
+        "may_access_local_paths": true,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": false,
+        "metadata_families": [
+          "session",
+          "agent",
+          "security"
+        ],
+        "option_schema": "sessions-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "tool_call",
+          "artifact"
+        ],
+        "parser_families": [
+          "session"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "session",
+          "turn"
+        ],
+        "scopes": [
+          {
+            "notes": "session export file",
+            "required": true,
+            "scope": "file"
+          },
+          {
+            "notes": "session export directory",
+            "required": true,
+            "scope": "directory"
+          }
+        ],
+        "shorthand_patterns": [
+          "session:claude:<path>",
+          "session:codex:<path>",
+          "session:gemini:<path>"
+        ],
+        "source_kinds": [
+          "session"
+        ],
+        "supported_schemes": [
+          "session",
+          "file"
+        ],
+        "vector_namespace": "source:sessions",
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "adapter": "registry",
+        "credential_requirements": [],
+        "default_scope": "package",
+        "degraded_modes": [
+          "provider-unavailable",
+          "version-yanked",
+          "rate-limited"
+        ],
+        "family": "registry",
+        "is_source_adapter": true,
+        "may_access_local_paths": false,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "package",
+          "registry",
+          "security"
+        ],
+        "option_schema": "registry-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "dependency",
+          "release"
+        ],
+        "parser_families": [
+          "package_metadata",
+          "manifest"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "package",
+          "version"
+        ],
+        "scopes": [
+          {
+            "notes": "package metadata",
+            "required": true,
+            "scope": "package"
+          },
+          {
+            "notes": "version metadata",
+            "required": true,
+            "scope": "version"
+          }
+        ],
+        "shorthand_patterns": [
+          "pkg:npm/<name>",
+          "pkg:pypi/<name>",
+          "pkg:crates/<name>"
+        ],
+        "source_kinds": [
+          "registry"
+        ],
+        "supported_schemes": [
+          "pkg",
+          "npm",
+          "pypi",
+          "crates",
+          "docker"
+        ],
+        "vector_namespace": "source:registry",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "adapter": "cli_tool",
+        "credential_requirements": [],
+        "default_scope": "tool",
+        "degraded_modes": [
+          "metadata-only",
+          "command-denied",
+          "output-capped"
+        ],
+        "family": "cli_tool",
+        "is_source_adapter": true,
+        "may_access_local_paths": true,
+        "may_call_render_provider": false,
+        "may_execute_tools": true,
+        "may_perform_network_fetches": false,
+        "metadata_families": [
+          "tool",
+          "execution",
+          "security"
+        ],
+        "option_schema": "cli-tool-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "tool_call",
+          "artifact"
+        ],
+        "parser_families": [
+          "tool_output"
+        ],
+        "refresh_supported": false,
+        "required_graph_fact_kinds": [
+          "tool"
+        ],
+        "scopes": [
+          {
+            "notes": "metadata-only tool definition by default",
+            "required": true,
+            "scope": "tool"
+          },
+          {
+            "notes": "explicit script source class",
+            "required": false,
+            "scope": "script"
+          }
+        ],
+        "shorthand_patterns": [
+          "tool:<command>"
+        ],
+        "source_kinds": [
+          "cli_tool"
+        ],
+        "supported_schemes": [
+          "tool"
+        ],
+        "vector_namespace": "source:cli_tool",
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "adapter": "mcp_tool",
+        "credential_requirements": [],
+        "default_scope": "tool",
+        "degraded_modes": [
+          "schema-only",
+          "tool-unavailable",
+          "output-capped"
+        ],
+        "family": "mcp_tool",
+        "is_source_adapter": true,
+        "may_access_local_paths": false,
+        "may_call_render_provider": false,
+        "may_execute_tools": true,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "mcp",
+          "tool",
+          "security"
+        ],
+        "option_schema": "mcp-tool-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "tool_call",
+          "external_resource"
+        ],
+        "parser_families": [
+          "api_schema",
+          "tool_output"
+        ],
+        "refresh_supported": false,
+        "required_graph_fact_kinds": [
+          "mcp_server",
+          "mcp_tool"
+        ],
+        "scopes": [
+          {
+            "notes": "MCP tool schema",
+            "required": true,
+            "scope": "tool"
+          },
+          {
+            "notes": "MCP call result with explicit execution scope",
+            "required": false,
+            "scope": "api"
+          }
+        ],
+        "shorthand_patterns": [
+          "mcp://server/tool"
+        ],
+        "source_kinds": [
+          "mcp_tool"
+        ],
+        "supported_schemes": [
+          "mcp"
+        ],
+        "vector_namespace": "source:mcp_tool",
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "credential_requirements": [],
+        "default_scope": "api",
+        "degraded_modes": [
+          "namespace-filtered",
+          "superseded-memory"
+        ],
+        "family": "memory",
+        "integration": "memory",
+        "is_source_adapter": false,
+        "may_access_local_paths": false,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": false,
+        "metadata_families": [
+          "memory",
+          "retrieval",
+          "graph"
+        ],
+        "option_schema": "memory-shared-pipeline-options/v1",
+        "optional_graph_fact_kinds": [
+          "memory_link",
+          "supersedes"
+        ],
+        "parser_families": [
+          "memory",
+          "markdown"
+        ],
+        "refresh_supported": false,
+        "required_graph_fact_kinds": [
+          "memory_document"
+        ],
+        "scopes": [],
+        "shorthand_patterns": [],
+        "source_kinds": [
+          "memory"
+        ],
+        "supported_schemes": [],
+        "vector_namespace": "memory",
+        "version": "1",
+        "watch_supported": false
+      }
+    ],
+    "source_inputs": [
+      {
+        "checksum": "sha256:b29e9ebbe3e77d6141d7c948c5e40db714c6ed9a4530dce8084d5299512eee50",
+        "kind": "rust_module",
+        "path": "crates/axon-adapters/fixtures/provider-variant-exceptions.json"
+      },
+      {
+        "checksum": "sha256:34295db024f83f0d751e4de8291d108843caf94516f9ef55c07f00da47f1a958",
+        "kind": "rust_module",
+        "path": "crates/axon-adapters/src/family_matrix.rs"
+      },
+      {
+        "checksum": "sha256:67a3bbd0280d8a4d0a48783f599723e463988ffc3bf97f1cc2cbc4c285f87913",
+        "kind": "rust_module",
+        "path": "crates/axon-adapters/src/onboarding.rs"
+      },
+      {
+        "checksum": "sha256:6110d29e7beb92a64de3c9db9264103d86728e6b32dc04a3b15a1e1981d074ef",
+        "kind": "rust_module",
+        "path": "crates/axon-adapters/src/spec.rs"
+      },
+      {
+        "checksum": "sha256:3fdc258530a45c6390485434dae01058d641424b7cbb9a49a54503fb63846c07",
+        "kind": "rust_module",
+        "path": "crates/axon-adapters/src/web.rs"
+      },
+      {
+        "checksum": "sha256:7189b435f0277c9fffbcbd1390899b8723b28101f9efbd8157509b54299627e0",
+        "kind": "rust_module",
+        "path": "crates/axon-route/src/capability.rs"
+      },
+      {
+        "checksum": "sha256:c6278b9b235886bcce7a3c55e931f2349c254e639399ed8e9a42e67bb06c3491",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/sources/adapter-scopes.md"
+      },
+      {
+        "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/sources/new-source-contract.md"
+      }
+    ]
+  }
+}

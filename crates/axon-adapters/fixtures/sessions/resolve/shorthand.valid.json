@@ -1,0 +1,25 @@
+{
+  "adapter": "sessions",
+  "adapter_version": "1",
+  "canonical_uri": "session:codex:/sessions/one.jsonl",
+  "confidence": 0.85,
+  "fixture_kind": "resolve.shorthand",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "session",
+      "turn"
+    ]
+  },
+  "item_canonical_uri": "session:codex:/sessions/one.jsonl#item-1",
+  "metadata_family": "session",
+  "redaction_status": "clean",
+  "requested_uri": "sessions:example",
+  "scope": "file",
+  "source_canonical_uri": "session:codex:/sessions/one.jsonl",
+  "source_id": "src-sessions",
+  "source_item_key": "sessions-item-1"
+}

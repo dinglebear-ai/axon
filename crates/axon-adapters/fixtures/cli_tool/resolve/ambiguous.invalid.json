@@ -1,0 +1,22 @@
+{
+  "adapter": "cli_tool",
+  "adapter_version": "1",
+  "expected_error_code": "source.resolve_ambiguous",
+  "fixture_kind": "resolve.ambiguous",
+  "graph": {
+    "optional_fact_kinds": [
+      "tool_call",
+      "artifact"
+    ],
+    "required_fact_kinds": [
+      "tool"
+    ]
+  },
+  "item_canonical_uri": "tool:rg --help#item-1",
+  "metadata_family": "tool",
+  "redaction_status": "clean",
+  "requested_uri": "example",
+  "source_canonical_uri": "tool:rg --help",
+  "source_id": "src-cli_tool",
+  "source_item_key": "cli_tool-item-1"
+}

@@ -1,0 +1,38 @@
+{
+  "adapter": "web",
+  "adapter_version": "1",
+  "cleanup_debt_behavior": "no-cleanup-until-generation-published",
+  "counts": {
+    "chunks": 0,
+    "documents": 0,
+    "items": 1,
+    "vectors": 0
+  },
+  "expected_degraded_code": "provider.required_unavailable",
+  "fixture_kind": "source-job.provider-unavailable",
+  "generation_publish_state": "not_published",
+  "graph": {
+    "optional_fact_kinds": [
+      "link",
+      "structured_data"
+    ],
+    "required_fact_kinds": [
+      "web_page",
+      "canonical_url"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/docs#item-1",
+  "job_id": "job-web-degraded",
+  "metadata_family": "web",
+  "provider_degradation_behavior": "required-provider-fails-before-side-effects",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/docs",
+  "source_id": "src-web",
+  "source_item_key": "web-item-1",
+  "stage_sequence": [
+    "resolving",
+    "routing",
+    "discovering",
+    "fetching"
+  ]
+}

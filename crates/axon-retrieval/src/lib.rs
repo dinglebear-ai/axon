@@ -27,3 +27,7 @@ mod engine_tests;
 #[cfg(test)]
 #[path = "generation_tests.rs"]
 mod generation_tests;
+
+#[cfg(test)]
+#[path = "memory_tests.rs"]
+mod memory_tests;

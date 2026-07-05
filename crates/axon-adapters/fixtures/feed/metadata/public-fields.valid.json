@@ -1,0 +1,25 @@
+{
+  "adapter": "feed",
+  "adapter_version": "1",
+  "fixture_kind": "metadata.public-fields",
+  "graph": {
+    "optional_fact_kinds": [
+      "author",
+      "link"
+    ],
+    "required_fact_kinds": [
+      "feed",
+      "feed_entry"
+    ]
+  },
+  "item_canonical_uri": "https://example.com/feed.xml#item-1",
+  "metadata_family": "feed",
+  "public_metadata": {
+    "metadata_kind": "feed",
+    "source_family": "feed"
+  },
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://example.com/feed.xml",
+  "source_id": "src-feed",
+  "source_item_key": "feed-item-1"
+}

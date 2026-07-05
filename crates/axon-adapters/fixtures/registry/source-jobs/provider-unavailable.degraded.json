@@ -1,0 +1,38 @@
+{
+  "adapter": "registry",
+  "adapter_version": "1",
+  "cleanup_debt_behavior": "no-cleanup-until-generation-published",
+  "counts": {
+    "chunks": 0,
+    "documents": 0,
+    "items": 1,
+    "vectors": 0
+  },
+  "expected_degraded_code": "provider.required_unavailable",
+  "fixture_kind": "source-job.provider-unavailable",
+  "generation_publish_state": "not_published",
+  "graph": {
+    "optional_fact_kinds": [
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "package",
+      "version"
+    ]
+  },
+  "item_canonical_uri": "pkg:npm/axon#item-1",
+  "job_id": "job-registry-degraded",
+  "metadata_family": "package",
+  "provider_degradation_behavior": "required-provider-fails-before-side-effects",
+  "redaction_status": "clean",
+  "source_canonical_uri": "pkg:npm/axon",
+  "source_id": "src-registry",
+  "source_item_key": "registry-item-1",
+  "stage_sequence": [
+    "resolving",
+    "routing",
+    "discovering",
+    "fetching"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "source": "tool:sh -c env",
+  "execution_mode": "execute",
+  "expected_error_code": "tool.command_denied",
+  "redaction_status": "redacted"
+}

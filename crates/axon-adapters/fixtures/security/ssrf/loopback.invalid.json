@@ -1,0 +1,6 @@
+{
+  "requested_url": "http://localhost:8080/private",
+  "render_modes": ["http", "chrome"],
+  "expected_error_code": "security.ssrf_denied",
+  "side_effects_allowed": false
+}

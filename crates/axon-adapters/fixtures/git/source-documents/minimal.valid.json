@@ -1,0 +1,25 @@
+{
+  "adapter": "git",
+  "adapter_version": "1",
+  "content": "# git\nFixture content.",
+  "content_kind": "markdown",
+  "fixture_kind": "source-document.minimal",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency",
+      "release"
+    ],
+    "required_fact_kinds": [
+      "repository",
+      "revision"
+    ]
+  },
+  "item_canonical_uri": "https://github.com/jmagar/axon.git#item-1",
+  "metadata_family": "git",
+  "redaction_status": "clean",
+  "source_canonical_uri": "https://github.com/jmagar/axon.git",
+  "source_id": "src-git",
+  "source_item_key": "git-item-1",
+  "title": "git fixture document"
+}
