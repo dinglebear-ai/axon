@@ -196,6 +196,7 @@ async fn registry_source_job_emits_progress_events_for_pipeline_phases() {
         &jobs,
         JobEventListRequest {
             job_id: output.job_id,
+            after_sequence: None,
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),
@@ -255,6 +256,7 @@ async fn registry_source_job_records_provider_reservation_events() {
         &jobs,
         JobEventListRequest {
             job_id: output.job_id,
+            after_sequence: None,
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),

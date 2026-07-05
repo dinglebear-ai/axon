@@ -172,6 +172,7 @@ async fn source_job_terminal_failure_preserves_provider_retryability() {
         &jobs,
         JobEventListRequest {
             job_id: summary.job_id,
+            after_sequence: None,
             phase: Some(PipelinePhase::Complete),
             severity: Some(Severity::Failed),
             visibility: Some(Visibility::Public),

@@ -169,6 +169,7 @@ async fn source_job_terminal_failure_preserves_provider_retryability() {
         &jobs,
         JobEventListRequest {
             job_id: summary.job_id,
+            after_sequence: None,
             phase: Some(PipelinePhase::Complete),
             severity: Some(Severity::Failed),
             visibility: Some(Visibility::Public),
@@ -238,6 +239,7 @@ async fn source_job_public_failure_does_not_expose_absolute_root() {
         &jobs,
         JobEventListRequest {
             job_id: summary.job_id,
+            after_sequence: None,
             phase: None,
             severity: Some(Severity::Failed),
             visibility: Some(Visibility::Public),

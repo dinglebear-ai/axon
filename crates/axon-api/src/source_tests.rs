@@ -67,7 +67,7 @@ fn resolved_source_serializes_to_api_contract_shape() {
     assert_eq!(value["adapter"]["name"], "web");
     assert_eq!(value["default_scope"], "site");
     assert_eq!(value["available_scopes"], json!(["page", "site", "map"]));
-    assert!(value.get("graph").is_none() || value["graph"].as_array().is_some());
+    assert!(value.get("graph").is_none());
     assert!(value.get("requested_uri").is_none());
     assert!(value.get("candidate_adapters").is_none());
     assert!(value.get("display_name").is_none());

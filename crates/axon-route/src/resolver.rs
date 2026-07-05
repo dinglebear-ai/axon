@@ -194,23 +194,6 @@ impl SourceResolver {
             };
         }
 
-        let provider_specific = candidates
-            .iter()
-            .filter(|candidate| candidate.confidence >= 1.0)
-            .collect::<Vec<_>>();
-        match provider_specific.as_slice() {
-            [candidate] => return Ok(candidate.adapter.clone()),
-            [] => {}
-            _ => {
-                return Err(ambiguous_adapter_error(
-                    request,
-                    canonical,
-                    "resolver produced multiple provider-specific adapters",
-                    candidates,
-                ));
-            }
-        }
-
         match candidates {
             [candidate] => Ok(candidate.adapter.clone()),
             _ => Err(ambiguous_adapter_error(
