@@ -38,6 +38,7 @@ pub fn vector_payload_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let inputs = source_inputs(
         root,
         &[
+            "crates/axon-vectors/src/schema_registry.rs",
             "crates/axon-vectors/src/payload.rs",
             "crates/axon-vectors/src/point.rs",
             "crates/axon-api/src/source/vector.rs",

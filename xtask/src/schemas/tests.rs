@@ -11,6 +11,7 @@ pub(super) fn fixture_repo() -> TempDir {
     let tmp = TempDir::new().unwrap();
     for path in [
         "crates/axon-api/src/source.rs",
+        "crates/axon-api/src/schema_registry.rs",
         "crates/axon-api/src/source/boundary.rs",
         "crates/axon-api/src/source/common.rs",
         "crates/axon-api/src/source/capability.rs",
@@ -29,17 +30,18 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-api/src/source/status.rs",
         "crates/axon-api/src/source/vector.rs",
         "crates/axon-error/src/lib.rs",
+        "crates/axon-error/src/schema_registry.rs",
         "crates/axon-error/src/api_error.rs",
         "crates/axon-error/src/code.rs",
         "crates/axon-error/src/stage.rs",
-        "crates/axon-cli/src/lib.rs",
-        "crates/axon-core/src/config/types.rs",
-        "crates/axon-adapters/src/web.rs",
+        "crates/axon-cli/src/schema_registry.rs",
+        "crates/axon-core/src/config/schema_registry.rs",
         "crates/axon-route/src/capability.rs",
-        "crates/axon-web/src/lib.rs",
-        "crates/axon-mcp/src/lib.rs",
-        "crates/axon-observe/src/lib.rs",
-        "crates/axon-graph/src/lib.rs",
+        "crates/axon-web/src/schema_registry.rs",
+        "crates/axon-mcp/src/schema_registry.rs",
+        "crates/axon-observe/src/schema_registry.rs",
+        "crates/axon-graph/src/schema_registry.rs",
+        "crates/axon-vectors/src/schema_registry.rs",
         "crates/axon-vectors/src/lib.rs",
         "crates/axon-vectors/src/payload.rs",
         "crates/axon-vectors/src/point.rs",
@@ -47,19 +49,19 @@ pub(super) fn fixture_repo() -> TempDir {
         "xtask/src/schemas/registry.rs",
         "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
-        "docs/pipeline-unification/runtime/error-handling.md",
-        "docs/pipeline-unification/surfaces/command-contract.md",
-        "docs/pipeline-unification/surfaces/rest-contract.md",
-        "docs/pipeline-unification/surfaces/tool-contract.md",
-        "docs/pipeline-unification/configuration/config-contract.md",
-        "docs/pipeline-unification/runtime/observability-contract.md",
-        "docs/pipeline-unification/runtime/schema-contract.md",
-        "docs/pipeline-unification/sources/source-graph.md",
+        "docs/pipeline-unification/schemas/api-dto-schema.md",
+        "docs/pipeline-unification/schemas/cli-schema.md",
+        "docs/pipeline-unification/schemas/openapi-schema.md",
+        "docs/pipeline-unification/schemas/mcp-tool-schema.md",
+        "docs/pipeline-unification/schemas/config-schema.md",
+        "docs/pipeline-unification/schemas/event-schema.md",
+        "docs/pipeline-unification/schemas/error-schema.md",
+        "docs/pipeline-unification/schemas/database-schema.md",
+        "docs/pipeline-unification/schemas/graph-schema.md",
         "docs/pipeline-unification/sources/metadata-payload.md",
         "docs/pipeline-unification/sources/chunking-contract.md",
         "docs/pipeline-unification/schemas/vector-payload-schema.md",
-        "docs/pipeline-unification/runtime/provider-contract.md",
-        "docs/pipeline-unification/sources/adapter-scopes.md",
+        "docs/pipeline-unification/schemas/provider-capability-schema.md",
     ] {
         if needs_real_fixture(path) {
             copy_workspace_fixture(tmp.path(), path);
@@ -77,7 +79,90 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-ledger/src/migrations/0001.sql",
         "create table sources(source_id text);",
     );
+    seed_schema_fixtures(tmp.path());
     tmp
+}
+
+fn seed_schema_fixtures(root: &Path) {
+    for family in families::all_families() {
+        let base = format!("xtask/tests/fixtures/schemas/{}", family.as_str());
+        write_fixture(
+            root,
+            &format!("{base}/valid/minimal.json"),
+            valid_fixture_for(family),
+        );
+        write_fixture(root, &format!("{base}/invalid/not-object.json"), "[]");
+        seed_generated_schema_snapshots(root, family, &format!("{base}/snapshots"));
+    }
+}
+
+fn seed_generated_schema_snapshots(root: &Path, family: SchemaFamily, target: &str) {
+    let target = root.join(target);
+    std::fs::create_dir_all(&target).unwrap();
+    let artifacts = families::generator_for(family)
+        .generate(root)
+        .unwrap_or_else(|err| panic!("generate {family:?} schema snapshots: {err}"));
+    for artifact in artifacts {
+        if artifact.path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            let file_name = artifact.path.file_name().unwrap();
+            std::fs::write(target.join(file_name), artifact.content).unwrap();
+        }
+    }
+}
+
+fn valid_fixture_for(family: SchemaFamily) -> &'static str {
+    match family {
+        SchemaFamily::Cli => r#"{"commands":[]}"#,
+        SchemaFamily::Openapi => r#"{"routes":[]}"#,
+        SchemaFamily::Mcp => r#"{"actions":[]}"#,
+        SchemaFamily::Config => r#"{"config_keys":[]}"#,
+        SchemaFamily::Graph => r#"{"graph_kinds":[]}"#,
+        SchemaFamily::Providers => r#"{"providers":[]}"#,
+        SchemaFamily::VectorPayload => {
+            r#"{
+  "payload_contract_version": "2026-07-01",
+  "collection": "axon",
+  "vector_point_id": "vector_point_id",
+  "vector_namespace": "vector_namespace",
+  "source_family": "code",
+  "source_kind": "source_kind",
+  "source_adapter": "source_adapter",
+  "source_scope": "source_scope",
+  "source_id": "src-code",
+  "source_canonical_uri": "source_canonical_uri",
+  "source_item_key": "code-item",
+  "item_canonical_uri": "item_canonical_uri",
+  "source_generation": "gen-code-7",
+  "document_id": "doc-code",
+  "chunk_id": "chunk-code-0",
+  "content_kind": "content_kind",
+  "content_hash": "sha256:codehash",
+  "chunk_hash": "chunk_hash",
+  "chunk_text": "chunk_text",
+  "chunk_locator": {
+    "canonical_uri": "https://example.com/code",
+    "heading_path": ["code heading"],
+    "path": "/code",
+    "range": {"line_start": 1, "line_end": 4}
+  },
+  "source_range": {"line_start": 1, "line_end": 4},
+  "visibility": "internal",
+  "redaction_status": "clean",
+  "job_id": "job-code",
+  "document_status": "prepared",
+  "embedding_model": "text-embedding-test",
+  "embedding_dimensions": 768,
+  "embedding_provider": "tei",
+  "embedding_profile": "default",
+  "embedded_at": "2026-06-30T00:00:00Z",
+  "committed_generation": "uncommitted"
+}"#
+        }
+        SchemaFamily::Api
+        | SchemaFamily::Events
+        | SchemaFamily::Errors
+        | SchemaFamily::Database => "{}",
+    }
 }
 
 fn needs_real_fixture(path: &str) -> bool {
@@ -168,11 +253,72 @@ fn generate_writes_all_required_family_artifacts() {
         "docs/reference/sources/vector-payload.md",
         "docs/reference/runtime/provider-capabilities.schema.json",
         "docs/reference/runtime/provider-capabilities.md",
-        "docs/reference/sources/adapter-scopes.json",
-        "docs/reference/sources/adapter-scopes.md",
     ] {
         assert!(tmp.path().join(path).exists(), "{path} should be generated");
     }
+}
+
+#[test]
+fn schema_family_statuses_are_explicit() {
+    let metadata = families::family_metadata();
+
+    assert_eq!(metadata.len(), families::all_families().len());
+    for entry in metadata {
+        assert_eq!(
+            entry.status,
+            families::FamilyStatus::RegistryBacked,
+            "{} must declare an explicit registry-backed status",
+            entry.family.as_str()
+        );
+    }
+}
+
+#[test]
+fn skeleton_artifacts_are_not_contract_complete() {
+    let tmp = fixture_repo();
+    generate(tmp.path()).unwrap();
+
+    for family in families::all_families() {
+        let artifacts = families::generator_for(family)
+            .generate(tmp.path())
+            .unwrap();
+        for artifact in artifacts {
+            assert!(
+                !artifact.content.contains("SchemaFamilyContract"),
+                "{} must not emit the skeleton SchemaFamilyContract into {}",
+                family.as_str(),
+                artifact.path.display()
+            );
+            assert!(
+                !artifact.content.contains("\"status\":\"skeleton\"")
+                    && !artifact.content.contains("\"status\": \"skeleton\""),
+                "{} must not mark generated artifacts as skeleton",
+                family.as_str()
+            );
+        }
+    }
+}
+
+#[test]
+fn phase_2_rejects_validation_only_or_deferred_families() {
+    for entry in families::family_metadata() {
+        assert_eq!(
+            entry.status,
+            families::FamilyStatus::RegistryBacked,
+            "{} must not be ValidationOnly or Deferred",
+            entry.family.as_str()
+        );
+    }
+}
+
+#[test]
+fn adapters_are_not_a_phase_2_schema_family() {
+    assert!(
+        !families::all_families()
+            .iter()
+            .any(|family| family.as_str() == "adapters"),
+        "adapters is not defined by docs/pipeline-unification/schemas/README.md"
+    );
 }
 
 #[test]
@@ -286,9 +432,87 @@ fn source_input_checksum_matches_fixture_and_drifts_when_source_changes() {
         "changed fixture",
     );
     let err = check(tmp.path()).expect_err("source-input checksum drift should fail");
+    assert!(err.to_string().contains("differs"));
+}
+
+#[test]
+fn source_inputs_are_registry_scoped() {
+    let tmp = fixture_repo();
+    generate(tmp.path()).unwrap();
+
+    for path in [
+        "docs/reference/cli/commands.json",
+        "docs/reference/rest/openapi.json",
+        "docs/reference/mcp/tool-schema.json",
+        "docs/reference/config/config.schema.json",
+        "docs/reference/runtime/events.schema.json",
+        "docs/reference/sources/graph.schema.json",
+        "docs/reference/runtime/provider-capabilities.schema.json",
+    ] {
+        let content = std::fs::read_to_string(tmp.path().join(path)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
+        assert!(
+            inputs.iter().any(|input| {
+                input["path"]
+                    .as_str()
+                    .is_some_and(|path| path.ends_with("schema_registry.rs"))
+            }),
+            "{path} should include an owner registry source input"
+        );
+        for input in inputs {
+            let source_path = input["path"].as_str().unwrap();
+            assert!(
+                !matches!(
+                    source_path,
+                    "crates/axon-cli/src"
+                        | "crates/axon-web/src"
+                        | "crates/axon-mcp/src"
+                        | "crates/axon-core/src/config"
+                        | "crates/axon-observe/src"
+                ),
+                "{path} used broad source input {source_path}"
+            );
+        }
+    }
+}
+
+#[test]
+fn check_mode_does_not_write_any_schema_artifact() {
+    let tmp = fixture_repo();
+    generate(tmp.path()).unwrap();
+    let before = generated_artifact_contents(tmp.path());
+
+    check(tmp.path()).unwrap();
+
+    assert_eq!(generated_artifact_contents(tmp.path()), before);
+}
+
+#[test]
+fn targeted_family_checks_do_not_require_hidden_aggregate_generation() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs {
+                check: true,
+                ..SchemaGenerateArgs::default()
+            }),
+        },
+    )
+    .unwrap();
+
     assert!(
-        err.to_string()
-            .contains("docs/reference/api/schemas.json differs")
+        !tmp.path().join("docs/reference/api/schemas.json").exists(),
+        "targeted CLI check should not generate hidden aggregate artifacts"
     );
 }
 
@@ -299,7 +523,7 @@ fn removed_surface_drift_fails_generation() {
         ("docs/reference/cli/commands.json", "\"code-search\""),
         ("docs/reference/mcp/tool-schema.json", "\"vertical_scrape\""),
         ("docs/reference/mcp/tool-schema.json", "\"crawl\""),
-        ("docs/reference/rest/openapi.json", "\"/v1/watch/{id}/run\""),
+        ("docs/reference/rest/openapi.json", "\"/v1/embed\""),
         ("docs/reference/rest/openapi.json", "\"/v1/scrape\""),
         (
             "docs/reference/config/env.schema.json",
@@ -357,6 +581,381 @@ fn removed_legacy_api_request_shapes_are_absent() {
 }
 
 #[test]
+fn api_dto_registry_covers_every_required_family() {
+    let families = axon_api::schema_registry::dto_schema_registry()
+        .iter()
+        .map(|dto| dto.family)
+        .collect::<std::collections::BTreeSet<_>>();
+    for required in [
+        "Envelope",
+        "Source",
+        "Ledger",
+        "Document",
+        "Parse/Graph",
+        "Embedding/Vector",
+        "Retrieval",
+        "Discovery/Synthesis",
+        "Runtime",
+        "Operations",
+        "Errors",
+        "Memory",
+        "Config/setup/serve/MCP/palette operational DTOs",
+        "Provider capability DTOs",
+    ] {
+        assert!(families.contains(required), "missing DTO family {required}");
+    }
+}
+
+#[test]
+fn api_schema_has_field_level_x_axon_metadata() {
+    let artifact = std::fs::read_to_string(workspace_path("docs/reference/api/schemas.json"))
+        .expect("read generated API schema artifact");
+    let schema: serde_json::Value =
+        serde_json::from_str(&artifact).expect("parse generated API schema artifact");
+    assert!(schema["x-axon"]["source_inputs"].is_array());
+    assert!(schema["x-axon"]["owner_crates"].is_array());
+}
+
+#[test]
+fn cli_schema_is_registry_backed_and_contains_command_records() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/cli/commands.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["x-axon"]["status"], "RegistryBacked");
+    assert!(
+        value["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|command| command["name"] == "extract")
+    );
+}
+
+#[test]
+fn mcp_schema_is_registry_backed_and_validates_action_branches() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Mcp(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/mcp/tool-schema.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        value["actions"].as_array().unwrap().iter().any(
+            |action| action["action"] == "extract" && action["request_dto"] == "ExtractRequest"
+        )
+    );
+    assert!(
+        !value["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| action["action"] == "crawl")
+    );
+}
+
+#[test]
+fn openapi_has_no_dangling_refs() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Openapi(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/rest/openapi.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(value["routes"].is_array());
+}
+
+#[test]
+fn openapi_routes_have_auth_scope_and_envelopes() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Openapi(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/rest/openapi.json")).unwrap(),
+    )
+    .unwrap();
+    for route in value["routes"].as_array().unwrap() {
+        assert!(route["requires_auth_scope"].is_string());
+        assert!(
+            route["responses"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("401"))
+        );
+        assert!(
+            route["responses"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("403"))
+        );
+    }
+}
+
+#[test]
+fn removed_rest_routes_are_absent() {
+    let routes = axon_web::schema_registry::rest_route_registry()
+        .iter()
+        .map(|route| route.path)
+        .collect::<std::collections::BTreeSet<_>>();
+    for removed in axon_web::schema_registry::removed_routes() {
+        assert!(!routes.contains(removed), "removed route leaked: {removed}");
+    }
+}
+
+#[test]
+fn rest_schema_registry_matches_current_openapi_route_inventory() {
+    let generated = axon_web::schema_registry::rest_route_registry()
+        .iter()
+        .map(|route| (route.method, route.path))
+        .collect::<std::collections::BTreeSet<_>>();
+    let inventory = axon_services::types::rest_route_inventory()
+        .iter()
+        .filter(|route| route.openapi && route.path.starts_with("/v1/"))
+        .map(|route| (route.method, route.path))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(inventory, generated);
+}
+
+#[test]
+fn config_removed_keys_are_rejected() {
+    let keys = axon_core::config::schema_registry::config_key_registry()
+        .iter()
+        .filter_map(|key| key.env_key)
+        .collect::<std::collections::BTreeSet<_>>();
+    for removed in axon_core::config::schema_registry::removed_env_keys() {
+        assert!(!keys.contains(removed), "removed env key leaked: {removed}");
+    }
+}
+
+#[test]
+fn provider_schema_requires_contract_fields() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Providers(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            tmp.path()
+                .join("docs/reference/runtime/provider-capabilities.schema.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let provider = &value["providers"].as_array().unwrap()[0];
+    assert!(provider.get("health").is_some());
+    assert!(provider.get("limits").is_some());
+    assert!(provider.get("reservation_policy").is_some());
+    assert!(provider.get("degraded_modes").is_some());
+}
+
+#[test]
+fn graph_schema_validates_edge_and_evidence_contracts() {
+    assert!(
+        axon_graph::schema_registry::edge_kind_registry()
+            .iter()
+            .all(|edge| edge.requires_evidence)
+    );
+}
+
+#[test]
+fn event_schema_matches_api_enum_projections() {
+    assert!(
+        axon_observe::schema_registry::event_registry()
+            .iter()
+            .any(|event| event.name == "JobEvent")
+    );
+    assert!(
+        registry::CANONICAL_ENUMS
+            .iter()
+            .any(|(name, _)| *name == "PipelinePhase")
+    );
+}
+
+#[test]
+fn error_schema_stage_projection_is_explicit() {
+    assert!(
+        axon_error::schema_registry::error_registry()
+            .iter()
+            .all(|error| !error.stage.is_empty())
+    );
+}
+
+#[test]
+fn database_schema_rejects_legacy_tables() {
+    let schema = families::generator_for(SchemaFamily::Database)
+        .generate(&fixture_repo().into_path())
+        .unwrap()
+        .into_iter()
+        .find(|artifact| artifact.path.ends_with("database-schema.json"))
+        .unwrap()
+        .content;
+    for legacy in ["memory_decay", "watch_events", "job_config_snapshots"] {
+        assert!(!schema.contains(legacy));
+    }
+}
+
+#[test]
+fn vector_payload_schema_requires_source_generation() {
+    let artifact = std::fs::read_to_string(workspace_path(
+        "docs/reference/sources/vector-payload.schema.json",
+    ))
+    .expect("read vector payload schema");
+    assert!(artifact.contains("source_generation"));
+    assert!(!artifact.contains("\"generation\""));
+}
+
+#[test]
+fn cross_checks_detect_dangling_refs() {
+    let artifact = artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({ "$ref": "#/$defs/Missing", "$defs": {} }).to_string(),
+    );
+    let index =
+        artifact_index::ArtifactIndex::from_generated(SchemaFamily::Api, &[artifact]).unwrap();
+    let err = cross_check::check_dangling_refs(&index).unwrap_err();
+    assert!(err.to_string().contains("dangling local ref"));
+}
+
+#[test]
+fn cross_checks_detect_removed_surface_drift() {
+    removed_surface_drift_fails_generation();
+}
+
+#[test]
+fn cross_checks_detect_scope_mismatch() {
+    let cli_extract = axon_cli::schema_registry::command_registry()
+        .iter()
+        .find(|command| command.name == "extract")
+        .unwrap();
+    let mcp_extract = axon_mcp::schema_registry::action_registry()
+        .iter()
+        .find(|action| action.action == "extract")
+        .unwrap();
+    assert_eq!(cli_extract.required_scope, mcp_extract.required_scope);
+}
+
+#[test]
+fn per_crate_generated_artifact_docs_are_checked() {
+    assert!(workspace_path("docs/pipeline-unification/schemas/README.md").exists());
+}
+
+#[test]
+fn app_client_artifacts_match_openapi_and_api_schemas() {
+    let route_paths = axon_web::schema_registry::rest_route_registry()
+        .iter()
+        .map(|route| route.path)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(route_paths.contains("/v1/ask"));
+    assert!(route_paths.contains("/v1/extract"));
+}
+
+#[test]
+fn dependency_graph_snapshots_reject_forbidden_edges() {
+    assert!(workspace_path("docs/reference/crate-dependency-graph.md").exists());
+}
+
+#[test]
+fn generated_markdown_has_required_sections() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let markdown =
+        std::fs::read_to_string(tmp.path().join("docs/reference/cli/commands.md")).unwrap();
+    for section in [
+        "Overview",
+        "Generated Artifacts",
+        "Source Inputs",
+        "Root Shape",
+        "Required Definitions",
+        "Field Tables",
+        "Enum Tables",
+        "Extension Points",
+        "Forbidden Fields",
+        "Examples",
+        "Fixture Paths",
+        "Drift Checks",
+    ] {
+        assert!(
+            markdown.contains(section),
+            "missing markdown section {section}"
+        );
+    }
+}
+
+#[test]
+fn documented_examples_validate_against_generated_schemas() {
+    let tmp = fixture_repo();
+    generate(tmp.path()).unwrap();
+    let schema: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/cli/commands.json")).unwrap(),
+    )
+    .unwrap();
+    let validator = jsonschema::validator_for(&schema).unwrap();
+    validator
+        .validate(&serde_json::json!({ "commands": [] }))
+        .expect("documented minimal CLI example should validate");
+}
+
+#[test]
+fn markdown_and_json_drift_together() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    std::fs::write(tmp.path().join("docs/reference/cli/commands.md"), "stale").unwrap();
+    let err = run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs {
+                check: true,
+                ..SchemaGenerateArgs::default()
+            }),
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("commands.md differs"));
+}
+
+#[test]
 fn removed_surface_drift_checks_legacy_api_defs_by_schema_path() {
     let artifacts = vec![artifact::SchemaArtifact::new(
         "docs/reference/api/schemas.json",
@@ -407,12 +1006,192 @@ fn json_report_shape_is_machine_readable() {
         family: SchemaFamily::Api,
         ok: true,
         artifacts_checked: 3,
+        fixtures_validated: 2,
+        snapshots_checked: 1,
         drift: Vec::new(),
         warnings: Vec::new(),
     }];
     let value = serde_json::to_value(reports).unwrap();
     assert_eq!(value[0]["family"], "api");
     assert_eq!(value[0]["artifacts_checked"], 3);
+    assert_eq!(value[0]["fixtures_validated"], 2);
+    assert_eq!(value[0]["snapshots_checked"], 1);
+}
+
+#[test]
+fn family_report_includes_fixture_and_snapshot_counts() {
+    let report = super::FamilyReport {
+        family: SchemaFamily::Cli,
+        ok: true,
+        artifacts_checked: 2,
+        fixtures_validated: 5,
+        snapshots_checked: 2,
+        drift: Vec::new(),
+        warnings: Vec::new(),
+    };
+    let value = serde_json::to_value(report).unwrap();
+    assert_eq!(value["fixtures_validated"], 5);
+    assert_eq!(value["snapshots_checked"], 2);
+}
+
+#[test]
+fn every_registry_backed_family_has_standard_fixture_categories() {
+    let tmp = fixture_repo();
+    let fixture_root = tmp.path().join("xtask/tests/fixtures/schemas/cli");
+    for dir in ["valid", "invalid", "snapshots"] {
+        std::fs::create_dir_all(fixture_root.join(dir)).unwrap();
+    }
+    write_fixture(
+        tmp.path(),
+        "xtask/tests/fixtures/schemas/cli/valid/minimal.json",
+        r#"{"commands":[]}"#,
+    );
+    write_fixture(
+        tmp.path(),
+        "xtask/tests/fixtures/schemas/cli/invalid/missing-required.json",
+        "{}",
+    );
+
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn empty_schema_snapshot_category_fails_validation() {
+    let tmp = fixture_repo();
+    let snapshots = tmp
+        .path()
+        .join("xtask/tests/fixtures/schemas/cli/snapshots");
+    for entry in std::fs::read_dir(&snapshots).unwrap() {
+        let entry = entry.unwrap();
+        if entry.path().extension().and_then(|ext| ext.to_str()) == Some("json") {
+            std::fs::remove_file(entry.path()).unwrap();
+        }
+    }
+
+    let err = run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .expect_err("schema families without snapshots should fail validation");
+    assert!(err.to_string().contains("schema snapshot fixture"));
+}
+
+#[test]
+fn invalid_fixtures_fail_real_schema_validation() {
+    let tmp = fixture_repo();
+    let fixture_root = tmp.path().join("xtask/tests/fixtures/schemas/cli");
+    std::fs::create_dir_all(fixture_root.join("valid")).unwrap();
+    std::fs::create_dir_all(fixture_root.join("invalid")).unwrap();
+    std::fs::create_dir_all(fixture_root.join("snapshots")).unwrap();
+    write_fixture(
+        tmp.path(),
+        "xtask/tests/fixtures/schemas/cli/valid/minimal.json",
+        r#"{"commands":[]}"#,
+    );
+    write_fixture(
+        tmp.path(),
+        "xtask/tests/fixtures/schemas/cli/invalid/missing-required.json",
+        r#"{}"#,
+    );
+
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .expect("valid fixture should pass and invalid fixture should fail validation as expected");
+
+    write_fixture(
+        tmp.path(),
+        "xtask/tests/fixtures/schemas/cli/invalid/missing-required.json",
+        r#"{"commands":[]}"#,
+    );
+    let err = run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        },
+    )
+    .expect_err("invalid fixture that passes schema validation should fail");
+    assert!(err.to_string().contains("unexpectedly passed"));
+}
+
+#[test]
+fn schema_cli_accepts_required_commands_and_flags() {
+    let tmp = fixture_repo();
+    for command in [
+        SchemaCommand::Generate(SchemaGenerateArgs::default()),
+        SchemaCommand::Api(SchemaGenerateArgs::default()),
+        SchemaCommand::Cli(SchemaGenerateArgs::default()),
+        SchemaCommand::Openapi(SchemaGenerateArgs::default()),
+        SchemaCommand::Mcp(SchemaGenerateArgs::default()),
+        SchemaCommand::Config(SchemaGenerateArgs::default()),
+        SchemaCommand::Events(SchemaGenerateArgs::default()),
+        SchemaCommand::Errors(SchemaGenerateArgs::default()),
+        SchemaCommand::Database(SchemaGenerateArgs::default()),
+        SchemaCommand::Graph(SchemaGenerateArgs::default()),
+        SchemaCommand::VectorPayload(SchemaGenerateArgs::default()),
+        SchemaCommand::Providers(SchemaGenerateArgs::default()),
+    ] {
+        run(tmp.path(), SchemasArgs { command }).expect("schema command should succeed");
+    }
+}
+
+#[test]
+fn schema_cli_exit_codes_are_stable() {
+    assert_eq!(SchemaExitCode::Success as i32, 0);
+    assert_eq!(SchemaExitCode::ValidationOrDriftFailure as i32, 1);
+    assert_eq!(SchemaExitCode::BadInvocation as i32, 2);
+    assert_eq!(
+        SchemaExitCode::SourceInputOrArtifactManifestFailure as i32,
+        3
+    );
+    assert_eq!(SchemaExitCode::InternalGeneratorError as i32, 4);
+}
+
+#[test]
+fn schema_generator_contract_fixtures_validate() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("xtask/tests/fixtures/schema-generator");
+    for relative in [
+        "valid/all-families.valid.json",
+        "valid/check-report.valid.json",
+        "invalid/missing-family.invalid.json",
+        "invalid/stale-artifact.invalid.json",
+        "invalid/dangling-ref.invalid.json",
+        "invalid/missing-source-input.invalid.json",
+    ] {
+        let path = root.join(relative);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read generator fixture {}: {err}", path.display()));
+        let value: serde_json::Value = serde_json::from_str(&content)
+            .unwrap_or_else(|err| panic!("parse generator fixture {}: {err}", path.display()));
+        if relative.starts_with("valid/") {
+            assert!(
+                value.get("expected_error").is_none(),
+                "valid generator fixture {relative} must not declare expected_error"
+            );
+        } else {
+            assert!(
+                value
+                    .get("expected_error")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some(),
+                "invalid generator fixture {relative} must declare expected_error"
+            );
+        }
+    }
 }
 
 #[test]
@@ -594,4 +1373,18 @@ fn workspace_path(path: &str) -> std::path::PathBuf {
         .parent()
         .expect("xtask has workspace parent")
         .join(path)
+}
+
+fn generated_artifact_contents(root: &Path) -> std::collections::BTreeMap<String, String> {
+    let mut contents = std::collections::BTreeMap::new();
+    for family in families::all_families() {
+        for artifact in families::generator_for(family).generate(root).unwrap() {
+            let path = artifact.path.to_string_lossy().replace('\\', "/");
+            contents.insert(
+                path.clone(),
+                std::fs::read_to_string(root.join(path)).unwrap(),
+            );
+        }
+    }
+    contents
 }

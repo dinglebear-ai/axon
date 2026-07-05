@@ -1,0 +1,15 @@
+{
+  "families": [
+    "api",
+    "cli",
+    "openapi",
+    "mcp",
+    "config",
+    "events",
+    "errors",
+    "database",
+    "graph",
+    "vector-payload",
+    "providers"
+  ]
+}

@@ -1,15 +1,19 @@
-mod adapters;
 mod artifact;
+mod artifact_index;
+mod cross_check;
 mod families;
 pub mod registry;
+mod report;
 mod schema_json;
 mod source_input;
+mod validate;
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use families::{all_families, generator_for};
+use report::FamilyReport;
 use serde::Serialize;
 
 #[derive(Debug, Args)]
@@ -44,8 +48,6 @@ enum SchemaCommand {
     VectorPayload(SchemaGenerateArgs),
     /// Generate/check only the provider schema family.
     Providers(SchemaGenerateArgs),
-    /// Generate/check only the adapter scope/capability schema family.
-    Adapters(SchemaGenerateArgs),
 }
 
 #[derive(Debug, Args, Clone, Default)]
@@ -67,6 +69,15 @@ pub struct SchemaGenerateArgs {
     pub update_fixtures: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaExitCode {
+    Success = 0,
+    ValidationOrDriftFailure = 1,
+    BadInvocation = 2,
+    SourceInputOrArtifactManifestFailure = 3,
+    InternalGeneratorError = 4,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 pub enum SchemaFamily {
@@ -81,7 +92,6 @@ pub enum SchemaFamily {
     Graph,
     VectorPayload,
     Providers,
-    Adapters,
 }
 
 impl Serialize for SchemaFamily {
@@ -107,7 +117,6 @@ impl SchemaFamily {
             Self::Graph => "graph",
             Self::VectorPayload => "vector-payload",
             Self::Providers => "providers",
-            Self::Adapters => "adapters",
         }
     }
 }
@@ -128,7 +137,6 @@ pub fn run(root: &Path, args: SchemasArgs) -> Result<()> {
             run_single_family(root, SchemaFamily::VectorPayload, &args)
         }
         SchemaCommand::Providers(args) => run_single_family(root, SchemaFamily::Providers, &args),
-        SchemaCommand::Adapters(args) => run_single_family(root, SchemaFamily::Adapters, &args),
     }
 }
 
@@ -154,6 +162,14 @@ fn run_families(root: &Path, families: Vec<SchemaFamily>, args: &SchemaGenerateA
     let mut reports = Vec::new();
     for family in families {
         let artifacts = generator_for(family).generate(root)?;
+        let artifact_index = artifact_index::ArtifactIndex::from_generated(family, &artifacts)?;
+        let validation_mode = if args.update_fixtures {
+            validate::ValidationMode::UpdateFixtures
+        } else {
+            validate::ValidationMode::Check
+        };
+        let validation_report =
+            validate::validate_family(root, family, &artifact_index, validation_mode)?;
         let mut structural_drift = Vec::new();
         if let Err(err) = registry::check_removed_surface_drift(&artifacts) {
             structural_drift.push(err.to_string());
@@ -161,28 +177,35 @@ fn run_families(root: &Path, families: Vec<SchemaFamily>, args: &SchemaGenerateA
         if let Err(err) = registry::check_enum_projection_drift(&artifacts) {
             structural_drift.push(err.to_string());
         }
+        if let Err(err) = cross_check::check_dangling_refs(&artifact_index) {
+            structural_drift.push(err.to_string());
+        }
         if args.print {
-            print_artifacts(&artifacts);
-            reports.push(FamilyReport::from_drift(
-                family,
-                artifacts.len(),
-                structural_drift,
-            ));
+            print_artifacts(&artifacts)?;
+            reports.push(
+                FamilyReport::from_drift(family, artifacts.len(), structural_drift)
+                    .with_validation_counts(&validation_report),
+            );
             continue;
         }
         if args.check {
             let mut drift = collect_drift(root, &artifacts)?;
             drift.extend(structural_drift);
-            reports.push(FamilyReport::from_drift(family, artifacts.len(), drift));
+            reports.push(
+                FamilyReport::from_drift(family, artifacts.len(), drift)
+                    .with_validation_counts(&validation_report),
+            );
         } else if structural_drift.is_empty() {
             write_artifacts(root, &artifacts)?;
-            reports.push(FamilyReport::ok(family, artifacts.len()));
+            reports.push(
+                FamilyReport::ok(family, artifacts.len())
+                    .with_validation_counts(&validation_report),
+            );
         } else {
-            reports.push(FamilyReport::from_drift(
-                family,
-                artifacts.len(),
-                structural_drift,
-            ));
+            reports.push(
+                FamilyReport::from_drift(family, artifacts.len(), structural_drift)
+                    .with_validation_counts(&validation_report),
+            );
         }
     }
 
@@ -199,35 +222,15 @@ fn run_families(root: &Path, families: Vec<SchemaFamily>, args: &SchemaGenerateA
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
-struct FamilyReport {
-    family: SchemaFamily,
-    ok: bool,
-    artifacts_checked: usize,
-    drift: Vec<String>,
-    warnings: Vec<String>,
-}
-
-impl FamilyReport {
-    fn ok(family: SchemaFamily, artifacts_checked: usize) -> Self {
-        Self {
-            family,
-            ok: true,
-            artifacts_checked,
-            drift: Vec::new(),
-            warnings: Vec::new(),
+fn print_artifacts(artifacts: &[artifact::SchemaArtifact]) -> Result<()> {
+    for artifact in artifacts {
+        println!("--- {}", artifact.path.display());
+        print!("{}", artifact.content);
+        if !artifact.content.ends_with('\n') {
+            println!();
         }
     }
-
-    fn from_drift(family: SchemaFamily, artifacts_checked: usize, drift: Vec<String>) -> Self {
-        Self {
-            family,
-            ok: drift.is_empty(),
-            artifacts_checked,
-            drift,
-            warnings: Vec::new(),
-        }
-    }
+    Ok(())
 }
 
 fn print_report(reports: &[FamilyReport]) -> Result<()> {
@@ -235,13 +238,6 @@ fn print_report(reports: &[FamilyReport]) -> Result<()> {
     content.push('\n');
     print!("{content}");
     Ok(())
-}
-
-fn print_artifacts(artifacts: &[artifact::SchemaArtifact]) {
-    for artifact in artifacts {
-        println!("--- {}", artifact.path.display());
-        println!("{}", artifact.content);
-    }
 }
 
 fn collect_drift(root: &Path, artifacts: &[artifact::SchemaArtifact]) -> Result<Vec<String>> {

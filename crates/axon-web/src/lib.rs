@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod panel_first_run;
 #[path = "panel_stack.rs"]
 pub mod panel_stack;
+pub mod schema_registry;
 #[path = "security.rs"]
 pub mod security;
 #[path = "server.rs"]
