@@ -16,6 +16,8 @@ pub(crate) mod api_defs;
 mod bundles;
 #[path = "families/markdown.rs"]
 mod markdown_render;
+#[path = "provider_capabilities.rs"]
+mod provider_capabilities;
 #[path = "runtime_defs.rs"]
 mod runtime_defs;
 #[path = "vector_payload.rs"]
@@ -89,7 +91,7 @@ impl FamilyGenerator for Generator {
             SchemaFamily::Events => runtime_defs::events_artifacts(root),
             SchemaFamily::Database => runtime_defs::database_artifacts(root),
             SchemaFamily::Graph => graph_artifacts(root),
-            SchemaFamily::Providers => provider_artifacts(root),
+            SchemaFamily::Providers => provider_capabilities::provider_artifacts(root),
         }
     }
 }
@@ -421,42 +423,6 @@ fn graph_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         SchemaArtifact::new(
             rel(spec.markdown_path),
             registry_markdown("graph", &inputs, "Graph Kinds"),
-        ),
-    ])
-}
-
-fn provider_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
-    let spec = family_specs::spec_for(SchemaFamily::Providers);
-    let inputs = source_inputs(root, spec.source_paths)?;
-    let providers = axon_api::schema_registry::dto_schema_registry()
-        .iter()
-        .filter(|dto| dto.family == "Provider capability DTOs")
-        .map(|dto| {
-            json!({
-                "provider_kind": dto.name,
-                "health": "required",
-                "limits": "required",
-                "reservation_policy": "required",
-                "degraded_modes": "required",
-                "capabilities": ["embed", "rerank", "synthesize"]
-            })
-        })
-        .collect::<Vec<_>>();
-    let schema = registry_schema_bundle(
-        schema_id(SchemaFamily::Providers),
-        spec.title,
-        "cargo xtask schemas providers",
-        spec.owner_crates,
-        &inputs,
-        "providers",
-        providers,
-        &[],
-    );
-    Ok(vec![
-        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
-        SchemaArtifact::new(
-            rel(spec.markdown_path),
-            registry_markdown("providers", &inputs, "Providers"),
         ),
     ])
 }
