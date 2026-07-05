@@ -16,6 +16,7 @@ pub mod point;
 pub mod qdrant;
 pub mod query;
 pub mod redactor;
+pub mod schema_registry;
 mod sparse;
 pub mod store;
 mod store_helpers;

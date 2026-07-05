@@ -1,0 +1,4 @@
+{
+  "artifact": "docs/reference/api/schemas.json",
+  "expected_error": "stale-artifact"
+}

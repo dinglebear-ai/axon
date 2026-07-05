@@ -32,9 +32,6 @@ pub const REMOVED_SURFACE_RULES: &[RemovedSurfaceRule] = &[
     rest("\"/v1/ingest\""),
     rest("\"/v1/scrape\""),
     rest("\"/v1/crawl\""),
-    rest("\"/v1/purge\""),
-    rest("\"/v1/dedupe\""),
-    rest("\"/v1/watch/{id}/run\""),
     config("\"AXON_MCP_HTTP_HOST\""),
     config("\"AXON_MCP_HTTP_PORT\""),
     config("\"AXON_MCP_HTTP_TOKEN\""),
@@ -52,14 +49,6 @@ pub const REMOVED_SURFACE_RULES: &[RemovedSurfaceRule] = &[
     config("\"AXON_EMBED_DOC_TIMEOUT_SECS\""),
     config("\"AXON_WATCH_TICK_SECS\""),
     config("\"AXON_WATCH_LEASE_SECS\""),
-];
-
-pub const REMOVED_API_DTO_DEFS: &[&str] = &[
-    "EmbedRequest",
-    "IngestRequest",
-    "CrawlRequest",
-    "ScrapeRequest",
-    "CodeSearchRequest",
 ];
 
 const fn cli(token: &'static str) -> RemovedSurfaceRule {
@@ -237,7 +226,7 @@ fn check_removed_api_dto_shapes(artifact: &SchemaArtifact) -> Result<()> {
         return Ok(());
     };
 
-    for removed_def in REMOVED_API_DTO_DEFS {
+    for removed_def in axon_api::schema_registry::removed_dto_names() {
         if defs.contains_key(*removed_def) {
             bail!(
                 "{} contains removed API DTO definition {removed_def}",

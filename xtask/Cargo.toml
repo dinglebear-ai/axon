@@ -8,12 +8,19 @@ publish = false
 [dependencies]
 anyhow = "1"
 axon-api = { path = "../crates/axon-api" }
+axon-cli = { path = "../crates/axon-cli" }
+axon-core = { path = "../crates/axon-core" }
 axon-error = { path = "../crates/axon-error" }
+axon-graph = { path = "../crates/axon-graph" }
+axon-mcp = { path = "../crates/axon-mcp" }
+axon-observe = { path = "../crates/axon-observe" }
 axon-route = { path = "../crates/axon-route" }
+axon-services = { path = "../crates/axon-services" }
 axon-vectors = { path = "../crates/axon-vectors" }
-axon-web = { path = "../crates/axon-web", optional = true }
+axon-web = { path = "../crates/axon-web" }
 clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"
+jsonschema = "0.37"
 regex = "1"
 reqwest = { version = "0.13", features = ["blocking", "json", "rustls"], default-features = false }
 schemars = "1"
@@ -27,8 +34,7 @@ walkdir = "2"
 
 [features]
 default = ["openapi-drift"]
-openapi-drift = ["dep:axon-web"]
+openapi-drift = []
 
 [dev-dependencies]
-jsonschema = "0.37"
 tempfile = "3"

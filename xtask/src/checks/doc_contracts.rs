@@ -19,13 +19,11 @@ use std::path::Path;
 
 use walkdir::WalkDir;
 
-use crate::schemas::registry::REMOVED_API_DTO_DEFS;
-
 /// Removed type-name tokens that must not appear in generated markdown. The
 /// source list is shared with the API schema removed-definition check so the two
 /// guardrails cannot drift apart.
 pub fn removed_doc_type_tokens() -> Vec<String> {
-    REMOVED_API_DTO_DEFS
+    axon_api::schema_registry::removed_dto_names()
         .iter()
         .map(|token| (*token).to_string())
         .collect()

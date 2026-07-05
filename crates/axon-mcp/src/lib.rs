@@ -6,6 +6,7 @@ pub mod auth;
 mod cors;
 #[path = "schema.rs"]
 pub mod schema;
+pub mod schema_registry;
 #[path = "server.rs"]
 pub mod server;
 

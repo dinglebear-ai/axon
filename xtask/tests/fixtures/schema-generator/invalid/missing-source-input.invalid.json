@@ -1,0 +1,4 @@
+{
+  "source_input": "crates/axon-cli/src/schema_registry.rs",
+  "expected_error": "missing-source-input"
+}

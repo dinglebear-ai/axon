@@ -16,6 +16,7 @@ pub mod conversion;
 pub mod cooling;
 pub mod degradation;
 pub mod retry;
+pub mod schema_registry;
 pub mod severity;
 pub mod stage;
 pub mod testing;

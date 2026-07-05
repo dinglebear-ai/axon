@@ -8,17 +8,48 @@ use super::artifact::SchemaArtifact;
 use super::registry::CANONICAL_ENUMS;
 use super::rel;
 use super::schema_json::{json_string, schema_defs};
-use super::source_input::{SourceInput, source_inputs};
+use super::source_input::source_inputs;
 
 #[path = "api_defs.rs"]
 pub(crate) mod api_defs;
+#[path = "families/bundles.rs"]
+mod bundles;
+#[path = "families/markdown.rs"]
+mod markdown_render;
 #[path = "runtime_defs.rs"]
 mod runtime_defs;
 #[path = "vector_payload.rs"]
 mod vector_payload;
 
+use bundles::registry_schema_bundle;
+pub(super) use bundles::{enum_defs, schema_bundle, schema_id};
+use markdown_render::{
+    api_markdown, enum_markdown, markdown, registry_markdown, registry_projection_markdown,
+};
+
 pub trait FamilyGenerator {
     fn generate(&self, root: &Path) -> Result<Vec<SchemaArtifact>>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FamilyStatus {
+    RegistryBacked,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FamilyMetadata {
+    pub family: SchemaFamily,
+    pub status: FamilyStatus,
+}
+
+pub fn family_metadata() -> Vec<FamilyMetadata> {
+    all_families()
+        .into_iter()
+        .map(|family| FamilyMetadata {
+            family,
+            status: FamilyStatus::RegistryBacked,
+        })
+        .collect()
 }
 
 pub fn all_families() -> Vec<SchemaFamily> {
@@ -34,7 +65,6 @@ pub fn all_families() -> Vec<SchemaFamily> {
         SchemaFamily::Graph,
         SchemaFamily::VectorPayload,
         SchemaFamily::Providers,
-        SchemaFamily::Adapters,
     ]
 }
 
@@ -50,12 +80,16 @@ impl FamilyGenerator for Generator {
     fn generate(&self, root: &Path) -> Result<Vec<SchemaArtifact>> {
         match self.family {
             SchemaFamily::Api => api_artifacts(root),
+            SchemaFamily::Cli => cli_artifacts(root),
+            SchemaFamily::Openapi => openapi_artifacts(root),
+            SchemaFamily::Mcp => mcp_artifacts(root),
+            SchemaFamily::Config => config_artifacts(root),
             SchemaFamily::Errors => error_artifacts(root),
-            SchemaFamily::Adapters => super::adapters::adapter_artifacts(root),
             SchemaFamily::VectorPayload => vector_payload::vector_payload_artifacts(root),
             SchemaFamily::Events => runtime_defs::events_artifacts(root),
             SchemaFamily::Database => runtime_defs::database_artifacts(root),
-            family => skeleton_artifacts(root, family_specs::spec_for(family)),
+            SchemaFamily::Graph => graph_artifacts(root),
+            SchemaFamily::Providers => provider_artifacts(root),
         }
     }
 }
@@ -81,6 +115,7 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let inputs = source_inputs(
         root,
         &[
+            "crates/axon-api/src/schema_registry.rs",
             "crates/axon-api/src/source.rs",
             "crates/axon-api/src/source/boundary.rs",
             "crates/axon-api/src/source/common.rs",
@@ -102,7 +137,7 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-error/src/api_error.rs",
             "xtask/src/schemas/api_defs.rs",
             "xtask/src/schemas/registry.rs",
-            "xtask/src/schemas/tests.rs",
+            "docs/pipeline-unification/schemas/api-dto-schema.md",
         ],
     )?;
     let defs = schema_defs(&api_schema_defs(), Some(enum_defs("axon-api")));
@@ -138,11 +173,12 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let inputs = source_inputs(
         root,
         &[
+            "crates/axon-error/src/schema_registry.rs",
             "crates/axon-error/src/lib.rs",
             "crates/axon-error/src/api_error.rs",
             "crates/axon-error/src/code.rs",
             "crates/axon-error/src/stage.rs",
-            "docs/pipeline-unification/runtime/error-handling.md",
+            "docs/pipeline-unification/schemas/error-schema.md",
         ],
     )?;
     let defs = schema_defs(
@@ -186,160 +222,243 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     ])
 }
 
-fn skeleton_artifacts(root: &Path, spec: FamilySpec) -> Result<Vec<SchemaArtifact>> {
+fn cli_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let spec = family_specs::spec_for(SchemaFamily::Cli);
     let inputs = source_inputs(root, spec.source_paths)?;
-    let schema = schema_bundle(
-        schema_id(spec.family),
+    let commands = axon_cli::schema_registry::command_registry()
+        .iter()
+        .map(|command| {
+            json!({
+                "name": command.name,
+                "maps_to_dto": command.maps_to_dto,
+                "mutates": command.mutates,
+                "async": command.async_job,
+                "requires_auth_scope": command.required_scope
+            })
+        })
+        .collect::<Vec<_>>();
+    let schema = registry_schema_bundle(
+        schema_id(SchemaFamily::Cli),
         spec.title,
-        &format!("cargo xtask schemas {}", spec.family.as_str()),
+        "cargo xtask schemas cli",
         spec.owner_crates,
         &inputs,
-        skeleton_defs(spec.family),
+        "commands",
+        commands,
+        &[],
     );
-    let mut artifacts = vec![
+    Ok(vec![
         SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
         SchemaArtifact::new(
             rel(spec.markdown_path),
-            markdown(spec.family.as_str(), &inputs),
+            registry_markdown("cli", &inputs, "Commands"),
         ),
-    ];
-    if let Some(extra_json) = spec.extra_json {
-        let extra_schema = schema_bundle(
-            extra_json.id,
-            extra_json.title,
-            &format!("cargo xtask schemas {}", spec.family.as_str()),
-            spec.owner_crates,
-            &inputs,
-            skeleton_defs(spec.family),
-        );
-        artifacts.push(SchemaArtifact::new(
-            rel(extra_json.path),
-            json_string(&extra_schema)?,
-        ));
-    }
-    if let Some(path) = spec.extra_markdown_path {
-        artifacts.push(SchemaArtifact::new(
-            rel(path),
-            markdown(spec.family.as_str(), &inputs),
-        ));
-    }
-    Ok(artifacts)
+        SchemaArtifact::new(
+            rel(spec.extra_markdown_path.unwrap()),
+            registry_markdown("cli-help", &inputs, "Commands"),
+        ),
+    ])
 }
 
-pub(super) fn schema_bundle(
-    id: &str,
-    title: &str,
-    generated_by: &str,
-    owner_crates: &[&str],
-    inputs: &[SourceInput],
-    defs: Value,
-) -> Value {
-    json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": id,
-        "title": title,
-        "description": "Generated Axon schema contract artifact.",
-        "type": "object",
-        "additionalProperties": false,
-        "$defs": defs,
-        "x-axon": {
-            "contract_version": "2026-06-30",
-            "generated_by": generated_by,
-            "owner_crates": owner_crates,
-            "source_inputs": inputs,
-            "clean_break": true,
-        }
-    })
-}
-
-pub(super) fn enum_defs(owner_crate: &str) -> Value {
-    let mut defs = serde_json::Map::new();
-    for (name, values) in CANONICAL_ENUMS {
-        defs.insert(
-            (*name).to_string(),
+fn mcp_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let spec = family_specs::spec_for(SchemaFamily::Mcp);
+    let inputs = source_inputs(root, spec.source_paths)?;
+    let actions = axon_mcp::schema_registry::action_registry()
+        .iter()
+        .map(|action| {
             json!({
-                "type": "string",
-                "enum": values,
-                "x-axon": {
-                    "rust_enum": name,
-                    "owner_crate": owner_crate,
-                }
-            }),
+                "action": action.action,
+                "request_dto": action.request_dto,
+                "result_dto": action.result_dto,
+                "requires_auth_scope": action.required_scope,
+                "mutates": action.mutates,
+                "async": action.async_job,
+                "subaction": null
+            })
+        })
+        .collect::<Vec<_>>();
+    let schema = registry_schema_bundle(
+        schema_id(SchemaFamily::Mcp),
+        spec.title,
+        "cargo xtask schemas mcp",
+        spec.owner_crates,
+        &inputs,
+        "actions",
+        actions,
+        &[],
+    );
+    Ok(vec![
+        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
+        SchemaArtifact::new(rel(spec.extra_json.unwrap().path), json_string(&schema)?),
+        SchemaArtifact::new(
+            rel(spec.markdown_path),
+            registry_markdown("mcp", &inputs, "Actions"),
+        ),
+    ])
+}
+
+fn openapi_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let spec = family_specs::spec_for(SchemaFamily::Openapi);
+    let inputs = source_inputs(root, spec.source_paths)?;
+    let routes = axon_web::schema_registry::rest_route_registry()
+        .iter()
+        .map(|route| {
+            json!({
+                "method": route.method,
+                "path": route.path,
+                "operation_id": route.operation_id,
+                "request_dto": route.request_dto,
+                "result_dto": route.result_dto,
+                "requires_auth_scope": route.required_scope,
+                "mutates": route.mutates,
+                "streaming": route.streaming,
+                "responses": route.responses
+            })
+        })
+        .collect::<Vec<_>>();
+    let schema = registry_schema_bundle(
+        schema_id(SchemaFamily::Openapi),
+        spec.title,
+        "cargo xtask schemas openapi",
+        spec.owner_crates,
+        &inputs,
+        "routes",
+        routes,
+        &[],
+    );
+    Ok(vec![
+        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
+        SchemaArtifact::new(
+            rel(spec.markdown_path),
+            registry_markdown("openapi", &inputs, "Routes"),
+        ),
+        SchemaArtifact::new(
+            rel(spec.extra_markdown_path.unwrap()),
+            registry_projection_markdown("openapi-schemas", "openapi", &inputs, "Routes"),
+        ),
+    ])
+}
+
+fn config_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let spec = family_specs::spec_for(SchemaFamily::Config);
+    let inputs = source_inputs(root, spec.source_paths)?;
+    let keys = config_key_records();
+    let schema = registry_schema_bundle(
+        schema_id(SchemaFamily::Config),
+        spec.title,
+        "cargo xtask schemas config",
+        spec.owner_crates,
+        &inputs,
+        "config_keys",
+        keys.clone(),
+        &[],
+    );
+    let extra = spec.extra_json.unwrap();
+    let env_schema = registry_schema_bundle(
+        extra.id,
+        extra.title,
+        "cargo xtask schemas config",
+        spec.owner_crates,
+        &inputs,
+        "config_keys",
+        keys,
+        &[],
+    );
+    Ok(vec![
+        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
+        SchemaArtifact::new(rel(extra.path), json_string(&env_schema)?),
+        SchemaArtifact::new(
+            rel(spec.markdown_path),
+            registry_markdown("config", &inputs, "Config Keys"),
+        ),
+        SchemaArtifact::new(
+            rel(spec.extra_markdown_path.unwrap()),
+            registry_markdown("env", &inputs, "Config Keys"),
+        ),
+    ])
+}
+
+fn config_key_records() -> Vec<Value> {
+    axon_core::config::schema_registry::config_key_registry()
+        .iter()
+        .map(|key| {
+            json!({
+                "key": key.key,
+                "section": key.section,
+                "env_key": key.env_key,
+                "secret": key.secret
+            })
+        })
+        .collect()
+}
+
+fn graph_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let spec = family_specs::spec_for(SchemaFamily::Graph);
+    let inputs = source_inputs(root, spec.source_paths)?;
+    let mut kinds = Vec::new();
+    for node in axon_graph::schema_registry::node_kind_registry() {
+        kinds.push(
+            json!({"kind": node.kind, "type": "node", "requires_evidence": node.requires_evidence}),
         );
     }
-    Value::Object(defs)
-}
-
-fn skeleton_defs(family: SchemaFamily) -> Value {
-    json!({
-        "SchemaFamilyContract": {
-            "type": "object",
-            "required": ["family", "status", "owner_crates"],
-            "properties": {
-                "family": { "const": family.as_str() },
-                "status": { "const": "skeleton" },
-                "owner_crates": { "type": "array", "items": { "type": "string" } },
-                "future_registry": { "type": "string" }
-            },
-            "additionalProperties": false,
-            "x-axon": {
-                "skeleton": true,
-                "replaced_by": "crate-owned registry generator in the matching implementation PR"
-            }
-        }
-    })
-}
-
-fn enum_markdown() -> String {
-    let mut out = generated_header("api-enums");
-    out.push_str("| Enum | Values |\n|---|---|\n");
-    for (name, values) in CANONICAL_ENUMS {
-        out.push_str(&format!("| `{name}` | `{}` |\n", values.join("`, `")));
+    for edge in axon_graph::schema_registry::edge_kind_registry() {
+        kinds.push(
+            json!({"kind": edge.kind, "type": "edge", "requires_evidence": edge.requires_evidence}),
+        );
     }
-    out
+    let schema = registry_schema_bundle(
+        schema_id(SchemaFamily::Graph),
+        spec.title,
+        "cargo xtask schemas graph",
+        spec.owner_crates,
+        &inputs,
+        "graph_kinds",
+        kinds,
+        &[],
+    );
+    Ok(vec![
+        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
+        SchemaArtifact::new(
+            rel(spec.markdown_path),
+            registry_markdown("graph", &inputs, "Graph Kinds"),
+        ),
+    ])
 }
 
-pub(super) fn markdown(family: &str, inputs: &[SourceInput]) -> String {
-    let mut out = generated_header(family);
-    out.push_str("## Source Inputs\n\n| Path | SHA-256 |\n|---|---|\n");
-    for input in inputs {
-        out.push_str(&format!("| `{}` | `{}` |\n", input.path, input.checksum));
-    }
-    out
-}
-
-fn api_markdown(inputs: &[SourceInput]) -> String {
-    let mut out = markdown("api", inputs);
-    out.push_str("\n## DTO Coverage\n\n| DTO |\n|---|\n");
-    for dto in api_defs::api_dto_names() {
-        out.push_str(&format!("| `{dto}` |\n"));
-    }
-    out
-}
-
-fn generated_header(family: &str) -> String {
-    format!("# {family} Schema Reference\n\nGenerated by `cargo xtask schemas {family}`.\n\n")
-}
-
-pub(super) fn schema_id(family: SchemaFamily) -> &'static str {
-    match family {
-        SchemaFamily::Cli => "https://axon.local/schemas/cli/commands.schema.json",
-        SchemaFamily::Openapi => "https://axon.local/schemas/rest/openapi.schema.json",
-        SchemaFamily::Mcp => "https://axon.local/schemas/mcp/tool.schema.json",
-        SchemaFamily::Config => "https://axon.local/schemas/config/config.schema.json",
-        SchemaFamily::Events => "https://axon.local/schemas/runtime/events.schema.json",
-        SchemaFamily::Database => "https://axon.local/schemas/runtime/database.schema.json",
-        SchemaFamily::Graph => "https://axon.local/schemas/sources/graph.schema.json",
-        SchemaFamily::VectorPayload => {
-            "https://axon.local/schemas/sources/vector-payload.schema.json"
-        }
-        SchemaFamily::Providers => {
-            "https://axon.local/schemas/runtime/provider-capabilities.schema.json"
-        }
-        SchemaFamily::Api | SchemaFamily::Errors | SchemaFamily::Adapters => {
-            unreachable!("real generators use explicit ids")
-        }
-    }
+fn provider_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
+    let spec = family_specs::spec_for(SchemaFamily::Providers);
+    let inputs = source_inputs(root, spec.source_paths)?;
+    let providers = axon_api::schema_registry::dto_schema_registry()
+        .iter()
+        .filter(|dto| dto.family == "Provider capability DTOs")
+        .map(|dto| {
+            json!({
+                "provider_kind": dto.name,
+                "health": "required",
+                "limits": "required",
+                "reservation_policy": "required",
+                "degraded_modes": "required",
+                "capabilities": ["embed", "rerank", "synthesize"]
+            })
+        })
+        .collect::<Vec<_>>();
+    let schema = registry_schema_bundle(
+        schema_id(SchemaFamily::Providers),
+        spec.title,
+        "cargo xtask schemas providers",
+        spec.owner_crates,
+        &inputs,
+        "providers",
+        providers,
+        &[],
+    );
+    Ok(vec![
+        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
+        SchemaArtifact::new(
+            rel(spec.markdown_path),
+            registry_markdown("providers", &inputs, "Providers"),
+        ),
+    ])
 }
 
 pub(super) mod family_specs;
