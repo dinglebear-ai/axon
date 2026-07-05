@@ -2,22 +2,26 @@ use axon_api::source::{ContentKind, LifecycleStatus};
 
 use crate::parser::{ParseInput, ParseResult, ParserCapability, SourceParser, stage_header};
 use crate::registry::ParserRegistry;
-use crate::{code, manifest, markdown, schema, session, tool};
+use crate::{code, docker, env, manifest, markdown, schema, session, tool};
 
 pub fn production_registry() -> ParserRegistry {
     ParserRegistry::new()
+        .with_parser(SchemaParser)
+        .with_parser(DockerManifestParser)
+        .with_parser(EnvExampleParser)
         .with_parser(CodeSymbolsParser)
         .with_parser(ManifestParser)
         .with_parser(MarkdownParser)
-        .with_parser(SchemaParser)
-        .with_parser(SessionParser)
         .with_parser(ToolParser)
+        .with_parser(SessionParser)
 }
 
 struct CodeSymbolsParser;
 struct ManifestParser;
 struct MarkdownParser;
 struct SchemaParser;
+struct DockerManifestParser;
+struct EnvExampleParser;
 struct SessionParser;
 struct ToolParser;
 
@@ -129,12 +133,70 @@ impl SourceParser for SchemaParser {
                 "swagger.yaml".to_string(),
             ],
             sniff_prefixes: vec!["{\"openapi\"".to_string(), "type Query".to_string()],
-            priority: 5,
+            priority: 4,
         })
     }
 
     fn parse(&self, input: &ParseInput) -> ParseResult {
         let (facts, graph_candidates) = schema::api_schema_facts(input);
+        completed_result(input, self.capability(), facts, graph_candidates)
+    }
+}
+
+impl SourceParser for DockerManifestParser {
+    fn capability(&self) -> &ParserCapability {
+        static CAPABILITY: std::sync::OnceLock<ParserCapability> = std::sync::OnceLock::new();
+        CAPABILITY.get_or_init(|| ParserCapability {
+            parser_id: "docker_manifest".to_string(),
+            parser_version: crate::facts::PARSER_VERSION.to_string(),
+            content_kinds: vec![ContentKind::PlainText, ContentKind::Yaml],
+            mime_types: Vec::new(),
+            file_extensions: Vec::new(),
+            path_suffixes: vec![
+                "Dockerfile".to_string(),
+                "Containerfile".to_string(),
+                "docker-compose.yml".to_string(),
+                "docker-compose.yaml".to_string(),
+                "compose.yml".to_string(),
+                "compose.yaml".to_string(),
+                ".devcontainer/devcontainer.json".to_string(),
+            ],
+            sniff_prefixes: vec!["FROM ".to_string(), "services:".to_string()],
+            priority: 4,
+        })
+    }
+
+    fn parse(&self, input: &ParseInput) -> ParseResult {
+        let (facts, graph_candidates) = docker::docker_parse_items(input);
+        completed_result(input, self.capability(), facts, graph_candidates)
+    }
+}
+
+impl SourceParser for EnvExampleParser {
+    fn capability(&self) -> &ParserCapability {
+        static CAPABILITY: std::sync::OnceLock<ParserCapability> = std::sync::OnceLock::new();
+        CAPABILITY.get_or_init(|| ParserCapability {
+            parser_id: "env_example".to_string(),
+            parser_version: crate::facts::PARSER_VERSION.to_string(),
+            content_kinds: vec![ContentKind::PlainText],
+            mime_types: Vec::new(),
+            file_extensions: Vec::new(),
+            path_suffixes: vec![
+                ".env.example".to_string(),
+                ".env.sample".to_string(),
+                ".env.template".to_string(),
+                "example.env".to_string(),
+                "env.example".to_string(),
+                "env.sample".to_string(),
+                "env.template".to_string(),
+            ],
+            sniff_prefixes: Vec::new(),
+            priority: 4,
+        })
+    }
+
+    fn parse(&self, input: &ParseInput) -> ParseResult {
+        let (facts, graph_candidates) = env::env_example_parse_items(input);
         completed_result(input, self.capability(), facts, graph_candidates)
     }
 }
@@ -167,10 +229,10 @@ impl SourceParser for ToolParser {
             parser_version: crate::facts::PARSER_VERSION.to_string(),
             content_kinds: vec![ContentKind::Structured],
             mime_types: Vec::new(),
-            file_extensions: vec!["jsonl".to_string()],
+            file_extensions: Vec::new(),
             path_suffixes: vec!["tool-output.jsonl".to_string()],
             sniff_prefixes: vec!["{\"tool\"".to_string()],
-            priority: 5,
+            priority: 4,
         })
     }
 

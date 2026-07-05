@@ -1,12 +1,14 @@
 use axon_api::source::{
     ChunkId, ContentKind, ContentRef, DocumentId, GraphCandidate, GraphCandidateProducer,
-    MetadataMap, Severity, SourceDocument, SourceError, SourceGenerationId, SourceId,
-    SourceItemKey, SourceParseFacts, SourceWarning,
+    GraphEvidence, MetadataMap, Severity, SourceDocument, SourceError, SourceGenerationId,
+    SourceId, SourceItemKey, SourceParseFacts, SourceRange, SourceWarning,
 };
 
 use crate::{
     ChunkingProfile, DocumentPreparer, PrepareSourceDocumentRequest,
-    preparer::validate_prepared_document, testing::RecordingPreparer,
+    preparer::{validate_prepared_document, validate_prepared_document_ranges_against_bounds},
+    source_range::bounds_for_text,
+    testing::RecordingPreparer,
 };
 
 #[test]
@@ -125,6 +127,97 @@ fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
     assert!(error.contains("empty content"));
     assert!(error.contains("source_range byte_start > byte_end"));
     assert!(error.contains("locator range line_start > line_end"));
+}
+
+#[test]
+fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            "PORT=3000\n",
+            "gen-bounds",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap()
+        .document;
+    let mut invalid = prepared;
+    invalid.chunks[0].source_range.line_start = Some(9000);
+    invalid.chunks[0].source_range.line_end = Some(9001);
+
+    let bounds = bounds_for_text("PORT=3000\n");
+    let err =
+        validate_prepared_document_ranges_against_bounds(&invalid, &bounds, Some("PORT=3000\n"))
+            .expect_err("range outside normalized document rejected");
+    assert!(err.contains("outside normalized document"));
+}
+
+#[test]
+fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
+    let source_text = "FROM alpine:3\n";
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            source_text,
+            "gen-graph-bounds",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap()
+        .document;
+    let mut invalid = prepared;
+    invalid.graph_candidates.push(GraphCandidate {
+        candidate_id: "cand-graph-range".to_string(),
+        job_id: serde_json::from_str("\"00000000-0000-0000-0000-000000000001\"").unwrap(),
+        source_id: SourceId::from("src-test"),
+        source_item_key: SourceItemKey::from("item-test"),
+        item_canonical_uri: "file:///test.md".to_string(),
+        document_id: Some(DocumentId::from("doc-test")),
+        kind: "container_manifest".to_string(),
+        merge_key: None,
+        producer: GraphCandidateProducer {
+            adapter: "axon-parse".to_string(),
+            parser: Some("docker_manifest".to_string()),
+            version: "test".to_string(),
+        },
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        evidence: vec![GraphEvidence {
+            evidence_id: "ev-out-of-range".to_string(),
+            evidence_kind: "container_manifest".to_string(),
+            source_id: SourceId::from("src-test"),
+            source_item_key: SourceItemKey::from("item-test"),
+            document_id: Some(DocumentId::from("doc-test")),
+            chunk_id: None,
+            range: Some(SourceRange {
+                line_start: Some(2),
+                line_end: Some(2),
+                byte_start: None,
+                byte_end: None,
+                char_start: None,
+                char_end: None,
+                time_start_ms: None,
+                time_end_ms: None,
+                dom_selector: None,
+                json_pointer: None,
+                yaml_path: None,
+                xml_xpath: None,
+                csv_row: None,
+                session_turn_id: None,
+                turn_start: None,
+                turn_end: None,
+            }),
+            quote: Some("FROM alpine:3".to_string()),
+            confidence: 0.9,
+            metadata: MetadataMap::new(),
+        }],
+        confidence: 0.9,
+        metadata: MetadataMap::new(),
+    });
+
+    let bounds = bounds_for_text(source_text);
+    let err =
+        validate_prepared_document_ranges_against_bounds(&invalid, &bounds, Some(source_text))
+            .expect_err("graph evidence range outside normalized document rejected");
+    assert!(err.contains("graph candidate cand-graph-range evidence ev-out-of-range range"));
 }
 
 #[test]

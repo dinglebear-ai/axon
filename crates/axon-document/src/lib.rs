@@ -14,6 +14,7 @@ pub mod preparer;
 pub mod profile;
 pub mod schema;
 pub mod session;
+pub mod source_range;
 pub mod testing;
 pub mod text;
 pub mod transcript;

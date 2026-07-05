@@ -110,6 +110,30 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
 }
 
 #[test]
+fn source_family_registry_covers_phase_7_emitted_fields() {
+    for (family, field) in [
+        ("code", "code_language"),
+        ("graph", "graph_node_ids"),
+        ("local", "local_checkout"),
+        ("tool", "tool_name"),
+        ("tool", "tool_action"),
+        ("tool", "tool_side_effect_class"),
+        ("tool", "tool_output_artifact_id"),
+        ("docker", "docker_image"),
+        ("docker", "docker_service"),
+        ("docker", "docker_port"),
+        ("docker", "docker_volume"),
+        ("env", "env_key"),
+        ("env", "env_secret_reference"),
+    ] {
+        assert!(
+            source_family_allows_field(family, field),
+            "missing metadata registry for {family}.{field}"
+        );
+    }
+}
+
+#[test]
 fn invalid_payload_fixtures_report_the_expected_validation_error() {
     let cases = [
         (

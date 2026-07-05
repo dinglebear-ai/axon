@@ -10,4 +10,8 @@ license.workspace = true
 axon-api = { path = "../axon-api" }
 chrono = { version = "0.4", features = ["clock"] }
 serde_json = "1"
+serde_yaml = "0.9"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
+
+[dev-dependencies]
+axon-graph = { path = "../axon-graph" }

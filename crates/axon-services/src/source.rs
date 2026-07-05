@@ -26,6 +26,7 @@ pub mod graph;
 pub mod prune;
 pub mod result_map;
 pub mod routing;
+pub mod tool_policy;
 
 use axon_api::source::{
     AdapterRef, JobId, LedgerSummary, LifecycleStatus, SourceCounts, SourceGenerationId, SourceId,
