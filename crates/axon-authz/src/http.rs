@@ -171,14 +171,19 @@ pub fn build_auth_layer(
     match policy {
         AuthPolicy::LoopbackDev => None,
         AuthPolicy::Mounted { auth_state: None } => Some(
-            // Bearer-only mode: explicitly grant both scopes to the static
-            // token so that callers with a valid token can reach write actions
+            // Bearer-only mode: explicitly grant read/write/admin scopes to the
+            // static operator token so that callers with a valid token can reach
+            // maintenance actions
             // (matching how the OAuth path sets static_token_scopes in
             // AuthConfigBuilder). Without this, `static_token_scopes` is an
             // empty Vec and every scope check would fail even with a valid token.
             AuthLayer::new()
                 .with_static_token(static_token)
-                .with_static_token_scopes(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
+                .with_static_token_scopes(vec![
+                    AXON_READ_SCOPE.into(),
+                    AXON_WRITE_SCOPE.into(),
+                    AXON_ADMIN_SCOPE.into(),
+                ])
                 .with_resource_url(resource_url)
                 .with_allow_session_cookie(false),
         ),
@@ -369,10 +374,18 @@ fn build_oauth_auth_config_from_sources(
     lab_auth::config::AuthConfigBuilder::new()
         .env_prefix("AXON_MCP")
         .session_cookie_name("axon_mcp_session")
-        .scopes_supported(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
+        .scopes_supported(vec![
+            AXON_READ_SCOPE.into(),
+            AXON_WRITE_SCOPE.into(),
+            AXON_ADMIN_SCOPE.into(),
+        ])
         .default_scope(AXON_FULL_ACCESS_SCOPE)
         .resource_path("/mcp")
-        .static_token_scopes(vec![AXON_READ_SCOPE.into(), AXON_WRITE_SCOPE.into()])
+        .static_token_scopes(vec![
+            AXON_READ_SCOPE.into(),
+            AXON_WRITE_SCOPE.into(),
+            AXON_ADMIN_SCOPE.into(),
+        ])
         .enable_dynamic_registration(true)
         .disable_static_token_with_oauth(false) // static bearer keeps working alongside OAuth
         .build_from_sources(vars)

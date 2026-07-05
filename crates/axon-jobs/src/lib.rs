@@ -18,6 +18,7 @@ mod service_job_conv;
 pub mod state_machine;
 pub mod status;
 pub mod store;
+pub mod store_inventory;
 pub(crate) mod tx;
 pub mod unified;
 pub(crate) mod unified_codec;
@@ -25,6 +26,10 @@ pub mod watch;
 pub mod workers;
 
 pub use runtime::SqliteJobBackend;
+
+#[cfg(test)]
+#[path = "state_machine_tests.rs"]
+mod state_machine_tests;
 
 #[cfg(test)]
 #[path = "freshness_tests.rs"]

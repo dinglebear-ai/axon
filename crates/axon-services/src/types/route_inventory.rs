@@ -7,6 +7,9 @@ pub enum RestRouteAuth {
     /// Protected active-operation bucket. Runtime OAuth accepts any Axon
     /// scope (`axon:read` or `axon:write`) for protected Axon REST routes.
     Write,
+    /// Protected administrative/destructive bucket. Runtime requires explicit
+    /// `axon:admin`; broad write tokens are insufficient.
+    Admin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,6 +235,66 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         method: "POST",
         path: "/v1/memory",
         auth: RestRouteAuth::Write,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/jobs",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/jobs/{id}",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/jobs/{id}/events",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/jobs/{id}/stream",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/jobs/{id}/artifacts",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "DELETE",
+        path: "/v1/jobs",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/jobs/{id}/cancel",
+        auth: RestRouteAuth::Write,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/jobs/{id}/retry",
+        auth: RestRouteAuth::Write,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/jobs/recover",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/jobs/cleanup",
+        auth: RestRouteAuth::Admin,
         openapi: true,
     },
     RestRouteInfo {

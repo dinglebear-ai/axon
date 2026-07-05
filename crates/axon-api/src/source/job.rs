@@ -1,3 +1,4 @@
+use super::auth::AuthSnapshot;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +7,7 @@ use super::enums::*;
 use super::ids::*;
 use super::lifecycle::JobDescriptor;
 use super::stage::StageCounts;
+use super::status::ApiError;
 use super::status::ProgressCurrent;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -23,20 +25,25 @@ pub struct JobCreateRequest {
     pub parent_job_id: Option<JobId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_job_id: Option<JobId>,
+    #[serde(default)]
+    pub attempt: u32,
     pub priority: JobPriority,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency_key: Option<String>,
     pub stage_plan: Vec<JobStagePlan>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
-    pub auth_snapshot: MetadataMap,
+    pub auth_snapshot: AuthSnapshot,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_snapshot_id: Option<ConfigSnapshotId>,
     #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
     pub requirements: MetadataMap,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result_schema: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<SourceWarning>,
+    #[serde(default)]
+    pub error: Option<ApiError>,
     pub metadata: MetadataMap,
 }
 
@@ -209,20 +216,20 @@ pub struct JobCleanupResult {
     pub deleted: u64,
     pub dry_run: bool,
     pub warnings: Vec<SourceWarning>,
-    #[serde(skip)]
     pub jobs_pruned: u64,
-    #[serde(skip)]
     pub events_pruned: u64,
-    #[serde(skip)]
     pub heartbeats_pruned: u64,
-    #[serde(skip)]
+    pub attempts_pruned: u64,
+    pub stages_pruned: u64,
+    pub reservations_pruned: u64,
     pub artifacts_pruned: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobClearRequest {
-    pub status: LifecycleStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<LifecycleStatus>,
     pub confirm: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<JobKind>,
@@ -234,7 +241,8 @@ pub struct JobClearRequest {
 #[serde(deny_unknown_fields)]
 pub struct JobClearResult {
     pub deleted: u64,
-    pub status: LifecycleStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<LifecycleStatus>,
     pub warnings: Vec<SourceWarning>,
 }
 

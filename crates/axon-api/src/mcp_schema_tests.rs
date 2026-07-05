@@ -38,6 +38,140 @@ fn parse_status_action() {
 }
 
 #[test]
+fn parse_jobs_events_action_with_after_sequence() {
+    let raw = obj(json!({
+        "action": "jobs",
+        "subaction": "events",
+        "job_id": "11111111-1111-4111-8111-111111111111",
+        "after_sequence": 1,
+        "limit": 2,
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "jobs events should parse");
+    if let Ok(AxonRequest::Jobs(req)) = result {
+        assert!(matches!(req.subaction, Some(JobsSubaction::Events)));
+        assert_eq!(req.after_sequence, Some(1));
+        assert_eq!(req.limit, Some(2));
+    } else {
+        panic!("expected Jobs variant");
+    }
+}
+
+#[test]
+fn parse_jobs_control_actions() {
+    for (subaction, extra) in [
+        (
+            "list",
+            json!({"status": "completed_degraded", "kind": "source", "limit": 5}),
+        ),
+        (
+            "get",
+            json!({"job_id": "11111111-1111-4111-8111-111111111111"}),
+        ),
+        (
+            "status",
+            json!({"job_id": "11111111-1111-4111-8111-111111111111"}),
+        ),
+        (
+            "stream",
+            json!({"job_id": "11111111-1111-4111-8111-111111111111", "after_sequence": 9}),
+        ),
+        (
+            "cancel",
+            json!({"job_id": "11111111-1111-4111-8111-111111111111", "reason": "user requested"}),
+        ),
+        (
+            "retry",
+            json!({"job_id": "11111111-1111-4111-8111-111111111111", "retry_mode": "same_config"}),
+        ),
+        ("recover", json!({"kind": "source", "limit": 5})),
+        (
+            "cleanup",
+            json!({"status": "completed", "dry_run": true, "limit": 5}),
+        ),
+        ("clear", json!({"confirm": true})),
+    ] {
+        let mut value = json!({
+            "action": "jobs",
+            "subaction": subaction
+        });
+        value
+            .as_object_mut()
+            .expect("object")
+            .extend(extra.as_object().expect("extra object").clone());
+
+        let result = parse_axon_request(obj(value));
+        assert!(result.is_ok(), "jobs {subaction} should parse: {result:?}");
+        if let AxonRequest::Jobs(req) = result.unwrap() {
+            assert_jobs_request_fields(subaction, &req);
+        } else {
+            panic!("expected Jobs variant");
+        }
+    }
+}
+
+fn assert_jobs_request_fields(subaction: &str, req: &JobsRequest) {
+    match subaction {
+        "list" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::List)));
+            assert!(matches!(
+                req.status,
+                Some(crate::source::LifecycleStatus::CompletedDegraded)
+            ));
+            assert!(matches!(req.kind, Some(crate::source::JobKind::Source)));
+            assert_eq!(req.limit, Some(5));
+        }
+        "get" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Get)));
+            assert_eq!(
+                req.job_id.as_deref(),
+                Some("11111111-1111-4111-8111-111111111111")
+            );
+        }
+        "status" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Status)));
+            assert_eq!(
+                req.job_id.as_deref(),
+                Some("11111111-1111-4111-8111-111111111111")
+            );
+        }
+        "stream" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Stream)));
+            assert_eq!(req.after_sequence, Some(9));
+        }
+        "cancel" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Cancel)));
+            assert_eq!(req.reason.as_deref(), Some("user requested"));
+        }
+        "retry" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Retry)));
+            assert!(matches!(
+                req.retry_mode,
+                Some(crate::source::JobRetryMode::SameConfig)
+            ));
+        }
+        "recover" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Recover)));
+            assert!(matches!(req.kind, Some(crate::source::JobKind::Source)));
+        }
+        "cleanup" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Cleanup)));
+            assert!(matches!(
+                req.status,
+                Some(crate::source::LifecycleStatus::Completed)
+            ));
+            assert_eq!(req.dry_run, Some(true));
+        }
+        "clear" => {
+            assert!(matches!(req.subaction, Some(JobsSubaction::Clear)));
+            assert_eq!(req.confirm, Some(true));
+        }
+        other => panic!("unhandled jobs subaction assertion: {other}"),
+    }
+}
+
+#[test]
 fn parse_query_action_no_fields() {
     let raw = obj(json!({ "action": "query" }));
     let result = parse_axon_request(raw);

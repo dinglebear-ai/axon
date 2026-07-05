@@ -54,6 +54,7 @@ pub struct YoutubeSourceIndexInput {
     pub embedding_dimensions: u32,
     pub embedding_reservations: Option<Arc<ProviderReservationManager>>,
     pub vector_reservations: Option<Arc<ProviderReservationManager>>,
+    pub auth_snapshot: Option<AuthSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

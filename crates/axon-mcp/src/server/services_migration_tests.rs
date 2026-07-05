@@ -233,3 +233,23 @@ fn dedicated_dashboard_tool_requires_read_scope() {
         Some("__deny__")
     );
 }
+
+#[test]
+fn jobs_subactions_use_read_write_admin_scope_split() {
+    assert_eq!(
+        super::required_scope_for_tool("axon", "jobs", "events"),
+        Some("axon:read")
+    );
+    assert_eq!(
+        super::required_scope_for_tool("axon", "jobs", "cancel"),
+        Some("axon:write")
+    );
+    assert_eq!(
+        super::required_scope_for_tool("axon", "jobs", "cleanup"),
+        Some("axon:admin")
+    );
+    assert_eq!(
+        super::required_scope_for_tool("axon", "jobs", "unknown"),
+        Some("__deny__")
+    );
+}

@@ -207,6 +207,10 @@ impl ServiceContext {
         self.target_local_source.as_deref()
     }
 
+    pub fn job_store(&self) -> Option<Arc<dyn JobStore>> {
+        self.jobs.unified_job_store()
+    }
+
     /// Convenience accessor for the resolved config (A-H1).
     ///
     /// Read/RAG service functions (`query`, `ask`, `retrieve`, …) take `&Config`

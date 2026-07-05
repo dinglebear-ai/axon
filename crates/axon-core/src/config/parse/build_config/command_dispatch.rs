@@ -6,9 +6,10 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    FreshSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, ResetArgs, ServeArgs,
-    ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs,
-    SetupAuthMode, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
+    FreshSubcommand, JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs,
+    ResetArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs,
+    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SourceArgs,
+    SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -271,6 +272,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Stats => out.command = CommandKind::Stats,
         CliCommand::Status => out.command = CommandKind::Status,
+        CliCommand::Jobs(args) => apply_jobs(&mut out, args.action),
         CliCommand::Dedupe => out.command = CommandKind::Dedupe,
         CliCommand::Purge(args) => {
             out.command = CommandKind::Purge;
@@ -374,6 +376,91 @@ fn apply_update(out: &mut DispatchOutput, args: UpdateArgs) {
     if args.force {
         out.positional.push("--force".to_string());
     }
+}
+
+fn apply_jobs(out: &mut DispatchOutput, action: Option<JobsSubcommand>) {
+    out.command = CommandKind::Jobs;
+    let mut positional = Vec::new();
+    match action.unwrap_or(JobsSubcommand::List {
+        status: None,
+        kind: None,
+        limit: None,
+        cursor: None,
+    }) {
+        JobsSubcommand::List {
+            status,
+            kind,
+            limit,
+            cursor,
+        } => {
+            positional.push("list".to_string());
+            push_opt(&mut positional, "--status", status);
+            push_opt(&mut positional, "--kind", kind);
+            push_usize(&mut positional, "--limit", limit);
+            push_opt(&mut positional, "--cursor", cursor);
+        }
+        JobsSubcommand::Get { job_id } => positional = vec!["get".to_string(), job_id],
+        JobsSubcommand::Events {
+            job_id,
+            after_sequence,
+            limit,
+            cursor,
+        } => {
+            positional = vec!["events".to_string(), job_id];
+            push_u64(&mut positional, "--after-sequence", after_sequence);
+            push_usize(&mut positional, "--limit", limit);
+            push_opt(&mut positional, "--cursor", cursor);
+        }
+        JobsSubcommand::Stream {
+            job_id,
+            after_sequence,
+            limit,
+        } => {
+            positional = vec!["stream".to_string(), job_id];
+            push_u64(&mut positional, "--after-sequence", after_sequence);
+            push_usize(&mut positional, "--limit", limit);
+        }
+        JobsSubcommand::Cancel { job_id, reason } => {
+            positional = vec!["cancel".to_string(), job_id];
+            push_opt(&mut positional, "--reason", reason);
+        }
+        JobsSubcommand::Retry { job_id, mode } => {
+            positional = vec!["retry".to_string(), job_id, "--mode".to_string(), mode];
+        }
+        JobsSubcommand::Recover {
+            kind,
+            stale_before,
+            limit,
+        } => {
+            positional.push("recover".to_string());
+            push_opt(&mut positional, "--kind", kind);
+            push_opt(&mut positional, "--stale-before", stale_before);
+            push_usize(&mut positional, "--limit", limit);
+        }
+        JobsSubcommand::Cleanup {
+            status,
+            kind,
+            older_than,
+            limit,
+            dry_run,
+        } => {
+            positional.push("cleanup".to_string());
+            push_opt(&mut positional, "--status", status);
+            push_opt(&mut positional, "--kind", kind);
+            push_opt(&mut positional, "--older-than", older_than);
+            push_usize(&mut positional, "--limit", limit);
+            if dry_run {
+                positional.push("--dry-run".to_string());
+            }
+        }
+        JobsSubcommand::Clear { confirm } => {
+            positional.push("clear".to_string());
+            if confirm {
+                positional.push("--confirm".to_string());
+            }
+        }
+    }
+    out.positional = positional;
 }
 
 fn apply_memory(out: &mut DispatchOutput, action: MemoryCliSubcommand) {
@@ -736,5 +823,19 @@ fn push_opt(out: &mut Vec<String>, flag: &str, value: Option<String>) {
     if let Some(value) = value {
         out.push(flag.to_string());
         out.push(value);
+    }
+}
+
+fn push_usize(out: &mut Vec<String>, flag: &str, value: Option<usize>) {
+    if let Some(value) = value {
+        out.push(flag.to_string());
+        out.push(value.to_string());
+    }
+}
+
+fn push_u64(out: &mut Vec<String>, flag: &str, value: Option<u64>) {
+    if let Some(value) = value {
+        out.push(flag.to_string());
+        out.push(value.to_string());
     }
 }

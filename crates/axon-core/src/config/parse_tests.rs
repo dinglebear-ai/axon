@@ -169,6 +169,90 @@ fn parse_watch_history_with_limit() {
 
 #[allow(unsafe_code)]
 #[test]
+fn parse_jobs_events_with_after_sequence_into_config() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let cli = super::Cli::parse_from(with_service_urls(&[
+        "jobs",
+        "events",
+        "11111111-1111-4111-8111-111111111111",
+        "--after-sequence",
+        "1",
+        "--limit",
+        "2",
+    ]));
+    let cfg = super::build_config::into_config(cli).expect("jobs events should parse");
+    assert!(matches!(cfg.command, CommandKind::Jobs));
+    assert_eq!(
+        cfg.positional,
+        vec![
+            "events".to_string(),
+            "11111111-1111-4111-8111-111111111111".to_string(),
+            "--after-sequence".to_string(),
+            "1".to_string(),
+            "--limit".to_string(),
+            "2".to_string(),
+        ]
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_jobs_controls_into_config() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    for args in [
+        vec![
+            "jobs",
+            "cancel",
+            "11111111-1111-4111-8111-111111111111",
+            "--reason",
+            "user requested",
+        ],
+        vec![
+            "jobs",
+            "retry",
+            "11111111-1111-4111-8111-111111111111",
+            "--mode",
+            "with_overrides",
+        ],
+        vec!["jobs", "recover", "--kind", "source", "--limit", "5"],
+        vec![
+            "jobs",
+            "cleanup",
+            "--status",
+            "completed_degraded",
+            "--older-than",
+            "2026-07-05T00:00:00Z",
+            "--dry-run",
+        ],
+        vec!["jobs", "clear", "--confirm"],
+    ] {
+        let cli = super::Cli::parse_from(with_service_urls(&args));
+        let cfg = super::build_config::into_config(cli).expect("jobs control should parse");
+        assert!(matches!(cfg.command, CommandKind::Jobs));
+        assert!(!cfg.positional.is_empty());
+        if cfg.positional.first().map(String::as_str) == Some("cleanup") {
+            assert!(cfg.positional.contains(&"--older-than".to_string()));
+            assert!(cfg.positional.contains(&"2026-07-05T00:00:00Z".to_string()));
+        }
+    }
+}
+
+fn with_service_urls<'a>(args: &'a [&'a str]) -> Vec<&'a str> {
+    let mut out = vec![
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+    ];
+    out.extend_from_slice(args);
+    out
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn parse_completions_bash_does_not_require_service_envs() {
     let _guard = ENV_LOCK.lock().unwrap();
     let cli = super::Cli::parse_from(["axon", "completions", "bash"]);

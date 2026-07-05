@@ -647,6 +647,201 @@
     {
       "method": "GET",
       "mutates": false,
+      "operation_id": "jobs_list",
+      "path": "/v1/jobs",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobListPage",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "jobs_status",
+      "path": "/v1/jobs/{id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobSummary",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "jobs_events",
+      "path": "/v1/jobs/{id}/events",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobEventPage",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "jobs_stream",
+      "path": "/v1/jobs/{id}/stream",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "StreamEvent",
+      "streaming": true
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "jobs_artifacts",
+      "path": "/v1/jobs/{id}/artifacts",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobArtifactListResult",
+      "streaming": false
+    },
+    {
+      "method": "DELETE",
+      "mutates": true,
+      "operation_id": "jobs_clear",
+      "path": "/v1/jobs",
+      "request_dto": "JobClearRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobClearResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "jobs_cancel",
+      "path": "/v1/jobs/{id}/cancel",
+      "request_dto": "JobCancelRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobCancelResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "jobs_retry",
+      "path": "/v1/jobs/{id}/retry",
+      "request_dto": "JobRetryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobRetryResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "jobs_recover",
+      "path": "/v1/jobs/recover",
+      "request_dto": "JobRecoveryRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobRecoveryResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "jobs_cleanup",
+      "path": "/v1/jobs/cleanup",
+      "request_dto": "JobCleanupRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobCleanupResult",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
       "operation_id": "extract_list",
       "path": "/v1/extract",
       "request_dto": null,
@@ -893,7 +1088,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:ed5a8598b3aab1df6c4e1a87524b3883285df63cd7b27dc62560419c67a00afe",
+        "checksum": "sha256:3ee650190465380695d49c6a15ba21ca529b1933d6174e47d5241aa92ffeb8f3",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

@@ -31,8 +31,8 @@
 
 use axon_api::ApiError;
 use axon_api::source::{
-    CallerContext, SafetyClass, SecurityPolicyRequest, SourceRequest, SourceResult, TransportKind,
-    Visibility,
+    AuthSnapshot, CallerContext, SafetyClass, SecurityPolicyRequest, SourceRequest, SourceResult,
+    TransportKind, Visibility,
 };
 use axon_authz::policy::{ScopeSecurityPolicy, SecurityPolicy};
 use axon_error::ErrorStage;
@@ -79,17 +79,28 @@ pub(crate) async fn index_source(
 
     // Per-source authorization boundary. Skipped only when there is no
     // AuthContext (LoopbackDev), matching the router's scope-layer decision.
-    if let Some(Extension(auth)) = auth {
+    let auth_snapshot = if let Some(Extension(auth)) = auth {
         authorize_source_request(&request, &auth).await?;
-    }
+        Some(AuthSnapshot::from_caller(
+            &caller_context_from_auth(&auth),
+            Visibility::Internal,
+            "runtime",
+        ))
+    } else {
+        None
+    };
 
     let service_context = Arc::clone(&state.service_context);
     let handle = tokio::runtime::Handle::current();
     let result = tokio::task::spawn_blocking(move || {
         handle.block_on(async move {
-            axon_services::index_source(request, service_context.as_ref())
-                .await
-                .map_err(|err| err.to_string())
+            axon_services::source::index_source_with_auth(
+                request,
+                service_context.as_ref(),
+                auth_snapshot,
+            )
+            .await
+            .map_err(|err| err.to_string())
         })
     })
     .await
@@ -122,12 +133,7 @@ async fn authorize_source_request(
     let policy = ScopeSecurityPolicy::new(required_scope);
     let decision = policy
         .authorize_source(SecurityPolicyRequest {
-            caller: CallerContext {
-                actor: Some(auth.sub.clone()),
-                transport: TransportKind::Rest,
-                scopes: auth.scopes.clone(),
-                visibility_ceiling: Visibility::Internal,
-            },
+            caller: caller_context_from_auth(auth),
             safety_class,
             target: request.source.trim().to_string(),
         })
@@ -153,6 +159,15 @@ async fn authorize_source_request(
         ));
     }
     Ok(())
+}
+
+fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
+    CallerContext {
+        actor: Some(auth.sub.clone()),
+        transport: TransportKind::Rest,
+        scopes: auth.scopes.clone(),
+        visibility_ceiling: Visibility::Internal,
+    }
 }
 
 /// Map a classified source input to its [`SafetyClass`].

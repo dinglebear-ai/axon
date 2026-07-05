@@ -185,6 +185,7 @@ fn target_job_management_dtos_round_trip() {
         watch_id: None,
         parent_job_id: Some(parent_job_id),
         root_job_id: Some(parent_job_id),
+        attempt: 1,
         priority: JobPriority::Background,
         idempotency_key: Some("refresh:src_local".to_string()),
         stage_plan: vec![JobStagePlan {
@@ -194,10 +195,12 @@ fn target_job_management_dtos_round_trip() {
             estimated_items: Some(10),
         }],
         request: Some(serde_json::json!({ "source": "/workspace/axon" })),
-        auth_snapshot: MetadataMap::default(),
+        auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::from("cfg_test")),
         requirements: MetadataMap::default(),
         result_schema: Some("source_result".to_string()),
+        warnings: Vec::new(),
+        error: None,
         metadata: MetadataMap::default(),
     };
     let event_page = JobEventPage {
@@ -237,6 +240,9 @@ fn target_job_management_dtos_round_trip() {
         jobs_pruned: 3,
         events_pruned: 0,
         heartbeats_pruned: 0,
+        attempts_pruned: 0,
+        stages_pruned: 0,
+        reservations_pruned: 0,
         artifacts_pruned: 0,
     };
 

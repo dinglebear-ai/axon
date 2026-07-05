@@ -12,14 +12,17 @@ fn request() -> JobCreateRequest {
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,
+        attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: None,
         stage_plan: Vec::new(),
         request: Some(serde_json::json!({"source": "https://example.com/docs"})),
-        auth_snapshot: MetadataMap::new(),
+        auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_test")),
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
+        warnings: Vec::new(),
+        error: None,
         metadata: MetadataMap::new(),
     }
 }

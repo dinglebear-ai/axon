@@ -4,6 +4,7 @@
 //! stores, providers, and future adapters without pulling runtime crates into
 //! `axon-api`.
 
+pub mod auth;
 pub mod boundary;
 pub mod capability;
 pub mod common;
@@ -13,6 +14,7 @@ pub mod graph;
 pub mod ids;
 pub mod job;
 pub mod job_listing;
+pub mod job_policy;
 pub mod lifecycle;
 pub mod listing;
 pub mod llm;
@@ -24,6 +26,7 @@ pub mod state;
 pub mod status;
 pub mod vector;
 
+pub use auth::*;
 pub use boundary::*;
 pub use capability::*;
 pub use common::*;
@@ -33,6 +36,7 @@ pub use graph::*;
 pub use ids::*;
 pub use job::*;
 pub use job_listing::*;
+pub use job_policy::*;
 pub use lifecycle::*;
 pub use listing::*;
 pub use llm::*;
@@ -59,6 +63,14 @@ mod status_tests;
 #[cfg(test)]
 #[path = "source_job_tests.rs"]
 mod job_tests;
+
+#[cfg(test)]
+#[path = "source_job_dto_tests.rs"]
+mod job_dto_tests;
+
+#[cfg(test)]
+#[path = "source_job_policy_tests.rs"]
+mod job_policy_tests;
 
 #[cfg(test)]
 #[path = "source_vector_tests.rs"]

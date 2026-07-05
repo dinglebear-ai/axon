@@ -12,6 +12,7 @@ pub use utility::*;
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum AxonRequest {
     Status(StatusRequest),
+    Jobs(JobsRequest),
     Crawl(CrawlRequest),
     Extract(ExtractRequest),
     Embed(EmbedRequest),

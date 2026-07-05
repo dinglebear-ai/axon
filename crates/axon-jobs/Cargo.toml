@@ -21,6 +21,7 @@ axon-observe = { path = "../axon-observe" }
 axon-graph = { path = "../axon-graph" }
 axon-memory = { path = "../axon-memory" }
 async-trait = "0.1"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6"
 notify = "8"

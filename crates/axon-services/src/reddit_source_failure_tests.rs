@@ -46,6 +46,7 @@ fn input(dump_path: std::path::PathBuf) -> RedditSourceIndexInput {
         collection: "axon-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
+        auth_snapshot: None,
         embedding_provider_id: ProviderId::new("fake-embedding"),
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),

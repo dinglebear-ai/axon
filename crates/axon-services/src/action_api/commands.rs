@@ -11,6 +11,7 @@ pub(super) use dispatchers::{
     dispatch_scrape, dispatch_screenshot, dispatch_summarize,
 };
 pub(super) use dispatchers_brand_diff::{dispatch_brand, dispatch_diff};
+pub(super) use job_ops::dispatch_jobs;
 
 pub(super) fn parse_job_id(raw: Option<&str>) -> Result<Uuid, ClientActionError> {
     let raw = raw.ok_or_else(|| {
