@@ -278,6 +278,79 @@ fn production_registry_runs_real_parser_families() {
 }
 
 #[test]
+fn parser_family_completeness_routes_phase_7_fixtures() {
+    let registry = production_registry();
+    let cases = [
+        (
+            "Cargo.toml",
+            ContentKind::Toml,
+            "[package]\nname = \"axon\"\n[dependencies]\ntokio = \"1\"\n",
+        ),
+        (
+            "Cargo.lock",
+            ContentKind::Toml,
+            "[[package]]\nname = \"tokio\"\n",
+        ),
+        ("lib.rs", ContentKind::Code, "pub fn run() {}\n"),
+        (
+            "package.json",
+            ContentKind::Json,
+            r#"{"dependencies":{"vite":"7"}}"#,
+        ),
+        (
+            "pnpm-lock.yaml",
+            ContentKind::Yaml,
+            "dependencies:\n  vite: 7.0.0\n",
+        ),
+        ("index.ts", ContentKind::Code, "export function run() {}\n"),
+        (
+            "pyproject.toml",
+            ContentKind::Toml,
+            "[project]\ndependencies = [\"requests\"]\n",
+        ),
+        ("requirements.txt", ContentKind::PlainText, "requests==2\n"),
+        ("module.py", ContentKind::Code, "def run():\n    pass\n"),
+        ("Dockerfile", ContentKind::PlainText, "FROM alpine:3\n"),
+        (
+            "docker-compose.yml",
+            ContentKind::Yaml,
+            "services:\n  api:\n    image: alpine:3\n",
+        ),
+        (".env.example", ContentKind::PlainText, "PORT=3000\n"),
+        (
+            "openapi.yaml",
+            ContentKind::Yaml,
+            "openapi: 3.1.0\npaths: {}\n",
+        ),
+        (
+            "schema.graphql",
+            ContentKind::PlainText,
+            "type Query { ping: String }\n",
+        ),
+        (
+            "session.jsonl",
+            ContentKind::Transcript,
+            r#"{"type":"message","role":"user","content":"hi"}"#,
+        ),
+        (
+            "tool-output.jsonl",
+            ContentKind::Structured,
+            r#"{"tool":"shell","action":"exec","output":"ok"}"#,
+        ),
+        (
+            "mcp-tool-schema.json",
+            ContentKind::Json,
+            r#"{"name":"axon","inputSchema":{"type":"object"}}"#,
+        ),
+    ];
+
+    for (path, kind, text) in cases {
+        let result = registry.parse(&input(source_doc(kind, Some(path), None, text)));
+        assert_ne!(result.parser_id, "none", "{path} should route to a parser");
+    }
+}
+
+#[test]
 fn fake_parser_registry_wraps_registry_selection_for_tests() {
     let registry = FakeParserRegistry::new().with_parser(
         parser("fake_markdown")
