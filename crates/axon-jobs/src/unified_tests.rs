@@ -33,6 +33,7 @@ fn create_request() -> JobCreateRequest {
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,
+        attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: Some("idem-local".to_string()),
         stage_plan: vec![JobStagePlan {
@@ -42,10 +43,12 @@ fn create_request() -> JobCreateRequest {
             estimated_items: Some(3),
         }],
         request: Some(serde_json::json!({"source": "/tmp/project"})),
-        auth_snapshot: MetadataMap::new(),
+        auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_test")),
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
+        warnings: Vec::new(),
+        error: None,
         metadata: MetadataMap::new(),
     }
 }
@@ -71,6 +74,27 @@ async fn migration_creates_canonical_job_tables() {
         .await
         .expect("sqlite_master query");
         assert_eq!(count, 1, "{table} should exist");
+    }
+}
+
+#[tokio::test]
+async fn unified_job_tables_have_contract_indexes() {
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    let indexes: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master
+         WHERE type='index' AND name LIKE 'idx_axon_jobs_%'
+            OR type='index' AND name LIKE 'idx_axon_job_%'
+         ORDER BY name",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("list indexes");
+
+    for required in super::schema::CONTRACT_INDEXES {
+        assert!(
+            indexes.iter().any(|name| name == required),
+            "missing {required}"
+        );
     }
 }
 
@@ -115,6 +139,68 @@ async fn create_is_idempotent_and_get_returns_summary() {
         .expect("list jobs");
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.total, Some(2));
+}
+
+#[tokio::test]
+async fn job_events_page_after_sequence_reads_only_next_page() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    for sequence in 1..=25 {
+        store
+            .append_event(progress_event(job.job_id, sequence, Visibility::Public))
+            .await
+            .expect("append event");
+    }
+
+    let page = store
+        .events(JobEventListRequest {
+            job_id: job.job_id,
+            after_sequence: Some(10),
+            limit: Some(5),
+            severity: None,
+            visibility: None,
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await
+        .expect("event page");
+
+    assert_eq!(page.events.len(), 5);
+    assert_eq!(page.events[0].sequence, 11);
+    assert_eq!(page.events[4].sequence, 15);
+    assert!(page.next_cursor.is_some());
+}
+
+#[tokio::test]
+async fn non_empty_legacy_family_rows_block_unified_workers() {
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    insert_legacy_crawl_job(&pool, "running").await;
+
+    let blocker = crate::unified::detect_incompatible_legacy_jobs(&pool)
+        .await
+        .unwrap()
+        .expect("non-empty legacy table blocks cutover");
+    assert!(
+        blocker
+            .legacy_tables
+            .contains(&"axon_crawl_jobs".to_string())
+    );
+    assert!(blocker.message.contains("axon reset"));
+}
+
+#[tokio::test]
+async fn reset_receipt_allows_fresh_unified_schema_without_importing_legacy_rows() {
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    insert_legacy_extract_job(&pool, "canceled").await;
+    write_reset_receipt(&pool, "legacy jobs cleared").await;
+
+    assert!(
+        crate::unified::detect_incompatible_legacy_jobs(&pool)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -210,6 +296,87 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
         .expect("stage exists");
     assert_eq!(stage.status, LifecycleStatus::Waiting);
     assert_eq!(stage.counts, counts);
+}
+
+#[tokio::test]
+async fn invalid_transition_fails_without_mutating_job() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Fetching,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("queued -> running");
+
+    let err = store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Queued,
+            phase: PipelinePhase::Resolving,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect_err("running -> queued invalid");
+    assert_eq!(err.code.to_string(), "job.invalid_transition");
+    assert_eq!(
+        store
+            .get(job.job_id)
+            .await
+            .expect("get job")
+            .expect("job exists")
+            .status,
+        LifecycleStatus::Running
+    );
+}
+
+#[tokio::test]
+async fn append_events_assigns_monotonic_per_job_sequence() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+
+    for idx in 0..3 {
+        let mut event = progress_event(job.job_id, 0, Visibility::Public);
+        event.event_id = format!("assigned-event-{idx}");
+        store
+            .append_event(event)
+            .await
+            .unwrap_or_else(|error| panic!("append event {idx}: {error:?}"));
+    }
+
+    let page = store
+        .events(JobEventListRequest {
+            job_id: job.job_id,
+            after_sequence: None,
+            limit: Some(10),
+            severity: None,
+            visibility: Some(Visibility::Public),
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await
+        .expect("event page");
+    assert_eq!(
+        page.events
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
 }
 
 #[tokio::test]
@@ -648,22 +815,25 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         .await
         .expect("recover");
     assert_eq!(recovery.jobs_scanned, 1);
-    assert_eq!(recovery.jobs_failed, 1);
+    assert_eq!(recovery.jobs_requeued, 1);
+    assert_eq!(recovery.jobs_failed, 0);
     let attempts = store.attempts(running.job_id).await.expect("attempts");
     assert_eq!(attempts[0].status, LifecycleStatus::Failed);
     assert!(attempts[0].finished_at.is_some());
+    assert_eq!(attempts[1].status, LifecycleStatus::Queued);
     let recovered = store
         .get(running.job_id)
         .await
         .expect("get recovered")
         .expect("recovered job");
-    assert_eq!(recovered.status, LifecycleStatus::Failed);
+    assert_eq!(recovered.status, LifecycleStatus::Queued);
+    assert_eq!(recovered.attempt, 2);
     assert_eq!(
         recovered
             .heartbeat
             .as_ref()
             .map(|heartbeat| heartbeat.status),
-        Some(LifecycleStatus::Failed)
+        None
     );
     assert!(
         store
@@ -671,8 +841,18 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             .await
             .expect("recovered stages")
             .iter()
-            .all(|stage| stage.status == LifecycleStatus::Failed)
+            .all(|stage| stage.status == LifecycleStatus::Queued)
     );
+    store
+        .cancel(
+            running.job_id,
+            JobCancelRequest {
+                reason: Some("cleanup fixture".to_string()),
+                force_after_ms: Some(0),
+            },
+        )
+        .await
+        .expect("terminalize recovered job for cleanup");
     sqlx::query(
         "INSERT INTO job_artifacts (
             artifact_id, job_id, artifact_kind, uri, size_bytes, content_hash, created_at
@@ -759,6 +939,40 @@ fn progress_event(job_id: JobId, sequence: u64, visibility: Visibility) -> Sourc
         warning: None,
         error: None,
     }
+}
+
+async fn insert_legacy_crawl_job(pool: &sqlx::SqlitePool, status: &str) {
+    sqlx::query(
+        "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at)
+         VALUES ('legacy-crawl', ?, 'https://example.com', '{}', 1, 1)",
+    )
+    .bind(status)
+    .execute(pool)
+    .await
+    .expect("insert legacy crawl job");
+}
+
+async fn insert_legacy_extract_job(pool: &sqlx::SqlitePool, status: &str) {
+    sqlx::query(
+        "INSERT INTO axon_extract_jobs (id, status, urls_json, config_json, created_at, updated_at)
+         VALUES ('legacy-extract', ?, '[]', '{}', 1, 1)",
+    )
+    .bind(status)
+    .execute(pool)
+    .await
+    .expect("insert legacy extract job");
+}
+
+async fn write_reset_receipt(pool: &sqlx::SqlitePool, message: &str) {
+    sqlx::query(
+        "INSERT INTO axon_job_cutover_receipts
+            (receipt_id, receipt_kind, message, created_at)
+         VALUES ('receipt-reset', 'legacy_reset', ?, '2026-07-05T00:00:00Z')",
+    )
+    .bind(message)
+    .execute(pool)
+    .await
+    .expect("write reset receipt");
 }
 
 /// Build a store that also routes transitions into a durable

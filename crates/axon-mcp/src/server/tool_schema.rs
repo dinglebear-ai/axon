@@ -1,5 +1,5 @@
 use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
-use crate::schema::{AxonRequest, ExtractSubaction, MemorySubaction};
+use crate::schema::{AxonRequest, ExtractSubaction, JobsSubaction, MemorySubaction};
 use rmcp::schemars::JsonSchema;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -206,6 +206,7 @@ fn axon_action_metadata() -> Value {
 fn axon_subaction_metadata() -> Value {
     json!({
         "extract": enum_values_for::<ExtractSubaction>(),
+        "jobs": enum_values_for::<JobsSubaction>(),
         "memory": enum_values_for::<MemorySubaction>(),
     })
 }

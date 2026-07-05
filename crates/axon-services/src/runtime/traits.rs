@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::types::ServiceJob;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload, JobSidecarPayload};
+use axon_jobs::boundary::JobStore;
 use axon_jobs::status::JobStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +51,10 @@ pub trait ServiceJobRuntime: Send + Sync {
     fn mode_name(&self) -> &'static str;
 
     fn sqlite_pool(&self) -> Option<Arc<SqlitePool>> {
+        None
+    }
+
+    fn unified_job_store(&self) -> Option<Arc<dyn JobStore>> {
         None
     }
 

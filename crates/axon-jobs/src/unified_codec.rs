@@ -207,36 +207,21 @@ pub(crate) fn event_details(event: &SourceProgressEvent) -> MetadataMap {
     details
 }
 
-pub(crate) async fn count_with_optional_cutoff(
+pub(crate) async fn count_children_by_job_ids(
     pool: &SqlitePool,
-    sql: &str,
-    cutoff: Option<&Timestamp>,
+    table: &str,
+    quoted_job_ids: &str,
 ) -> Result<u64> {
-    let mut query = sqlx::query_scalar::<_, i64>(sql);
-    if let Some(cutoff) = cutoff {
-        query = query.bind(cutoff.0.as_str());
+    if quoted_job_ids.is_empty() {
+        return Ok(0);
     }
-    query
-        .fetch_one(pool)
-        .await
-        .map(|value| value as u64)
-        .map_err(sql_error)
-}
-
-pub(crate) async fn execute_with_optional_cutoff(
-    pool: &SqlitePool,
-    sql: &str,
-    cutoff: Option<&Timestamp>,
-) -> Result<u64> {
-    let mut query = sqlx::query(sql);
-    if let Some(cutoff) = cutoff {
-        query = query.bind(cutoff.0.as_str());
-    }
-    query
-        .execute(pool)
-        .await
-        .map(|result| result.rows_affected())
-        .map_err(sql_error)
+    sqlx::query_scalar::<_, i64>(&format!(
+        "SELECT COUNT(*) FROM {table} WHERE job_id IN ({quoted_job_ids})"
+    ))
+    .fetch_one(pool)
+    .await
+    .map(|value| value as u64)
+    .map_err(sql_error)
 }
 
 pub(crate) fn enum_name<T: serde::Serialize>(value: T) -> Result<String> {
@@ -326,7 +311,7 @@ fn parse_optional_enum<T: serde::de::DeserializeOwned>(value: Option<String>) ->
     value.map(parse_enum).transpose()
 }
 
-fn parse_uuid(value: String) -> Result<Uuid> {
+pub(crate) fn parse_uuid(value: String) -> Result<Uuid> {
     Uuid::parse_str(&value).map_err(|error| {
         ApiError::new(
             "job.uuid_invalid",

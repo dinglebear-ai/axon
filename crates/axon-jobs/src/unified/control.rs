@@ -148,7 +148,12 @@ impl SqliteUnifiedJobStore {
         &self,
         request: JobRecoveryRequest,
     ) -> Result<JobRecoveryResult> {
-        if request.older_than_seconds.is_none() && !request.allow_without_cutoff {
+        let cutoff = request.stale_before.clone().or_else(|| {
+            request.older_than_seconds.map(|seconds| {
+                Timestamp::from(chrono::Utc::now() - chrono::Duration::seconds(seconds as i64))
+            })
+        });
+        if cutoff.is_none() && !request.allow_without_cutoff {
             return Err(ApiError::new(
                 "job_recovery.cutoff_required",
                 ErrorStage::Planning,
@@ -156,11 +161,16 @@ impl SqliteUnifiedJobStore {
             ));
         }
         let kind_filter = request.kind.map(enum_name).transpose()?;
-        let cutoff = request.older_than_seconds.map(|seconds| {
-            Timestamp::from(chrono::Utc::now() - chrono::Duration::seconds(seconds as i64))
-        });
-        let mut sql = "SELECT job_id FROM jobs WHERE status IN ('running', 'waiting')".to_string();
+        let limit = clamp_page_limit(request.limit);
+        let mut sql = "SELECT job_id, attempt, request_json, metadata_json, stage_plan_json
+                       FROM jobs WHERE status IN ('running', 'waiting')"
+            .to_string();
         append_recovery_filter(&mut sql, kind_filter.as_deref(), cutoff.as_ref());
+        sql.push_str(
+            " ORDER BY COALESCE(json_extract(heartbeat_json, '$.heartbeat_at'), updated_at) ASC,
+              job_id ASC LIMIT ",
+        );
+        sql.push_str(&limit.to_string());
         let mut query = sqlx::query(&sql);
         if let Some(cutoff) = cutoff.as_ref() {
             query = query.bind(cutoff.0.as_str());
@@ -171,18 +181,44 @@ impl SqliteUnifiedJobStore {
             .map(|row| row.get::<String, _>("job_id"))
             .collect::<Vec<_>>();
         let scanned = rows.len() as u64;
-        let failed = if !request.dry_run && scanned > 0 {
-            self.fail_recoverable_jobs(&job_ids).await?
+        let mut requeued = 0_u64;
+        if !request.dry_run && scanned > 0 {
+            let mut tx = self.pool.begin().await.map_err(sql_error)?;
+            for row in rows {
+                let job_id = JobId::new(parse_uuid(row.get::<String, _>("job_id"))?);
+                let attempt = (row.get::<i64, _>("attempt") as u32).max(1);
+                let metadata = from_json::<MetadataMap>(row.get::<String, _>("metadata_json"))?;
+                let stage_plan =
+                    from_json::<Vec<JobStagePlan>>(row.get::<String, _>("stage_plan_json"))?;
+                let request_json = row.get::<Option<String>, _>("request_json");
+                if reset_stale_job_for_recovery(
+                    &mut tx,
+                    job_id,
+                    attempt,
+                    attempt + 1,
+                    request_json.as_deref(),
+                    &metadata,
+                    &stage_plan,
+                )
+                .await?
+                {
+                    requeued += 1;
+                }
+            }
+            tx.commit().await.map_err(sql_error)?;
         } else {
-            0
-        };
+            requeued = 0;
+        }
         Ok(JobRecoveryResult {
-            recovered: 0,
-            job_ids: Vec::new(),
+            recovered: requeued,
+            job_ids: job_ids
+                .into_iter()
+                .filter_map(|id| parse_uuid(id).ok().map(JobId::new))
+                .collect(),
             warnings: Vec::new(),
             jobs_scanned: scanned,
-            jobs_requeued: 0,
-            jobs_failed: failed,
+            jobs_requeued: requeued,
+            jobs_failed: 0,
         })
     }
 
@@ -190,55 +226,82 @@ impl SqliteUnifiedJobStore {
         &self,
         request: JobCleanupRequest,
     ) -> Result<JobCleanupResult> {
-        if request.older_than_seconds.is_none() && !request.confirm_all_terminal {
+        let cutoff = request.older_than.clone().or_else(|| {
+            request.older_than_seconds.map(|seconds| {
+                Timestamp::from(chrono::Utc::now() - chrono::Duration::seconds(seconds as i64))
+            })
+        });
+        if cutoff.is_none() && !request.confirm_all_terminal {
             return Err(ApiError::new(
                 "job_cleanup.cutoff_required",
                 ErrorStage::Planning,
                 "cleanup requires older_than_seconds unless confirm_all_terminal is explicit",
             ));
         }
-        let cutoff = request.older_than_seconds.map(|seconds| {
-            Timestamp::from(chrono::Utc::now() - chrono::Duration::seconds(seconds as i64))
-        });
-        let mut predicate =
-            "status IN ('completed', 'completed_degraded', 'failed', 'canceled', 'expired', 'skipped')"
-                .to_string();
+        if let Some(status) = request.status
+            && !is_terminal(status)
+        {
+            return Err(ApiError::new(
+                "job_cleanup.non_terminal_status",
+                ErrorStage::Planning,
+                "cleanup can only prune terminal jobs",
+            ));
+        }
+        let mut predicate = String::new();
+        if let Some(status) = request.status {
+            predicate.push_str("status = '");
+            predicate.push_str(&escape_sql(&enum_name(status)?));
+            predicate.push('\'');
+        } else {
+            predicate.push_str(
+                "status IN ('completed', 'completed_degraded', 'failed', 'canceled', 'expired', 'skipped')",
+            );
+        }
+        if let Some(kind) = request.kind {
+            predicate.push_str(" AND kind = '");
+            predicate.push_str(&escape_sql(&enum_name(kind)?));
+            predicate.push('\'');
+        }
         if cutoff.is_some() {
             predicate.push_str(" AND updated_at < ?");
         }
-
-        let jobs_pruned = count_with_optional_cutoff(
-            &self.pool,
-            &format!("SELECT COUNT(*) FROM jobs WHERE {predicate}"),
-            cutoff.as_ref(),
-        )
-        .await?;
-        let events_pruned = count_with_optional_cutoff(
-            &self.pool,
-            &format!("SELECT COUNT(*) FROM job_events WHERE job_id IN (SELECT job_id FROM jobs WHERE {predicate})"),
-            cutoff.as_ref(),
-        )
-        .await?;
-        let heartbeats_pruned = count_with_optional_cutoff(
-            &self.pool,
-            &format!("SELECT COUNT(*) FROM job_heartbeats WHERE job_id IN (SELECT job_id FROM jobs WHERE {predicate})"),
-            cutoff.as_ref(),
-        )
-        .await?;
-        let artifacts_pruned = count_with_optional_cutoff(
-            &self.pool,
-            &format!("SELECT COUNT(*) FROM job_artifacts WHERE job_id IN (SELECT job_id FROM jobs WHERE {predicate})"),
-            cutoff.as_ref(),
-        )
-        .await?;
+        let mut sql = format!("SELECT job_id FROM jobs WHERE {predicate}");
+        let limit = clamp_page_limit(request.limit);
+        sql.push_str(" ORDER BY updated_at ASC, job_id ASC LIMIT ");
+        sql.push_str(&limit.to_string());
+        let mut query = sqlx::query(&sql);
+        if let Some(cutoff) = cutoff.as_ref() {
+            query = query.bind(cutoff.0.as_str());
+        }
+        let job_ids = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sql_error)?
+            .into_iter()
+            .map(|row| row.get::<String, _>("job_id"))
+            .collect::<Vec<_>>();
+        let jobs_pruned = job_ids.len() as u64;
+        let ids = quoted_job_ids(&job_ids);
+        let events_pruned = count_children_by_job_ids(&self.pool, "job_events", &ids).await?;
+        let heartbeats_pruned =
+            count_children_by_job_ids(&self.pool, "job_heartbeats", &ids).await?;
+        let attempts_pruned = count_children_by_job_ids(&self.pool, "job_attempts", &ids).await?;
+        let stages_pruned = count_children_by_job_ids(&self.pool, "job_stages", &ids).await?;
+        let reservations_pruned =
+            count_children_by_job_ids(&self.pool, "provider_reservations", &ids).await?;
+        let artifacts_pruned = count_children_by_job_ids(&self.pool, "job_artifacts", &ids).await?;
 
         let deleted = if !request.dry_run && jobs_pruned > 0 {
-            execute_with_optional_cutoff(
-                &self.pool,
-                &format!("DELETE FROM jobs WHERE {predicate}"),
-                cutoff.as_ref(),
-            )
-            .await?
+            let delete_sql = format!("DELETE FROM jobs WHERE job_id IN ({ids}) AND {predicate}");
+            let mut delete = sqlx::query(&delete_sql);
+            if let Some(cutoff) = cutoff.as_ref() {
+                delete = delete.bind(cutoff.0.as_str());
+            }
+            delete
+                .execute(&self.pool)
+                .await
+                .map_err(sql_error)?
+                .rows_affected()
         } else {
             jobs_pruned
         };
@@ -250,6 +313,9 @@ impl SqliteUnifiedJobStore {
             jobs_pruned: deleted,
             events_pruned,
             heartbeats_pruned,
+            attempts_pruned,
+            stages_pruned,
+            reservations_pruned,
             artifacts_pruned,
         })
     }
@@ -307,80 +373,5 @@ impl SqliteUnifiedJobStore {
             limits: MetadataMap::new(),
         }
         .into())
-    }
-
-    async fn fail_recoverable_jobs(&self, job_ids: &[String]) -> Result<u64> {
-        if job_ids.is_empty() {
-            return Ok(0);
-        }
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
-        let now = now_timestamp();
-        let source_error = recovery_source_error();
-        let api_error = recovery_api_error();
-        let ids = quoted_job_ids(job_ids);
-        let job_result = sqlx::query(&format!(
-            "UPDATE jobs SET
-                status = 'failed',
-                phase = 'complete',
-                updated_at = ?,
-                finished_at = COALESCE(finished_at, ?),
-                heartbeat_json = CASE
-                    WHEN heartbeat_json IS NULL THEN NULL
-                    ELSE json_set(heartbeat_json, '$.status', 'failed', '$.phase', 'complete')
-                END,
-                last_error_json = ?
-             WHERE job_id IN ({ids}) AND status IN ('running', 'waiting')"
-        ))
-        .bind(now.0.as_str())
-        .bind(now.0.as_str())
-        .bind(to_json(&Some(source_error))?)
-        .execute(&mut *tx)
-        .await
-        .map_err(sql_error)?;
-        let failed = job_result.rows_affected();
-        sqlx::query(&format!(
-            "UPDATE job_attempts SET
-                status = 'failed',
-                finished_at = COALESCE(finished_at, ?),
-                error_json = ?
-             WHERE job_id IN ({ids}) AND status IN ('queued', 'pending', 'running', 'waiting', 'blocked', 'canceling')"
-        ))
-        .bind(now.0.as_str())
-        .bind(to_json(&Some(api_error.clone()))?)
-        .execute(&mut *tx)
-        .await
-        .map_err(sql_error)?;
-        sqlx::query(&format!(
-            "UPDATE job_stages SET
-                status = 'failed',
-                completed_at = COALESCE(completed_at, ?),
-                error_json = ?
-             WHERE job_id IN ({ids}) AND status IN ('queued', 'pending', 'running', 'waiting', 'blocked', 'canceling')"
-        ))
-        .bind(now.0.as_str())
-        .bind(to_json(&Some(api_error))?)
-        .execute(&mut *tx)
-        .await
-        .map_err(sql_error)?;
-        sqlx::query(&format!(
-            "UPDATE job_heartbeats SET
-                heartbeat_json = json_set(heartbeat_json, '$.status', 'failed', '$.phase', 'complete')
-             WHERE job_id IN ({ids})"
-        ))
-        .execute(&mut *tx)
-        .await
-        .map_err(sql_error)?;
-        sqlx::query(&format!(
-            "UPDATE provider_reservations SET
-                status = 'failed',
-                updated_at = ?
-             WHERE job_id IN ({ids}) AND status IN ('requested', 'queued', 'granted', 'active')"
-        ))
-        .bind(now.0.as_str())
-        .execute(&mut *tx)
-        .await
-        .map_err(sql_error)?;
-        tx.commit().await.map_err(sql_error)?;
-        Ok(failed)
     }
 }

@@ -126,6 +126,16 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0018_unified_jobs_observability",
         sql: include_str!("migrations/0018_unified_jobs_observability.sql"),
     },
+    SqlMigration {
+        version: 19,
+        name: "0019_unified_jobs_contract_fields",
+        sql: include_str!("migrations/0019_unified_jobs_contract_fields.sql"),
+    },
+    SqlMigration {
+        version: 20,
+        name: "0020_job_cutover_receipts",
+        sql: include_str!("migrations/0020_job_cutover_receipts.sql"),
+    },
 ];
 
 /// Namespace under which the composed runner tracks jobs migrations.

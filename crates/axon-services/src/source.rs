@@ -29,8 +29,9 @@ pub mod routing;
 pub mod tool_policy;
 
 use axon_api::source::{
-    AdapterRef, JobId, LedgerSummary, LifecycleStatus, SourceCounts, SourceGenerationId, SourceId,
-    SourceKind, SourceRequest, SourceResult, SourceScope, SourceWarning,
+    AdapterRef, AuthSnapshot, JobId, LedgerSummary, LifecycleStatus, SourceCounts,
+    SourceGenerationId, SourceId, SourceKind, SourceRequest, SourceResult, SourceScope,
+    SourceWarning,
 };
 use axon_core::http::validate_url;
 use axon_error::ApiError;
@@ -160,6 +161,14 @@ pub async fn index_source(
     request: SourceRequest,
     ctx: &ServiceContext,
 ) -> anyhow::Result<SourceResult> {
+    index_source_with_auth(request, ctx, None).await
+}
+
+pub async fn index_source_with_auth(
+    request: SourceRequest,
+    ctx: &ServiceContext,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> anyhow::Result<SourceResult> {
     let input = request.source.trim().to_string();
     if input.is_empty() {
         return Ok(unsupported_result(
@@ -213,6 +222,7 @@ pub async fn index_source(
         &input,
         &collection,
         owner_id,
+        auth_snapshot.as_ref(),
     )
     .await?;
 
@@ -264,29 +274,41 @@ async fn dispatch_kind(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
         SourceInputKind::Local => {
-            dispatch::dispatch_local(runtime, input, collection, owner_id).await
+            dispatch::dispatch_local(runtime, input, collection, owner_id, auth_snapshot).await
         }
-        SourceInputKind::Git => dispatch::dispatch_git(runtime, input, collection, owner_id).await,
+        SourceInputKind::Git => {
+            dispatch::dispatch_git(runtime, input, collection, owner_id, auth_snapshot).await
+        }
         SourceInputKind::Feed => {
-            dispatch::dispatch_feed(runtime, input, collection, owner_id).await
+            dispatch::dispatch_feed(runtime, input, collection, owner_id, auth_snapshot).await
         }
         SourceInputKind::Youtube => {
-            dispatch::dispatch_youtube(runtime, input, collection, owner_id).await
+            dispatch::dispatch_youtube(runtime, input, collection, owner_id, auth_snapshot).await
         }
         SourceInputKind::Reddit => {
-            dispatch::dispatch_reddit(runtime, input, collection, owner_id).await
+            dispatch::dispatch_reddit(runtime, input, collection, owner_id, auth_snapshot).await
         }
         SourceInputKind::Web => {
-            dispatch::dispatch_web(cfg, runtime, input, collection, owner_id, scope).await
+            dispatch::dispatch_web(
+                cfg,
+                runtime,
+                input,
+                collection,
+                owner_id,
+                scope,
+                auth_snapshot,
+            )
+            .await
         }
         SourceInputKind::Session => {
-            dispatch::dispatch_session(runtime, input, collection, owner_id).await
+            dispatch::dispatch_session(runtime, input, collection, owner_id, auth_snapshot).await
         }
         SourceInputKind::Registry => {
-            dispatch::dispatch_registry(runtime, input, collection, owner_id).await
+            dispatch::dispatch_registry(runtime, input, collection, owner_id, auth_snapshot).await
         }
         // Unsupported is handled by the caller before dispatch.
         SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),

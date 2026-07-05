@@ -3,6 +3,8 @@ mod panic_guard;
 mod progress;
 mod runners;
 mod starvation;
+#[allow(dead_code)]
+mod unified;
 mod watch_scheduler;
 mod watchdog;
 
@@ -33,6 +35,7 @@ pub struct WorkerHandles {
     pub(crate) embed: Arc<Notify>,
     pub(crate) extract: Arc<Notify>,
     pub(crate) ingest: Arc<Notify>,
+    pub(crate) unified: Arc<Notify>,
     shutdown: CancellationToken,
     /// Actual worker loops. Dropping WorkerHandles requests graceful shutdown;
     /// tasks observe it before polling and between jobs/batches.
@@ -50,6 +53,11 @@ impl WorkerHandles {
             JobKind::Ingest => self.ingest.notify_one(),
         }
     }
+
+    /// Notify the unified durable-job worker that a job-backed operation was queued.
+    pub fn notify_unified(&self) {
+        self.unified.notify_one();
+    }
 }
 
 impl Drop for WorkerHandles {
@@ -59,6 +67,7 @@ impl Drop for WorkerHandles {
         self.embed.notify_waiters();
         self.extract.notify_waiters();
         self.ingest.notify_waiters();
+        self.unified.notify_waiters();
     }
 }
 
@@ -77,6 +86,7 @@ pub fn spawn_workers(
     let embed_notify = Arc::new(Notify::new());
     let extract_notify = Arc::new(Notify::new());
     let ingest_notify = Arc::new(Notify::new());
+    let unified_notify = Arc::new(Notify::new());
     let shutdown = CancellationToken::new();
 
     let embed_lanes = cfg.embed_lanes.clamp(1, 32);
@@ -90,6 +100,12 @@ pub fn spawn_workers(
         embed_lanes,
         ingest_lanes,
         "jobs: spawning in-process job workers"
+    );
+
+    tracing::info!(
+        worker = "unified",
+        lanes = 0,
+        "jobs: unified worker disabled until executable runners are wired"
     );
 
     // Crawl: single lane (spider futures are !Send — must stay single-task)
@@ -175,6 +191,7 @@ pub fn spawn_workers(
         embed: embed_notify,
         extract: extract_notify,
         ingest: ingest_notify,
+        unified: unified_notify,
         shutdown,
         worker_handles,
     }

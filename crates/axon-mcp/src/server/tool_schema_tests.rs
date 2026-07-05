@@ -19,7 +19,7 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         .expect("tools/list inputSchema publishes properties.action.enum");
 
     for action in [
-        "source", "extract", "retrieve", "ask", "query", "status", "memory",
+        "source", "extract", "retrieve", "ask", "query", "status", "jobs", "memory",
     ] {
         assert!(
             action_enum
@@ -95,6 +95,25 @@ fn mcp_schema_documents_source_required_fields() {
             .any(|value| value.as_str() == Some("source")),
         "source should document `source` as required"
     );
+}
+
+#[test]
+fn mcp_schema_documents_jobs_subactions() {
+    let schema = axon_input_schema();
+    let subactions = schema
+        .pointer("/x-axon-subactions/jobs")
+        .and_then(serde_json::Value::as_array)
+        .expect("jobs subaction metadata is present");
+    for expected in [
+        "list", "get", "events", "cancel", "retry", "recover", "cleanup", "clear",
+    ] {
+        assert!(
+            subactions
+                .iter()
+                .any(|value| value.as_str() == Some(expected)),
+            "jobs subactions should include {expected}"
+        );
+    }
 }
 
 #[test]

@@ -105,6 +105,7 @@ fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> Jo
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,
+        attempt: 1,
         priority: JobPriority::Background,
         idempotency_key: None,
         stage_plan: Vec::new(),
@@ -112,10 +113,15 @@ fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> Jo
             "source_kind": "local",
             "root_hint": public_path_hint(&input.root),
         })),
-        auth_snapshot: MetadataMap::new(),
+        auth_snapshot: input
+            .auth_snapshot
+            .clone()
+            .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_local_source")),
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
+        warnings: Vec::new(),
+        error: None,
         metadata: MetadataMap::new(),
     }
 }

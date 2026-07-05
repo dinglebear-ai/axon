@@ -75,6 +75,110 @@ pub(super) async fn reset_job_for_retry(
     Ok(())
 }
 
+pub(super) async fn reset_stale_job_for_recovery(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    job_id: JobId,
+    current_attempt: u32,
+    next_attempt: u32,
+    request_json: Option<&str>,
+    metadata: &MetadataMap,
+    stage_plan: &[JobStagePlan],
+) -> Result<bool> {
+    let now = now_timestamp();
+    let recovery_error = recovery_api_error();
+    let result = sqlx::query(
+        "UPDATE jobs SET
+            intent = 'retry',
+            status = 'queued',
+            phase = 'queued',
+            attempt = ?,
+            request_json = ?,
+            metadata_json = ?,
+            updated_at = ?,
+            started_at = NULL,
+            finished_at = NULL,
+            heartbeat_json = NULL,
+            last_error_json = NULL
+         WHERE job_id = ?
+           AND attempt = ?
+           AND status IN ('running', 'waiting')",
+    )
+    .bind(next_attempt as i64)
+    .bind(request_json)
+    .bind(to_json(metadata)?)
+    .bind(now.0.as_str())
+    .bind(job_id.0.to_string())
+    .bind(current_attempt as i64)
+    .execute(&mut **tx)
+    .await
+    .map_err(sql_error)?;
+    if result.rows_affected() == 0 {
+        return Ok(false);
+    }
+
+    sqlx::query(
+        "UPDATE job_attempts SET
+            status = 'failed',
+            finished_at = COALESCE(finished_at, ?),
+            error_json = ?
+         WHERE job_id = ? AND attempt = ?",
+    )
+    .bind(now.0.as_str())
+    .bind(optional_to_json(&Some(recovery_error.clone()))?)
+    .bind(job_id.0.to_string())
+    .bind(current_attempt as i64)
+    .execute(&mut **tx)
+    .await
+    .map_err(sql_error)?;
+
+    sqlx::query(
+        "INSERT INTO job_attempts (
+            attempt_id, job_id, attempt, status, started_at, finished_at, error_json
+         ) VALUES (?, ?, ?, 'queued', ?, NULL, NULL)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(job_id.0.to_string())
+    .bind(next_attempt as i64)
+    .bind(now.0.as_str())
+    .execute(&mut **tx)
+    .await
+    .map_err(sql_error)?;
+
+    sqlx::query("DELETE FROM job_stages WHERE job_id = ?")
+        .bind(job_id.0.to_string())
+        .execute(&mut **tx)
+        .await
+        .map_err(sql_error)?;
+    for stage in stage_plan {
+        sqlx::query(
+            "INSERT INTO job_stages (
+                stage_id, job_id, phase, status, required, provider_requirements_json,
+                counts_json
+            ) VALUES (?, ?, ?, 'queued', ?, ?, NULL)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(job_id.0.to_string())
+        .bind(enum_name(stage.phase)?)
+        .bind(if stage.required { 1_i64 } else { 0_i64 })
+        .bind(to_json(&stage.provider_requirements)?)
+        .execute(&mut **tx)
+        .await
+        .map_err(sql_error)?;
+    }
+    sqlx::query(
+        "UPDATE provider_reservations SET
+            status = 'failed',
+            updated_at = ?
+         WHERE job_id = ? AND status IN ('requested', 'queued', 'granted', 'active')",
+    )
+    .bind(now.0.as_str())
+    .bind(job_id.0.to_string())
+    .execute(&mut **tx)
+    .await
+    .map_err(sql_error)?;
+    Ok(true)
+}
+
 pub(super) async fn terminalize_active_children(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     job_id: JobId,
@@ -187,18 +291,6 @@ pub(super) fn quoted_job_ids(job_ids: &[String]) -> String {
         .map(|id| format!("'{}'", escape_sql(id)))
         .collect::<Vec<_>>()
         .join(",")
-}
-
-pub(super) fn recovery_source_error() -> SourceError {
-    SourceError {
-        code: "job.recovered_stale".to_string(),
-        severity: Severity::Failed,
-        message: "stale running job was failed by recovery".to_string(),
-        source_item_key: None,
-        retryable: true,
-        provider_id: None,
-        cause: None,
-    }
 }
 
 pub(super) fn recovery_api_error() -> ApiError {

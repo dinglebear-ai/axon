@@ -39,6 +39,7 @@ pub struct WebSourceIndexInput {
     pub vector_provider_id: ProviderId,
     pub embedding_model: String,
     pub embedding_dimensions: u32,
+    pub auth_snapshot: Option<AuthSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

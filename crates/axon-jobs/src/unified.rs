@@ -6,6 +6,7 @@ use axon_observe::sink::SqliteObservabilitySink;
 use sqlx::SqlitePool;
 
 use crate::boundary::{JobStore, Result};
+pub use crate::store_inventory::detect_incompatible_legacy_jobs;
 
 #[path = "unified/control.rs"]
 mod control;
@@ -17,6 +18,10 @@ mod heartbeat;
 mod observe;
 #[path = "unified/ops.rs"]
 mod ops;
+#[path = "unified/pagination.rs"]
+mod pagination;
+#[path = "unified/schema.rs"]
+mod schema;
 
 #[derive(Clone)]
 pub struct SqliteUnifiedJobStore {

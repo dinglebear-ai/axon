@@ -86,6 +86,7 @@ fn job_create_request(input: &WebSourceIndexInput) -> JobCreateRequest {
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,
+        attempt: 1,
         priority: JobPriority::Background,
         idempotency_key: None,
         stage_plan: Vec::new(),
@@ -94,10 +95,15 @@ fn job_create_request(input: &WebSourceIndexInput) -> JobCreateRequest {
             "source": input.source,
             "scope": format!("{:?}", input.scope).to_ascii_lowercase(),
         })),
-        auth_snapshot: MetadataMap::new(),
+        auth_snapshot: input
+            .auth_snapshot
+            .clone()
+            .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_web_source")),
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
+        warnings: Vec::new(),
+        error: None,
         metadata: MetadataMap::new(),
     }
 }

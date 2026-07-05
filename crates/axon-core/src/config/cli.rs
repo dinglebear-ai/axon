@@ -69,6 +69,8 @@ pub(super) enum CliCommand {
     Stats,
     /// Show async job queue status and recent activity
     Status,
+    /// Manage unified durable jobs
+    Jobs(JobsArgs),
     /// Remove duplicate points from the Qdrant collection
     Dedupe,
     #[command(alias = "delete-url", alias = "delete")]
@@ -810,6 +812,86 @@ pub(super) enum JobSubcommand {
     Clear,
     Worker,
     Recover,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct JobsArgs {
+    #[command(subcommand)]
+    pub(super) action: Option<JobsSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum JobsSubcommand {
+    /// List unified durable jobs.
+    List {
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+    /// Show one unified durable job.
+    Get { job_id: String },
+    /// Show one job's event page.
+    Events {
+        job_id: String,
+        #[arg(long = "after-sequence")]
+        after_sequence: Option<u64>,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+    /// Fetch an event page for stream consumers.
+    Stream {
+        job_id: String,
+        #[arg(long = "after-sequence")]
+        after_sequence: Option<u64>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Request cancellation for a unified durable job.
+    Cancel {
+        job_id: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Retry a unified durable job.
+    Retry {
+        job_id: String,
+        #[arg(long, default_value = "same_config")]
+        mode: String,
+    },
+    /// Recover stale unified durable jobs.
+    Recover {
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long = "stale-before")]
+        stale_before: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Remove old terminal unified durable jobs.
+    Cleanup {
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long = "older-than")]
+        older_than: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long, action = ArgAction::SetTrue)]
+        dry_run: bool,
+    },
+    /// Clear all unified durable job rows.
+    Clear {
+        #[arg(long, action = ArgAction::SetTrue)]
+        confirm: bool,
+    },
 }
 #[cfg(test)]
 #[path = "cli_tests.rs"]

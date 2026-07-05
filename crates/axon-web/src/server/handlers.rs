@@ -22,6 +22,8 @@ pub mod discovery;
 pub mod exploration;
 #[path = "handlers/jobs.rs"]
 pub mod jobs;
+#[path = "handlers/jobs_stream.rs"]
+pub mod jobs_stream;
 #[path = "handlers/memory.rs"]
 pub mod memory;
 #[path = "handlers/mobile_sessions.rs"]

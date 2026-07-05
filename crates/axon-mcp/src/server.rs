@@ -8,6 +8,8 @@ mod handler_meta;
 mod handlers_elicit;
 #[path = "server/handlers_extract.rs"]
 mod handlers_extract;
+#[path = "server/handlers_jobs.rs"]
+mod handlers_jobs;
 #[path = "server/handlers_memory.rs"]
 mod handlers_memory;
 #[path = "server/handlers_query.rs"]
@@ -160,6 +162,7 @@ impl AxonMcpServer {
         })?;
         let response = match request {
             AxonRequest::Status(req) => self.handle_status(req).await?,
+            AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
             AxonRequest::Source(req) => self.handle_source(req).await?,
             AxonRequest::Extract(req) => self.handle_extract(req).await?,
             AxonRequest::Memory(req) => self.handle_memory(req).await?,

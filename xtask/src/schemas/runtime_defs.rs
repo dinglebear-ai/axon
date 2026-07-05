@@ -77,21 +77,39 @@ fn database_defs() -> Value {
                     "jobs": {
                         "primary_key": ["job_id"],
                         "foreign_keys": ["source_id", "watch_id", "parent_job_id", "root_job_id"],
-                        "json_columns": ["counts_json", "current_json", "heartbeat_json", "last_error_json", "warnings_json", "request_json", "metadata_json"],
-                        "indexes": ["jobs_idempotency_key_idx", "jobs_created_at_desc_idx", "jobs_status_created_at_idx", "jobs_kind_status_created_at_idx", "jobs_status_updated_at_idx", "jobs_source_id_idx", "jobs_watch_id_idx", "jobs_source_id_created_at_idx", "jobs_watch_id_created_at_idx"]
+                        "json_columns": ["counts_json", "current_json", "heartbeat_json", "last_error_json", "warnings_json", "request_json", "metadata_json", "auth_snapshot_json", "stage_plan_json", "requirements_json", "error_json"],
+                        "indexes": [
+                            "jobs_idempotency_key_idx",
+                            "jobs_created_at_desc_idx",
+                            "jobs_status_created_at_idx",
+                            "jobs_kind_status_created_at_idx",
+                            "jobs_status_updated_at_idx",
+                            "jobs_source_id_idx",
+                            "jobs_watch_id_idx",
+                            "jobs_source_id_created_at_idx",
+                            "jobs_watch_id_created_at_idx",
+                            "idx_axon_jobs_status_kind_updated",
+                            "idx_axon_jobs_source_status_updated",
+                            "idx_axon_jobs_watch_status_updated",
+                            "idx_axon_jobs_updated",
+                            "idx_axon_jobs_source_updated",
+                            "idx_axon_jobs_watch_updated",
+                            "idx_axon_jobs_claim"
+                        ],
+                        "contract_columns": ["auth_snapshot_json", "config_snapshot_id", "stage_plan_json", "requirements_json", "result_schema", "error_json", "last_event_sequence"]
                     },
                     "job_attempts": {
                         "primary_key": ["attempt_id"],
                         "foreign_keys": ["job_id"],
                         "unique": [["job_id", "attempt"]],
                         "json_columns": ["error_json"],
-                        "indexes": ["job_attempts_job_id_idx"]
+                        "indexes": ["job_attempts_job_id_idx", "idx_axon_job_attempts_job_attempt"]
                     },
                     "job_stages": {
                         "primary_key": ["stage_id"],
                         "foreign_keys": ["job_id"],
                         "json_columns": ["provider_requirements_json", "counts_json", "error_json"],
-                        "indexes": ["job_stages_job_id_idx"]
+                        "indexes": ["job_stages_job_id_idx", "idx_axon_job_stages_job_stage"]
                     },
                     "job_events": {
                         "primary_key": ["event_id"],
@@ -105,7 +123,7 @@ fn database_defs() -> Value {
                             }
                         ],
                         "json_columns": ["details_json"],
-                        "indexes": ["job_events_job_dedupe_key_idx", "job_events_job_sequence_idx", "job_events_job_phase_idx", "job_events_job_severity_idx", "job_events_job_visibility_idx"]
+                        "indexes": ["job_events_job_dedupe_key_idx", "job_events_job_sequence_idx", "job_events_job_phase_idx", "job_events_job_severity_idx", "job_events_job_visibility_idx", "idx_axon_job_events_job_sequence", "idx_axon_job_events_job_severity_sequence"]
                     },
                     "job_heartbeats": {
                         "primary_key": ["job_id", "attempt"],

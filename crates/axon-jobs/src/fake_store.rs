@@ -450,6 +450,9 @@ impl JobStore for FakeJobWatchStore {
             jobs_pruned: terminal_ids.len() as u64,
             events_pruned,
             heartbeats_pruned: 0,
+            attempts_pruned: 0,
+            stages_pruned: 0,
+            reservations_pruned: 0,
             artifacts_pruned: 0,
         })
     }

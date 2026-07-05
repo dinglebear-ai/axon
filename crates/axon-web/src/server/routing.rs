@@ -35,17 +35,26 @@ pub(super) fn router(
         panel,
         service_context: Arc::clone(&service_context),
     };
-    let rest_routes = protect_routes(read_routes(), &auth_policy, ScopeRequirement::Read)
-        .merge(protect_routes(
-            write_routes(Arc::clone(&cfg), &service_context),
-            &auth_policy,
-            ScopeRequirement::Write,
-        ))
-        .merge(protect_routes(
-            large_write_routes(&service_context),
-            &auth_policy,
-            ScopeRequirement::Write,
-        ));
+    let rest_routes = protect_routes(
+        read_routes(Arc::clone(&service_context)),
+        &auth_policy,
+        ScopeRequirement::Read,
+    )
+    .merge(protect_routes(
+        write_routes(Arc::clone(&cfg), &service_context),
+        &auth_policy,
+        ScopeRequirement::Write,
+    ))
+    .merge(protect_routes(
+        large_write_routes(&service_context),
+        &auth_policy,
+        ScopeRequirement::Write,
+    ))
+    .merge(protect_routes(
+        admin_routes(&service_context),
+        &auth_policy,
+        ScopeRequirement::Admin,
+    ));
     Router::new()
         .route("/healthz", get(super::super::health::healthz))
         .route("/readyz", get(super::super::health::readyz))
@@ -68,7 +77,7 @@ pub(super) fn router(
 }
 
 /// Routes reachable with `axon:read` — metadata and pure retrieval only.
-fn read_routes() -> Router<ServeState> {
+fn read_routes(service_context: Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
         .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
@@ -96,6 +105,10 @@ fn read_routes() -> Router<ServeState> {
             "/v1/artifacts/{*path}",
             get(handlers::artifacts::serve_artifact_path),
         )
+        .nest(
+            "/v1/jobs",
+            handlers::jobs::unified_jobs_read_router(Arc::clone(&service_context)),
+        )
 }
 
 /// Routes requiring `axon:write` — active-network operations, job
@@ -120,6 +133,10 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
         .route("/v1/memory", post(handlers::memory::memory))
+        .nest(
+            "/v1/jobs",
+            handlers::jobs::unified_jobs_write_router(Arc::clone(service_context)),
+        )
         .route(
             "/v1/research/stream",
             post(handlers::exploration::research_stream),
@@ -136,6 +153,15 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         )
         .route("/v1/watch/{id}/run", post(handlers::admin::run_watch))
         .layer(DefaultBodyLimit::max(128 * 1024))
+}
+
+/// Routes requiring the explicit `axon:admin` scope. Broad write tokens do not
+/// satisfy this scope.
+fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
+    Router::new().nest(
+        "/v1/jobs",
+        handlers::jobs::unified_jobs_admin_router(Arc::clone(service_context)),
+    )
 }
 
 /// Write-scoped routes whose payloads exceed the standard REST body cap
@@ -247,6 +273,7 @@ where
 pub(super) enum ScopeRequirement {
     Read,
     Write,
+    Admin,
 }
 
 pub(super) fn protect_routes<S>(
@@ -266,12 +293,16 @@ where
             (AuthPolicy::LoopbackDev, ScopeRequirement::Write) => {
                 router.route_layer(middleware::from_fn(block_loopback_destructive_request))
             }
+            (AuthPolicy::LoopbackDev, ScopeRequirement::Admin) => {
+                router.route_layer(middleware::from_fn(block_loopback_destructive_request))
+            }
             _ => router,
         };
     };
     let router = match scope {
         ScopeRequirement::Read => router.route_layer(middleware::from_fn(require_read_scope)),
         ScopeRequirement::Write => router.route_layer(middleware::from_fn(require_write_scope)),
+        ScopeRequirement::Admin => router.route_layer(middleware::from_fn(require_admin_scope)),
     };
     router
         .route_layer(layer)
@@ -326,8 +357,14 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
             || path == "/v1/purge"
             || path == "/v1/sources"
             || path == "/v1/watch"
-            || path.starts_with("/v1/watch/"))
+            || path == "/v1/jobs/recover"
+            || path == "/v1/jobs/cleanup"
+            || path.starts_with("/v1/watch/")
+            || path.starts_with("/v1/jobs/"))
     {
+        return true;
+    }
+    if *method == Method::DELETE && path == "/v1/jobs" {
         return true;
     }
     if *method == Method::POST && path == "/v1/memory" {
@@ -373,6 +410,14 @@ async fn require_write_scope(
     next: middleware::Next,
 ) -> Response {
     require_scope(auth, "axon:write", request, next).await
+}
+
+async fn require_admin_scope(
+    auth: Option<Extension<AuthContext>>,
+    request: Request<Body>,
+    next: middleware::Next,
+) -> Response {
+    require_scope(auth, "axon:admin", request, next).await
 }
 
 async fn require_scope(

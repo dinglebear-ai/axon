@@ -8,7 +8,7 @@
 //! per-family orchestration that previously lived in the CLI.
 
 use anyhow::Context as _;
-use axon_api::source::{JobId, SourceScope};
+use axon_api::source::{AuthSnapshot, JobId, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
@@ -38,6 +38,7 @@ pub async fn dispatch_local(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=local"
@@ -54,6 +55,7 @@ pub async fn dispatch_local(
         selection_policy: LocalSourceSelectionPolicy::Permissive,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_local_source_with_job(
         index_input,
@@ -83,6 +85,7 @@ pub async fn dispatch_git(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!("command=source collection={collection} kind=git"));
     let checkout = clone_git_repo(input)
@@ -101,6 +104,7 @@ pub async fn dispatch_git(
         embedding_dimensions: runtime.embedding_dimensions,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_git_source_with_job(
         index_input,
@@ -130,6 +134,7 @@ pub async fn dispatch_feed(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!("command=source collection={collection} kind=feed"));
     let feed_path = fetch_feed_to_file(input)
@@ -147,6 +152,7 @@ pub async fn dispatch_feed(
         embedding_dimensions: runtime.embedding_dimensions,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_feed_source_with_job(
         index_input,
@@ -176,6 +182,7 @@ pub async fn dispatch_reddit(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=reddit"
@@ -196,6 +203,7 @@ pub async fn dispatch_reddit(
         embedding_dimensions: runtime.embedding_dimensions,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_reddit_source_with_job(
         index_input,
@@ -225,6 +233,7 @@ pub async fn dispatch_youtube(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=youtube"
@@ -245,6 +254,7 @@ pub async fn dispatch_youtube(
         embedding_dimensions: runtime.embedding_dimensions,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_youtube_source_with_job(
         index_input,
@@ -274,6 +284,7 @@ pub async fn dispatch_registry(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=registry"
@@ -296,6 +307,7 @@ pub async fn dispatch_registry(
         embedding_dimensions: runtime.embedding_dimensions,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_registry_source_with_job(
         index_input,
@@ -325,6 +337,7 @@ pub async fn dispatch_session(
     input: &str,
     collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=session"
@@ -347,6 +360,7 @@ pub async fn dispatch_session(
         embedding_dimensions: runtime.embedding_dimensions,
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_sessions_source_with_job(
         index_input,
@@ -379,6 +393,7 @@ pub async fn dispatch_web(
     collection: &str,
     owner_id: &str,
     scope: SourceScope,
+    auth_snapshot: Option<&AuthSnapshot>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!("command=source collection={collection} kind=web"));
     let crawl = crawl_for_source(cfg, input)
@@ -404,6 +419,7 @@ pub async fn dispatch_web(
         vector_provider_id: runtime.vector_provider_id.clone(),
         embedding_model: runtime.embedding_model.clone(),
         embedding_dimensions: runtime.embedding_dimensions,
+        auth_snapshot: auth_snapshot.cloned(),
     };
     let output = index_web_source_with_job(
         index_input,

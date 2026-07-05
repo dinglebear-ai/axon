@@ -230,6 +230,61 @@ static REST_ROUTES: &[RestRouteSpec] = &[
         "MemoryResponse",
     ),
     read("GET", "/v1/artifacts", "artifacts", "ArtifactQueryResponse"),
+    job_read("GET", "/v1/jobs", "jobs_list", "JobListPage"),
+    job_read("GET", "/v1/jobs/{id}", "jobs_status", "JobSummary"),
+    job_read("GET", "/v1/jobs/{id}/events", "jobs_events", "JobEventPage"),
+    RestRouteSpec {
+        method: "GET",
+        path: "/v1/jobs/{id}/stream",
+        operation_id: "jobs_stream",
+        request_dto: None,
+        result_dto: "StreamEvent",
+        required_scope: "read",
+        mutates: false,
+        streaming: true,
+        responses: READ_RESPONSES,
+    },
+    job_read(
+        "GET",
+        "/v1/jobs/{id}/artifacts",
+        "jobs_artifacts",
+        "JobArtifactListResult",
+    ),
+    job_admin(
+        "DELETE",
+        "/v1/jobs",
+        "jobs_clear",
+        Some("JobClearRequest"),
+        "JobClearResult",
+    ),
+    job_write(
+        "POST",
+        "/v1/jobs/{id}/cancel",
+        "jobs_cancel",
+        Some("JobCancelRequest"),
+        "JobCancelResult",
+    ),
+    job_write(
+        "POST",
+        "/v1/jobs/{id}/retry",
+        "jobs_retry",
+        Some("JobRetryRequest"),
+        "JobRetryResult",
+    ),
+    job_admin(
+        "POST",
+        "/v1/jobs/recover",
+        "jobs_recover",
+        Some("JobRecoveryRequest"),
+        "JobRecoveryResult",
+    ),
+    job_admin(
+        "POST",
+        "/v1/jobs/cleanup",
+        "jobs_cleanup",
+        Some("JobCleanupRequest"),
+        "JobCleanupResult",
+    ),
     job_read("GET", "/v1/extract", "extract_list", "JobListResponse"),
     job_write(
         "POST",
@@ -410,4 +465,24 @@ const fn job_write(
     result_dto: &'static str,
 ) -> RestRouteSpec {
     write(method, path, operation_id, request_dto, result_dto)
+}
+
+const fn job_admin(
+    method: &'static str,
+    path: &'static str,
+    operation_id: &'static str,
+    request_dto: Option<&'static str>,
+    result_dto: &'static str,
+) -> RestRouteSpec {
+    RestRouteSpec {
+        method,
+        path,
+        operation_id,
+        request_dto,
+        result_dto,
+        required_scope: "admin",
+        mutates: true,
+        streaming: false,
+        responses: WRITE_RESPONSES,
+    }
 }

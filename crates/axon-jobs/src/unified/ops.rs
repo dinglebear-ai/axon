@@ -9,6 +9,10 @@ use super::SqliteUnifiedJobStore;
 use crate::boundary::Result;
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
+use crate::unified::pagination::{
+    EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
+    encode_job_cursor,
+};
 use crate::unified_codec::*;
 
 impl SqliteUnifiedJobStore {
@@ -28,8 +32,10 @@ impl SqliteUnifiedJobStore {
             "INSERT INTO jobs (
                 job_id, kind, intent, status, phase, priority, source_id, watch_id,
                 parent_job_id, root_job_id, attempt, warnings_json, request_json,
-                metadata_json, idempotency_key, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)",
+                metadata_json, idempotency_key, auth_snapshot_json, config_snapshot_id,
+                stage_plan_json, requirements_json, result_schema, error_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(job_id.0.to_string())
         .bind(enum_name(request.job_kind)?)
@@ -41,10 +47,23 @@ impl SqliteUnifiedJobStore {
         .bind(request.watch_id.as_ref().map(|id| id.0.as_str()))
         .bind(request.parent_job_id.map(|id| id.0.to_string()))
         .bind(root_job_id.0.to_string())
-        .bind(to_json(&Vec::<SourceWarning>::new())?)
+        .bind(request.attempt as i64)
+        .bind(to_json(&request.warnings)?)
         .bind(optional_to_json(&request_json)?)
         .bind(to_json(&request.metadata)?)
         .bind(request.idempotency_key.as_deref())
+        .bind(to_json(&request.auth_snapshot)?)
+        .bind(
+            request
+                .config_snapshot_id
+                .as_ref()
+                .map(|id| id.0.as_str())
+                .unwrap_or(""),
+        )
+        .bind(to_json(&request.stage_plan)?)
+        .bind(to_json(&request.requirements)?)
+        .bind(request.result_schema.as_deref().unwrap_or(""))
+        .bind(optional_to_json(&request.error)?)
         .bind(now.0.as_str())
         .bind(now.0.as_str())
         .execute(&mut *tx)
@@ -197,42 +216,57 @@ impl SqliteUnifiedJobStore {
         Ok(())
     }
 
-    pub(crate) async fn append_job_event(&self, event: SourceProgressEvent) -> Result<()> {
+    pub(crate) async fn append_job_event(&self, mut event: SourceProgressEvent) -> Result<()> {
         let mut tx = self.pool.begin().await.map_err(sql_error)?;
         ensure_job(&mut tx, event.job_id).await?;
-        let max_sequence = sqlx::query_scalar::<_, Option<i64>>(
-            "SELECT MAX(sequence) FROM job_events WHERE job_id = ?",
-        )
-        .bind(event.job_id.0.to_string())
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(sql_error)?
-        .unwrap_or(0) as u64;
-        let expected = max_sequence + 1;
-        if event.sequence != expected {
-            if let Some(dedupe_key) = event.dedupe_key.as_deref() {
-                let duplicate_sequence = sqlx::query_scalar::<_, Option<i64>>(
-                    "SELECT sequence FROM job_events WHERE job_id = ? AND dedupe_key = ?",
-                )
-                .bind(event.job_id.0.to_string())
-                .bind(dedupe_key)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(sql_error)?;
-                if duplicate_sequence == Some(event.sequence as i64) {
-                    tx.commit().await.map_err(sql_error)?;
-                    return Ok(());
+        let auto_sequence = event.sequence == 0;
+        let sequence = if auto_sequence {
+            sqlx::query_scalar::<_, i64>(
+                "UPDATE jobs
+                 SET last_event_sequence = last_event_sequence + 1
+                 WHERE job_id = ?
+                 RETURNING last_event_sequence",
+            )
+            .bind(event.job_id.0.to_string())
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(sql_error)? as u64
+        } else {
+            let last_sequence = sqlx::query_scalar::<_, i64>(
+                "SELECT last_event_sequence FROM jobs WHERE job_id = ?",
+            )
+            .bind(event.job_id.0.to_string())
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(sql_error)? as u64;
+            let expected = last_sequence + 1;
+            if event.sequence != expected {
+                if let Some(dedupe_key) = event.dedupe_key.as_deref() {
+                    let duplicate_sequence = sqlx::query_scalar::<_, i64>(
+                        "SELECT sequence FROM job_events WHERE job_id = ? AND dedupe_key = ?",
+                    )
+                    .bind(event.job_id.0.to_string())
+                    .bind(dedupe_key)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(sql_error)?;
+                    if duplicate_sequence == Some(event.sequence as i64) {
+                        tx.commit().await.map_err(sql_error)?;
+                        return Ok(());
+                    }
                 }
+                return Err(ApiError::new(
+                    "job_event.sequence_invalid",
+                    ErrorStage::Publishing,
+                    format!(
+                        "expected event sequence {} for job {}, got {}",
+                        expected, event.job_id.0, event.sequence
+                    ),
+                ));
             }
-            return Err(ApiError::new(
-                "job_event.sequence_invalid",
-                ErrorStage::Publishing,
-                format!(
-                    "expected event sequence {} for job {}, got {}",
-                    expected, event.job_id.0, event.sequence
-                ),
-            ));
-        }
+            event.sequence
+        };
+        event.sequence = sequence;
         let duplicate_dedupe = if let Some(dedupe_key) = event.dedupe_key.as_deref() {
             sqlx::query_scalar::<_, i64>(
                 "SELECT COUNT(*) FROM job_events WHERE job_id = ? AND dedupe_key = ?",
@@ -277,57 +311,91 @@ impl SqliteUnifiedJobStore {
         if let Err(error) = result {
             return Err(sql_error(error));
         }
+        if !auto_sequence {
+            sqlx::query("UPDATE jobs SET last_event_sequence = ? WHERE job_id = ?")
+                .bind(event.sequence as i64)
+                .bind(event.job_id.0.to_string())
+                .execute(&mut *tx)
+                .await
+                .map_err(sql_error)?;
+        }
         tx.commit().await.map_err(sql_error)
     }
 
     pub(crate) async fn list_jobs(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "job.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "sqlite unified job store does not implement cursor pagination yet",
-            ));
-        }
         let mut sql = "SELECT * FROM jobs WHERE 1 = 1".to_string();
         let bindings = append_job_filters(&mut sql, &request)?;
-        let total_sql = sql.replacen("SELECT *", "SELECT COUNT(*)", 1);
-        let mut total_query = sqlx::query_scalar::<_, i64>(&total_sql);
-        if let Some(source_id) = bindings.source_id.as_deref() {
-            total_query = total_query.bind(source_id);
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_job_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("job.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
+        if cursor.is_some() {
+            sql.push_str(" AND (updated_at < ? OR (updated_at = ? AND job_id < ?))");
         }
-        if let Some(watch_id) = bindings.watch_id.as_deref() {
-            total_query = total_query.bind(watch_id);
-        }
-        let total = total_query.fetch_one(&self.pool).await.map_err(sql_error)? as u64;
+        let total = if cursor.is_none() {
+            let total_sql = sql.replacen("SELECT *", "SELECT COUNT(*)", 1);
+            let mut total_query = sqlx::query_scalar::<_, i64>(&total_sql);
+            if let Some(source_id) = bindings.source_id.as_deref() {
+                total_query = total_query.bind(source_id);
+            }
+            if let Some(watch_id) = bindings.watch_id.as_deref() {
+                total_query = total_query.bind(watch_id);
+            }
+            Some(total_query.fetch_one(&self.pool).await.map_err(sql_error)? as u64)
+        } else {
+            None
+        };
         let limit = clamp_page_limit(request.limit);
-        sql.push_str(" ORDER BY created_at DESC LIMIT ");
+        sql.push_str(" ORDER BY updated_at DESC, job_id DESC LIMIT ");
         sql.push_str(&limit.to_string());
-        let rows = bind_job_filters(sqlx::query(&sql), &bindings)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(sql_error)?;
+        let mut query = bind_job_filters(sqlx::query(&sql), &bindings);
+        if let Some(cursor) = cursor.as_ref() {
+            query = query
+                .bind(cursor.updated_at.as_str())
+                .bind(cursor.updated_at.as_str())
+                .bind(cursor.job_id.as_str());
+        }
+        let rows = query.fetch_all(&self.pool).await.map_err(sql_error)?;
         let items = rows
             .into_iter()
             .map(row_to_summary)
             .collect::<Result<Vec<_>>>()?;
         Ok(Page {
             limit,
-            total: Some(total),
-            next_cursor: None,
+            total,
+            next_cursor: items
+                .last()
+                .filter(|_| items.len() == limit as usize)
+                .map(|job| {
+                    encode_job_cursor(&JobCursor {
+                        updated_at: job.updated_at.0.clone(),
+                        job_id: job.job_id.0.to_string(),
+                    })
+                }),
             items,
         })
     }
 
     pub(crate) async fn list_events(&self, request: JobEventListRequest) -> Result<JobEventPage> {
         reject_non_public_visibility(request.visibility)?;
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "job_event.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "sqlite unified job store does not implement event cursor pagination yet",
-            ));
-        }
         let mut sql = "SELECT * FROM job_events WHERE job_id = ?".to_string();
+        let cursor_sequence = request
+            .cursor
+            .as_deref()
+            .map(decode_event_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("job_event.cursor_invalid", ErrorStage::Retrieving, message)
+            })?
+            .map(|cursor| cursor.sequence);
+        let after_sequence = cursor_sequence.or(request.after_sequence);
+        if let Some(after_sequence) = after_sequence {
+            sql.push_str(&format!(" AND sequence > {after_sequence}"));
+        }
         append_event_filters(&mut sql, &request)?;
         let limit = clamp_page_limit(request.limit);
         sql.push_str(" ORDER BY sequence ASC LIMIT ");
@@ -344,7 +412,14 @@ impl SqliteUnifiedJobStore {
         Ok(JobEventPage {
             last_sequence: events.last().map(|event| event.sequence).unwrap_or(0),
             limit,
-            next_cursor: None,
+            next_cursor: events
+                .last()
+                .filter(|_| events.len() == limit as usize)
+                .map(|event| {
+                    encode_event_cursor(&EventCursor {
+                        sequence: event.sequence,
+                    })
+                }),
             events,
         })
     }

@@ -8,11 +8,11 @@ use axon_core::logging::{init_tracing, log_done, log_info, log_warn};
 use axon_services::context::ServiceContext;
 use commands::{
     run_ask, run_brand, run_completions, run_config, run_debug, run_dedupe, run_diff, run_doctor,
-    run_domains, run_endpoints, run_evaluate, run_extract, run_fresh, run_map, run_mcp, run_memory,
-    run_migrate, run_monitor, run_palette, run_purge, run_query, run_refresh, run_research,
-    run_reset, run_retrieve, run_screenshot, run_search, run_serve, run_sessions, run_setup,
-    run_source, run_sources, run_stats, run_status, run_suggest, run_summarize, run_sync,
-    run_train, run_update, run_watch, start_url_from_cfg,
+    run_domains, run_endpoints, run_evaluate, run_extract, run_fresh, run_jobs, run_map, run_mcp,
+    run_memory, run_migrate, run_monitor, run_palette, run_purge, run_query, run_refresh,
+    run_research, run_reset, run_retrieve, run_screenshot, run_search, run_serve, run_sessions,
+    run_setup, run_source, run_sources, run_stats, run_status, run_suggest, run_summarize,
+    run_sync, run_train, run_update, run_watch, start_url_from_cfg,
 };
 use std::error::Error;
 use std::sync::Arc;
@@ -55,6 +55,7 @@ async fn run_once(
         CommandKind::Domains => run_domains(cfg).await?,
         CommandKind::Stats => run_stats(cfg).await?,
         CommandKind::Status => run_status(cfg, service_context).await?,
+        CommandKind::Jobs => run_jobs(cfg, service_context).await?,
         CommandKind::Dedupe => run_dedupe(cfg).await?,
         CommandKind::Purge => run_purge(cfg).await?,
         CommandKind::Refresh => run_refresh(cfg, service_context).await?,

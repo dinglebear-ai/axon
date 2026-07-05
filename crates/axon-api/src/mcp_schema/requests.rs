@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::source::{
+    JobKind, JobRetryMode, LifecycleStatus, MetadataMap, PipelinePhase, Severity, SourceId,
+    Timestamp, Visibility, WatchId,
+};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseMode {
@@ -43,6 +48,49 @@ pub enum CrawlSubaction {
     Cleanup,
     Clear,
     Recover,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobsRequest {
+    pub subaction: Option<JobsSubaction>,
+    pub job_id: Option<String>,
+    pub status: Option<LifecycleStatus>,
+    pub kind: Option<JobKind>,
+    pub source_id: Option<SourceId>,
+    pub watch_id: Option<WatchId>,
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
+    pub after_sequence: Option<u64>,
+    pub since_sequence: Option<u64>,
+    pub severity: Option<Severity>,
+    pub visibility: Option<Visibility>,
+    pub reason: Option<String>,
+    pub retry_mode: Option<JobRetryMode>,
+    pub from_phase: Option<PipelinePhase>,
+    pub idempotency_key: Option<String>,
+    #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
+    pub overrides: MetadataMap,
+    pub stale_before: Option<Timestamp>,
+    pub older_than: Option<Timestamp>,
+    pub dry_run: Option<bool>,
+    pub confirm: Option<bool>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JobsSubaction {
+    List,
+    Get,
+    Status,
+    Events,
+    Stream,
+    Cancel,
+    Retry,
+    Recover,
+    Cleanup,
+    Clear,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]

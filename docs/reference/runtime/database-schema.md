@@ -14,7 +14,7 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-jobs/src/migrations` | `sha256:9adbb62888d6087f936f9450413eabf72f06401fbe75c0ede9954b36e8f99fb4` |
+| `crates/axon-jobs/src/migrations` | `sha256:b5c2ea9560473d57b8aaf215bc744b1e786c6fd5f87c870aa451aa72a9480b42` |
 | `crates/axon-ledger/src/migrations` | `sha256:5c0c9f475a14a4a0af3eacbe6f3cf029612170b3ab5b91c5c1b1c5fe88d0b285` |
 | `docs/pipeline-unification/schemas/database-schema.md` | `sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571` |
 

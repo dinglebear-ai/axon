@@ -91,6 +91,7 @@ async fn refresh_target_local_code_search_index_with_progress(
         selection_policy: LocalSourceSelectionPolicy::CodeSearch,
         embedding_reservations: Some(target.embedding_reservations.clone()),
         vector_reservations: Some(target.vector_reservations.clone()),
+        auth_snapshot: None,
     };
     emit_target_progress_started(progress);
     match index_local_source_with_job(
