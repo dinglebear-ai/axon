@@ -16,7 +16,7 @@ See the family contract for declared output paths.
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:f937be4f83651ef06d4a28ce6a1b9e104f3405542337abceeb406e28089cc967` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:fef4a0c55bf2a025c4326e2cc82ca13657024df7bbdb37c80637dde86090a466` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:935c16dcd58bac358bcb78eb1e72634941709135d7148adcb8cbe3c09e6e7808` |
 | `crates/axon-vectors/src/point.rs` | `sha256:506dbcd5fc7edafa752b990da56f6177cb68810a74b59c6b2b3ddb937ce4d112` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:ef84517d66acc0e35fe0b432df3cee52fc07e6643006003eca0ec0c29a5cde7f` |
