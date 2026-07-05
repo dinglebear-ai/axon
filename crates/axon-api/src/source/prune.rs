@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::common::SourceWarning;
 use super::enums::LifecycleStatus;
 use super::ids::*;
+use super::vector::VectorDeleteSelector;
 
 /// A request to prune (destructively clean up) some slice of stored state.
 ///
@@ -139,6 +140,8 @@ pub struct PruneStep {
     pub target: PruneTargetKind,
     pub description: String,
     pub estimated_deletes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_selector: Option<VectorDeleteSelector>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_id: Option<SourceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

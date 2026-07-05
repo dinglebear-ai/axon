@@ -14,14 +14,12 @@ pub mod scroll;
 
 // Re-exports for convenience (public API)
 pub use delete::CleanupSelectorV1;
-#[cfg(any(test, feature = "test-util"))]
-pub use delete::local_code_batch_delete_body_for_test;
 pub use delete::qdrant_delete_by_url_filter;
 pub use delete::{
-    QdrantDeleteByUrlResult, qdrant_delete_by_url, qdrant_delete_local_code_files_for_generation,
-    qdrant_delete_local_file_fragments, qdrant_delete_points, qdrant_delete_repo_file_fragments,
-    qdrant_delete_source_cleanup_selector, qdrant_delete_source_cleanup_selectors,
-    qdrant_delete_stale_domain_urls, qdrant_delete_stale_repo_file_urls, qdrant_delete_stale_tail,
+    QdrantDeleteByUrlResult, qdrant_delete_by_url, qdrant_delete_local_file_fragments,
+    qdrant_delete_points, qdrant_delete_repo_file_fragments, qdrant_delete_source_cleanup_selector,
+    qdrant_delete_source_cleanup_selectors, qdrant_delete_stale_domain_urls,
+    qdrant_delete_stale_repo_file_urls, qdrant_delete_stale_tail,
 };
 pub use facets::{qdrant_domain_facets, qdrant_facet, qdrant_facet_filtered, qdrant_url_facets};
 pub use retrieve::{

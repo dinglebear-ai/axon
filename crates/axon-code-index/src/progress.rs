@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum ReindexProgress {
@@ -39,7 +37,6 @@ pub trait ReindexProgressSink: Sync {
 pub(crate) struct ReindexRunOptions<'a> {
     pub generation: i64,
     pub progress: Option<&'a dyn ReindexProgressSink>,
-    pub test_deletes: Option<Arc<Mutex<Vec<String>>>>,
 }
 
 pub(crate) fn emit_progress(progress: Option<&dyn ReindexProgressSink>, event: ReindexProgress) {

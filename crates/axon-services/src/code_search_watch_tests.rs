@@ -218,7 +218,7 @@ fn progress_reservation_id(event: &JobEvent) -> Option<&str> {
 }
 
 #[tokio::test]
-async fn watch_refresh_preserves_legacy_backend_when_target_runtime_is_absent() {
+async fn watch_refresh_fails_when_target_runtime_is_absent() {
     let repo = tempfile::tempdir().expect("repo");
     init_git_repo(repo.path());
     tokio::fs::write(
@@ -233,15 +233,21 @@ async fn watch_refresh_preserves_legacy_backend_when_target_runtime_is_absent() 
 
     let err = refresh_code_search_watch_root(&ctx, &events, repo.path(), "file_change")
         .await
-        .expect_err("legacy refresh still requires sqlite runtime");
-    assert!(err.to_string().contains("SQLite service runtime"));
-
+        .expect_err("target refresh requires target runtime");
     assert!(
-        events
-            .events
-            .lock()
-            .expect("events")
+        err.to_string()
+            .contains("target local source code-search refresh dependencies are not available")
+    );
+
+    let captured = events.events.lock().expect("events");
+    assert!(
+        captured
             .iter()
             .any(|event| matches!(event, CodeSearchWatchEvent::RefreshStarted { .. }))
+    );
+    assert!(
+        captured
+            .iter()
+            .any(|event| matches!(event, CodeSearchWatchEvent::RefreshFailed { .. }))
     );
 }

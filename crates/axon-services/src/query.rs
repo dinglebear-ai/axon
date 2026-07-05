@@ -15,10 +15,9 @@ use crate::context::ServiceContext;
 
 pub use self::ask_retrieval::ask_via_retrieval;
 pub(crate) use self::ask_retrieval::retrieval_ask_context;
-pub(crate) use self::code_search::default_code_search_refresh_backend;
 pub use self::code_search::{
-    CodeSearchProjectResult, CodeSearchRefreshBackend, CodeSearchRefreshResult, code_search,
-    code_search_with_progress, refresh_code_search_index, refresh_code_search_index_with_backend,
+    CodeSearchProjectResult, CodeSearchRefreshResult, ReindexProgress, ReindexProgressSink,
+    code_search, code_search_with_progress, refresh_code_search_index,
     refresh_code_search_index_with_progress, resolve_code_search_project,
 };
 pub use self::retrieval::{query_via_retrieval, query_via_retrieval_with_cfg};

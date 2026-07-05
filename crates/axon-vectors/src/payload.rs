@@ -3,9 +3,11 @@
 use std::fmt;
 
 use axon_api::source::{ChunkLocator, MetadataMap, SourceRange};
+use serde_json::Value;
 
 use crate::payload_redaction::{forbidden_field_name, validate_forbidden_value};
 
+pub use crate::payload_generation::generation_payload_i64;
 pub use crate::payload_redaction::{
     BARE_SECRET_TOKEN_PREFIXES, FORBIDDEN_FIELD_FRAGMENTS, FORBIDDEN_VALUE_FRAGMENTS,
 };
@@ -71,7 +73,7 @@ impl fmt::Display for VectorPayloadValidationError {
             Self::InvalidGeneration { field } => {
                 write!(
                     f,
-                    "vector payload field `{field}` must be a non-empty string"
+                    "vector payload field `{field}` must be a non-negative integer or null when allowed"
                 )
             }
             Self::InvalidContractVersion => {
@@ -136,16 +138,28 @@ fn validate_forbidden_fields(metadata: &MetadataMap) -> Result<(), VectorPayload
 }
 
 fn validate_generations(metadata: &MetadataMap) -> Result<(), VectorPayloadValidationError> {
-    for field in ["source_generation", "committed_generation"] {
-        if !metadata
-            .get(field)
-            .and_then(|value| value.as_str())
-            .is_some_and(|value| !value.trim().is_empty())
-        {
-            return Err(VectorPayloadValidationError::InvalidGeneration {
-                field: field.to_string(),
-            });
-        }
+    if !metadata
+        .get("source_generation")
+        .and_then(Value::as_i64)
+        .is_some_and(|value| value >= 0)
+    {
+        return Err(VectorPayloadValidationError::InvalidGeneration {
+            field: "source_generation".to_string(),
+        });
+    }
+    let Some(committed_generation) = metadata.get("committed_generation") else {
+        return Err(VectorPayloadValidationError::InvalidGeneration {
+            field: "committed_generation".to_string(),
+        });
+    };
+    if !committed_generation.is_null()
+        && !committed_generation
+            .as_i64()
+            .is_some_and(|value| value >= 0)
+    {
+        return Err(VectorPayloadValidationError::InvalidGeneration {
+            field: "committed_generation".to_string(),
+        });
     }
     Ok(())
 }

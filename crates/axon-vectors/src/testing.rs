@@ -92,8 +92,8 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
         "item_canonical_uri".to_string(),
         json!(canonical_uri.clone()),
     );
-    payload.insert("source_generation".to_string(), json!("7"));
-    payload.insert("committed_generation".to_string(), json!("7"));
+    payload.insert("source_generation".to_string(), json!(7));
+    payload.insert("committed_generation".to_string(), json!(7));
     payload.insert(
         "document_id".to_string(),
         json!(format!("doc-{}", spec.chunk_id)),

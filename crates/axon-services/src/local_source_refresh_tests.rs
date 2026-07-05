@@ -1,9 +1,12 @@
 use axon_api::source::*;
-use axon_embedding::fake::FakeEmbeddingProvider;
+use axon_embedding::fake::{FakeEmbeddingMode, FakeEmbeddingProvider};
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
+use axon_vectors::payload::generation_payload_i64;
 use axon_vectors::store::FakeVectorStore;
 
-use super::{LocalSourceIndexInput, LocalSourceSelectionPolicy, index_local_source};
+use super::{
+    LocalSourceIndexInput, LocalSourceSelectionPolicy, index_local_source, local_source_id,
+};
 
 fn job_id() -> JobId {
     JobId::new(uuid::Uuid::from_u128(0x1111))
@@ -145,14 +148,14 @@ async fn refresh_vectorizes_added_and_modified_docs_and_debts_removed_and_replac
             .count(),
         0
     );
-    assert!(
-        vectors
-            .points("axon-test")
-            .await
-            .iter()
-            .any(|point| point.payload["source_generation"].as_str()
-                == Some(first.generation.0.as_str()))
-    );
+    assert!(vectors.points("axon-test").await.iter().any(
+        |point| point.payload["source_generation"]
+            == serde_json::json!(generation_payload_i64(
+                    &first.generation,
+                    "source_generation"
+                )
+                .expect("numeric generation"))
+    ));
     let stable_points = vectors
         .points("axon-test")
         .await
@@ -172,12 +175,28 @@ async fn refresh_vectorizes_added_and_modified_docs_and_debts_removed_and_replac
             .all(|point| { point.payload["document_status"].as_str() == Some("published") })
     );
     assert!(stable_points.iter().any(|point| {
-        point.payload["source_generation"].as_str() == Some(first.generation.0.as_str())
-            && point.payload["committed_generation"].as_str() == Some(first.generation.0.as_str())
+        point.payload["source_generation"]
+            == serde_json::json!(
+                generation_payload_i64(&first.generation, "source_generation")
+                    .expect("numeric generation")
+            )
+            && point.payload["committed_generation"]
+                == serde_json::json!(
+                    generation_payload_i64(&first.generation, "committed_generation")
+                        .expect("numeric generation")
+                )
     }));
     assert!(stable_points.iter().any(|point| {
-        point.payload["source_generation"].as_str() == Some(second.generation.0.as_str())
-            && point.payload["committed_generation"].as_str() == Some(second.generation.0.as_str())
+        point.payload["source_generation"]
+            == serde_json::json!(
+                generation_payload_i64(&second.generation, "source_generation")
+                    .expect("numeric generation")
+            )
+            && point.payload["committed_generation"]
+                == serde_json::json!(
+                    generation_payload_i64(&second.generation, "committed_generation")
+                        .expect("numeric generation")
+                )
     }));
     assert_eq!(
         vectors
@@ -235,10 +254,18 @@ async fn refresh_vectorizes_added_and_modified_docs_and_debts_removed_and_replac
             .all(|point| { point.payload["document_status"].as_str() == Some("published") })
     );
     assert!(stable_points.iter().any(|point| {
-        point.payload["committed_generation"].as_str() == Some(first.generation.0.as_str())
+        point.payload["committed_generation"]
+            == serde_json::json!(
+                generation_payload_i64(&first.generation, "committed_generation")
+                    .expect("numeric generation")
+            )
     }));
     assert!(stable_points.iter().any(|point| {
-        point.payload["committed_generation"].as_str() == Some(second.generation.0.as_str())
+        point.payload["committed_generation"]
+            == serde_json::json!(
+                generation_payload_i64(&second.generation, "committed_generation")
+                    .expect("numeric generation")
+            )
     }));
 }
 
@@ -303,4 +330,25 @@ async fn code_search_selection_skips_lockfiles_and_pruned_dirs() {
         ledger.committed_generation(&output.source_id).await,
         Some(output.generation)
     );
+}
+
+#[tokio::test]
+async fn provider_unavailable_does_not_churn_first_generation() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("lib.rs");
+    tokio::fs::write(&path, "pub fn answer() -> i32 { 42 }\n")
+        .await
+        .unwrap();
+    let ledger = FakeLedgerStore::new();
+    let embedder =
+        FakeEmbeddingProvider::new("fake-embedding", 8).with_mode(FakeEmbeddingMode::Fatal);
+    let vectors = FakeVectorStore::new("fake-vector");
+    let source_id = local_source_id(&path);
+
+    let result = index_local_source(input(path), &ledger, &embedder, &vectors).await;
+
+    assert!(result.is_err());
+    assert_eq!(ledger.committed_generation(&source_id).await, None);
+    assert!(ledger.generation_count().await <= 1);
+    assert!(vectors.calls().await.iter().all(|call| *call != "upsert"));
 }

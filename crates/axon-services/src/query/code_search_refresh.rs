@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 
 use axon_api::source::JobId;
 use axon_api::source::{SourceGenerationId, SourceId};
-use axon_code_index::ensure::{EnsureFreshOptions, ensure_fresh_with_progress};
-use axon_code_index::{CodeIndexIdentity, FreshnessWarning, ReindexProgress, ReindexProgressSink};
 
 use crate::context::ServiceContext;
 use crate::local_source::{
@@ -13,15 +11,10 @@ use crate::local_source::{
 use crate::types::{CodeSearchCaller, CodeSearchFreshness};
 
 use super::{
-    code_index_pool, code_search_committed_generation, code_search_freshness, code_search_identity,
-    resolve_code_search_root,
+    CodeIndexIdentity, FreshnessWarning, ReindexProgress, ReindexProgressSink,
+    code_search_freshness, code_search_identity, resolve_code_search_root,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CodeSearchRefreshBackend {
-    LegacyCodeIndex,
-    TargetLocalSource,
-}
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct CodeSearchRefreshResult {
     pub project_root: PathBuf,
@@ -70,63 +63,7 @@ pub async fn refresh_code_search_index_with_progress(
     caller: CodeSearchCaller,
     progress: Option<&dyn ReindexProgressSink>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    refresh_code_search_index_with_backend(
-        ctx,
-        cwd,
-        caller,
-        default_code_search_refresh_backend(ctx),
-        progress,
-    )
-    .await
-}
-
-#[must_use = "refresh_code_search_index_with_backend returns a Result that should be handled"]
-pub async fn refresh_code_search_index_with_backend(
-    ctx: &ServiceContext,
-    cwd: Option<&Path>,
-    caller: CodeSearchCaller,
-    backend: CodeSearchRefreshBackend,
-    progress: Option<&dyn ReindexProgressSink>,
-) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    match backend {
-        CodeSearchRefreshBackend::LegacyCodeIndex => {
-            refresh_legacy_code_search_index_with_progress(ctx, cwd, caller, progress).await
-        }
-        CodeSearchRefreshBackend::TargetLocalSource => {
-            refresh_target_local_code_search_index_with_progress(ctx, cwd, caller, progress).await
-        }
-    }
-}
-
-pub(crate) fn default_code_search_refresh_backend(
-    ctx: &ServiceContext,
-) -> CodeSearchRefreshBackend {
-    if ctx.target_local_source_runtime().is_some() {
-        CodeSearchRefreshBackend::TargetLocalSource
-    } else {
-        CodeSearchRefreshBackend::LegacyCodeIndex
-    }
-}
-
-async fn refresh_legacy_code_search_index_with_progress(
-    ctx: &ServiceContext,
-    cwd: Option<&Path>,
-    caller: CodeSearchCaller,
-    progress: Option<&dyn ReindexProgressSink>,
-) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    let root = resolve_code_search_root(cwd, caller).await?;
-    let identity = code_search_identity(ctx.cfg(), root).await;
-    let freshness =
-        resolve_code_search_freshness_with_progress(ctx, &identity, true, progress).await;
-    let generation = code_search_committed_generation(ctx, &identity).await?;
-    Ok(CodeSearchRefreshResult {
-        project_root: identity.project_root.clone(),
-        project_key: identity.project_key.clone(),
-        legacy_code_index_generation: generation,
-        target_source_id: None,
-        target_source_generation: None,
-        freshness,
-    })
+    refresh_target_local_code_search_index_with_progress(ctx, cwd, caller, progress).await
 }
 
 async fn refresh_target_local_code_search_index_with_progress(
@@ -193,7 +130,18 @@ async fn refresh_target_local_code_search_index_with_progress(
                 error = %err,
                 "target local source refresh failed"
             );
-            Err(err.into())
+            let source_id = local_source_id(&project_root);
+            let committed_generation = target
+                .ledger
+                .committed_generation(source_id.clone())
+                .await?;
+            Ok(target_refresh_failed_result(
+                project_root,
+                project_key,
+                Some(source_id),
+                committed_generation,
+                err.to_string(),
+            ))
         }
     }
 }
@@ -271,54 +219,4 @@ pub(super) async fn target_code_search_committed_state(
         target_source_generation: committed,
         freshness: code_search_freshness("skipped", None, 0, 0),
     })
-}
-
-pub(super) async fn resolve_code_search_freshness_with_progress(
-    ctx: &ServiceContext,
-    identity: &CodeIndexIdentity,
-    ensure: bool,
-    progress: Option<&dyn ReindexProgressSink>,
-) -> CodeSearchFreshness {
-    if !ensure {
-        return code_search_freshness("skipped", None, 0, 0);
-    }
-
-    let pool = match code_index_pool(ctx) {
-        Ok(pool) => pool,
-        Err(err) => {
-            return code_search_freshness(
-                "stale",
-                Some(FreshnessWarning::Failed {
-                    error: err.to_string(),
-                }),
-                0,
-                0,
-            );
-        }
-    };
-
-    match ensure_fresh_with_progress(
-        ctx.cfg(),
-        pool,
-        identity,
-        EnsureFreshOptions::default(),
-        progress,
-    )
-    .await
-    {
-        Ok(outcome) => code_search_freshness(
-            "fresh",
-            outcome.warning,
-            outcome.indexed_files,
-            outcome.removed_files,
-        ),
-        Err(err) => code_search_freshness(
-            "stale",
-            Some(FreshnessWarning::Failed {
-                error: err.to_string(),
-            }),
-            0,
-            0,
-        ),
-    }
 }

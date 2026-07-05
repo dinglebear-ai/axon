@@ -927,7 +927,6 @@ dependencies = [
  "async-trait",
  "axon-adapters",
  "axon-api",
- "axon-code-index",
  "axon-core",
  "axon-crawl",
  "axon-document",

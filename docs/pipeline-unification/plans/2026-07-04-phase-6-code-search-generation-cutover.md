@@ -854,7 +854,7 @@ git commit -m "test(retrieval): enforce committed generation filters"
 - Consumes: all previous task commits and checks.
 - Produces: evidence for Phase 6 Task 1 checkbox updates. Full clean-break cutover remains gated by `docs/pipeline-unification/delivery/cutover-contract.md` and `docs/pipeline-unification/delivery/testing-contract.md`.
 
-- [ ] **Step 1: Run the user-requested targeted checks**
+- [x] **Step 1: Run the user-requested targeted checks**
 
 Run:
 
@@ -866,7 +866,7 @@ cargo test -p axon-retrieval generation --no-fail-fast
 
 Expected: PASS. If a package has no tests matching the exact filter, run the closest crate-local generation suite and record the exact command/output in the implementation notes.
 
-- [ ] **Step 2: Run cleanup/prune checks**
+- [x] **Step 2: Run cleanup/prune checks**
 
 Run:
 
@@ -877,7 +877,7 @@ cargo test -p axon-vectors generation --no-fail-fast
 
 Expected: PASS.
 
-- [ ] **Step 3: Verify legacy runtime removal by exact search**
+- [x] **Step 3: Verify legacy runtime removal by exact search**
 
 Run:
 
@@ -891,7 +891,7 @@ Expected:
 - No runtime caller for `qdrant_delete_local_code_files_for_generation`.
 - No new writes to `axon_code_cleanup_debt`.
 
-- [ ] **Step 4: Verify changed files**
+- [x] **Step 4: Verify changed files**
 
 Run:
 
@@ -902,7 +902,7 @@ git diff --stat main...HEAD
 
 Expected: only Phase 6 Task 1 code/tests/docs are changed.
 
-- [ ] **Step 5: Run source-of-truth cutover smoke checks for this slice**
+- [x] **Step 5: Run source-of-truth cutover smoke checks for this slice**
 
 Run the subset of cutover checks that applies to Phase 6 code-search/generation changes:
 
@@ -918,11 +918,11 @@ Expected:
 - Payload tests prove old local-code payload shape is not accepted as the target retrieval shape.
 - Query/retrieval tests prove the new payload shape is searchable.
 
-- [ ] **Step 6: Record remaining Tier 5 cutover checks outside this slice**
+- [x] **Step 6: Record remaining Tier 5 cutover checks outside this slice**
 
 Add an implementation note stating that full clean-break verification still requires the complete Tier 5 contract checks from `delivery/cutover-contract.md` and `delivery/testing-contract.md`: fresh schema/collection init, canonical local/web reindex, reset old-store blockers, and ask/query over the final clean-break payload shape.
 
-- [ ] **Step 7: Update issue #298 checklist after verification**
+- [x] **Step 7: Update issue #298 checklist after verification**
 
 Use `gh issue view 298 --json body` and `gh issue edit 298 --body-file <file>` to check off only the Phase 6 Task 1 items proven by this implementation:
 
@@ -932,7 +932,7 @@ Use `gh issue view 298 --json body` and `gh issue edit 298 --body-file <file>` t
 
 If issue #298 has finer-grained checklist items for this task, update each proven sub-item and leave unproven items unchecked with a short issue comment containing the verification commands above.
 
-- [ ] **Step 8: Commit plan/evidence updates**
+- [x] **Step 8: Commit plan/evidence updates**
 
 ```bash
 git add docs/pipeline-unification/plans/2026-07-04-phase-6-code-search-generation-cutover.md
@@ -944,3 +944,11 @@ git commit -m "docs(pipeline): plan phase 6 code search cutover"
 - Spec coverage: every requested item maps to a task: audit/classification in Current-State Findings, legacy refresh removal in Task 6, failed-refresh guard in Tasks 1-2, committed search filters in Task 3, Qdrant/schema index alignment in Task 4, prune-owned bounded vector deletes in Task 5, custom cleanup deletion in Task 6, unchanged reuse in Task 7, cleanup order in Task 5, and requested checks in Task 8.
 - Placeholder scan: no placeholder terms or deferred implementation language remain.
 - Type consistency: plan uses existing observed names where available: `refresh_code_search_index_with_backend`, `CodeSearchRefreshBackend::TargetLocalSource`, `refresh_code_search_index_with_progress`, `CodeSearchOptions`, `CodeSearchCaller::Cli`, `SourceId`, `SourceGenerationId`, `VectorDeleteSelector::Generation`, and `required_retrieval_payload_indexes`.
+
+## Implementation Evidence
+
+- Targeted checks passed: `cargo test -p axon-services code_search --no-fail-fast`, `cargo test -p axon-retrieval generation --no-fail-fast`, `cargo test -p axon-prune cleanup_debt --no-fail-fast`, `cargo test -p axon-vectors generation --no-fail-fast`, `cargo test -p axon-services reset --no-fail-fast`, `cargo test -p axon-services preflight --no-fail-fast`, `cargo test -p axon-vectors payload --no-fail-fast`, and `cargo test -p axon-retrieval query --no-fail-fast`.
+- `cargo test -p axon-vectors committed_generation --no-fail-fast` matched zero tests, so the closest crate-local generation suite was run: `cargo test -p axon-vectors generation --no-fail-fast`.
+- The exact legacy runtime search found no runtime `refresh_legacy_code_search_index_with_progress`, `LegacyCodeIndex`, or `qdrant_delete_local_code_files_for_generation` callers; the only `axon_code_cleanup_debt` match is an old-schema migration fixture in `crates/axon-code-index/src/code_index_tests.rs`.
+- GitHub issue #298 was updated after verification by checking the finer-grained Phase 6 item `Use committed generations for search`.
+- Full clean-break verification still requires the complete Tier 5 contract checks from `delivery/cutover-contract.md` and `delivery/testing-contract.md`: fresh schema/collection init, canonical local/web reindex, reset old-store blockers, and ask/query over the final clean-break payload shape.

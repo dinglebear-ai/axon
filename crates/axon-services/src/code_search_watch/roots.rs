@@ -1,12 +1,15 @@
 use super::{CodeSearchWatchDryRunPlan, CodeSearchWatchDryRunRoot};
 use anyhow::Result;
-use axon_code_index::manifest::collect_git_files;
 use axon_core::config::CodeSearchWatchConfig;
-use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files};
+use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files, should_include_file};
 use axon_vector::ops::input::select;
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+use tokio::process::Command;
+
+const GIT_LS_FILES_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) fn code_search_watch_dirs(options: &CodeSearchWatchConfig) -> Result<Vec<PathBuf>> {
     let raw = if options.roots.is_empty() {
@@ -57,10 +60,54 @@ pub(super) async fn build_code_search_watch_dry_run_plan(
 }
 
 async fn collect_code_search_watch_files(root: &Path) -> Result<Vec<PathBuf>> {
-    match collect_git_files(root, SelectionPolicy::CodeSearch).await {
+    match collect_git_files_for_watch(root, SelectionPolicy::CodeSearch).await {
         Ok(files) => Ok(files),
         Err(_) => collect_files(root, SelectionPolicy::CodeSearch).await,
     }
+}
+
+async fn collect_git_files_for_watch(root: &Path, policy: SelectionPolicy) -> Result<Vec<PathBuf>> {
+    let output = tokio::time::timeout(
+        GIT_LS_FILES_TIMEOUT,
+        Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args([
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ])
+            .output(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("git ls-files timed out"))?
+    .map_err(|err| anyhow::anyhow!("git ls-files failed: {err}"))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git ls-files failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    let mut files = Vec::new();
+    for raw in output.stdout.split(|byte| *byte == 0) {
+        if raw.is_empty() {
+            continue;
+        }
+        let rel = std::str::from_utf8(raw)
+            .map_err(|err| anyhow::anyhow!("git ls-files output was not UTF-8: {err}"))?;
+        let path = root.join(rel);
+        let Ok(metadata) = tokio::fs::metadata(&path).await else {
+            continue;
+        };
+        if metadata.is_file() && should_include_file(&path, root, policy) {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
 }
 
 pub(super) fn code_search_watch_dirty_roots(

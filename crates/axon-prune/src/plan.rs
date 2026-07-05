@@ -13,6 +13,7 @@ use axon_api::source::ids::JobId;
 use axon_api::source::prune::{
     PruneEstimate, PrunePlan, PruneSelector, PruneStep, PruneTargetKind,
 };
+use axon_api::source::vector::VectorDeleteSelector;
 use uuid::Uuid;
 
 use crate::safety::selector_requires_admin;
@@ -70,10 +71,15 @@ fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> 
     let mut steps = Vec::new();
     let mut push = |target: PruneTargetKind, n: u64, desc: &str| {
         if n > 0 {
+            let vector_selector = match target {
+                PruneTargetKind::Vector => vector_selector_for(selector),
+                _ => None,
+            };
             steps.push(PruneStep {
                 target,
                 description: desc.to_string(),
                 estimated_deletes: n,
+                vector_selector,
                 source_id: source_id.clone(),
                 generation: generation.clone(),
             });
@@ -112,6 +118,25 @@ fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> 
         "prune cache entries",
     );
     steps
+}
+
+fn vector_selector_for(selector: &PruneSelector) -> Option<VectorDeleteSelector> {
+    match selector {
+        PruneSelector::Source { source_id } => Some(VectorDeleteSelector::Source {
+            collection: "axon".to_string(),
+            source_id: source_id.clone(),
+            generation: None,
+        }),
+        PruneSelector::Generation {
+            source_id,
+            generation,
+        } => Some(VectorDeleteSelector::Generation {
+            collection: "axon".to_string(),
+            source_id: source_id.clone(),
+            generation: generation.clone(),
+        }),
+        _ => None,
+    }
 }
 
 fn new_job_id() -> JobId {

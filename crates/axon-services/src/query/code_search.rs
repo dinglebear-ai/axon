@@ -7,30 +7,26 @@ use axon_api::source::{
     BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
     SourceGenerationId, SourceId, VectorSearchRequest,
 };
-use axon_code_index::config::validate_path_prefix;
-use axon_code_index::store::CodeIndexStore;
-use axon_code_index::{
-    CodeIndexIdentity, CodeSearchAllowedRoots, FreshnessWarning, ReindexProgressSink,
-};
 use axon_core::config::Config;
 use axon_embedding::reservation::ProviderReservationContext;
-use axon_vector::ops::commands::{CodeSearchVectorRequest, code_search_hits};
+use axon_vectors::payload::generation_payload_i64;
 use serde_json::json;
 
 use crate::context::ServiceContext;
 use crate::query::wrap_service_error;
 use crate::types::{CodeSearchCaller, CodeSearchFreshness, CodeSearchOptions, CodeSearchResult};
 
-pub(crate) use self::refresh::default_code_search_refresh_backend;
-use self::refresh::resolve_code_search_freshness_with_progress;
 pub use self::refresh::{
-    CodeSearchProjectResult, CodeSearchRefreshBackend, CodeSearchRefreshResult,
-    refresh_code_search_index, refresh_code_search_index_with_backend,
+    CodeSearchProjectResult, CodeSearchRefreshResult, refresh_code_search_index,
     refresh_code_search_index_with_progress, resolve_code_search_project,
 };
+use self::support::{CodeIndexIdentity, CodeSearchAllowedRoots, validate_path_prefix};
+pub use self::support::{FreshnessWarning, ReindexProgress, ReindexProgressSink};
 
 #[path = "code_search_refresh.rs"]
 mod refresh;
+#[path = "code_search_support.rs"]
+mod support;
 
 const MAX_CODE_SEARCH_QUERY_LEN_BYTES: usize = 64 * 1024;
 const CODE_SEARCH_GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -66,44 +62,7 @@ pub async fn code_search_with_progress(
         .map(validate_path_prefix)
         .transpose()?
         .flatten();
-    if ctx.target_local_source_runtime().is_some() {
-        return target_code_search(ctx, text, opts, path_prefix.as_deref(), progress).await;
-    }
-    let root = resolve_code_search_root(opts.cwd.as_deref(), opts.caller).await?;
-    let identity = code_search_identity(ctx.cfg(), root).await;
-    let freshness =
-        resolve_code_search_freshness_with_progress(ctx, &identity, opts.ensure_fresh, progress)
-            .await;
-    let Some(committed_generation) = code_search_committed_generation(ctx, &identity).await? else {
-        return Ok(code_search_missing_index_result(text, freshness));
-    };
-
-    let results = code_search_hits(
-        ctx.cfg(),
-        CodeSearchVectorRequest {
-            query: text,
-            limit: opts.limit.max(1),
-            offset: opts.offset,
-            project_key: &identity.project_key,
-            generation: committed_generation,
-            path_prefix: path_prefix.as_deref(),
-        },
-    )
-    .await
-    .map_err(|e| -> Box<dyn Error + Send + Sync> {
-        let message = format!(
-            "code_search vector query failed for {}: {e}",
-            text.chars().take(80).collect::<String>()
-        );
-        wrap_service_error(message, e.as_ref())
-    })?;
-
-    Ok(CodeSearchResult {
-        query: text.to_string(),
-        content_trust: "untrusted_local_code".to_string(),
-        results,
-        freshness,
-    })
+    target_code_search(ctx, text, opts, path_prefix.as_deref(), progress).await
 }
 
 async fn target_code_search(
@@ -114,14 +73,8 @@ async fn target_code_search(
     progress: Option<&dyn ReindexProgressSink>,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     let refresh = if opts.ensure_fresh {
-        refresh_code_search_index_with_backend(
-            ctx,
-            opts.cwd.as_deref(),
-            opts.caller,
-            CodeSearchRefreshBackend::TargetLocalSource,
-            progress,
-        )
-        .await?
+        refresh_code_search_index_with_progress(ctx, opts.cwd.as_deref(), opts.caller, progress)
+            .await?
     } else {
         refresh::target_code_search_committed_state(ctx, opts.cwd.as_deref(), opts.caller).await?
     };
@@ -186,7 +139,7 @@ async fn target_code_search(
         &source_id,
         &generation,
         path_prefix,
-    );
+    )?;
     let matches =
         target
             .vector_store
@@ -220,17 +173,22 @@ fn target_code_search_request(
     source_id: &SourceId,
     committed_generation: &SourceGenerationId,
     path_prefix: Option<&str>,
-) -> VectorSearchRequest {
+) -> Result<VectorSearchRequest, Box<dyn Error + Send + Sync>> {
     let mut filters = MetadataMap::new();
     filters.insert("source_id".to_string(), json!(source_id.0));
     filters.insert(
         "committed_generation".to_string(),
-        json!(committed_generation.0),
+        json!(generation_payload_i64(
+            committed_generation,
+            "committed_generation"
+        )?),
     );
+    filters.insert("visibility".to_string(), json!("public"));
+    filters.insert("redaction_status".to_string(), json!("clean"));
     if let Some(prefix) = path_prefix {
         filters.insert("path_prefix".to_string(), json!(prefix));
     }
-    VectorSearchRequest {
+    Ok(VectorSearchRequest {
         collection,
         query: query.to_string(),
         limit: u32::try_from(limit).unwrap_or(u32::MAX),
@@ -241,7 +199,7 @@ fn target_code_search_request(
         generation: None,
         graph_refs: Vec::new(),
         metadata: MetadataMap::new(),
-    }
+    })
 }
 
 fn target_vector_match_to_query_hit(
@@ -297,27 +255,6 @@ fn source_range_u32(range: Option<&serde_json::Value>, field: &str) -> Option<u3
         .get(field)
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok())
-}
-
-/// Extract the SQLite pool backing the code index from the service runtime.
-/// Code-index functions take the raw pool (not `ServiceContext`) so they live
-/// below the services layer without a dependency cycle.
-pub(super) fn code_index_pool(
-    ctx: &ServiceContext,
-) -> Result<sqlx::SqlitePool, Box<dyn Error + Send + Sync>> {
-    ctx.jobs
-        .sqlite_pool()
-        .map(|pool| pool.as_ref().clone())
-        .ok_or_else(|| "code search requires a SQLite service runtime".into())
-}
-
-pub(super) async fn code_search_committed_generation(
-    ctx: &ServiceContext,
-    identity: &CodeIndexIdentity,
-) -> Result<Option<i64>, Box<dyn Error + Send + Sync>> {
-    let store = CodeIndexStore::open_for_pool(code_index_pool(ctx)?).await?;
-    let generation = store.committed_generation(identity).await?.unwrap_or(0);
-    Ok((generation > 0).then_some(generation))
 }
 
 fn code_search_missing_index_result(

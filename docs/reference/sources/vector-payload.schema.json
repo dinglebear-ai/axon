@@ -7116,7 +7116,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:f937be4f83651ef06d4a28ce6a1b9e104f3405542337abceeb406e28089cc967",
+        "checksum": "sha256:45d6beef236e16d572122701748e36ff528992cff85c6ca222440f9e499559f2",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -7126,7 +7126,7 @@
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
       {
-        "checksum": "sha256:506dbcd5fc7edafa752b990da56f6177cb68810a74b59c6b2b3ddb937ce4d112",
+        "checksum": "sha256:f4da74621d8db799cf00f752b323d9b23c4ebe2b8fd30d49eafb87d5628ff44c",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },
@@ -7136,7 +7136,7 @@
         "path": "crates/axon-vectors/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:ef84517d66acc0e35fe0b432df3cee52fc07e6643006003eca0ec0c29a5cde7f",
+        "checksum": "sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },

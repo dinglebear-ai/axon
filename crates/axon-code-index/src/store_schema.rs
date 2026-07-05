@@ -61,20 +61,6 @@ impl CodeIndexStore {
         self.ensure_project_column("cleanup_debt_count", "INTEGER DEFAULT 0")
             .await?;
 
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS axon_code_cleanup_debt (
-              project_key TEXT NOT NULL,
-              generation INTEGER NOT NULL,
-              relative_path TEXT NOT NULL,
-              updated_at_ms INTEGER NOT NULL,
-              PRIMARY KEY (project_key, generation, relative_path)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
         Ok(())
     }
 

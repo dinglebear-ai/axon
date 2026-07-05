@@ -5,11 +5,13 @@
 //! builders remain the contract-tested shape validators).
 
 use axon_api::source::*;
+use serde::Serialize;
 use serde_json::json;
 
 use super::QdrantCollectionSettings;
 use crate::filter::validate_search_filters;
 use crate::filter::{PATH_PREFIX, SEARCH_GENERATION_FIELD};
+use crate::payload::generation_payload_i64;
 use crate::store::Result;
 use crate::validation::validate_upsert_batch;
 
@@ -123,21 +125,32 @@ pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_
     let mut must = Vec::new();
     for (field, value) in request.filters.iter() {
         if field == PATH_PREFIX {
-            return Err(ApiError::new(
-                "vector.qdrant.path_prefix_unsupported",
-                axon_error::ErrorStage::Retrieving,
-                "target Qdrant path-prefix filters require live prefix-query wiring",
-            ));
+            must.push(path_prefix_filter_json(value));
+            continue;
         }
         must.push(condition_json(field, value));
     }
     if let Some(generation) = &request.generation {
         must.push(match_json(
             SEARCH_GENERATION_FIELD,
-            &serde_json::Value::from(generation.0.clone()),
+            &serde_json::Value::from(generation_payload_i64(generation, SEARCH_GENERATION_FIELD)?),
         ));
     }
     Ok((!must.is_empty()).then(|| json!({ "must": must })))
+}
+
+fn path_prefix_filter_json(value: &serde_json::Value) -> serde_json::Value {
+    let prefix = match value {
+        serde_json::Value::String(value) => value.clone(),
+        other => other.to_string(),
+    };
+    let matcher = json!({ "text": prefix });
+    json!({
+        "should": [
+            { "key": "source_item_key", "match": matcher.clone() },
+            { "key": "chunk_locator.path", "match": matcher },
+        ],
+    })
 }
 
 /// Equality filter over a single payload field (used by delete/commit paths).
@@ -148,14 +161,16 @@ pub fn eq_filter_json(field: &str, value: &str) -> serde_json::Value {
 /// Two-field equality filter (used by generation-scoped commit/delete).
 pub fn eq2_filter_json(
     field_a: &str,
-    value_a: &str,
+    value_a: impl Serialize,
     field_b: &str,
-    value_b: &str,
+    value_b: impl Serialize,
 ) -> serde_json::Value {
+    let value_a = serde_json::to_value(value_a).unwrap_or_else(|_| serde_json::Value::Null);
+    let value_b = serde_json::to_value(value_b).unwrap_or_else(|_| serde_json::Value::Null);
     json!({
         "must": [
-            match_json(field_a, &serde_json::Value::from(value_a)),
-            match_json(field_b, &serde_json::Value::from(value_b)),
+            match_json(field_a, &value_a),
+            match_json(field_b, &value_b),
         ]
     })
 }

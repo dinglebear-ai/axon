@@ -170,6 +170,11 @@ fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
             debt.debt_id.0
         ),
         estimated_deletes: 1,
+        vector_selector: Some(VectorDeleteSelector::Generation {
+            collection: "axon".to_string(),
+            source_id: source_id.clone(),
+            generation: generation.clone(),
+        }),
         source_id: Some(source_id),
         generation: Some(generation),
     })

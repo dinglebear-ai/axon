@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::payload::{
     VECTOR_PAYLOAD_CONTRACT_VERSION, VectorPayload, VectorPayloadValidationError,
+    generation_payload_i64,
 };
 use build_helpers::{
     apply_redaction, chunk_hash, chunk_locator_json, insert_default_string, source_range_json,
@@ -409,9 +410,16 @@ fn build_payload(
     );
     metadata.insert(
         "source_generation".to_string(),
-        json!(document.generation.0),
+        json!(
+            generation_payload_i64(&document.generation, "source_generation").map_err(
+                |source| VectorPointBatchBuildError::Payload {
+                    chunk_id: chunk.chunk_id.clone(),
+                    source,
+                }
+            )?
+        ),
     );
-    metadata.insert("committed_generation".to_string(), json!("uncommitted"));
+    metadata.insert("committed_generation".to_string(), serde_json::Value::Null);
     metadata.insert("document_id".to_string(), json!(document.document_id.0));
     metadata.insert("chunk_id".to_string(), json!(chunk.chunk_id.0));
     metadata.insert("chunk_key".to_string(), json!(chunk.chunk_key));

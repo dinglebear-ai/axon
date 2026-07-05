@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use axon_api::source::*;
 use serde_json::json;
 
+use crate::payload::generation_payload_i64;
 use crate::store_helpers::{payload_string, stage_header};
 
 use super::{FakeVectorMode, FakeVectorStore, Result};
@@ -38,10 +39,13 @@ impl FakeVectorStore {
         let mut carried_points = Vec::new();
         for point in points.values() {
             let point_source = payload_string(&point.payload, "source_id");
-            let point_generation = payload_string(&point.payload, "committed_generation");
             let point_item = payload_string(&point.payload, "source_item_key");
             if point_source.as_deref() == Some(source_id.0.as_str())
-                && point_generation.as_deref() == Some(previous_generation.0.as_str())
+                && payload_generation_matches(
+                    &point.payload,
+                    "committed_generation",
+                    &previous_generation,
+                )
                 && point_item
                     .as_deref()
                     .is_some_and(|item| live_keys.contains(item))
@@ -51,11 +55,17 @@ impl FakeVectorStore {
                     VectorPointId::new(format!("{}::{}", point.point_id.0, committed_generation.0));
                 carried.payload.insert(
                     "source_generation".to_string(),
-                    json!(committed_generation.0),
+                    json!(generation_payload_i64(
+                        &committed_generation,
+                        "source_generation"
+                    )?),
                 );
                 carried.payload.insert(
                     "committed_generation".to_string(),
-                    json!(committed_generation.0),
+                    json!(generation_payload_i64(
+                        &committed_generation,
+                        "committed_generation"
+                    )?),
                 );
                 carried
                     .payload
@@ -97,4 +107,15 @@ impl FakeVectorStore {
             },
         })
     }
+}
+
+fn payload_generation_matches(
+    payload: &MetadataMap,
+    field: &str,
+    generation: &SourceGenerationId,
+) -> bool {
+    let Ok(expected) = generation_payload_i64(generation, field) else {
+        return false;
+    };
+    payload.get(field).and_then(serde_json::Value::as_i64) == Some(expected)
 }

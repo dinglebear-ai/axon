@@ -53,3 +53,35 @@ fn single_value_condition_is_a_flat_match() {
         Some("code_language")
     );
 }
+
+#[test]
+fn search_filter_json_converts_path_prefix_to_source_path_should_filter() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 10,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap(
+            [("path_prefix".to_string(), serde_json::json!("src"))]
+                .into_iter()
+                .collect(),
+        ),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = search_filter_json(&request)
+        .expect("path prefix filter")
+        .expect("filter");
+    let path_filter = filter["must"][0]["should"]
+        .as_array()
+        .expect("path should array");
+
+    assert_eq!(path_filter.len(), 2);
+    assert_eq!(path_filter[0]["key"], "source_item_key");
+    assert_eq!(path_filter[1]["key"], "chunk_locator.path");
+    assert_eq!(path_filter[0]["match"]["text"], "src");
+}
