@@ -12,8 +12,8 @@ pub fn production_registry() -> ParserRegistry {
         .with_parser(CodeSymbolsParser)
         .with_parser(ManifestParser)
         .with_parser(MarkdownParser)
-        .with_parser(SessionParser)
         .with_parser(ToolParser)
+        .with_parser(SessionParser)
 }
 
 struct CodeSymbolsParser;
@@ -133,7 +133,7 @@ impl SourceParser for SchemaParser {
                 "swagger.yaml".to_string(),
             ],
             sniff_prefixes: vec!["{\"openapi\"".to_string(), "type Query".to_string()],
-            priority: 5,
+            priority: 4,
         })
     }
 
@@ -229,10 +229,10 @@ impl SourceParser for ToolParser {
             parser_version: crate::facts::PARSER_VERSION.to_string(),
             content_kinds: vec![ContentKind::Structured],
             mime_types: Vec::new(),
-            file_extensions: vec!["jsonl".to_string()],
+            file_extensions: Vec::new(),
             path_suffixes: vec!["tool-output.jsonl".to_string()],
             sniff_prefixes: vec!["{\"tool\"".to_string()],
-            priority: 5,
+            priority: 4,
         })
     }
 

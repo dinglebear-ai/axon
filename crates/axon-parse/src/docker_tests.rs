@@ -77,6 +77,7 @@ fn dockerfile_parser_emits_image_endpoint_env_and_graph_candidates() {
             .iter()
             .any(|node| node.node_kind == "container_image_tag")
     }));
+    assert!(!result.graph_candidates.is_empty());
     assert!(
         result
             .graph_candidates
@@ -121,6 +122,49 @@ volumes:
         "secret_reference",
         "QDRANT__SERVICE__API_KEY"
     ));
+    assert!(result.graph_candidates.iter().any(|candidate| {
+        candidate
+            .edges
+            .iter()
+            .any(|edge| edge.edge_kind == "service_uses_image")
+    }));
+    assert!(
+        result
+            .graph_candidates
+            .iter()
+            .all(|candidate| axon_graph::candidate::validate_candidate(candidate).is_ok())
+    );
+}
+
+#[test]
+fn compose_parser_emits_env_file_secrets_and_dependencies() {
+    let result = parse_fixture(
+        "docker-compose.yml",
+        r#"
+services:
+  api:
+    image: ghcr.io/acme/api:latest
+    env_file:
+      - .env
+    secrets:
+      - db_password
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16
+"#,
+    );
+
+    assert!(has_fact(&result, "env_file", ".env"));
+    assert!(has_fact(&result, "secret_reference", "db_password"));
+    assert!(has_fact(&result, "service_dependency", "db"));
+    assert!(result.graph_candidates.iter().any(|candidate| {
+        candidate
+            .edges
+            .iter()
+            .any(|edge| edge.edge_kind == "derived_from")
+    }));
     assert!(
         result
             .graph_candidates

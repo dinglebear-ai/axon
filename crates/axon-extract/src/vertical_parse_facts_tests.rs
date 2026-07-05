@@ -31,6 +31,13 @@ fn github_repo_vertical_derives_parse_facts_and_graph_candidates() {
             && fact.name == "jmagar/axon"
             && fact.parser_id == "vertical_github_repo"
     }));
+    assert!(artifacts.graph_candidates.iter().any(|candidate| {
+        candidate.kind == "github_repo_metadata"
+            && candidate
+                .edges
+                .iter()
+                .any(|edge| edge.edge_kind == "official_for")
+    }));
     assert!(
         artifacts
             .graph_candidates

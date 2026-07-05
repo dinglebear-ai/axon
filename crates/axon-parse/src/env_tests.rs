@@ -69,6 +69,7 @@ fn env_example_parser_never_emits_secret_values() {
     let serialized = serde_json::to_string(&result).expect("serialize parse result");
     assert!(!serialized.contains("sk-proj-secret"));
     assert!(!serialized.contains("user:pass"));
+    assert!(!result.graph_candidates.is_empty());
     assert!(
         result
             .graph_candidates
