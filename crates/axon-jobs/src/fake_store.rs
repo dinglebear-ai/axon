@@ -149,6 +149,9 @@ impl JobStore for FakeJobWatchStore {
                 .get_mut(&status.job_id)
                 .ok_or_else(|| missing_job(status.job_id))?;
             validate_transition(status.job_id, job.status, status.status)?;
+            if let Some(source_id) = status.source_id.clone() {
+                job.source_id = Some(source_id);
+            }
             job.status = status.status;
             job.phase = status.phase;
             job.counts = status.counts;
@@ -275,7 +278,7 @@ impl JobStore for FakeJobWatchStore {
         let limit = clamp_page_limit(request.limit);
         items.truncate(limit as usize);
         Ok(JobEventPage {
-            last_sequence: items.last().map(|event| event.sequence),
+            last_sequence: items.last().map(|event| event.sequence).unwrap_or(0),
             limit,
             next_cursor: None,
             events: items,
@@ -403,10 +406,12 @@ impl JobStore for FakeJobWatchStore {
             }
         }
         Ok(JobRecoveryResult {
+            recovered: 0,
+            job_ids: Vec::new(),
+            warnings: Vec::new(),
             jobs_scanned: scanned,
             jobs_requeued: 0,
             jobs_failed: failed,
-            warnings: Vec::new(),
         })
     }
 
@@ -438,6 +443,10 @@ impl JobStore for FakeJobWatchStore {
             }
         }
         Ok(JobCleanupResult {
+            matched: terminal_ids.len() as u64,
+            deleted: terminal_ids.len() as u64,
+            dry_run: request.dry_run,
+            warnings: Vec::new(),
             jobs_pruned: terminal_ids.len() as u64,
             events_pruned,
             heartbeats_pruned: 0,

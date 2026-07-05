@@ -1,18 +1,20 @@
-# Phase 6 Code Search Generation Cutover Implementation Plan
+# Phase 6 Committed Generation Search Cutover Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Finish the Phase 6 code-search generation cutover so local source code search reads only committed target source generations, keeps last committed results visible after failed refreshes, and removes remaining runtime ownership from `axon-code-index`.
+**Goal:** Finish the Phase 6 committed-generation cutover so every mutable source search/retrieval path reads only committed target source generations, keeps last committed results visible after failed refreshes, prevents generation churn before the first successful write, and removes remaining runtime ownership from `axon-code-index` and custom Qdrant cleanup paths.
 
-**Architecture:** `axon-services` remains the orchestration facade for CLI/MCP-facing code search. Target local source refresh writes through `axon-ledger` + `axon-vectors`; retrieval/search filters use committed generation payload fields and never expose staged or failed generations unless an explicit staging query path is introduced. Legacy `axon-code-index` generation cleanup is removed from the runtime path and any remaining cleanup debt moves to ledger/prune contracts.
+**Architecture:** `axon-services` remains the orchestration facade for CLI/MCP-facing code search and source-backed retrieval. Target local source refresh writes through `axon-ledger` + `axon-vectors`; all default query/retrieve/code-search filters use committed generation payload fields and never expose staged or failed generations unless an explicit staging query path is introduced. Legacy `axon-code-index` generation cleanup is removed from the runtime path and any remaining cleanup debt moves to ledger/prune contracts.
 
 **Tech Stack:** Rust 2024, `tokio`, `axon-api::source` DTOs, `axon-ledger`, `axon-vectors`, `axon-retrieval`, `axon-prune`, `axon-services`, deterministic fake stores/providers, Qdrant payload filter/index contracts.
 
 ## Global Constraints
 
-- Source-of-truth contracts live under `docs/pipeline-unification/**`; align with `runtime/ledger-contract.md`, `runtime/pruning-contract.md`, `schemas/vector-payload-schema.md`, and `sources/metadata-payload.md`.
+- Source-of-truth contracts live under `docs/pipeline-unification/**`; align with `foundation/source-pipeline.md`, `runtime/ledger-contract.md`, `runtime/pruning-contract.md`, `schemas/vector-payload-schema.md`, `sources/metadata-payload.md`, and `delivery/testing-contract.md`.
+- This plan must satisfy the live issue #298 Phase 6 checklist: ledger-owned freshness/manifest diff/generation publish/cleanup debt, committed generations for search, no provider-unavailable generation churn before first write, and no stale cleanup in custom Qdrant scroll paths.
 - Failed refresh must keep last committed local-code results searchable; add the regression test before changing generation filters.
-- Retrieval/search paths must exclude uncommitted generations unless explicitly querying staged data.
+- Retrieval/search paths for mutable sources must exclude uncommitted generations unless explicitly querying staged data.
+- Phase 6 proof is not limited to `code-search`; code search is the highest-risk remaining runtime path, but `axon-retrieval` and default query/ask request builders must prove the same committed-clean-visible filter contract.
 - Required Qdrant payload filters for this slice: `source_id`, integer `source_generation`, integer-or-null `committed_generation`, `visibility`, and `redaction_status`.
 - The current vector-payload source-of-truth schema defines `source_generation` and `committed_generation` as integer-indexed fields. Do not add keyword-index tests for generation fields unless `docs/pipeline-unification/schemas/vector-payload-schema.md` is deliberately changed first.
 - Generation prune/reset paths must use bounded Qdrant scroll/delete batching; no unbounded point scans.
@@ -37,6 +39,18 @@ Apply these corrections before implementation:
 - Reset/preflight smoke checks are related confidence only; they are not Phase 6 acceptance criteria.
 
 ## Current-State Findings
+
+### Issue #298 Phase 6 Gap Mapping
+
+| Phase 6 checklist item | Plan coverage | Required proof |
+| --- | --- | --- |
+| Move/generalize local code-index ledger/generation logic into `axon-ledger` | Target local source runtime plus legacy removal tasks | No service runtime caller depends on `axon-code-index` for generation state. |
+| Keep `axon-code-index` only until local watch/code search ports are complete | Task 6 | `axon-services` no longer imports or dispatches to code-index refresh/search paths. |
+| Implement source/generation/item/manifest/document/cleanup tables | Existing Phase 6 prerequisite, verified in this slice | Local source refresh tests use `LedgerStore` generation/document/cleanup APIs, not code-index tables. |
+| Make `SourceLedger` own freshness, manifest diffing, generation publish, and cleanup debt | Tasks 2, 5, 6, 7 | Refresh result, unchanged reuse, cleanup debt, and publish behavior are ledger-owned. |
+| Use committed generations for search | Tasks 1, 3, 7 | Code search and retrieval request builders include committed-generation, visibility, and redaction filters. |
+| Prevent generation churn when providers are unavailable before first write | Task 2 plus Task 7 | Provider-unavailable first-write fixture does not publish or replace committed generation state. |
+| Move stale cleanup out of custom Qdrant scroll paths | Tasks 5 and 6 | Generation cleanup is planned by `axon-prune`; Qdrant paging is internal to `VectorStore`. |
 
 ### Remaining `axon-code-index` Paths
 
@@ -791,7 +805,26 @@ fn generation_filter_excludes_staged_vectors_by_default() {
 
 Use existing retrieval request/builders from `crates/axon-retrieval/src/engine_tests.rs`; register a new public `RetrievalFilter` DTO only through `docs/pipeline-unification/foundation/type-and-service-contract.md` and `axon-api` in a separate contract task.
 
-- [ ] **Step 3: Run service and retrieval generation tests**
+- [ ] **Step 3: Add provider-unavailable first-write churn guard**
+
+In `crates/axon-services/src/local_source_refresh_tests.rs`, add a fake embedding/provider-unavailable fixture for a never-before-committed source. Assert:
+
+```rust
+assert!(result.is_err() || result.status.is_failed_or_degraded_without_publish());
+assert!(ledger.committed_generation(source_id).await?.is_none());
+assert_eq!(ledger.generation_count(source_id).await?, 1);
+assert!(vector_store.upsert_calls().await.is_empty());
+```
+
+Then run:
+
+```bash
+cargo test -p axon-services provider_unavailable_does_not_churn_first_generation --no-fail-fast
+```
+
+Expected: PASS after refresh error handling creates at most one failed/unpublished generation and never replaces committed state.
+
+- [ ] **Step 4: Run service and retrieval generation tests**
 
 Run:
 
@@ -802,7 +835,7 @@ cargo test -p axon-retrieval generation --no-fail-fast
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit retrieval contract coverage**
+- [ ] **Step 5: Commit retrieval contract coverage**
 
 ```bash
 git add crates/axon-services/src/local_source_refresh_tests.rs crates/axon-retrieval/src

@@ -147,6 +147,7 @@ impl YoutubeSourceProgress for JobProgressSink<'_> {
         self.jobs
             .update_status(JobStatusUpdate {
                 job_id: self.job_id,
+                source_id: Some(self.source_id.clone()),
                 status,
                 phase,
                 stage_id: None,

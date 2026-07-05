@@ -28,7 +28,7 @@ fn resolver_maps_known_alias_to_official_docs_entrypoint() {
 
     let resolved = resolver.resolve(&request).expect("alias resolves");
 
-    assert_eq!(resolved.requested_uri, "shadcn.com");
+    assert_eq!(resolved.source, "shadcn.com");
     assert_eq!(resolved.canonical_uri, "https://ui.shadcn.com/docs");
     assert_eq!(resolved.source_kind, SourceKind::Web);
     assert_eq!(resolved.default_scope, SourceScope::Docs);
@@ -161,7 +161,7 @@ fn resolver_normalizes_source_families_without_fetching_content() {
         assert_eq!(resolved.source_kind, source_kind, "{}", request.source);
         assert_eq!(resolved.canonical_uri, canonical_uri, "{}", request.source);
         assert_eq!(resolved.default_scope, default_scope, "{}", request.source);
-        assert_eq!(resolved.candidate_adapters[0].adapter.name, adapter);
+        assert_eq!(resolved.adapter.name, adapter);
     }
 }
 
@@ -222,10 +222,9 @@ fn resolver_keeps_local_absolute_paths_out_of_public_identity() {
     assert_eq!(resolved.source_kind, SourceKind::Local);
     assert_eq!(resolved.default_scope, SourceScope::Directory);
     assert!(resolved.canonical_uri.starts_with("local://lp_"));
-    assert_eq!(resolved.requested_uri, "local://redacted");
+    assert_eq!(resolved.source, "local://redacted");
     assert!(!resolved.canonical_uri.contains("/home/jmagar"));
-    assert!(!resolved.requested_uri.contains("/home/jmagar"));
-    assert!(resolved.display_name.contains("axon-route"));
+    assert!(!resolved.source.contains("/home/jmagar"));
 }
 
 #[test]
@@ -258,7 +257,7 @@ fn resolver_normalizes_upload_sources() {
     assert_eq!(resolved.source_kind, SourceKind::Upload);
     assert_eq!(resolved.canonical_uri, "upload://artifact_123");
     assert_eq!(resolved.default_scope, SourceScope::File);
-    assert_eq!(resolved.candidate_adapters[0].adapter.name, "upload");
+    assert_eq!(resolved.adapter.name, "upload");
 }
 
 #[test]

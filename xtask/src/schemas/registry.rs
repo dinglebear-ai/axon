@@ -10,12 +10,6 @@ pub struct RemovedSurfaceRule {
 }
 
 pub const REMOVED_SURFACE_RULES: &[RemovedSurfaceRule] = &[
-    global("\"EmbedRequest\""),
-    global("\"IngestRequest\""),
-    global("\"CrawlRequest\""),
-    global("\"ScrapeRequest\""),
-    global("\"PurgeRequest\""),
-    global("\"CodeSearchRequest\""),
     cli("\"embed\""),
     cli("\"ingest\""),
     cli("\"scrape\""),
@@ -58,24 +52,15 @@ pub const REMOVED_SURFACE_RULES: &[RemovedSurfaceRule] = &[
     config("\"AXON_EMBED_DOC_TIMEOUT_SECS\""),
     config("\"AXON_WATCH_TICK_SECS\""),
     config("\"AXON_WATCH_LEASE_SECS\""),
-    dto("\"input\""),
-    dto("\"source_type\""),
-    dto("\"target\""),
-    dto("\"include_source\""),
-    dto("\"urls\""),
-    dto("\"url\""),
-    dto("\"prefix\""),
-    dto("\"cwd\""),
-    dto("\"path_prefix\""),
-    dto("\"no_freshness\""),
 ];
 
-const fn global(token: &'static str) -> RemovedSurfaceRule {
-    RemovedSurfaceRule {
-        token,
-        path_contains: &[],
-    }
-}
+pub const REMOVED_API_DTO_DEFS: &[&str] = &[
+    "EmbedRequest",
+    "IngestRequest",
+    "CrawlRequest",
+    "ScrapeRequest",
+    "CodeSearchRequest",
+];
 
 const fn cli(token: &'static str) -> RemovedSurfaceRule {
     RemovedSurfaceRule {
@@ -102,13 +87,6 @@ const fn config(token: &'static str) -> RemovedSurfaceRule {
     RemovedSurfaceRule {
         token,
         path_contains: &["docs/reference/config/"],
-    }
-}
-
-const fn dto(token: &'static str) -> RemovedSurfaceRule {
-    RemovedSurfaceRule {
-        token,
-        path_contains: &["docs/reference/api/schemas.json"],
     }
 }
 
@@ -235,6 +213,9 @@ pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
 pub fn check_removed_surface_drift(artifacts: &[SchemaArtifact]) -> Result<()> {
     for artifact in artifacts {
         let artifact_path = artifact.path.to_string_lossy();
+        if artifact.path == Path::new("docs/reference/api/schemas.json") {
+            check_removed_api_dto_shapes(artifact)?;
+        }
         for rule in REMOVED_SURFACE_RULES {
             if rule_applies(&artifact.path, &artifact_path, rule)
                 && artifact.content.contains(rule.token)
@@ -245,6 +226,51 @@ pub fn check_removed_surface_drift(artifacts: &[SchemaArtifact]) -> Result<()> {
                     rule.token
                 );
             }
+        }
+    }
+    Ok(())
+}
+
+fn check_removed_api_dto_shapes(artifact: &SchemaArtifact) -> Result<()> {
+    let doc: serde_json::Value = serde_json::from_str(&artifact.content)?;
+    let Some(defs) = doc.get("$defs").and_then(|value| value.as_object()) else {
+        return Ok(());
+    };
+
+    for removed_def in REMOVED_API_DTO_DEFS {
+        if defs.contains_key(*removed_def) {
+            bail!(
+                "{} contains removed API DTO definition {removed_def}",
+                artifact.path.display()
+            );
+        }
+    }
+
+    if let Some(purge) = defs.get("PurgeRequest") {
+        reject_legacy_properties(artifact, "PurgeRequest", purge, &["target", "prefix"])?;
+    }
+    if let Some(dedupe) = defs.get("DedupeRequest") {
+        reject_legacy_properties(artifact, "DedupeRequest", dedupe, &["target", "prefix"])?;
+    }
+
+    Ok(())
+}
+
+fn reject_legacy_properties(
+    artifact: &SchemaArtifact,
+    def_name: &str,
+    schema: &serde_json::Value,
+    legacy_properties: &[&str],
+) -> Result<()> {
+    let Some(properties) = schema.get("properties").and_then(|value| value.as_object()) else {
+        return Ok(());
+    };
+    for property in legacy_properties {
+        if properties.contains_key(*property) {
+            bail!(
+                "{} contains removed API DTO property {def_name}.{property}",
+                artifact.path.display()
+            );
         }
     }
     Ok(())

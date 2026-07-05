@@ -140,6 +140,7 @@ async fn watch_refresh_uses_target_local_source_runtime_when_available() {
         source_jobs.as_ref(),
         JobEventListRequest {
             job_id: job.job_id,
+            after_sequence: None,
             phase: None,
             severity: None,
             visibility: Some(Visibility::Public),

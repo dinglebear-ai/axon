@@ -174,7 +174,7 @@ fn watch_and_listing_dtos_are_contract_shaped() {
         items: vec![summary],
         limit: 50,
         next_cursor: None,
-        total: Some(1),
+        total: None,
     };
 
     let value = serde_json::to_value(&request).expect("watch request");
@@ -222,9 +222,12 @@ fn source_job_and_watch_management_dtos_round_trip() {
         },
         created_at: now.clone(),
         updated_at: now.clone(),
+        graph_node_ids: Vec::new(),
         tags: vec!["code".to_string()],
         watch_id: Some(WatchId::from("watch_1")),
         last_job_id: Some(job_id),
+        last_refreshed_at: None,
+        user_label: None,
     };
     let detail = SourceDetail {
         summary,
@@ -234,13 +237,13 @@ fn source_job_and_watch_management_dtos_round_trip() {
             items: Vec::new(),
             limit: 50,
             next_cursor: None,
-            total: Some(0),
+            total: None,
         },
         documents: Page {
             items: Vec::new(),
             limit: 50,
             next_cursor: None,
-            total: Some(0),
+            total: None,
         },
         graph_refs: Vec::new(),
         metadata: MetadataMap::default(),
@@ -274,7 +277,7 @@ fn source_job_and_watch_management_dtos_round_trip() {
             watch_id: None,
             parent_job_id: None,
             root_job_id: None,
-            attempt: 1,
+            attempt: 0,
             priority: JobPriority::Normal,
             counts: Some(counts.clone()),
             current: None,
@@ -288,7 +291,7 @@ fn source_job_and_watch_management_dtos_round_trip() {
             items: vec![job_event],
             limit: 50,
             next_cursor: None,
-            total: Some(1),
+            total: None,
         },
         artifacts: Vec::new(),
         metadata: MetadataMap::default(),
@@ -343,4 +346,59 @@ fn management_dtos_reject_unknown_fields() {
         "interval_seconds": 60
     });
     assert!(serde_json::from_value::<WatchUpdateRequest>(bad_watch).is_err());
+}
+
+#[test]
+fn phase_1_operation_dtos_reject_unknown_fields() {
+    let upload_err = serde_json::from_value::<UploadCreateRequest>(serde_json::json!({
+        "filename": "notes.md",
+        "content_type": "text/markdown",
+        "size_bytes": 12,
+        "purpose": "source_artifact",
+        "legacy": true
+    }))
+    .expect_err("upload request must reject unknown fields");
+    assert!(
+        upload_err.to_string().contains("unknown field"),
+        "{upload_err}"
+    );
+
+    let watch_err = serde_json::from_value::<WatchDescriptor>(serde_json::json!({
+        "watch_id": "watch_1",
+        "source_id": "src_1",
+        "enabled": true,
+        "schedule": { "every_seconds": 3600 },
+        "warnings": [],
+        "legacy": true
+    }))
+    .expect_err("watch descriptor must reject unknown fields");
+    assert!(
+        watch_err.to_string().contains("unknown field"),
+        "{watch_err}"
+    );
+
+    let collection_err = serde_json::from_value::<CollectionListRequest>(serde_json::json!({
+        "prefix": "axon",
+        "legacy": true
+    }))
+    .expect_err("collection list request must reject unknown fields");
+    assert!(
+        collection_err.to_string().contains("unknown field"),
+        "{collection_err}"
+    );
+}
+
+#[test]
+fn phase_1_registered_provider_dtos_reject_unknown_fields() {
+    let search_err = serde_json::from_value::<SearchRequest>(serde_json::json!({
+        "query": "axon phase 1",
+        "limit": 10,
+        "metadata": {},
+        "legacy": true
+    }))
+    .expect_err("search request must reject unknown fields");
+    assert!(
+        search_err.to_string().contains("unknown field"),
+        "{search_err}"
+    );
 }

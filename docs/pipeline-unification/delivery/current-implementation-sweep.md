@@ -40,6 +40,7 @@ Refreshed on 2026-07-02 against the current checkout:
 - The current public surfaces are still old-state: `embed`, `ingest`, `scrape`,
   `crawl`, `code-search`, `code-search-watch`, nested REST job families, and
   legacy MCP action families remain present until the planned hard cutover.
+- Phase 1 removed-surface checks apply to generated API DTO schemas and API reference docs. Transitional legacy Rust request structs such as `axon_api::mcp_schema::requests::{CrawlRequest, EmbedRequest, IngestRequest}` may remain until the later surface-cutover deletion phase, but they must not appear in generated Phase 1 API DTO schemas. Legacy destructive purge fields such as `target` and `prefix` are rejected by property-path checks rather than broad string-token bans.
 
 ## Workspace Members Today
 

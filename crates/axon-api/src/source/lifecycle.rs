@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::common::*;
 use super::enums::*;
+use super::graph::GraphRef;
 use super::ids::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -96,20 +97,53 @@ impl SourceRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResolvedSource {
-    pub requested_uri: String,
+    pub source: String,
     pub canonical_uri: String,
+    #[serde(skip)]
     pub source_id: SourceId,
     pub source_kind: SourceKind,
-    pub display_name: String,
-    pub candidate_adapters: Vec<AdapterCandidate>,
+    pub adapter: AdapterRef,
     pub default_scope: SourceScope,
     pub available_scopes: Vec<SourceScope>,
     pub authority: AuthorityLevel,
     pub confidence: f32,
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authority_hint: Option<AuthorityHint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graph: Vec<GraphRef>,
     pub warnings: Vec<SourceWarning>,
+    #[serde(skip)]
+    pub metadata: MetadataMap,
+}
+
+impl ResolvedSource {
+    #[allow(clippy::too_many_arguments)]
+    pub fn resolved(
+        source: impl Into<String>,
+        canonical_uri: impl Into<String>,
+        source_id: SourceId,
+        source_kind: SourceKind,
+        adapter: AdapterRef,
+        scope: SourceScope,
+        authority: AuthorityLevel,
+        confidence: f32,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            source: source.into(),
+            canonical_uri: canonical_uri.into(),
+            source_id,
+            source_kind,
+            adapter,
+            default_scope: scope,
+            available_scopes: vec![scope],
+            authority,
+            confidence,
+            reason: reason.into(),
+            graph: Vec::new(),
+            warnings: Vec::new(),
+            metadata: MetadataMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -181,7 +215,9 @@ pub struct SourceResult {
     pub job: Option<JobDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchResult>,
+    #[serde(skip)]
     pub artifacts: Vec<ArtifactRef>,
+    #[serde(skip)]
     pub errors: Vec<SourceError>,
 }
 
@@ -198,21 +234,45 @@ pub struct InlineSourceResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobDescriptor {
-    pub job_id: JobId,
     pub kind: JobKind,
+    pub id: JobId,
+    pub status_url: String,
+    pub events_url: String,
+    pub stream_url: String,
+    pub poll_after_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_url: Option<String>,
+    #[serde(skip)]
+    pub job_id: JobId,
+    #[serde(skip, default = "default_descriptor_status")]
     pub status: LifecycleStatus,
-    pub poll: PollDescriptor,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
+    #[serde(skip)]
+    pub poll: Option<PollDescriptor>,
+    #[serde(skip)]
+    pub created_at: Option<Timestamp>,
+    #[serde(skip)]
+    pub updated_at: Option<Timestamp>,
+}
+
+fn default_descriptor_status() -> LifecycleStatus {
+    LifecycleStatus::Queued
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PollDescriptor {
+    pub kind: JobKind,
+    pub id: JobId,
     pub status_url: String,
+    pub events_url: String,
+    pub stream_url: String,
+    pub poll_after_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub events_url: Option<String>,
-    pub suggested_interval_ms: u64,
+    pub cancel_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

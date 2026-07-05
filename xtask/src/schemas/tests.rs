@@ -12,6 +12,8 @@ pub(super) fn fixture_repo() -> TempDir {
     for path in [
         "crates/axon-api/src/source.rs",
         "crates/axon-api/src/source/boundary.rs",
+        "crates/axon-api/src/source/common.rs",
+        "crates/axon-api/src/source/capability.rs",
         "crates/axon-api/src/source/document.rs",
         "crates/axon-api/src/source/lifecycle.rs",
         "crates/axon-api/src/source/listing.rs",
@@ -19,11 +21,13 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/job.rs",
+        "crates/axon-api/src/source/job_listing.rs",
+        "crates/axon-api/src/source/provider_io.rs",
+        "crates/axon-api/src/source/prune.rs",
         "crates/axon-api/src/source/stage.rs",
         "crates/axon-api/src/source/state.rs",
         "crates/axon-api/src/source/status.rs",
         "crates/axon-api/src/source/vector.rs",
-        "crates/axon-api/src/source/capability.rs",
         "crates/axon-error/src/lib.rs",
         "crates/axon-error/src/api_error.rs",
         "crates/axon-error/src/code.rs",
@@ -39,6 +43,9 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-vectors/src/lib.rs",
         "crates/axon-vectors/src/payload.rs",
         "crates/axon-vectors/src/point.rs",
+        "xtask/src/schemas/api_defs.rs",
+        "xtask/src/schemas/registry.rs",
+        "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
         "docs/pipeline-unification/runtime/error-handling.md",
         "docs/pipeline-unification/surfaces/command-contract.md",
@@ -169,6 +176,64 @@ fn generate_writes_all_required_family_artifacts() {
 }
 
 #[test]
+fn api_schema_contains_phase_1_required_defs() {
+    let artifact = std::fs::read_to_string(workspace_path("docs/reference/api/schemas.json"))
+        .expect("read generated API schema artifact");
+    let schema: serde_json::Value =
+        serde_json::from_str(&artifact).expect("parse generated API schema artifact");
+    let defs = schema
+        .get("$defs")
+        .and_then(|value| value.as_object())
+        .expect("generated API schema has $defs object");
+
+    for name in families::api_defs::PHASE_1_REQUIRED_API_DEFS {
+        assert!(
+            defs.contains_key(*name),
+            "missing API schema $defs entry: {name}"
+        );
+    }
+}
+
+#[test]
+fn phase_1_deferred_api_defs_are_documented() {
+    for (name, owner, reason) in families::api_defs::PHASE_1_DEFERRED_API_DEFS {
+        assert!(!name.is_empty(), "deferred API def must have a name");
+        assert!(
+            !owner.is_empty(),
+            "deferred API def {name} must have an owner plan"
+        );
+        assert!(
+            !reason.is_empty(),
+            "deferred API def {name} must have a reason"
+        );
+    }
+}
+
+#[test]
+fn api_request_dtos_have_scope_entries() {
+    assert_eq!(
+        families::api_defs::request_scope_for("ArtifactListRequest", "artifact.list"),
+        Some("read")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("UploadCreateRequest", "upload.create"),
+        Some("write")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("PruneExecuteRequest", "prune.execute"),
+        Some("admin")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("CollectionListRequest", "collection.list"),
+        Some("read")
+    );
+    assert_eq!(
+        families::api_defs::request_scope_for("UnknownRequest", "unknown.action"),
+        None
+    );
+}
+
+#[test]
 fn check_passes_after_generation_and_fails_after_stale_artifact() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
@@ -230,7 +295,6 @@ fn source_input_checksum_matches_fixture_and_drifts_when_source_changes() {
 #[test]
 fn removed_surface_drift_fails_generation() {
     for (path, token) in [
-        ("docs/reference/api/schemas.json", "\"EmbedRequest\""),
         ("docs/reference/cli/commands.json", "\"embed\""),
         ("docs/reference/cli/commands.json", "\"code-search\""),
         ("docs/reference/mcp/tool-schema.json", "\"vertical_scrape\""),
@@ -241,8 +305,6 @@ fn removed_surface_drift_fails_generation() {
             "docs/reference/config/env.schema.json",
             "\"AXON_MCP_HTTP_TOKEN\"",
         ),
-        ("docs/reference/api/schemas.json", "\"url\""),
-        ("docs/reference/api/schemas.json", "\"path_prefix\""),
     ] {
         let artifacts = vec![artifact::SchemaArtifact::new(
             path,
@@ -252,6 +314,91 @@ fn removed_surface_drift_fails_generation() {
             .expect_err("removed surface token should fail");
         assert!(err.to_string().contains("removed public surface token"));
     }
+}
+
+#[test]
+fn removed_legacy_api_request_shapes_are_absent() {
+    let artifact = std::fs::read_to_string(workspace_path("docs/reference/api/schemas.json"))
+        .expect("read generated API schema artifact");
+    let schema: serde_json::Value =
+        serde_json::from_str(&artifact).expect("parse generated API schema artifact");
+    let defs = schema
+        .get("$defs")
+        .and_then(|value| value.as_object())
+        .expect("generated API schema has $defs object");
+
+    for removed_def in [
+        "EmbedRequest",
+        "IngestRequest",
+        "CrawlRequest",
+        "ScrapeRequest",
+        "CodeSearchRequest",
+    ] {
+        assert!(
+            !defs.contains_key(removed_def),
+            "legacy request def leaked: {removed_def}"
+        );
+    }
+
+    if let Some(purge) = defs.get("PurgeRequest") {
+        let properties = purge
+            .get("properties")
+            .and_then(|value| value.as_object())
+            .expect("PurgeRequest schema has properties");
+        assert!(
+            !properties.contains_key("target"),
+            "legacy PurgeRequest.target leaked"
+        );
+        assert!(
+            !properties.contains_key("prefix"),
+            "legacy PurgeRequest.prefix leaked"
+        );
+    }
+}
+
+#[test]
+fn removed_surface_drift_checks_legacy_api_defs_by_schema_path() {
+    let artifacts = vec![artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({
+            "$defs": {
+                "EmbedRequest": {
+                    "type": "object",
+                    "properties": {
+                        "input": { "type": "string" }
+                    }
+                }
+            },
+            "description": "EmbedRequest may appear in prose, but not as a $defs key"
+        })
+        .to_string(),
+    )];
+    let err = registry::check_removed_surface_drift(&artifacts)
+        .expect_err("legacy API request def should fail");
+    assert!(err.to_string().contains("EmbedRequest"), "{err}");
+}
+
+#[test]
+fn removed_surface_drift_checks_legacy_purge_properties_by_schema_path() {
+    let artifacts = vec![artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({
+            "$defs": {
+                "PurgeRequest": {
+                    "type": "object",
+                    "properties": {
+                        "target": { "type": "string" },
+                        "reason": { "type": "string" }
+                    }
+                }
+            },
+            "description": "PurgeRequest is allowed only when its legacy fields are gone"
+        })
+        .to_string(),
+    )];
+    let err = registry::check_removed_surface_drift(&artifacts)
+        .expect_err("legacy purge property should fail");
+    assert!(err.to_string().contains("PurgeRequest.target"), "{err}");
 }
 
 #[test]
@@ -440,4 +587,11 @@ fn assert_stale_after_with_args(
 
     assert!(err.to_string().contains("schema artifacts are stale"));
     assert!(err.to_string().contains(expected_error_substring));
+}
+
+fn workspace_path(path: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask has workspace parent")
+        .join(path)
 }

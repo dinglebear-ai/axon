@@ -290,20 +290,14 @@ fn web_plan(source: &str, scope: SourceScope) -> SourcePlan {
         request: SourceRequest::new(source),
         route: RoutePlan {
             source: ResolvedSource {
-                requested_uri: source.to_string(),
+                source: source.to_string(),
                 canonical_uri: strip_tracking_query(source),
                 source_id: SourceId::from("src_web_test"),
                 source_kind: SourceKind::Web,
-                display_name: "example.com".to_string(),
-                candidate_adapters: vec![AdapterCandidate {
-                    adapter: AdapterRef {
-                        name: "web".to_string(),
-                        version: env!("CARGO_PKG_VERSION").to_string(),
-                    },
-                    supported_scopes: vec![SourceScope::Page, SourceScope::Site, scope],
-                    confidence: 1.0,
-                    reason: "test".to_string(),
-                }],
+                adapter: AdapterRef {
+                    name: "web".to_string(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                },
                 default_scope: scope,
                 available_scopes: vec![
                     SourceScope::Page,
@@ -314,8 +308,9 @@ fn web_plan(source: &str, scope: SourceScope) -> SourcePlan {
                 authority: AuthorityLevel::Inferred,
                 confidence: 1.0,
                 reason: "test".to_string(),
-                authority_hint: None,
+                graph: Vec::new(),
                 warnings: Vec::new(),
+                metadata: MetadataMap::new(),
             },
             adapter: AdapterRef {
                 name: "web".to_string(),

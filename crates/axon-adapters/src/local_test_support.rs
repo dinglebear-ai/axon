@@ -30,27 +30,22 @@ pub(super) fn source_plan(path: PathBuf, scope: SourceScope) -> SourcePlan {
         request: SourceRequest::new(path.to_string_lossy().to_string()),
         route: RoutePlan {
             source: ResolvedSource {
-                requested_uri: path.to_string_lossy().to_string(),
+                source: path.to_string_lossy().to_string(),
                 canonical_uri: canonical_uri.clone(),
                 source_id: SourceId::from("src_local_test"),
                 source_kind: SourceKind::Local,
-                display_name: "local test".to_string(),
-                candidate_adapters: vec![AdapterCandidate {
-                    adapter: AdapterRef {
-                        name: "local".to_string(),
-                        version: env!("CARGO_PKG_VERSION").to_string(),
-                    },
-                    supported_scopes: vec![scope],
-                    confidence: 1.0,
-                    reason: "test".to_string(),
-                }],
+                adapter: AdapterRef {
+                    name: "local".to_string(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                },
                 default_scope: scope,
                 available_scopes: vec![scope],
                 authority: AuthorityLevel::Inferred,
                 confidence: 1.0,
                 reason: "test".to_string(),
-                authority_hint: None,
+                graph: Vec::new(),
                 warnings: Vec::new(),
+                metadata: MetadataMap::new(),
             },
             adapter: AdapterRef {
                 name: "local".to_string(),

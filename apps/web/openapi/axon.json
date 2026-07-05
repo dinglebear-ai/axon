@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.2.1"
+    "version": "6.2.2"
   },
   "paths": {
     "/healthz": {
@@ -2904,11 +2904,11 @@
             }
           },
           "403": {
-            "description": "Authenticated token lacks Axon access",
+            "description": "Source not authorized for caller scopes",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -3757,18 +3757,6 @@
       "ArtifactId": {
         "type": "string"
       },
-      "ArtifactKind": {
-        "type": "string",
-        "enum": [
-          "raw_content",
-          "normalized_content",
-          "manifest",
-          "report",
-          "screenshot",
-          "warc",
-          "provider_trace"
-        ]
-      },
       "ArtifactMode": {
         "type": "string",
         "enum": [
@@ -3776,44 +3764,6 @@
           "on_large_output",
           "always"
         ]
-      },
-      "ArtifactRef": {
-        "type": "object",
-        "required": [
-          "artifact_id",
-          "artifact_kind",
-          "uri",
-          "created_at"
-        ],
-        "properties": {
-          "artifact_id": {
-            "$ref": "#/components/schemas/ArtifactId"
-          },
-          "artifact_kind": {
-            "$ref": "#/components/schemas/ArtifactKind"
-          },
-          "content_hash": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "$ref": "#/components/schemas/Timestamp"
-          },
-          "size_bytes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "uri": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
       },
       "AuthorityEvidence": {
         "type": "object",
@@ -4617,31 +4567,45 @@
       "JobDescriptor": {
         "type": "object",
         "required": [
-          "job_id",
           "kind",
-          "status",
-          "poll",
-          "created_at",
-          "updated_at"
+          "id",
+          "status_url",
+          "events_url",
+          "stream_url",
+          "poll_after_ms"
         ],
         "properties": {
-          "created_at": {
-            "$ref": "#/components/schemas/Timestamp"
+          "cancel_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "job_id": {
+          "events_url": {
+            "type": "string"
+          },
+          "id": {
             "$ref": "#/components/schemas/JobId"
           },
           "kind": {
             "$ref": "#/components/schemas/JobKind"
           },
-          "poll": {
-            "$ref": "#/components/schemas/PollDescriptor"
+          "poll_after_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           },
-          "status": {
-            "$ref": "#/components/schemas/LifecycleStatus"
+          "retry_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "updated_at": {
-            "$ref": "#/components/schemas/Timestamp"
+          "status_url": {
+            "type": "string"
+          },
+          "stream_url": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -5127,33 +5091,6 @@
             }
           }
         }
-      },
-      "PollDescriptor": {
-        "type": "object",
-        "required": [
-          "status_url",
-          "suggested_interval_ms"
-        ],
-        "properties": {
-          "events_url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status_url": {
-            "type": "string"
-          },
-          "suggested_interval_ms": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
-      "ProviderId": {
-        "type": "string"
       },
       "PurgeRequest": {
         "type": "object",
@@ -6237,56 +6174,6 @@
         },
         "additionalProperties": false
       },
-      "SourceError": {
-        "type": "object",
-        "required": [
-          "code",
-          "severity",
-          "message",
-          "retryable"
-        ],
-        "properties": {
-          "cause": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "provider_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProviderId"
-              }
-            ]
-          },
-          "retryable": {
-            "type": "boolean"
-          },
-          "severity": {
-            "$ref": "#/components/schemas/Severity"
-          },
-          "source_item_key": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SourceItemKey"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
       "SourceGenerationId": {
         "type": "string"
       },
@@ -6482,31 +6369,17 @@
           "ledger",
           "graph",
           "counts",
-          "warnings",
-          "artifacts",
-          "errors"
+          "warnings"
         ],
         "properties": {
           "adapter": {
             "$ref": "#/components/schemas/AdapterRef"
-          },
-          "artifacts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ArtifactRef"
-            }
           },
           "canonical_uri": {
             "type": "string"
           },
           "counts": {
             "$ref": "#/components/schemas/SourceCounts"
-          },
-          "errors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SourceError"
-            }
           },
           "graph": {
             "$ref": "#/components/schemas/GraphWriteSummary"
@@ -6641,10 +6514,6 @@
           "ensure",
           "enabled"
         ]
-      },
-      "Timestamp": {
-        "type": "string",
-        "format": "date-time"
       },
       "TraceContext": {
         "type": "object",

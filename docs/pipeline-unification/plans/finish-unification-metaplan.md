@@ -8,7 +8,7 @@ Finish GitHub issue #298 by auditing every currently unchecked Phase 6-12 checkl
 
 ## Concrete Plan Files
 
-This metaplan is the audit and sequencing layer. Execute the concrete plan files below for implementation detail:
+This metaplan is the audit and sequencing layer. Execute the concrete plan files below for implementation detail. The table is the complete concrete plan inventory currently present under `docs/pipeline-unification/plans/`; if a new concrete plan file is added, add it here and map it to issue #298 before using it as closeout evidence.
 
 | Scope | Plan file |
 |---|---|
@@ -39,6 +39,7 @@ Current audited baseline:
 ## Engineering Review Corrections
 
 - Concrete plan references now include Phase 2, Phase 3, and Phase 4 alignment plans. Do not treat them as implicit completed prerequisites unless their verification evidence is recorded.
+- Phase 2 closeout must follow the tightened schema plan: every family in `docs/pipeline-unification/schemas/README.md` must be registry-backed, fixture-backed, snapshot-backed, markdown-backed where required, source-input checked, and covered by aggregate cross-checks. `ValidationOnly`, `Deferred`, skeleton artifacts, pseudo snapshots, substring invalid checks, and hard-coded `xtask` mirrors cannot satisfy Phase 2.
 - Task 3A is a full durable job cutover, not a minimum cutover. Naming and acceptance criteria must stay aligned with `2026-07-04-full-durable-job-cutover.md`.
 - Task 3B security/error/memory completion is a separate implementation track from the durable job cutover. Memory completion is not “minimum durable jobs.”
 - Query/retrieve stay jobless unless they perform long-running provider/artifact work; this metaplan rule overrides broader durable-job wording.
@@ -61,7 +62,7 @@ Live issue #298 currently has 127 unchecked bullets from the implementation trac
 | Issue section | Unchecked count | Plan coverage |
 |---|---:|---|
 | Phase 0: Contract Freeze And Issue Sync | 1 | Covered in Open PR Handling and Task 5: issue status/follow-up update. |
-| Phase 2: Schema Generator And Drift Checks | 2 | Covered in Phase 12, Crate Tracker, Dependency Rules, and Task 5 generated docs/schema work. |
+| Phase 2: Schema Generator And Drift Checks | 2 | Covered by `2026-07-04-align-phase-2-schema-contracts.md`, with final generated docs/schema verification also gated by Phase 12 and Task 5A. |
 | Phase 6: Ledger-Owned Source Lifecycle | 1 | Covered one-to-one in Phase 6 audit and Task 1. |
 | Phase 7: Document, Parser, Graph, And Payload Pipeline | 10 | Covered one-to-one in Phase 7 audit and Task 2. |
 | Phase 8: Unified Jobs And Observability | 13 | Covered one-to-one in Phase 8 audit and Task 3. |
@@ -322,7 +323,7 @@ cargo test -p axon-vectors payload --no-fail-fast
 cargo test -p axon-graph --no-fail-fast
 ```
 
-### Task 3A: Minimum Durable Job Cutover
+### Task 3A: Full Durable Job Cutover
 
 - [ ] Define which operations are job-backed versus synchronous before changing storage. Job-backed: detached/long-running source acquisition, watch, extraction/research/provider work, memory compaction/import, graph mutation, prune, provider_probe, and reset. Synchronous read paths such as normal `query`/`retrieve` must stay jobless unless they perform long-running provider/artifact work.
 - [ ] Collapse active job persistence to one durable job table family for the job-backed operations required by the clean-break source path first.
@@ -366,7 +367,7 @@ cargo test -p axon-memory --no-fail-fast
 
 - [ ] Build a source-family matrix covering local, git, web, feed, youtube, reddit, sessions, registry, CLI tool/script, and MCP tool/call sources.
 - [ ] For touched source families in this cutover, add resolver, adapter, parser, graph, metadata, vector payload, source-job, degraded, auth, and provider-failure fixtures.
-- [ ] Track full all-family fixture completeness as release-hardening follow-up unless the implementation changes that family.
+- [ ] Prove full all-family fixture completeness before marking #298 complete. Do not demote the matrix required by `sources/new-source-contract.md`, `delivery/testing-contract.md`, or the tightened Phase 2 schema plan to optional release hardening.
 - [ ] For every new/touched source, complete the `sources/new-source-contract.md` onboarding rows: identity, resolver, router, adapter, scopes, ledger, parsing, graph, chunking, metadata, auth/secrets, observability, error handling, tests, and docs.
 - [ ] Adapter specs must expose stable adapter name/version, supported source kinds/schemes/shorthands, default scopes, credentials, option schema, parser families, metadata families, watch/refresh support, local/network/render/tool capabilities, degraded modes, and required/optional graph facts.
 - [ ] Enforce source adapter batching for prepare/embed/vector/graph writes; avoid item-by-item Qdrant/SQLite writes in source-family ports.
@@ -435,3 +436,5 @@ Task-level verification should be narrower than the final gate:
 - Live smoke and full workspace tests are final cutover gates, not the default loop for every small PR.
 
 Before marking #298 complete, run the Tier 5 cutover cases from `delivery/testing-contract.md`: incompatible store block, reset dry-run/yes, removed config validation, removed CLI/MCP/REST absence, old job/code-index/Qdrant payload absence, canonical local and web source reindex, canonical ask/query retrieval from target payloads, and provider backpressure during fresh reindex.
+
+Final issue #298 closeout also requires the tightened Phase 2 schema acceptance bar: all required schema families are registry-backed, all generated JSON and markdown artifacts are produced from the same model, all valid/invalid/golden/example fixtures pass, aggregate CLI/MCP/OpenAPI/API/client/config/database/vector/provider cross-checks pass, and no schema family remains skeleton, validation-only, deferred, or backed by a hand-maintained `xtask` mirror.
