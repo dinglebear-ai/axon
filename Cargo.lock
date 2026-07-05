@@ -690,6 +690,7 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-error",
+ "axon-vectors",
  "chrono",
  "serde",
  "serde_json",

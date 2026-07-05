@@ -35,6 +35,9 @@ pub use store::{FakeGraphStore, GraphStore};
 
 pub const CRATE_NAME: &str = "axon-graph";
 
+#[cfg(test)]
+#[path = "fixture_tests.rs"]
+mod fixture_tests;
 pub mod schema_registry;
 #[cfg(test)]
 #[path = "store_tests.rs"]
