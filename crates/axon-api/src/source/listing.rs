@@ -14,7 +14,7 @@ pub struct Page<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
     pub limit: u32,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total: Option<u64>,
 }
 

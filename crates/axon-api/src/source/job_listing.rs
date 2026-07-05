@@ -121,11 +121,11 @@ pub struct JobEventListRequest {
     pub severity: Option<Severity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Visibility>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<PipelinePhase>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since_sequence: Option<u64>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }
 
@@ -135,7 +135,7 @@ pub struct JobEventPage {
     pub events: Vec<JobEvent>,
     pub next_cursor: Option<String>,
     pub last_sequence: u64,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "is_default_u32")]
     pub limit: u32,
 }
 
@@ -322,4 +322,8 @@ fn default_visibility() -> Visibility {
 
 fn default_job_priority() -> JobPriority {
     JobPriority::Normal
+}
+
+fn is_default_u32(value: &u32) -> bool {
+    *value == 0
 }

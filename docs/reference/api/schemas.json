@@ -6526,6 +6526,12 @@
             "null"
           ]
         },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "job_id": {
           "$ref": "#/$defs/JobEventListRequest_JobId"
         },
@@ -6537,6 +6543,16 @@
             "null"
           ]
         },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobEventListRequest_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "severity": {
           "anyOf": [
             {
@@ -6545,6 +6561,14 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "since_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
           ]
         },
         "visibility": {
@@ -6566,6 +6590,38 @@
     },
     "JobEventListRequest_JobId": {
       "format": "uuid",
+      "type": "string"
+    },
+    "JobEventListRequest_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
       "type": "string"
     },
     "JobEventListRequest_Severity": {
@@ -6601,6 +6657,11 @@
         },
         "last_sequence": {
           "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit": {
+          "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
@@ -9504,6 +9565,14 @@
         "next_cursor": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         }
@@ -21081,6 +21150,12 @@
             "priority": "normal"
           }
         },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "intent": {
           "$ref": "#/$defs/SourcePlan_SourceIntent",
           "default": "acquire"
@@ -22132,6 +22207,12 @@
             "mode": "background",
             "priority": "normal"
           }
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "intent": {
           "$ref": "#/$defs/SourceRequest_SourceIntent",
@@ -26463,7 +26544,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:416b24378c1490827a325fc01c52ef1865c388edc41e9bd5e21e4e60832d2731",
+        "checksum": "sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/boundary.rs"
       },
@@ -26503,17 +26584,17 @@
         "path": "crates/axon-api/src/source/job.rs"
       },
       {
-        "checksum": "sha256:9135d850c7a338877abeb2663a84e120fbc1f96b7993aa406e66d10b7d4458d9",
+        "checksum": "sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
       {
-        "checksum": "sha256:4709535f7d46c5825a081dd1d752a7f234ff828a0df5c73b15e2b941e4f278cc",
+        "checksum": "sha256:04755fecf0a574f9d07bbe72c6053592703a07ab14de3d4c28dd5083f7219828",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
       {
-        "checksum": "sha256:9da249644e01cc3a09e43a0f4e611a82b0f975a622e265bf7535186e46bec6f6",
+        "checksum": "sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/listing.rs"
       },

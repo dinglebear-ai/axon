@@ -94,7 +94,7 @@ pub(super) fn source_summary(
     SourceSummary {
         source_id: run.source_id.clone(),
         canonical_uri: run.plan.route.source.canonical_uri.clone(),
-        display_name: run.plan.route.source.canonical_uri.clone(),
+        display_name: reddit_display_name(&run.plan.route.source.canonical_uri),
         source_kind: SourceKind::Reddit,
         adapter: run.adapter.clone(),
         authority: AuthorityLevel::Inferred,
@@ -116,6 +116,13 @@ pub(super) fn source_summary(
         watch_id: None,
         last_job_id: Some(input.job_id),
     }
+}
+
+fn reddit_display_name(canonical_uri: &str) -> String {
+    canonical_uri
+        .strip_prefix("reddit://")
+        .unwrap_or(canonical_uri)
+        .to_string()
 }
 
 fn reddit_adapter_ref() -> AdapterRef {

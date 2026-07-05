@@ -54,7 +54,9 @@ pub struct ArtifactListRequest {
     pub job_id: Option<JobId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<ArtifactKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }
 
@@ -108,7 +110,9 @@ pub struct UploadResult {
 pub struct CollectionListRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }
 

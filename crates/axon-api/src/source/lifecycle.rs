@@ -36,7 +36,7 @@ pub struct SourceRequest {
     pub authority_hint: Option<AuthorityHint>,
     #[serde(default)]
     pub metadata: MetadataMap,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idempotency_key: Option<String>,
 }
 
@@ -113,6 +113,37 @@ pub struct ResolvedSource {
     pub warnings: Vec<SourceWarning>,
     #[serde(skip)]
     pub metadata: MetadataMap,
+}
+
+impl ResolvedSource {
+    #[allow(clippy::too_many_arguments)]
+    pub fn resolved(
+        source: impl Into<String>,
+        canonical_uri: impl Into<String>,
+        source_id: SourceId,
+        source_kind: SourceKind,
+        adapter: AdapterRef,
+        scope: SourceScope,
+        authority: AuthorityLevel,
+        confidence: f32,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            source: source.into(),
+            canonical_uri: canonical_uri.into(),
+            source_id,
+            source_kind,
+            adapter,
+            default_scope: scope,
+            available_scopes: vec![scope],
+            authority,
+            confidence,
+            reason: reason.into(),
+            graph: Vec::new(),
+            warnings: Vec::new(),
+            metadata: MetadataMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
