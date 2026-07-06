@@ -1695,6 +1695,776 @@
         ]
       }
     },
+    "/v1/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "list_unified_jobs",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LifecycleStatus"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/JobKind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unified jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "clear_unified_jobs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobClearRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unified job clear",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobClearResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/cleanup": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "cleanup_unified_jobs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unified job cleanup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCleanupResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/recover": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "recover_unified_jobs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unified job recovery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRecoveryResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "unified_job_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unified job ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unified job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{id}/artifacts": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "unified_job_artifacts",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unified job ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unified job artifacts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobArtifactListResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{id}/cancel": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "cancel_unified_job",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unified job ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unified job cancellation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCancelResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{id}/events": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "unified_job_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unified job ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "since_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Severity"
+            }
+          },
+          {
+            "name": "visibility",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Visibility"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unified job event page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEventPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "retry_unified_job",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unified job ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unified job retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRetryResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{id}/stream": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "unified_job_stream",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Unified job ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unified job events streamed as server-sent events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/map": {
       "post": {
         "tags": [
@@ -3757,6 +4527,18 @@
       "ArtifactId": {
         "type": "string"
       },
+      "ArtifactKind": {
+        "type": "string",
+        "enum": [
+          "raw_content",
+          "normalized_content",
+          "manifest",
+          "report",
+          "screenshot",
+          "warc",
+          "provider_trace"
+        ]
+      },
       "ArtifactMode": {
         "type": "string",
         "enum": [
@@ -3764,6 +4546,44 @@
           "on_large_output",
           "always"
         ]
+      },
+      "ArtifactRef": {
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "artifact_kind",
+          "uri",
+          "created_at"
+        ],
+        "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
+          },
+          "artifact_kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "AuthorityEvidence": {
         "type": "object",
@@ -3823,6 +4643,10 @@
           "conflicting",
           "unknown"
         ]
+      },
+      "BatchId": {
+        "type": "string",
+        "format": "uuid"
       },
       "BrandColor": {
         "type": "object",
@@ -3899,6 +4723,12 @@
             "type": "string"
           }
         }
+      },
+      "CheckpointId": {
+        "type": "string"
+      },
+      "ChunkId": {
+        "type": "string"
       },
       "ColorUsage": {
         "type": "string",
@@ -4133,6 +4963,9 @@
             ]
           }
         }
+      },
+      "DocumentId": {
+        "type": "string"
       },
       "EndpointKind": {
         "type": "string",
@@ -4564,6 +5397,281 @@
         },
         "additionalProperties": false
       },
+      "JobArtifactListResult": {
+        "type": "object",
+        "required": [
+          "artifacts",
+          "limit"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobCancelRequest": {
+        "type": "object",
+        "properties": {
+          "force_after_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobCancelResult": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "properties": {
+          "canceled_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobCleanupRequest": {
+        "type": "object",
+        "required": [
+          "dry_run"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobKind"
+              }
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "older_than": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobCleanupResult": {
+        "type": "object",
+        "required": [
+          "matched",
+          "deleted",
+          "dry_run",
+          "warnings",
+          "jobs_pruned",
+          "events_pruned",
+          "heartbeats_pruned",
+          "attempts_pruned",
+          "stages_pruned",
+          "reservations_pruned",
+          "artifacts_pruned"
+        ],
+        "properties": {
+          "artifacts_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "attempts_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "deleted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "events_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "heartbeats_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "jobs_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reservations_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "stages_pruned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobClearRequest": {
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobKind"
+              }
+            ]
+          },
+          "older_than": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobClearResult": {
+        "type": "object",
+        "required": [
+          "deleted",
+          "warnings"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "JobDescriptor": {
         "type": "object",
         "required": [
@@ -4606,6 +5714,102 @@
           },
           "stream_url": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobEvent": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "sequence",
+          "job_id",
+          "phase",
+          "status",
+          "severity",
+          "message",
+          "timestamp",
+          "details"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "details": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "message": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/PipelinePhase"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "stage_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StageId"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobEventPage": {
+        "type": "object",
+        "required": [
+          "events",
+          "last_sequence"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobEvent"
+            }
+          },
+          "last_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -4714,6 +5918,128 @@
           }
         }
       },
+      "JobRecoveryRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobKind"
+              }
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "stale_before": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobRecoveryResult": {
+        "type": "object",
+        "required": [
+          "recovered",
+          "job_ids",
+          "warnings"
+        ],
+        "properties": {
+          "job_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobId"
+            }
+          },
+          "recovered": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobRetryMode": {
+        "type": "string",
+        "enum": [
+          "same_config",
+          "with_overrides"
+        ]
+      },
+      "JobRetryRequest": {
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "from_phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PipelinePhase"
+              }
+            ]
+          },
+          "idempotency_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/JobRetryMode"
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/MetadataMap"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobRetryResult": {
+        "type": "object",
+        "required": [
+          "original_job_id",
+          "retry_job",
+          "attempt"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "original_job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "retry_job": {
+            "$ref": "#/components/schemas/JobDescriptor"
+          }
+        },
+        "additionalProperties": false
+      },
       "JobStatusResponse": {
         "type": "object",
         "description": "Typed job-status envelope so the `{ job, progress }` wire shape is a\nregistered OpenAPI schema (and thus reflected into the generated palette/\nandroid clients) instead of an opaque `serde_json::Value`.",
@@ -4736,6 +6062,78 @@
             ]
           }
         }
+      },
+      "JobSummary": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "phase",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "counts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StageCounts"
+              }
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "last_error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceError"
+              }
+            ]
+          },
+          "phase": {
+            "$ref": "#/components/schemas/PipelinePhase"
+          },
+          "source_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceId"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "watch_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WatchId"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "LedgerSummary": {
         "type": "object",
@@ -5092,6 +6490,156 @@
           }
         }
       },
+      "PipelinePhase": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "requested",
+          "resolving",
+          "routing",
+          "authorizing",
+          "planning",
+          "leasing",
+          "discovering",
+          "diffing",
+          "fetching",
+          "rendering",
+          "enriching",
+          "normalizing",
+          "parsing",
+          "graphing",
+          "preparing",
+          "batching",
+          "embedding",
+          "vectorizing",
+          "upserting",
+          "retrieving",
+          "synthesizing",
+          "evaluating",
+          "publishing",
+          "cleaning",
+          "complete",
+          "canceled"
+        ]
+      },
+      "ProgressCurrent": {
+        "type": "object",
+        "properties": {
+          "adapter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "chunk_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChunkId"
+              }
+            ]
+          },
+          "document_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentId"
+              }
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderId"
+              }
+            ]
+          },
+          "source_item_key": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceItemKey"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProgressThroughput": {
+        "type": "object",
+        "properties": {
+          "bytes_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "chunks_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "items_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProgressTiming": {
+        "type": "object",
+        "required": [
+          "started_at",
+          "updated_at",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "eta_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "started_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProviderId": {
+        "type": "string"
+      },
       "PurgeRequest": {
         "type": "object",
         "properties": {
@@ -5205,6 +6753,9 @@
           "chrome",
           "auto-switch"
         ]
+      },
+      "ReservationId": {
+        "type": "string"
       },
       "ResponseMode": {
         "type": "string",
@@ -5976,6 +7527,42 @@
         },
         "additionalProperties": false
       },
+      "RetryState": {
+        "type": "object",
+        "required": [
+          "attempt",
+          "reason"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_attempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_retry_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "RpcProbeResult": {
         "type": "object",
         "description": "Result of probing a discovered endpoint for JSON-RPC 2.0 / OpenRPC / MCP support.\n\nFields are populated according to the detected `protocol` and are otherwise\nleft empty: `server_name`/`server_version`/`tools` are MCP-only, `methods` is\nJSON-RPC/OpenRPC-only. The flat shape preserves the wire contract; the type\ndoes not statically prevent contradictory combinations.",
@@ -6174,6 +7761,56 @@
         },
         "additionalProperties": false
       },
+      "SourceError": {
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "retryable"
+        ],
+        "properties": {
+          "cause": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "provider_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderId"
+              }
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "source_item_key": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceItemKey"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "SourceGenerationId": {
         "type": "string"
       },
@@ -6267,6 +7904,213 @@
             ],
             "format": "int64",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceProgressEvent": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "sequence",
+          "job_id",
+          "phase",
+          "status",
+          "severity",
+          "visibility",
+          "message",
+          "timestamp",
+          "counts"
+        ],
+        "properties": {
+          "adapter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdapterRef"
+              }
+            ]
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "batch_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BatchId"
+              }
+            ]
+          },
+          "canonical_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkpoint_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CheckpointId"
+              }
+            ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/StageCounts"
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProgressCurrent"
+              }
+            ]
+          },
+          "dedupe_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ApiError"
+              }
+            ]
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "generation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceGenerationId"
+              }
+            ]
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "message": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/PipelinePhase"
+          },
+          "reservation_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReservationId"
+              }
+            ]
+          },
+          "retry": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RetryState"
+              }
+            ]
+          },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            ]
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "source_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceId"
+              }
+            ]
+          },
+          "stage_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StageId"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "throughput": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProgressThroughput"
+              }
+            ]
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "timing": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProgressTiming"
+              }
+            ]
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          },
+          "warning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceWarning"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -6441,6 +8285,26 @@
         },
         "additionalProperties": false
       },
+      "SourceResultRef": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "source_id",
+          "status"
+        ],
+        "properties": {
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          }
+        },
+        "additionalProperties": false
+      },
       "SourceScope": {
         "type": "string",
         "enum": [
@@ -6515,6 +8379,154 @@
           "enabled"
         ]
       },
+      "StageCounts": {
+        "type": "object",
+        "required": [
+          "items_done",
+          "documents_done",
+          "chunks_done",
+          "bytes_done"
+        ],
+        "properties": {
+          "bytes_done": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "chunks_done": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "chunks_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "documents_done": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "documents_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "items_done": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "items_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "StageId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "StreamEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "event",
+              "kind"
+            ],
+            "properties": {
+              "event": {
+                "$ref": "#/components/schemas/SourceProgressEvent"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "progress"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "result"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/SourceResultRef"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "error",
+              "kind"
+            ],
+            "properties": {
+              "error": {
+                "$ref": "#/components/schemas/ApiError"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "timestamp",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "heartbeat"
+                ]
+              },
+              "timestamp": {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            }
+          }
+        ]
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time"
+      },
       "TraceContext": {
         "type": "object",
         "required": [
@@ -6572,6 +8584,16 @@
             "$ref": "#/components/schemas/MobileSession"
           }
         }
+      },
+      "Visibility": {
+        "type": "string",
+        "enum": [
+          "public",
+          "internal",
+          "sensitive",
+          "redacted",
+          "derived"
+        ]
       },
       "WatchDefCreateRequest": {
         "type": "object",
