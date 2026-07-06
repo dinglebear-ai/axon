@@ -251,6 +251,9 @@ pub struct Config {
     /// `reset --dry-run`. Reset is dry-run by default regardless; this pins it.
     pub reset_dry_run: bool,
 
+    /// Optional reusable plan id for destructive reset execution.
+    pub reset_plan_id: Option<String>,
+
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
 

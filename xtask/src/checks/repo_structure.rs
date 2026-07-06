@@ -5,7 +5,13 @@ use std::path::Path;
 pub use super::repo_structure_spec::{REQUIRED_WORKSPACE_MEMBERS, TARGET_CRATES, TargetCrate};
 
 const TARGET_RUST_VERSION: &str = "1.94.0";
-const DEPENDENCY_TABLES: &[&str] = &["dependencies", "dev-dependencies", "build-dependencies"];
+const REMOVED_AFTER_CUTOVER: &[&str] = &[
+    "crates/axon-vector",
+    "crates/axon-code-index",
+    "crates/axon-crawl",
+    "crates/axon-ingest",
+    "crates/axon-extract",
+];
 
 pub fn check(root: &Path) -> anyhow::Result<()> {
     check_root(root).map_err(anyhow::Error::msg)
@@ -25,9 +31,24 @@ pub fn check_root(root: &Path) -> Result<(), String> {
         check_target_crate(root, krate, &workspace_members, &mut errors);
     }
 
+    require_file(
+        &root.join("docs/reference/sources/vector-payload.schema.json"),
+        &mut errors,
+    );
+    if std::env::var("AXON_ENFORCE_END_STATE_REPO_STRUCTURE")
+        .ok()
+        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+    {
+        for removed in REMOVED_AFTER_CUTOVER {
+            if workspace_members.contains(*removed) {
+                errors.push(format!("removed cutover crate still present: {removed}"));
+            }
+        }
+    }
+
     for member in &workspace_members {
         if !allowed_workspace_members().contains(member) {
-            errors.push(format!("unexpected PR0 workspace member: {member}"));
+            errors.push(format!("unexpected workspace member: {member}"));
         }
         if !root.join(member).is_dir() {
             errors.push(format!("workspace member path does not exist: {member}"));
@@ -66,7 +87,6 @@ fn check_target_crate(
     let crate_toml = read(crate_root.join("Cargo.toml"), errors);
     if let Some(manifest) = parse_target_manifest(krate.name, &crate_toml, errors) {
         require_target_manifest_metadata(krate.name, &manifest, errors);
-        require_empty_dependency_tables(krate.name, &manifest, errors);
     }
 
     let src_dir = crate_root.join("src");
@@ -140,7 +160,7 @@ fn require_modules(krate: &TargetCrate, src_dir: &Path, lib_rs: &str, errors: &m
 
     for module in public_modules.difference(&expected_modules) {
         errors.push(format!(
-            "{}/lib.rs declares unexpected PR0 public module: pub mod {module};",
+            "{}/lib.rs declares unexpected target public module: pub mod {module};",
             display(src_dir)
         ));
     }
@@ -160,7 +180,7 @@ fn require_modules(krate: &TargetCrate, src_dir: &Path, lib_rs: &str, errors: &m
                 };
                 if !expected_modules.contains(module) {
                     errors.push(format!(
-                        "{} is an unexpected PR0 module file",
+                        "{} is an unexpected target module file",
                         display(&path)
                     ));
                 }
@@ -213,41 +233,8 @@ fn require_target_manifest_metadata(krate: &str, parsed: &toml::Table, errors: &
                 .and_then(toml::Value::as_bool)
                 == Some(true) => {}
         _ => errors.push(format!(
-            "PR0 target crate {krate} must set rust-version.workspace = true (workspace rust-version {TARGET_RUST_VERSION})"
+            "target crate {krate} must set rust-version.workspace = true (workspace rust-version {TARGET_RUST_VERSION})"
         )),
-    }
-}
-
-fn require_empty_dependency_tables(krate: &str, parsed: &toml::Table, errors: &mut Vec<String>) {
-    let mut dependency_tables = Vec::new();
-    for table in DEPENDENCY_TABLES {
-        if parsed
-            .get(*table)
-            .and_then(toml::Value::as_table)
-            .is_some_and(|table| !table.is_empty())
-        {
-            dependency_tables.push(format!("[{table}]"));
-        }
-    }
-    if let Some(targets) = parsed.get("target").and_then(toml::Value::as_table) {
-        for (target, cfg) in targets {
-            let Some(cfg) = cfg.as_table() else { continue };
-            for table in DEPENDENCY_TABLES {
-                if cfg
-                    .get(*table)
-                    .and_then(toml::Value::as_table)
-                    .is_some_and(|table| !table.is_empty())
-                {
-                    dependency_tables.push(format!("[target.{target}.{table}]"));
-                }
-            }
-        }
-    }
-
-    for table_name in dependency_tables {
-        errors.push(format!(
-            "PR0 target crate {krate} must keep {table_name} empty"
-        ));
     }
 }
 

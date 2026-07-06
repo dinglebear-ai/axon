@@ -8,8 +8,8 @@ use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
     FreshSubcommand, JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs,
     ResetArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs,
-    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupInitArgs, SetupSubcommand, SourceArgs,
-    SyncSubcommand, UpdateArgs,
+    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupConfigSubcommand, SetupInitArgs,
+    SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -90,6 +90,8 @@ pub(super) struct DispatchOutput {
     pub reset_stores: Vec<String>,
     /// `--dry-run` pin for `axon reset`.
     pub reset_dry_run: bool,
+    /// `--plan-id` binding for `axon reset --yes`.
+    pub reset_plan_id: Option<String>,
 }
 
 impl DispatchOutput {
@@ -150,6 +152,7 @@ impl DispatchOutput {
             source_scope: None,
             reset_stores: Vec::new(),
             reset_dry_run: false,
+            reset_plan_id: None,
         }
     }
 }
@@ -307,7 +310,12 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Serve(args) => apply_serve(&mut out, args),
         CliCommand::Reset(args) => apply_reset(&mut out, args),
-        CliCommand::Preflight => out.command = CommandKind::Preflight,
+        CliCommand::Preflight(args) => {
+            out.command = CommandKind::Preflight;
+            if args.config {
+                out.positional.push("--config".to_string());
+            }
+        }
         CliCommand::Smoke => out.command = CommandKind::Smoke,
         CliCommand::Compose(args) => apply_compose(&mut out, args),
         CliCommand::Setup(args) => apply_setup(&mut out, args),
@@ -652,6 +660,7 @@ fn apply_reset(out: &mut DispatchOutput, args: ResetArgs) {
         .filter(|s| !s.is_empty())
         .collect();
     out.reset_dry_run = args.dry_run;
+    out.reset_plan_id = args.plan_id;
 }
 
 fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {
@@ -740,6 +749,14 @@ fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
         Some(SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];
         }
+        Some(SetupSubcommand::Config { action }) => match action {
+            SetupConfigSubcommand::Rewrite { dry_run } => {
+                out.positional = vec!["config".to_string(), "rewrite".to_string()];
+                if dry_run {
+                    out.positional.push("--dry-run".to_string());
+                }
+            }
+        },
         Some(SetupSubcommand::SessionWatchService { action }) => {
             out.setup_session_watch_action = Some(match action {
                 SessionWatchServiceSubcommand::Install => SessionWatchServiceAction::Install,

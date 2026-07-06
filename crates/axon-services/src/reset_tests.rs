@@ -18,6 +18,8 @@ fn resolve_stores_defaults_to_all_in_canonical_order() {
         vec![
             "jobs".to_string(),
             "ledger".to_string(),
+            "code_index".to_string(),
+            "watch".to_string(),
             "graph".to_string(),
             "memory".to_string(),
             "vectors".to_string(),
@@ -80,7 +82,10 @@ async fn dry_run_reset_mutates_nothing_and_reports_plan() {
 
     let result = reset(&cfg).await.expect("dry-run reset");
     assert!(result.dry_run, "default reset must be a dry-run");
-    assert!(result.receipt_path.is_none(), "dry-run writes no receipt");
+    assert!(
+        result.receipt_path.is_some(),
+        "dry-run reports the receipt path execution would write"
+    );
     // DB was never created by a read-only inventory.
     assert!(!db_path.exists(), "dry-run must not create the DB");
     assert!(result.deleted.sqlite_tables == 0);

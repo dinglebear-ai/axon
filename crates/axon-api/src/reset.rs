@@ -24,6 +24,8 @@ pub const TARGET_PAYLOAD_SCHEMA_VERSION: u32 = 8;
 /// registry can grow without a breaking enum change across transports.
 pub const RESET_STORE_JOBS: &str = "jobs";
 pub const RESET_STORE_LEDGER: &str = "ledger";
+pub const RESET_STORE_CODE_INDEX: &str = "code_index";
+pub const RESET_STORE_WATCH: &str = "watch";
 pub const RESET_STORE_GRAPH: &str = "graph";
 pub const RESET_STORE_MEMORY: &str = "memory";
 pub const RESET_STORE_VECTORS: &str = "vectors";
@@ -33,11 +35,35 @@ pub const RESET_STORE_ARTIFACTS: &str = "artifacts";
 pub const RESET_ALL_STORES: &[&str] = &[
     RESET_STORE_JOBS,
     RESET_STORE_LEDGER,
+    RESET_STORE_CODE_INDEX,
+    RESET_STORE_WATCH,
     RESET_STORE_GRAPH,
     RESET_STORE_MEMORY,
     RESET_STORE_VECTORS,
     RESET_STORE_ARTIFACTS,
 ];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ResetPlanId(pub String);
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ResetEstimate {
+    pub sqlite_rows: u64,
+    pub sqlite_tables: u64,
+    pub qdrant_points: u64,
+    pub qdrant_collections: u64,
+    pub artifact_files: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub enum ResetExecutionState {
+    Planned,
+    Executing,
+    Completed,
+    CompletedDegraded,
+    Blocked,
+    Failed,
+}
 
 /// Counts of what a reset deleted (or would delete, when `dry_run`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -79,9 +105,47 @@ pub struct ResetStorePlan {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ResetChunkReceipt {
+    pub chunk_id: String,
+    pub store: String,
+    pub status: String,
+    pub item_count: u64,
+    pub checkpoint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ResetPlan {
+    pub plan_id: String,
+    pub reset_id: String,
+    pub stores: Vec<String>,
+    pub estimates: ResetEstimate,
+    pub inventory_checksum: String,
+    pub config_snapshot_id: String,
+    pub auth_snapshot_id: String,
+    pub confirmation_text: String,
+    pub receipt_path: Option<String>,
+    pub expires_at_utc: String,
+    pub blockers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ResetReceipt {
+    pub plan_id: String,
+    pub reset_id: String,
+    pub state: ResetExecutionState,
+    pub chunks: Vec<ResetChunkReceipt>,
+    pub deleted: ResetDeleted,
+    pub created: ResetCreated,
+    pub audit_events: Vec<String>,
+}
+
 /// Result of `axon reset`. Mirrors the cutover-contract reset result shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ResetResult {
+    /// Stable reusable plan id (`reset_plan_...`) bound to selected stores,
+    /// estimates, auth/config snapshots, inventory checksum, and TTL.
+    pub plan_id: String,
     /// Stable id for this reset invocation (`reset_...`).
     pub reset_id: String,
     /// Stores selected for this reset, in canonical order.
@@ -91,6 +155,17 @@ pub struct ResetResult {
     pub dry_run: bool,
     /// Per-store inventory + intended action.
     pub plan: Vec<ResetStorePlan>,
+    pub reset_plan: ResetPlan,
+    pub estimates: ResetEstimate,
+    pub execution_state: ResetExecutionState,
+    pub inventory_checksum: String,
+    pub config_snapshot_id: String,
+    pub auth_snapshot_id: String,
+    pub confirmation_text: String,
+    pub plan_expires_at_utc: String,
+    pub blockers: Vec<String>,
+    pub chunks: Vec<ResetChunkReceipt>,
+    pub audit_events: Vec<String>,
     /// What was deleted (all zero/empty when `dry_run`).
     pub deleted: ResetDeleted,
     /// What was recreated at fresh schema (all zero/empty when `dry_run`).

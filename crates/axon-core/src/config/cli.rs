@@ -96,7 +96,7 @@ pub(super) enum CliCommand {
     /// Destructive clean-slate reset of local stores (dry-run by default; requires --yes to mutate)
     Reset(ResetArgs),
     /// Check host prerequisites and service readiness
-    Preflight,
+    Preflight(PreflightArgs),
     /// Run crawl/ask smoke checks against the running stack
     Smoke,
     /// Manage the local Docker Compose service stack
@@ -121,6 +121,13 @@ pub(super) enum CliCommand {
 pub(super) struct DoctorArgs {
     #[command(subcommand)]
     pub(super) action: Option<DoctorSubcommand>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct PreflightArgs {
+    /// Validate config cutover keys only; do not run service readiness probes.
+    #[arg(long = "config", action = ArgAction::SetTrue)]
+    pub(super) config: bool,
 }
 
 #[derive(Debug, Args)]
@@ -237,11 +244,26 @@ pub(super) enum SetupSubcommand {
     Targets,
     /// Copy the axon binary into ~/.local/bin for terminal use.
     Install,
+    /// Inspect or rewrite local config files.
+    Config {
+        #[command(subcommand)]
+        action: SetupConfigSubcommand,
+    },
     /// Install, check, remove, or inspect the host-local session watch service.
     #[command(name = "session-watch-service")]
     SessionWatchService {
         #[command(subcommand)]
         action: SessionWatchServiceSubcommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum SetupConfigSubcommand {
+    /// Preview or apply clean-break config key rewrites.
+    Rewrite {
+        /// Print proposed .env/config.toml edits without writing files.
+        #[arg(long, action = ArgAction::SetTrue)]
+        dry_run: bool,
     },
 }
 
@@ -268,6 +290,11 @@ pub(super) struct ResetArgs {
     /// default; pass this to keep it a dry-run even alongside --yes.
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) dry_run: bool,
+
+    /// Execute a previously reviewed reset plan id. When omitted with --yes,
+    /// Axon creates an invocation-local plan and binds execution to that plan.
+    #[arg(long = "plan-id")]
+    pub(super) plan_id: Option<String>,
 }
 
 #[derive(Debug, Args)]
