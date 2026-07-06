@@ -2,13 +2,34 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use async_trait::async_trait;
+use axon_api::source::SourceGenerationId;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
 use axon_jobs::status::JobStatus;
+use axon_vectors::payload::generation_payload_i64;
+use serde_json::{Value, json};
 
 use crate::runtime::ServiceJobRuntime;
 
 #[derive(Default)]
 pub(crate) struct NoopServiceRuntime;
+
+pub(crate) fn committed_generation_payload(generation: &SourceGenerationId) -> Value {
+    json!(
+        generation_payload_i64(generation, "committed_generation")
+            .expect("test generation id is payload-encodable")
+    )
+}
+
+pub(crate) fn source_generation_payload(generation: &SourceGenerationId) -> Value {
+    json!(
+        generation_payload_i64(generation, "source_generation")
+            .expect("test generation id is payload-encodable")
+    )
+}
+
+pub(crate) fn is_uncommitted_generation(value: &Value) -> bool {
+    value.is_null()
+}
 
 #[async_trait]
 impl ServiceJobRuntime for NoopServiceRuntime {
