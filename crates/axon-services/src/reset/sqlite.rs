@@ -15,9 +15,8 @@ pub struct SqliteInventory {
     pub exists: bool,
     /// Count of user tables (excludes `sqlite_*` internal tables).
     pub table_count: usize,
-    /// Total rows across the primary content-bearing tables (`jobs`,
-    /// ledger `sources`, `memory_records`). Best-effort; a missing table
-    /// contributes zero.
+    /// Total rows across primary content-bearing cutover tables. Best-effort; a
+    /// missing table contributes zero.
     pub content_rows: u64,
     /// Highest applied migration version recorded in `axon_applied_migrations`.
     pub applied_schema_version: i64,
@@ -92,7 +91,27 @@ async fn max_applied_version(pool: &SqlitePool) -> i64 {
 /// contributes zero, so this is safe on a partially-migrated DB.
 async fn count_content_rows(pool: &SqlitePool) -> u64 {
     let mut total: u64 = 0;
-    for table in ["jobs", "sources", "memory_records"] {
+    for table in [
+        "jobs",
+        "job_events",
+        "job_artifacts",
+        "sources",
+        "source_generations",
+        "source_documents",
+        "source_cleanup_debt",
+        "code_index_generations",
+        "code_index_files",
+        "watches",
+        "watch_runs",
+        "memory_records",
+        "memory_edges",
+        "graph_nodes",
+        "graph_edges",
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+    ] {
         total = total.saturating_add(count_table_if_present(pool, table).await);
     }
     total

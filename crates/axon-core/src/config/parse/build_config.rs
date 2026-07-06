@@ -54,6 +54,7 @@ pub(super) fn into_config_with_sources(
             | CommandKind::Config
             | CommandKind::Update
             | CommandKind::Palette
+            | CommandKind::Reset
     ) {
         return Ok(Config {
             command: dispatched.command,
@@ -67,6 +68,9 @@ pub(super) fn into_config_with_sources(
             sessions_watch: dispatched.sessions_watch,
             sessions_action: dispatched.sessions_action,
             setup_session_watch_action: dispatched.setup_session_watch_action,
+            reset_stores: dispatched.reset_stores,
+            reset_dry_run: dispatched.reset_dry_run,
+            reset_plan_id: dispatched.reset_plan_id,
             ..Config::default()
         });
     }

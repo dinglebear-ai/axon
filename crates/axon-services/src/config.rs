@@ -30,6 +30,172 @@ pub fn resolve_toml_path() -> Option<PathBuf> {
     axon_config_path()
 }
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct RemovedConfigKey {
+    pub removed_key: &'static str,
+    pub replacement: &'static str,
+    pub target: &'static str,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ConfigRewriteEdit {
+    pub path: String,
+    pub removed_key: String,
+    pub replacement: String,
+    pub target: String,
+    pub value_preview: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ConfigRewritePreview {
+    pub dry_run: bool,
+    pub env_path: Option<String>,
+    pub toml_path: Option<String>,
+    pub stale_keys: Vec<ConfigRewriteEdit>,
+    pub write_count: usize,
+    pub restart_required: bool,
+}
+
+pub const REMOVED_CONFIG_KEYS: &[RemovedConfigKey] = &[
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_HTTP_HOST",
+        replacement: "AXON_HTTP_HOST",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_HTTP_PORT",
+        replacement: "AXON_HTTP_PORT",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_HTTP_TOKEN",
+        replacement: "AXON_HTTP_TOKEN",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_AUTH_MODE",
+        replacement: "AXON_AUTH_MODE",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_PUBLIC_URL",
+        replacement: "AXON_PUBLIC_URL",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_GOOGLE_CLIENT_ID",
+        replacement: "AXON_GOOGLE_CLIENT_ID",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_GOOGLE_CLIENT_SECRET",
+        replacement: "AXON_GOOGLE_CLIENT_SECRET",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_AUTH_ADMIN_EMAIL",
+        replacement: "AXON_AUTH_ADMIN_EMAIL",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+        replacement: "AXON_ALLOWED_REDIRECT_URIS",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_MCP_ALLOWED_ORIGINS",
+        replacement: "AXON_ALLOWED_ORIGINS",
+        target: "env",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_COLLECTION",
+        replacement: "server.default_collection",
+        target: "config.toml",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_HYBRID_CANDIDATES",
+        replacement: "retrieval.hybrid_candidates",
+        target: "config.toml",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_ASK_HYBRID_CANDIDATES",
+        replacement: "ask.hybrid_candidates",
+        target: "config.toml",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_INGEST_LANES",
+        replacement: "pipeline.ingest_lanes",
+        target: "config.toml",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_EMBED_DOC_TIMEOUT_SECS",
+        replacement: "providers.embedding.doc_timeout_secs",
+        target: "config.toml",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_WATCH_TICK_SECS",
+        replacement: "watch.tick_secs",
+        target: "config.toml",
+    },
+    RemovedConfigKey {
+        removed_key: "AXON_WATCH_LEASE_SECS",
+        replacement: "watch.lease_secs",
+        target: "config.toml",
+    },
+];
+
+pub fn removed_config_key(key: &str) -> Option<&'static RemovedConfigKey> {
+    REMOVED_CONFIG_KEYS
+        .iter()
+        .find(|entry| entry.removed_key == key)
+}
+
+pub fn config_rewrite_preview() -> io::Result<ConfigRewritePreview> {
+    config_rewrite_preview_for_paths(resolve_env_path(), resolve_toml_path())
+}
+
+pub fn config_rewrite_preview_for_paths(
+    env_path: Option<PathBuf>,
+    toml_path: Option<PathBuf>,
+) -> io::Result<ConfigRewritePreview> {
+    let env_entries = match env_path.as_ref() {
+        Some(path) => read_env_entries(path)?,
+        None => BTreeMap::new(),
+    };
+    let env_path_str = env_path.as_ref().map(|p| p.display().to_string());
+    let toml_path_str = toml_path.as_ref().map(|p| p.display().to_string());
+    let stale_keys = env_entries
+        .iter()
+        .filter_map(|(key, value)| {
+            let removed = removed_config_key(key)?;
+            Some(ConfigRewriteEdit {
+                path: env_path_str.clone().unwrap_or_else(|| ".env".to_string()),
+                removed_key: key.clone(),
+                replacement: removed.replacement.to_string(),
+                target: removed.target.to_string(),
+                value_preview: display_env_value_for_preview(key, value),
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(ConfigRewritePreview {
+        dry_run: true,
+        env_path: env_path_str,
+        toml_path: toml_path_str,
+        restart_required: !stale_keys.is_empty(),
+        stale_keys,
+        write_count: 0,
+    })
+}
+
+fn display_env_value_for_preview(key: &str, value: &str) -> String {
+    let secret = key.contains("TOKEN") || key.contains("SECRET") || key.contains("KEY");
+    if secret && !value.trim().is_empty() {
+        "<redacted>".to_string()
+    } else {
+        value.to_string()
+    }
+}
+
 pub fn read_env_entries(path: &Path) -> io::Result<BTreeMap<String, String>> {
     match std::fs::read_to_string(path) {
         Ok(raw) => parse_env_pairs_from_str(&raw),

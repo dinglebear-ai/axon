@@ -81,6 +81,7 @@ impl Default for Config {
             source_scope: None,
             reset_stores: Vec::new(),
             reset_dry_run: false,
+            reset_plan_id: None,
             color_choice: super::enums::ColorChoice::Auto,
             watch_mode: false,
             performance_profile: PerformanceProfile::HighStable,

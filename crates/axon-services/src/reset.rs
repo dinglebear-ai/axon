@@ -12,6 +12,7 @@
 //! Tooling", reset result shape).
 
 mod artifacts;
+mod execution;
 mod qdrant;
 mod sqlite;
 
@@ -19,13 +20,17 @@ pub use qdrant::QdrantInventory;
 pub use sqlite::SqliteInventory;
 
 use axon_api::reset::{
-    RESET_ALL_STORES, RESET_STORE_ARTIFACTS, RESET_STORE_GRAPH, RESET_STORE_JOBS,
-    RESET_STORE_LEDGER, RESET_STORE_MEMORY, RESET_STORE_VECTORS, ResetCreated, ResetDeleted,
-    ResetResult, ResetStorePlan,
+    RESET_ALL_STORES, RESET_STORE_ARTIFACTS, RESET_STORE_CODE_INDEX, RESET_STORE_GRAPH,
+    RESET_STORE_JOBS, RESET_STORE_LEDGER, RESET_STORE_MEMORY, RESET_STORE_VECTORS,
+    RESET_STORE_WATCH, ResetChunkReceipt, ResetCreated, ResetDeleted, ResetEstimate,
+    ResetExecutionState, ResetPlan, ResetReceipt, ResetResult, ResetStorePlan,
 };
 use axon_core::config::Config;
 use axon_core::logging::{log_info, log_warn};
+use execution::{execute, write_receipt};
+use sha2::{Digest, Sha256};
 use std::error::Error;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// The SQLite-backed stores that all live in the single unified DB. Selecting
@@ -34,6 +39,8 @@ use uuid::Uuid;
 const SQLITE_STORES: &[&str] = &[
     RESET_STORE_JOBS,
     RESET_STORE_LEDGER,
+    RESET_STORE_CODE_INDEX,
+    RESET_STORE_WATCH,
     RESET_STORE_GRAPH,
     RESET_STORE_MEMORY,
 ];
@@ -80,6 +87,26 @@ fn is_dry_run(cfg: &Config) -> bool {
     cfg.reset_dry_run || !cfg.yes
 }
 
+struct PreparedReset {
+    stores: Vec<String>,
+    reset_id: String,
+    plan_id: String,
+    sqlite_inv: SqliteInventory,
+    qdrant_inv: Option<QdrantInventory>,
+    artifact_root: PathBuf,
+    artifact_files: Option<usize>,
+    warnings: Vec<String>,
+    plan: Vec<ResetStorePlan>,
+    reset_plan: ResetPlan,
+    estimates: ResetEstimate,
+    inventory_checksum: String,
+    config_snapshot_id: String,
+    auth_snapshot_id: String,
+    confirmation_text: String,
+    plan_expires_at_utc: String,
+    receipt_preview_path: Option<String>,
+}
+
 /// Run `axon reset`. In dry-run (default) it inventories every selected store
 /// and returns the plan without mutating. Under `--yes` it wipes + recreates
 /// the selected stores and writes a receipt artifact.
@@ -87,12 +114,30 @@ pub async fn reset(cfg: &Config) -> Result<ResetResult, Box<dyn Error>> {
     let stores = resolve_stores(cfg)?;
     let dry_run = is_dry_run(cfg);
     let reset_id = format!("reset_{}", Uuid::new_v4().simple());
+    let plan_id = cfg
+        .reset_plan_id
+        .clone()
+        .unwrap_or_else(|| format!("reset_plan_{}", Uuid::new_v4().simple()));
 
     log_info(&format!(
         "command=reset id={reset_id} dry_run={dry_run} stores={}",
         stores.join(",")
     ));
 
+    let prepared = prepare_reset(cfg, stores, reset_id, plan_id, dry_run).await?;
+    if dry_run {
+        return Ok(planned_reset_result(prepared));
+    }
+    execute_prepared_reset(cfg, prepared).await
+}
+
+async fn prepare_reset(
+    cfg: &Config,
+    stores: Vec<String>,
+    reset_id: String,
+    plan_id: String,
+    dry_run: bool,
+) -> Result<PreparedReset, Box<dyn Error>> {
     let sqlite_inv = sqlite::inventory(&cfg.sqlite_path).await?;
     let qdrant_inv = if wants(&stores, RESET_STORE_VECTORS) {
         Some(qdrant::inventory(cfg).await)
@@ -106,7 +151,6 @@ pub async fn reset(cfg: &Config) -> Result<ResetResult, Box<dyn Error>> {
         None
     };
 
-    let mut warnings = Vec::new();
     let plan = build_plan(
         cfg,
         &stores,
@@ -115,49 +159,265 @@ pub async fn reset(cfg: &Config) -> Result<ResetResult, Box<dyn Error>> {
         &artifact_root,
         artifact_files,
     );
+    let estimates = estimate(&plan);
+    let inventory_checksum = compute_inventory_checksum(&stores, &plan, &estimates);
+    let config_snapshot_id = format!("cfg_{}", short_hash(&cfg_snapshot_material(cfg)));
+    let auth_snapshot_id = if dry_run {
+        "auth_readonly_local_cli".to_string()
+    } else {
+        "auth_admin_local_cli".to_string()
+    };
+    let plan_expires_at_utc = (chrono::Utc::now() + chrono::Duration::minutes(15)).to_rfc3339();
+    let confirmation_text = format!(
+        "reset {plan_id} will destroy and recreate stores: {}",
+        stores.join(",")
+    );
+    let receipt_preview_path = Some(
+        artifacts::artifact_root()
+            .join("reset")
+            .join(format!("{reset_id}.json"))
+            .display()
+            .to_string(),
+    );
+    let reset_plan = ResetPlan {
+        plan_id: plan_id.clone(),
+        reset_id: reset_id.clone(),
+        stores: stores.clone(),
+        estimates: estimates.clone(),
+        inventory_checksum: inventory_checksum.clone(),
+        config_snapshot_id: config_snapshot_id.clone(),
+        auth_snapshot_id: auth_snapshot_id.clone(),
+        confirmation_text: confirmation_text.clone(),
+        receipt_path: receipt_preview_path.clone(),
+        expires_at_utc: plan_expires_at_utc.clone(),
+        blockers: Vec::new(),
+    };
 
-    if dry_run {
-        return Ok(ResetResult {
-            reset_id,
-            stores,
-            dry_run: true,
-            plan,
-            deleted: ResetDeleted::default(),
-            created: ResetCreated::default(),
-            receipt_path: None,
-            warnings,
-        });
+    Ok(PreparedReset {
+        stores,
+        reset_id,
+        plan_id,
+        sqlite_inv,
+        qdrant_inv,
+        artifact_root,
+        artifact_files,
+        warnings: Vec::new(),
+        plan,
+        reset_plan,
+        estimates,
+        inventory_checksum,
+        config_snapshot_id,
+        auth_snapshot_id,
+        confirmation_text,
+        plan_expires_at_utc,
+        receipt_preview_path,
+    })
+}
+
+fn planned_reset_result(prepared: PreparedReset) -> ResetResult {
+    ResetResult {
+        plan_id: prepared.plan_id,
+        reset_id: prepared.reset_id,
+        stores: prepared.stores,
+        dry_run: true,
+        plan: prepared.plan,
+        reset_plan: prepared.reset_plan,
+        estimates: prepared.estimates,
+        execution_state: ResetExecutionState::Planned,
+        inventory_checksum: prepared.inventory_checksum,
+        config_snapshot_id: prepared.config_snapshot_id,
+        auth_snapshot_id: prepared.auth_snapshot_id,
+        confirmation_text: prepared.confirmation_text,
+        plan_expires_at_utc: prepared.plan_expires_at_utc,
+        blockers: Vec::new(),
+        chunks: Vec::new(),
+        audit_events: vec!["reset.plan".to_string()],
+        deleted: ResetDeleted::default(),
+        created: ResetCreated::default(),
+        receipt_path: prepared.receipt_preview_path,
+        warnings: prepared.warnings,
+    }
+}
+
+async fn execute_prepared_reset(
+    cfg: &Config,
+    mut prepared: PreparedReset,
+) -> Result<ResetResult, Box<dyn Error>> {
+    let mut audit_events = vec![
+        "reset.plan".to_string(),
+        "reset.confirm".to_string(),
+        "reset.execute".to_string(),
+    ];
+    let before_execute = build_plan(
+        cfg,
+        &prepared.stores,
+        &sqlite::inventory(&cfg.sqlite_path).await?,
+        prepared.qdrant_inv.as_ref(),
+        &prepared.artifact_root,
+        prepared.artifact_files,
+    );
+    let before_checksum = compute_inventory_checksum(
+        &prepared.stores,
+        &before_execute,
+        &estimate(&before_execute),
+    );
+    if before_checksum != prepared.inventory_checksum {
+        return Err(format!(
+            "reset.inventory_changed: plan {} inventory changed before execution",
+            prepared.plan_id
+        )
+        .into());
     }
 
     let (deleted, created) = execute(
         cfg,
-        &stores,
-        &sqlite_inv,
-        qdrant_inv.as_ref(),
-        &artifact_root,
-        &mut warnings,
+        &prepared.stores,
+        &prepared.sqlite_inv,
+        prepared.qdrant_inv.as_ref(),
+        &prepared.artifact_root,
+        &mut prepared.warnings,
     )
     .await?;
+    let chunks = reset_chunks(&prepared.stores, &deleted, &created);
+    audit_events.push("reset.complete".to_string());
 
-    let receipt = write_receipt(&reset_id, &stores, &plan, &deleted, &created, &warnings).await;
+    let receipt = ResetReceipt {
+        plan_id: prepared.plan_id.clone(),
+        reset_id: prepared.reset_id.clone(),
+        state: ResetExecutionState::Completed,
+        chunks: chunks.clone(),
+        deleted: deleted.clone(),
+        created: created.clone(),
+        audit_events: audit_events.clone(),
+    };
+    let receipt = write_receipt(
+        &prepared.reset_id,
+        &prepared.stores,
+        &prepared.plan,
+        &prepared.reset_plan,
+        &receipt,
+        &prepared.warnings,
+    )
+    .await;
     let receipt_path = match receipt {
         Ok(path) => Some(path),
         Err(e) => {
-            warnings.push(format!("failed to write reset receipt: {e}"));
+            prepared
+                .warnings
+                .push(format!("failed to write reset receipt: {e}"));
             None
         }
     };
 
     Ok(ResetResult {
-        reset_id,
-        stores,
+        plan_id: prepared.plan_id,
+        reset_id: prepared.reset_id,
+        stores: prepared.stores,
         dry_run: false,
-        plan,
+        plan: prepared.plan,
+        reset_plan: prepared.reset_plan,
+        estimates: prepared.estimates,
+        execution_state: ResetExecutionState::Completed,
+        inventory_checksum: prepared.inventory_checksum,
+        config_snapshot_id: prepared.config_snapshot_id,
+        auth_snapshot_id: prepared.auth_snapshot_id,
+        confirmation_text: prepared.confirmation_text,
+        plan_expires_at_utc: prepared.plan_expires_at_utc,
+        blockers: Vec::new(),
+        chunks,
+        audit_events,
         deleted,
         created,
         receipt_path,
-        warnings,
+        warnings: prepared.warnings,
     })
+}
+
+fn estimate(plan: &[ResetStorePlan]) -> ResetEstimate {
+    let mut estimate = ResetEstimate::default();
+    for row in plan {
+        let count = row.item_count.unwrap_or(0);
+        match row.store.as_str() {
+            RESET_STORE_VECTORS => {
+                estimate.qdrant_points = estimate.qdrant_points.saturating_add(count);
+                if count > 0 {
+                    estimate.qdrant_collections = estimate.qdrant_collections.saturating_add(1);
+                }
+            }
+            RESET_STORE_ARTIFACTS => {
+                estimate.artifact_files = estimate.artifact_files.saturating_add(count);
+            }
+            _ => {
+                estimate.sqlite_rows = estimate.sqlite_rows.saturating_add(count);
+                if row.non_empty || count > 0 {
+                    estimate.sqlite_tables = estimate.sqlite_tables.saturating_add(1);
+                }
+            }
+        }
+    }
+    estimate
+}
+
+fn compute_inventory_checksum(
+    stores: &[String],
+    plan: &[ResetStorePlan],
+    estimates: &ResetEstimate,
+) -> String {
+    let value = serde_json::json!({
+        "stores": stores,
+        "plan": plan,
+        "estimates": estimates,
+    });
+    short_hash(&value.to_string())
+}
+
+fn cfg_snapshot_material(cfg: &Config) -> String {
+    format!(
+        "sqlite={};qdrant={};collection={};stores={}",
+        cfg.sqlite_path.display(),
+        cfg.qdrant_url,
+        cfg.collection,
+        cfg.reset_stores.join(",")
+    )
+}
+
+fn short_hash(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    let digest = hasher.finalize();
+    format!("{digest:x}").chars().take(16).collect()
+}
+
+fn reset_chunks(
+    stores: &[String],
+    deleted: &ResetDeleted,
+    created: &ResetCreated,
+) -> Vec<ResetChunkReceipt> {
+    stores
+        .iter()
+        .enumerate()
+        .map(|(idx, store)| {
+            let item_count = match store.as_str() {
+                RESET_STORE_VECTORS => deleted.qdrant_collections.len() as u64,
+                RESET_STORE_ARTIFACTS => deleted.artifact_files as u64,
+                _ => deleted.sqlite_tables as u64,
+            };
+            let checkpoint = if store == RESET_STORE_VECTORS {
+                format!("created={}", created.qdrant_collections.join(","))
+            } else if SQLITE_STORES.contains(&store.as_str()) {
+                format!("schema_version={}", created.sqlite_schema_version)
+            } else {
+                "complete".to_string()
+            };
+            ResetChunkReceipt {
+                chunk_id: format!("chunk_{idx:04}"),
+                store: store.clone(),
+                status: "completed".to_string(),
+                item_count,
+                checkpoint,
+            }
+        })
+        .collect()
 }
 
 fn build_plan(
@@ -220,110 +480,6 @@ fn build_plan(
         }
     }
     plan
-}
-
-/// Perform the destructive actions for the selected stores. Any single SQLite
-/// store selection wipes+re-migrates the whole unified DB exactly once.
-async fn execute(
-    cfg: &Config,
-    stores: &[String],
-    _sqlite_inv: &SqliteInventory,
-    qdrant_inv: Option<&QdrantInventory>,
-    artifact_root: &std::path::Path,
-    warnings: &mut Vec<String>,
-) -> Result<(ResetDeleted, ResetCreated), Box<dyn Error>> {
-    let mut deleted = ResetDeleted::default();
-    let mut created = ResetCreated::default();
-
-    if wants_any_sqlite(stores) {
-        deleted.sqlite_tables = _sqlite_inv.table_count;
-        let version = sqlite::wipe_and_remigrate(&cfg.sqlite_path).await?;
-        created.sqlite_schema_version = version;
-        log_info(&format!(
-            "reset sqlite wiped + re-migrated path={} schema_version={version}",
-            cfg.sqlite_path.display()
-        ));
-    }
-
-    if wants(stores, RESET_STORE_VECTORS) {
-        let inv = qdrant_inv.cloned().unwrap_or_default();
-        if inv.unreachable {
-            warnings.push(format!(
-                "Qdrant unreachable — collection '{}' not reset",
-                cfg.collection
-            ));
-        } else {
-            let dropped = qdrant::drop_collection(cfg).await?;
-            if dropped {
-                deleted.qdrant_collections.push(cfg.collection.clone());
-            }
-            axon_vector::ops::tei::qdrant_store::clear_collection_mode_cache(&cfg.collection);
-            match qdrant::probe_tei_dim(cfg).await {
-                Some(dim) => {
-                    qdrant::create_named_collection(cfg, dim).await?;
-                    created.qdrant_collections.push(cfg.collection.clone());
-                    log_info(&format!(
-                        "reset qdrant recreated collection='{}' dim={dim}",
-                        cfg.collection
-                    ));
-                }
-                None => {
-                    warnings.push(format!(
-                        "TEI embedding dimension unavailable — collection '{}' dropped but not \
-                         recreated; it will be created lazily on the first embed",
-                        cfg.collection
-                    ));
-                    log_warn(&format!(
-                        "reset qdrant dropped but not recreated (no TEI dim) collection='{}'",
-                        cfg.collection
-                    ));
-                }
-            }
-        }
-    }
-
-    if wants(stores, RESET_STORE_ARTIFACTS) {
-        match artifacts::purge_files(artifact_root) {
-            Ok(removed) => {
-                deleted.artifact_files = removed;
-                log_info(&format!(
-                    "reset artifacts purged files={removed} root={}",
-                    artifact_root.display()
-                ));
-            }
-            Err(e) => warnings.push(format!("failed to purge artifacts: {e}")),
-        }
-    }
-
-    Ok((deleted, created))
-}
-
-/// Write the reset receipt as a JSON artifact under the artifact root. Returns
-/// its filesystem path. The receipt is the durable record of a destructive
-/// reset required by the cutover contract.
-async fn write_receipt(
-    reset_id: &str,
-    stores: &[String],
-    plan: &[ResetStorePlan],
-    deleted: &ResetDeleted,
-    created: &ResetCreated,
-    warnings: &[String],
-) -> Result<String, Box<dyn Error>> {
-    let root = artifacts::artifact_root();
-    let relative = format!("reset/{reset_id}.json");
-    let receipt = serde_json::json!({
-        "reset_id": reset_id,
-        "written_at_utc": chrono::Utc::now().to_rfc3339(),
-        "stores": stores,
-        "dry_run": false,
-        "plan": plan,
-        "deleted": deleted,
-        "created": created,
-        "warnings": warnings,
-    });
-    let bytes = serde_json::to_vec_pretty(&receipt)?;
-    let path = axon_core::artifacts::atomic_write_under(&root, &relative, &bytes).await?;
-    Ok(path.display().to_string())
 }
 
 #[cfg(test)]

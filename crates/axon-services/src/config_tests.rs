@@ -132,3 +132,27 @@ fn redact_returns_empty_for_empty_value() {
     assert_eq!(redact(""), "");
     assert_eq!(redact("hello"), "***");
 }
+
+#[test]
+fn rewrite_preview_reports_removed_keys_without_writing() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join(".env");
+    std::fs::write(
+        &path,
+        "AXON_MCP_HTTP_TOKEN=secret\nQDRANT_URL=http://qdrant\n",
+    )
+    .unwrap();
+
+    let preview = config_rewrite_preview_for_paths(Some(path.clone()), None).unwrap();
+
+    assert!(preview.dry_run);
+    assert_eq!(preview.write_count, 0);
+    assert_eq!(preview.stale_keys.len(), 1);
+    assert_eq!(preview.stale_keys[0].removed_key, "AXON_MCP_HTTP_TOKEN");
+    assert_eq!(preview.stale_keys[0].replacement, "AXON_HTTP_TOKEN");
+    assert_eq!(preview.stale_keys[0].value_preview, "<redacted>");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "AXON_MCP_HTTP_TOKEN=secret\nQDRANT_URL=http://qdrant\n"
+    );
+}

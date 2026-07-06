@@ -11,6 +11,34 @@
 use crate::config::Config;
 use axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION;
 use serde_json::Value;
+use std::time::Duration;
+
+const CUTOVER_QDRANT_TIMEOUT: Duration = Duration::from_secs(2);
+
+pub async fn assert_workers_allowed_by_cutover(cfg: &Config) -> Result<(), String> {
+    if std::env::var("AXON_ALLOW_INCOMPATIBLE_STORE_STARTUP")
+        .ok()
+        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+    {
+        return Ok(());
+    }
+
+    let sqlite_ok = true;
+    let qdrant_reachable = !cfg.qdrant_url.trim().is_empty();
+    let report = build_cutover_block(cfg, qdrant_reachable, sqlite_ok).await;
+    let blocked = report
+        .get("startup_blocked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if !blocked {
+        return Ok(());
+    }
+    let guidance = report
+        .get("guidance")
+        .and_then(Value::as_str)
+        .unwrap_or("run `axon reset --dry-run`, review the plan, then `axon reset --yes`");
+    Err(format!("startup.incompatible_store: {guidance}"))
+}
 
 /// Build the `cutover_stores` doctor block: per-store non-empty / incompatible
 /// flags plus a top-level `reset_recommended` signal and guidance.
@@ -47,6 +75,7 @@ pub async fn build_cutover_block(cfg: &Config, qdrant_reachable: bool, sqlite_ok
 
     serde_json::json!({
         "reset_recommended": reset_recommended,
+        "startup_blocked": reset_recommended,
         "empty_and_fresh": !reset_recommended,
         "guidance": guidance,
         "stores": {
@@ -106,7 +135,27 @@ async fn count_sqlite_content_rows(path: &std::path::Path) -> Result<u64, String
         .await
         .map_err(|e| e.to_string())?;
     let mut total: u64 = 0;
-    for table in ["jobs", "sources", "memory_records"] {
+    for table in [
+        "jobs",
+        "job_events",
+        "job_artifacts",
+        "sources",
+        "source_generations",
+        "source_documents",
+        "source_cleanup_debt",
+        "code_index_generations",
+        "code_index_files",
+        "watches",
+        "watch_runs",
+        "memory_records",
+        "memory_edges",
+        "graph_nodes",
+        "graph_edges",
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+    ] {
         let present: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
         )
@@ -153,8 +202,16 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
 
     // Existence: collection GET 404 ⇒ fresh/empty.
     let info_url = format!("{base}/collections/{collection}");
-    match client.get(&info_url).send().await {
-        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
+    match tokio::time::timeout(CUTOVER_QDRANT_TIMEOUT, client.get(&info_url).send()).await {
+        Err(_) => {
+            return serde_json::json!({
+                "reachable": false,
+                "non_empty": false,
+                "schema_incompatible": false,
+                "probe_error": "collection GET timed out",
+            });
+        }
+        Ok(Ok(r)) if r.status() == reqwest::StatusCode::NOT_FOUND => {
             return serde_json::json!({
                 "reachable": true,
                 "exists": false,
@@ -163,8 +220,8 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
                 "note": "fresh — collection does not exist",
             });
         }
-        Ok(r) if r.status().is_success() => {}
-        Ok(r) => {
+        Ok(Ok(r)) if r.status().is_success() => {}
+        Ok(Ok(r)) => {
             return serde_json::json!({
                 "reachable": true,
                 "non_empty": false,
@@ -172,7 +229,7 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
                 "probe_error": format!("collection GET {}", r.status()),
             });
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             return serde_json::json!({
                 "reachable": false,
                 "non_empty": false,
@@ -181,7 +238,6 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
             });
         }
     }
-
     let points = qdrant_point_count(client, base, collection).await;
     let (min_schema_version, incompatible) = if points > 0 {
         qdrant_min_schema(client, base, collection).await
@@ -203,13 +259,16 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
 
 async fn qdrant_point_count(client: &reqwest::Client, base: &str, collection: &str) -> u64 {
     let url = format!("{base}/collections/{collection}/points/count");
-    match client
-        .post(&url)
-        .json(&serde_json::json!({ "exact": true }))
-        .send()
-        .await
+    match tokio::time::timeout(
+        CUTOVER_QDRANT_TIMEOUT,
+        client
+            .post(&url)
+            .json(&serde_json::json!({ "exact": true }))
+            .send(),
+    )
+    .await
     {
-        Ok(resp) if resp.status().is_success() => resp
+        Ok(Ok(resp)) if resp.status().is_success() => resp
             .json::<Value>()
             .await
             .ok()
@@ -232,13 +291,16 @@ async fn qdrant_min_schema(
         "with_payload": ["payload_schema_version"],
         "with_vector": false,
     });
-    let page: Value = match client.post(&url).json(&body).send().await {
-        Ok(resp) if resp.status().is_success() => match resp.json().await {
-            Ok(v) => v,
-            Err(_) => return (None, false),
-        },
-        _ => return (None, false),
-    };
+    let page: Value =
+        match tokio::time::timeout(CUTOVER_QDRANT_TIMEOUT, client.post(&url).json(&body).send())
+            .await
+        {
+            Ok(Ok(resp)) if resp.status().is_success() => match resp.json().await {
+                Ok(v) => v,
+                Err(_) => return (None, false),
+            },
+            _ => return (None, false),
+        };
     let points = match page.pointer("/result/points").and_then(Value::as_array) {
         Some(p) if !p.is_empty() => p,
         _ => return (None, false),
