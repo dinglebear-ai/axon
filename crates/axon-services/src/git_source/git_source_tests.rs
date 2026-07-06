@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::test_support::committed_generation_payload;
+
 use super::{GitSourceIndexInput, git_source_id, index_git_source, index_git_source_with_job};
 
 const TARGET_URL: &str = "https://github.com/jmagar/fixture-repo";
@@ -102,8 +104,8 @@ async fn git_repo_index_writes_vectors_then_commits_source_generation() {
             .points("axon-test")
             .await
             .iter()
-            .all(|point| point.payload["committed_generation"].as_str()
-                == Some(output.generation.0.as_str()))
+            .all(|point| point.payload["committed_generation"]
+                == committed_generation_payload(&output.generation))
     );
     assert!(
         vectors

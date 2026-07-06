@@ -1,6 +1,6 @@
 # Tool Source Families Matrix Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Finish Phase 9 by putting local, git, web, feed, YouTube, Reddit, sessions, registry/package, CLI tool/script, MCP tool/call, and shared memory-document integration behind the unified source-family matrix, adapter fixture contract, generated capability docs, and new-source onboarding checklist.
 
@@ -61,7 +61,7 @@ The Lavra engineering review found that the original plan could overreach into i
 **Interfaces:**
 - Produces: `SourceFamily`, `SourceAdapterSpec`, `SourceFamilyMatrix`, `source_family_matrix() -> &'static [SourceAdapterSpec]`.
 
-- [ ] **Step 1: Add failing matrix completeness test**
+- [x] **Step 1: Add failing matrix completeness test**
 
 ```rust
 #[test]
@@ -85,13 +85,13 @@ fn matrix_contains_required_source_families() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `cargo test -p axon-adapters family_matrix --no-fail-fast`
 
 Expected: compile failure if `axon-adapters` or the matrix types are incomplete; otherwise failure for missing family rows.
 
-- [ ] **Step 3: Implement adapter spec shape**
+- [x] **Step 3: Implement adapter spec shape**
 
 Implement the contract fields:
 
@@ -122,11 +122,11 @@ pub struct SourceAdapterSpec {
 }
 ```
 
-- [ ] **Step 4: Add contract-complete initial rows**
+- [x] **Step 4: Add contract-complete initial rows**
 
 Populate one row per required family. Rows may declare unsupported scopes only when the contract says the family does not support them, but every row must have a stable adapter name/version or integration name/version, source kinds where applicable, schemes, default scope, metadata families, security capability flags, degraded modes, and graph fact declarations. `MemoryIntegration` must set `is_source_adapter=false` and must not appear in resolver public source choices.
 
-- [ ] **Step 5: Run matrix tests**
+- [x] **Step 5: Run matrix tests**
 
 Run: `cargo test -p axon-adapters family_matrix --no-fail-fast`
 
@@ -145,7 +145,7 @@ Expected: matrix rows validate and every required family exists.
 - Consumes: `SourceAdapterSpec`.
 - Produces: `SourceOnboardingStatus` with rows matching `sources/new-source-contract.md`.
 
-- [ ] **Step 1: Add failing onboarding row test**
+- [x] **Step 1: Add failing onboarding row test**
 
 ```rust
 #[test]
@@ -171,17 +171,17 @@ fn required_families_have_all_onboarding_rows() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `cargo test -p axon-adapters onboarding --no-fail-fast`
 
 Expected: required families without complete rows fail.
 
-- [ ] **Step 3: Implement status derivation**
+- [x] **Step 3: Implement status derivation**
 
 Derive onboarding status from adapter specs, fixture presence, metadata registry entries, graph declarations, parser family declarations, auth/security flags, and generated capability docs.
 
-- [ ] **Step 4: Record implementation-variant exceptions only**
+- [x] **Step 4: Record implementation-variant exceptions only**
 
 Create machine-readable exceptions only for provider-specific variants beyond the minimal required family fixture:
 
@@ -196,7 +196,7 @@ Create machine-readable exceptions only for provider-specific variants beyond th
 
 Exceptions are not allowed for the issue #298 Phase 9 checklist rows themselves. Security fixtures for SSRF, local path containment, tool execution, and redaction are mandatory for any family accepted by the public router.
 
-- [ ] **Step 5: Run onboarding tests**
+- [x] **Step 5: Run onboarding tests**
 
 Run: `cargo test -p axon-adapters onboarding --no-fail-fast`
 
@@ -219,7 +219,7 @@ Expected: every required family is complete; optional provider variants have exp
 - Consumes: adapter specs and testing contract fixture layout.
 - Produces: fixture validation for every required source adapter family.
 
-- [ ] **Step 1: Add fixture presence test**
+- [x] **Step 1: Add fixture presence test**
 
 ```rust
 #[test]
@@ -240,13 +240,13 @@ fn required_families_have_required_fixture_packs() {
 }
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `cargo test -p axon-adapters fixture_packs --no-fail-fast`
 
 Expected: missing fixture packs fail.
 
-- [ ] **Step 3: Add fixtures for every required source adapter family**
+- [x] **Step 3: Add fixtures for every required source adapter family**
 
 For each source adapter family, add:
 
@@ -265,13 +265,13 @@ metadata/public-fields.valid.json
 metadata/unknown-fields.internal.json
 ```
 
-- [ ] **Step 4: Validate fixture content**
+- [x] **Step 4: Validate fixture content**
 
 Each fixture must include source id, canonical URI, adapter name/version, source item key, item canonical URI, metadata family, graph declarations, redaction status, and expected degraded/error code where applicable.
 
 Source-job fixtures must include `job_id`, stage sequence, generation publish state, item/document/chunk/vector counts, cleanup debt behavior for removed items, and provider-degradation behavior.
 
-- [ ] **Step 5: Run fixture tests**
+- [x] **Step 5: Run fixture tests**
 
 Run: `cargo test -p axon-adapters fixtures --no-fail-fast`
 
@@ -291,7 +291,7 @@ Expected: all required fixture packs parse and validate.
 **Interfaces:**
 - Produces: bounded prepare/embed/vector/graph write batches for source-family ports.
 
-- [ ] **Step 1: Add failing batching test**
+- [x] **Step 1: Add failing batching test**
 
 ```rust
 #[tokio::test]
@@ -305,17 +305,17 @@ async fn source_pipeline_batches_prepare_embed_vector_and_graph_writes() {
 }
 ```
 
-- [ ] **Step 2: Run batching test**
+- [x] **Step 2: Run batching test**
 
 Run: `cargo test -p axon-services source_batch --no-fail-fast`
 
 Expected: test fails if item-by-item writes remain in required/public source ports.
 
-- [ ] **Step 3: Implement batch boundaries**
+- [x] **Step 3: Implement batch boundaries**
 
 Source adapters emit item streams; the service layer chunks them into bounded batches before preparing, embedding, vector upsert, and graph write. Batch events include batch id, item counts, chunk counts, byte counts, provider reservation ids, and elapsed time.
 
-- [ ] **Step 4: Run batching tests**
+- [x] **Step 4: Run batching tests**
 
 Run: `cargo test -p axon-services source_batch --no-fail-fast`
 
@@ -336,7 +336,7 @@ Expected: required/public source paths use bounded batches.
 - Consumes: `SecurityPolicy`, `AuthSnapshot`.
 - Produces: SSRF/local policy parity for web/feed/video/registry and local sources.
 
-- [ ] **Step 1: Add failing security fixture tests**
+- [x] **Step 1: Add failing security fixture tests**
 
 ```rust
 #[tokio::test]
@@ -354,21 +354,21 @@ async fn local_source_denies_secret_paths_without_local_scope() {
 }
 ```
 
-- [ ] **Step 2: Run security tests**
+- [x] **Step 2: Run security tests**
 
 Run: `cargo test -p axon-services source_security --no-fail-fast`
 
 Expected: failures identify missing SSRF or local policy enforcement.
 
-- [ ] **Step 3: Add required fixtures**
+- [x] **Step 3: Add required fixtures**
 
 Network fixtures cover private IPs, redirects, DNS rebinding, loopback, link-local, `file:` schemes, and Chrome/render-provider parity. Local fixtures cover `axon:local`, symlink-resolved containment, default denies for `.env`, SSH/cloud/Codex/Gemini/browser-profile paths, and absolute-path redaction.
 
-- [ ] **Step 4: Enforce before side effects**
+- [x] **Step 4: Enforce before side effects**
 
 Run security policy before fetch, render, local read, tool execution, artifact write, vector write, graph write, or job child creation.
 
-- [ ] **Step 5: Run policy tests**
+- [x] **Step 5: Run policy tests**
 
 Run: `cargo test -p axon-services source_security --no-fail-fast`
 
@@ -387,7 +387,7 @@ Expected: fixtures pass and no denied fixture produces side effects.
 **Interfaces:**
 - Produces: metadata-only/no-exec default and explicit execution path for CLI tool/script sources.
 
-- [ ] **Step 1: Add failing CLI tool adapter tests**
+- [x] **Step 1: Add failing CLI tool adapter tests**
 
 ```rust
 #[tokio::test]
@@ -406,17 +406,17 @@ async fn cli_tool_exec_requires_execute_scope_and_allowlist() {
 }
 ```
 
-- [ ] **Step 2: Run tool tests**
+- [x] **Step 2: Run tool tests**
 
 Run: `cargo test -p axon-adapters tool --no-fail-fast`
 
 Expected: missing adapter or policy behavior fails.
 
-- [ ] **Step 3: Implement adapter behavior**
+- [x] **Step 3: Implement adapter behavior**
 
 The adapter stores command, argv, env allowlist, side-effect class, timeout, output cap, redacted stdout/stderr artifact refs, and audit metadata. It never stores shell-expanded strings as authority; shell scripts require an explicit shell-script source class.
 
-- [ ] **Step 4: Run tool adapter tests**
+- [x] **Step 4: Run tool adapter tests**
 
 Run: `cargo test -p axon-adapters tool --no-fail-fast`
 
@@ -435,7 +435,7 @@ Expected: metadata-only and explicit execution policy tests pass.
 **Interfaces:**
 - Produces: MCP server/tool schema and optional tool-call source behavior.
 
-- [ ] **Step 1: Add failing MCP adapter tests**
+- [x] **Step 1: Add failing MCP adapter tests**
 
 ```rust
 #[tokio::test]
@@ -453,17 +453,17 @@ async fn mcp_tool_call_requires_execute_scope_and_redacts_output() {
 }
 ```
 
-- [ ] **Step 2: Run MCP adapter tests**
+- [x] **Step 2: Run MCP adapter tests**
 
 Run: `cargo test -p axon-adapters mcp --no-fail-fast`
 
 Expected: missing adapter or redaction behavior fails.
 
-- [ ] **Step 3: Implement adapter behavior**
+- [x] **Step 3: Implement adapter behavior**
 
 MCP adapter supports server schema discovery, tool metadata, optional tool call execution with explicit opt-in, auth snapshot enforcement, output cap, artifact refs, redacted stdout/stderr-equivalent payloads, and external-resource graph nodes.
 
-- [ ] **Step 4: Run MCP adapter tests**
+- [x] **Step 4: Run MCP adapter tests**
 
 Run: `cargo test -p axon-adapters mcp --no-fail-fast`
 
@@ -484,15 +484,15 @@ Expected: metadata-only, explicit execution, and redaction tests pass.
 **Interfaces:**
 - Produces: proof that memory is not a source adapter but uses shared preparation, payload, graph, and retrieval rules where memory documents overlap with source processing.
 
-- [ ] **Step 1: Add memory integration matrix test**
+- [x] **Step 1: Add memory integration matrix test**
 
 Assert the matrix includes `MemoryIntegration` with `is_source_adapter=false`, no resolver schemes, `vector_namespace=memory`, memory-specific metadata families, graph fact declarations, and no adapter acquisition scopes.
 
-- [ ] **Step 2: Add shared-pipeline memory fixture**
+- [x] **Step 2: Add shared-pipeline memory fixture**
 
 Create a memory document fixture that flows through `DocumentPreparer`, vector payload validation, graph candidate validation, and retrieval namespace filtering without creating a `SourceAdapter` row or source ledger generation.
 
-- [ ] **Step 3: Run memory integration tests**
+- [x] **Step 3: Run memory integration tests**
 
 Run:
 
@@ -516,7 +516,7 @@ Expected: memory uses shared preparation/payload/graph/retrieval rules where app
 - Consumes: adapter matrix and onboarding status.
 - Produces: regenerated CLI/MCP/REST capability docs and schemas.
 
-- [ ] **Step 1: Add generated capability drift test**
+- [x] **Step 1: Add generated capability drift test**
 
 ```rust
 #[test]
@@ -529,13 +529,13 @@ fn generated_capabilities_include_source_family_matrix() {
 }
 ```
 
-- [ ] **Step 2: Run generator checks**
+- [x] **Step 2: Run generator checks**
 
 Run: `cargo xtask schemas generate`
 
 Expected: generator writes updated artifacts if stale.
 
-- [ ] **Step 3: Run final Phase 9 checks**
+- [x] **Step 3: Run final Phase 9 checks**
 
 Run:
 

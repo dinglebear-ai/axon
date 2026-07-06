@@ -4,6 +4,8 @@ use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorMode, FakeVectorStore};
 
+use crate::test_support::is_uncommitted_generation;
+
 use super::{FeedSourceIndexInput, index_feed_source, index_feed_source_with_job};
 
 const RSS_TWO_ITEMS: &str = r#"<?xml version="1.0"?>
@@ -272,7 +274,7 @@ async fn publish_generation_failure_reports_rollback_delete_failure() {
             .points("axon-test")
             .await
             .iter()
-            .all(|point| point.payload["committed_generation"].as_str() != Some("uncommitted"))
+            .all(|point| !is_uncommitted_generation(&point.payload["committed_generation"]))
     );
 }
 
@@ -300,6 +302,6 @@ async fn vector_commit_marker_failure_leaves_vectors_uncommitted() {
             .points("axon-test")
             .await
             .iter()
-            .all(|point| point.payload["committed_generation"].as_str() == Some("uncommitted"))
+            .all(|point| is_uncommitted_generation(&point.payload["committed_generation"]))
     );
 }
