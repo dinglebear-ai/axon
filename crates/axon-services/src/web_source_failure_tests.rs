@@ -5,6 +5,8 @@ use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorMode, FakeVectorStore};
 use serde_json::json;
 
+use crate::test_support::committed_generation_payload;
+
 use super::{WebSourceIndexInput, index_web_source};
 
 fn job_id() -> JobId {
@@ -173,7 +175,7 @@ async fn partial_unchanged_vector_copy_failure_keeps_previous_web_generation_vis
         .collect::<Vec<_>>();
     assert!(!api_points.is_empty());
     assert!(api_points.iter().all(|point| {
-        point.payload["committed_generation"].as_str() == Some(first.generation.0.as_str())
+        point.payload["committed_generation"] == committed_generation_payload(&first.generation)
     }));
 }
 
