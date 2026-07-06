@@ -2,6 +2,13 @@ name: OpenWiki Update
 
 on:
   workflow_dispatch:
+    inputs:
+      reason:
+        description: "Optional note for this manual run"
+        required: false
+        type: string
+  repository_dispatch:
+    types: [openwiki-update]
   schedule:
     # UTC; 08:00 UTC = midnight PST.
     - cron: '0 8 * * *'
