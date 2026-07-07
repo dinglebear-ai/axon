@@ -18,7 +18,6 @@
 // union, and a test asserts the two stay in lockstep.
 
 import {
-  Activity,
   BarChart3,
   BookOpen,
   Bot,
@@ -32,22 +31,20 @@ import {
   GitBranch,
   GitCompare,
   Globe,
+  Compass,
   HelpCircle,
   Layers,
   Map as MapIcon,
   PackageOpen,
-  RotateCw,
   SearchCheck,
   Sparkles,
   Stethoscope,
   Trash2,
   Workflow,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
 import type { PaletteSubcommand, JobFamily, JobOperation } from "./actions";
-import { JOB_FAMILIES, JOB_OPERATIONS } from "./actions";
 import {
   type ActionRouteTemplate,
   type BodyBuilder,
@@ -80,7 +77,6 @@ import {
   searchBody,
   suggestBody,
   summarizeBody,
-  uuid,
   watchCreateBody,
 } from "./actionRequest";
 import {
@@ -111,6 +107,7 @@ import {
   jobStartFormatter,
   recordFormatter,
 } from "./actionFormat";
+import { buildLifecycleRegistry } from "./actionLifecycle";
 
 export type OutputKind = "markdown" | "code";
 
@@ -200,6 +197,16 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: formatCompact,
     actionIcon: HelpCircle,
     structuredView: "help",
+  }),
+  // Browser is a local, window-driven action (Tauri webview creation +
+  // navigation commands), so it uses a palette marker route for metadata only.
+  browser: behavior({
+    route: getRoute("palette://browser"),
+    buildBody: noBody,
+    outputKind: code,
+    formatText: formatCompact,
+    actionIcon: Compass,
+    structuredView: null,
   }),
   files: behavior({
     route: getRoute("palette://files"),
@@ -467,81 +474,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "ingest-sessions-prepared",
   }),
 };
-
-const JOB_LIFECYCLE_ICONS: Record<JobFamily, LucideIcon> = {
-  crawl: GitBranch,
-  embed: Layers,
-  extract: Braces,
-  ingest: PackageOpen,
-};
-
-function lifecycleBehavior(family: JobFamily, operation: JobOperation): ActionBehavior {
-  const icon = JOB_LIFECYCLE_ICONS[family];
-  return {
-    route: lifecycleRoute(family, operation),
-    buildBody: noBody,
-    routeFor: lifecycleRouteFor(family, operation),
-    outputKind: code,
-    formatText: recordFormatter(formatJobLifecycle),
-    actionIcon: icon,
-    outputIcon: lifecycleOutputIcon(family, operation),
-    structuredView: "job-lifecycle",
-  };
-}
-
-function lifecycleRoute(family: JobFamily, operation: JobOperation): ActionRouteTemplate {
-  switch (operation) {
-    case "list":
-      return getRoute(`/v1/${family}`);
-    case "status":
-      return getRoute(`/v1/${family}/{id}`);
-    case "cancel":
-      return postRoute(`/v1/${family}/{id}/cancel`);
-    case "cleanup":
-      return postRoute(`/v1/${family}/cleanup`);
-    case "clear":
-      return deleteRoute(`/v1/${family}`);
-    case "recover":
-      return postRoute(`/v1/${family}/recover`);
-  }
-}
-
-function lifecycleRouteFor(family: JobFamily, operation: JobOperation): ActionBehavior["routeFor"] {
-  switch (operation) {
-    case "status":
-      return (ctx) => getRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}`);
-    case "cancel":
-      return (ctx) => postRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}/cancel`);
-    default:
-      return undefined;
-  }
-}
-
-function lifecycleOutputIcon(family: JobFamily, operation: JobOperation): LucideIcon {
-  switch (operation) {
-    case "cancel":
-      return X;
-    case "cleanup":
-    case "clear":
-    case "recover":
-      return RotateCw;
-    case "list":
-    case "status":
-      return Activity;
-    default:
-      return JOB_LIFECYCLE_ICONS[family];
-  }
-}
-
-function buildLifecycleRegistry(): Record<`${JobFamily}-${JobOperation}`, ActionBehavior> {
-  const out = {} as Record<`${JobFamily}-${JobOperation}`, ActionBehavior>;
-  for (const family of JOB_FAMILIES) {
-    for (const operation of JOB_OPERATIONS) {
-      out[`${family}-${operation}`] = lifecycleBehavior(family, operation);
-    }
-  }
-  return out;
-}
 
 /** Exhaustive per-action behavior table. Keyed by the full subcommand union. */
 export const ACTION_REGISTRY: Record<PaletteSubcommand, ActionBehavior> = {

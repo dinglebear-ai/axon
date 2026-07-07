@@ -28,8 +28,10 @@ import {
   validationMessage,
 } from "@/lib/paletteView";
 import {
+  browserInitialTarget,
   INITIAL_VIEW,
   isBrowseOpen,
+  isBrowserOpen,
   isHistoryOpen,
   isSettingsOpen,
   modeOf,
@@ -76,6 +78,8 @@ export default function App() {
   const settingsOpen = isSettingsOpen(view);
   const historyOpen = isHistoryOpen(view);
   const browseOpen = isBrowseOpen(view);
+  const browserOpen = isBrowserOpen(view);
+  const browserInitialTargetValue = browserInitialTarget(view);
   usePaletteLifecycle(dispatchView, setShownTick);
 
   useEffect(() => {
@@ -159,20 +163,27 @@ export default function App() {
   const jobMinimized = (run.kind === "job" || run.kind === "asyncJob") && run.minimized;
   const jobExpanded = (run.kind === "job" || run.kind === "asyncJob") && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
-  const enteringArgument = Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen;
+  const enteringArgument =
+    Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen && !browserOpen;
   const showContent =
-    settingsOpen || historyOpen || showOutput || (!enteringArgument && (hasQuery || browseOpen));
+    settingsOpen ||
+    historyOpen ||
+    browserOpen ||
+    showOutput ||
+    (!enteringArgument && (hasQuery || browseOpen));
   const compact = !showContent;
-  const showResultsLayout = showOutput || settingsOpen || historyOpen;
+  const showResultsLayout = showOutput || settingsOpen || historyOpen || browserOpen;
   const hideCommandBar =
-    showOutput && (active?.subcommand === "ask" || active?.subcommand === "chat");
-  const showActionPanel = !showResultsLayout && !settingsOpen && !historyOpen && !enteringArgument;
+    browserOpen || (showOutput && (active?.subcommand === "ask" || active?.subcommand === "chat"));
+  const showActionPanel =
+    !showResultsLayout && !settingsOpen && !historyOpen && !browserOpen && !enteringArgument;
   const listboxOpen = showContent && showActionPanel;
   const activeDescendantId =
     listboxOpen && suggestedAction ? actionOptionId(suggestedAction) : undefined;
 
   const settingsFocusRef = useFocusReturn<HTMLDivElement>(settingsOpen);
   const historyFocusRef = useFocusReturn<HTMLDivElement>(historyOpen && !settingsOpen);
+  const browserFocusRef = useFocusReturn<HTMLDivElement>(browserOpen);
   const outputFocusRef = useFocusReturn<HTMLDivElement>(
     showOutput && !settingsOpen && !historyOpen,
   );
@@ -182,7 +193,7 @@ export default function App() {
     jobExpanded,
     jobMinimized,
     settingsOpen,
-    historyOpen,
+    historyOpen: historyOpen || browserOpen,
     showResultsLayout,
     showContent,
     filteredLength: filtered.length,
@@ -222,6 +233,17 @@ export default function App() {
   const requestSubmit = useCallback(
     (action: PaletteAction, argumentOverride?: string) => {
       const argument = argumentOverride ?? argumentFor(action, modeAction, parsed, query);
+      // Browser is a local, window-driven action: it never issues an HTTP
+      // request (unlike other `kind: "local"` actions such as `help`, which
+      // `useActionRunner.submit` special-cases into a synthetic RunState), so
+      // it is intercepted here and routed straight to its own overlay
+      // instead of falling into `submit()`'s generic `kind === "local"`
+      // no-op path.
+      if (action.subcommand === "browser") {
+        setPendingConfirmation(null);
+        dispatchView({ type: "openBrowser", initialTarget: argument.trim() || null });
+        return;
+      }
       const validationMessageText = validationMessage(action, argument);
       if (!validationMessageText && actionNeedsConfirmation(action)) {
         if (!actionConfirmationArmed(pendingConfirmation, action, argument)) {
@@ -388,7 +410,7 @@ export default function App() {
       ? "Config error"
       : "Loading";
   const endpointTone = configError ? "error" : "syncing";
-  const showBackButton = settingsOpen || historyOpen || showOutput;
+  const showBackButton = settingsOpen || historyOpen || browserOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
   const { pinnedTargets, togglePin: onTogglePin } = usePalettePins(setHistory, currentTarget);
   const commandRunning = run.kind === "running" || run.kind === "streaming";
@@ -403,6 +425,12 @@ export default function App() {
     clearSourcesFilter();
     focusInput(true);
   }
+
+  const onCloseBrowser = useCallback(() => {
+    dispatchView({ type: "closeBrowser" });
+    setQuery("");
+    focusInput(true);
+  }, []);
 
   // P-M2 — stable callbacks for the memoized children (CommandBar/OutputPanel).
   const onSubmitAction = useCallback(
@@ -482,7 +510,7 @@ export default function App() {
   }, []);
   return (
     <PaletteShell
-      {...{ active, activeDescendantId, cancelAsyncJob, cancelJob, canceling, client, commandRunning, compact, config, configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode, expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, hideCommandBar, history, historyFocusRef, historyOpen, askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown, onOpenJob, onReset, onResumeAskSession, onRetry, onSubmitAction, onSuggestMessage, onToggleMaximize, onTogglePin, onToggleSettings, outputFocusRef, outputKind, parsed, query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected, settingsFocusRef, settingsOpen, shortcutOptions, showActionPanel, showBackButton, showContent, showResultsLayout, sourcesGrouped, sourcesSort, submitDisabled, switchActionMode, validation, viewPartialJob, showHelpFor, minimizeJob, closeJob, minimizeAsyncJob, closeAsyncJob, setSourcesFilter, setSourcesSort, setSourcesGrouped }}
+      {...{ active, activeDescendantId, browserFocusRef, browserInitialTarget: browserInitialTargetValue, browserOpen, cancelAsyncJob, cancelJob, canceling, client, commandRunning, compact, config, configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode, expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, hideCommandBar, history, historyFocusRef, historyOpen, askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs, onCloseBrowser, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown, onOpenJob, onReset, onResumeAskSession, onRetry, onSubmitAction, onSuggestMessage, onToggleMaximize, onTogglePin, onToggleSettings, outputFocusRef, outputKind, parsed, query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected, settingsFocusRef, settingsOpen, shortcutOptions, showActionPanel, showBackButton, showContent, showResultsLayout, sourcesGrouped, sourcesSort, submitDisabled, switchActionMode, validation, viewPartialJob, showHelpFor, minimizeJob, closeJob, minimizeAsyncJob, closeAsyncJob, setSourcesFilter, setSourcesSort, setSourcesGrouped }}
       onBack={goBackToBrowse}
       onAskSessionsOpenChange={setAskSessionsOpen}
       onRunAction={onConversationRunAction}

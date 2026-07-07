@@ -3,6 +3,7 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import { ActionList } from "@/components/palette/ActionList";
 import { AuthNotice } from "@/components/palette/AuthNotice";
+import { BrowserView } from "@/components/palette/BrowserView";
 import { CrawlJobView } from "@/components/palette/CrawlJobView";
 import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
 import { JobProgressView } from "@/components/palette/JobProgressView";
@@ -26,6 +27,10 @@ import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 interface PaletteShellProps {
   active?: PaletteAction;
   activeDescendantId?: string;
+  browserFocusRef: RefObject<HTMLDivElement | null>;
+  browserInitialTarget: string | null;
+  browserOpen: boolean;
+  onCloseBrowser: () => void;
   cancelAsyncJob: () => Promise<void>;
   cancelJob: () => Promise<void>;
   canceling: boolean;
@@ -268,6 +273,15 @@ function SettingsRegion(props: PaletteShellProps) {
 
 function MainContent(props: PaletteShellProps) {
   if (!props.showContent || props.settingsOpen) return null;
+  if (props.browserOpen) {
+    return (
+      <main className="palette-grid palette-grid-output-only">
+        <div ref={props.browserFocusRef} style={{ display: "contents" }}>
+          <BrowserView initialTarget={props.browserInitialTarget} onClose={props.onCloseBrowser} />
+        </div>
+      </main>
+    );
+  }
   return (
     <main className={props.showResultsLayout ? (props.showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
       {props.showActionPanel && (

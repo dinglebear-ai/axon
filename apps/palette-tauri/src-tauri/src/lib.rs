@@ -16,6 +16,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod browser;
 mod date_math;
 mod diag;
 mod files_bridge;
@@ -515,6 +516,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
             axon_http_stream_request,
+            browser::browser_open,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_close,
             github_bridge::github_browse,
             oauth::axon_oauth_login,
             oauth::axon_oauth_logout,
