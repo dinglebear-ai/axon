@@ -1,23 +1,9 @@
-// Single source of truth for per-action behavior (finding A-H1).
-//
-// Before this registry, adding a palette action meant editing ~9 parallel
-// dispatch sites (request body, route, output kind, fallback text formatter, two
-// icon maps, the structured-view allowlist) with no compile-time guarantee they
-// stayed in sync — a forgotten site silently degraded to raw `<pre>` JSON.
-//
-// `ACTION_REGISTRY` is a `Record<PaletteSubcommand, ActionBehavior>`: because it
-// is keyed by the full union (including the 24 `${JobFamily}-${JobOperation}`
-// members, generated below), a new subcommand fails to type-check until it has a
-// complete behavior entry. The scattered functions (`bodyFor`, `actionRouteTemplate`,
-// `outputKindFor`, `formatPayload`, `outputIcon`, `actionIcon`,
-// `hasStructuredOperationView`) all derive from this map.
-//
-// Structured-view rendering (JSX) cannot live in this `.ts` file, so each entry
-// carries a `structuredView` *key* (or `null`); the `STRUCTURED_VIEWS` renderer
-// map in `OperationResultView.tsx` is keyed by the same `StructuredViewKey`
-// union, and a test asserts the two stay in lockstep.
+// Single source of truth for per-action behavior. `ACTION_REGISTRY` is keyed by
+// the full subcommand union so every new action must define route/body/output/
+// icon/structured-view behavior before TypeScript accepts it.
 
 import {
+  Activity,
   BarChart3,
   BookOpen,
   Bot,
@@ -39,6 +25,7 @@ import {
   SearchCheck,
   Sparkles,
   Stethoscope,
+  TerminalSquare,
   Trash2,
   Workflow,
   type LucideIcon,
@@ -55,7 +42,6 @@ import {
   crawlBody,
   dedupeBody,
   purgeBody,
-  deleteRoute,
   diffBody,
   embedBody,
   endpointsBody,
@@ -77,6 +63,7 @@ import {
   searchBody,
   suggestBody,
   summarizeBody,
+  uuid,
   watchCreateBody,
 } from "./actionRequest";
 import {
@@ -91,7 +78,6 @@ import {
   formatEndpoints,
   formatEvaluate,
   formatGitHub,
-  formatJobLifecycle,
   formatMap,
   formatQuery,
   formatRetrieve,
@@ -472,6 +458,15 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: jobStartFormatter("ingest-sessions-prepared"),
     actionIcon: HelpCircle,
     structuredView: "ingest-sessions-prepared",
+  }),
+  // Local Tauri shell action; the marker route is metadata-only.
+  terminal: behavior({
+    route: getRoute("palette://terminal"),
+    buildBody: noBody,
+    outputKind: code,
+    formatText: formatCompact,
+    actionIcon: TerminalSquare,
+    structuredView: null,
   }),
 };
 

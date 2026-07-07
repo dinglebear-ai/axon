@@ -28,6 +28,7 @@ import { DomainsView } from "@/components/palette/DomainsView";
 import { SourcesView } from "@/components/palette/SourcesView";
 import { StatsView } from "@/components/palette/StatsView";
 import { StatusView, type OpenJobHandler } from "@/components/palette/StatusView";
+import { TerminalView } from "@/components/palette/TerminalView";
 import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import { actionBehavior } from "@/lib/actionRegistry";
@@ -316,7 +317,9 @@ export const OutputPanel = memo(function OutputPanel({
             {run.kind === "running" || run.kind === "streaming" ? <Spinner size="sm" /> : null}
           </span>
         </header>
-        {(run.kind === "streaming" || run.kind === "running") &&
+        {active?.subcommand === "terminal" ? (
+          <TerminalView />
+        ) : (run.kind === "streaming" || run.kind === "running") &&
         conversationMode &&
         transcript?.length ? (
           <AskConversation
