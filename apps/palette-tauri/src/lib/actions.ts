@@ -8,6 +8,7 @@ export type JobOperation = (typeof JOB_OPERATIONS)[number];
 
 export type PaletteSubcommand =
   | "help"
+  | "browser"
   | "files"
   | "scrape"
   | "crawl"
@@ -72,6 +73,16 @@ const STATIC_ACTIONS = [
     aliases: ["help", "?", "--help", "-h"],
     description: "Show command help, usage, current request params, and available options.",
     example: "help scrape",
+    tone: "info",
+  },
+  {
+    label: "Browser",
+    subcommand: "browser",
+    kind: "local",
+    argMode: "optionalSingle",
+    aliases: ["browser", "web", "browse-url"],
+    description: "Open a real in-app browser window — navigate to a URL or search the web.",
+    example: "browser docs.rs/serde",
     tone: "info",
   },
   {
