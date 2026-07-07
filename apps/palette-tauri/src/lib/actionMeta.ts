@@ -47,6 +47,7 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   "watch-list": { category: "System", input: "none", output: "watches", label: "Watch list" },
   "watch-create": { category: "System", input: "URL", output: "watch", label: "Watch create" },
   "watch-run": { category: "System", input: "watch id", output: "run", label: "Watch run" },
+  terminal: { category: "System", input: "commands", output: "shell output", label: "Terminal" },
 };
 
 export function actionDisplayMeta(action: PaletteAction): ActionDisplayMeta {

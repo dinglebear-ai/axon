@@ -27,12 +27,14 @@ mod persistence;
 mod sftp_bridge;
 mod sftp_known_hosts;
 mod stream;
+mod terminal;
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
 use github_bridge::GitHubClient;
 use persistence::*;
 use stream::axon_http_stream_request;
+use terminal::TerminalState;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -535,7 +537,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sftp_bridge::commands::sftp_read_file,
             sftp_bridge::commands::sftp_disconnect,
             sftp_bridge::commands::sftp_list_known_hosts,
-            sftp_bridge::commands::sftp_revoke_known_host
+            sftp_bridge::commands::sftp_revoke_known_host,
+            terminal::terminal_run,
+            terminal::terminal_cwd
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
         .manage(ActiveShortcut(Mutex::new(None)))
@@ -544,6 +548,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(github_client)
         .manage(oauth::OauthState::new())
         .manage(sftp_bridge::SftpConnections::new())
+        .manage(TerminalState::new())
         .setup(|app| {
             if let Err(err) = install_tray(app) {
                 log_palette_warning("failed to install tray icon", err);
