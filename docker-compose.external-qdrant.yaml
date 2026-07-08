@@ -1,0 +1,26 @@
+name: axon
+
+# Override for deployments that point axon at an existing EXTERNAL qdrant
+# instance (this homelab: tootie, kept off dookie for RAM reasons) instead of
+# running the bundled axon-qdrant service from docker-compose.prod.yaml.
+# qdrant ships mandatory in the base file — this override is an explicit,
+# visible opt-out for this specific deployment, not a default.
+#
+# Apply alongside docker-compose.prod.yaml (not standalone):
+#   docker compose --env-file ~/.axon/.env \
+#     -f docker-compose.prod.yaml -f docker-compose.external-qdrant.yaml up -d
+#
+# Requires AXON_EXTERNAL_QDRANT_URL to be set — fails loudly (compose refuses
+# to start) if it isn't, rather than silently falling back to anything.
+
+services:
+  # Compose only starts a profiled service if its profile is explicitly
+  # requested or it's depended on by an active service. axon has no depends_on
+  # for axon-qdrant, so giving it a profile here removes it from the default
+  # `up -d` set without requiring a --profile flag anywhere.
+  axon-qdrant:
+    profiles: ["external-qdrant-disabled"]
+
+  axon:
+    environment:
+      QDRANT_URL: ${AXON_EXTERNAL_QDRANT_URL:?AXON_EXTERNAL_QDRANT_URL must be set when applying docker-compose.external-qdrant.yaml}

@@ -375,6 +375,55 @@ qdrant-down:
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant stop axon-qdrant
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant rm -f axon-qdrant
 
+# Production stack (docker-compose.prod.yaml), bundled qdrant mode — the default.
+# Every invocation guarantees --env-file so .env's values actually reach
+# Compose interpolation (a bare `docker compose up` from the wrong cwd can
+# miss the file entirely). Note this guarantees .env is READ, not that no
+# default-drift is possible: docker-compose.prod.yaml's own
+# TEI_MAX_CONCURRENT_REQUESTS:-512 fallback is a separate value from TEI's own
+# built-in default — this repo has hit that exact two-layer drift before
+# (32 vs 256 permits) and --env-file alone doesn't prevent a repeat if the
+# YAML's own fallback and .env's intended value ever diverge again.
+prod-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh
+    repo="$(pwd)"
+    env_file="$(resolve_axon_env_file "$repo")"
+    if [ -f "$env_file" ]; then
+      perm=$(stat -c '%a' "$env_file")
+      if [ "${perm: -2}" != "00" ]; then
+        echo "warn: $env_file is group/world-readable (mode $perm) — tighten with chmod 600" >&2
+      fi
+    fi
+    echo "=== bundled qdrant IS starting locally (default mode) ==="
+    docker compose --env-file "$env_file" -f docker-compose.prod.yaml up -d
+
+prod-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh
+    env_file="$(resolve_axon_env_file "$(pwd)")"
+    docker compose --env-file "$env_file" -f docker-compose.prod.yaml down
+
+# Production stack, external-qdrant override — this deployment's mode (qdrant
+# lives on tootie). Requires AXON_EXTERNAL_QDRANT_URL; fails loudly if unset.
+prod-up-external-qdrant:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh
+    repo="$(pwd)"
+    env_file="$(resolve_axon_env_file "$repo")"
+    echo "=== bundled qdrant is NOT starting, using external QDRANT_URL=${AXON_EXTERNAL_QDRANT_URL:?AXON_EXTERNAL_QDRANT_URL must be set} ==="
+    docker compose --env-file "$env_file" -f docker-compose.prod.yaml -f docker-compose.external-qdrant.yaml up -d
+
+prod-down-external-qdrant:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh
+    env_file="$(resolve_axon_env_file "$(pwd)")"
+    docker compose --env-file "$env_file" -f docker-compose.prod.yaml -f docker-compose.external-qdrant.yaml down
+
 # Backward-compatible aliases used by setup/docs for local infra.
 test-infra-up:
     just services-up

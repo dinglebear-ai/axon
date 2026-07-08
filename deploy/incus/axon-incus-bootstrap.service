@@ -1,0 +1,28 @@
+[Unit]
+Description=Re-run axon's Incus nested-Docker bootstrap after boot
+After=incus.service network-online.target
+Wants=network-online.target
+Requires=incus.service
+
+[Service]
+Type=oneshot
+# Mode is fixed at install time — this deployment (dookie) always uses the
+# external-qdrant override, since qdrant lives on tootie for RAM reasons.
+# AXON_EXTERNAL_QDRANT_URL and AXON_ENV_FILE are read from the environment
+# file below rather than hardcoded here.
+# No leading "-": this file is required, not optional. external-qdrant mode
+# hard-requires AXON_EXTERNAL_QDRANT_URL, which only comes from here — a
+# missing file should fail loudly and distinctly at the systemd level
+# ("condition failed: EnvironmentFile does not exist"), not silently proceed
+# into bootstrap.sh's own more generic "AXON_EXTERNAL_QDRANT_URL must be set"
+# error, which would conflate "file missing" with "file present but empty".
+EnvironmentFile=/etc/axon-incus-bootstrap.env
+ExecStart=/home/jmagar/workspace/axon/deploy/incus/bootstrap.sh external-qdrant
+# Fail closed and stay failed (do not retry silently) — a discoverable
+# `systemctl status axon-incus-bootstrap` failure is the intended signal for
+# an operator investigating "why didn't the stack come back after reboot".
+Restart=no
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
