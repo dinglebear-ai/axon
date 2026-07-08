@@ -1,0 +1,32 @@
+config:
+  limits.cpu: "4"
+  limits.memory: 24GiB
+  limits.memory.enforce: hard
+  limits.processes: "4096"
+  linux.kernel_modules: overlay,br_netfilter,nf_nat,ip_tables,ip6_tables
+  nvidia.driver.capabilities: all
+  nvidia.runtime: "true"
+  security.idmap.isolated: "true"
+  security.nesting: "true"
+  security.privileged: "false"
+  security.syscalls.intercept.mknod: "true"
+  security.syscalls.intercept.setxattr: "true"
+description: Incus profile for the Axon single-container (nested Docker) deployment
+devices:
+  axon-data:
+    path: /mnt/axon-data
+    source: /home/jmagar/.axon-incus
+    type: disk
+  axon-gemini:
+    path: /mnt/axon-gemini
+    readonly: "true"
+    source: /home/jmagar/.axon-incus-gemini
+    type: disk
+  eth0:
+    name: eth0
+    network: incusbr0
+    type: nic
+  gpu:
+    type: gpu
+name: axon-container-profile
+project: default

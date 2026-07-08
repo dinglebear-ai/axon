@@ -293,24 +293,35 @@ pub async fn build_auth_policy(
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_default();
 
+        // lab-auth's AuthConfigBuilder is configured below with
+        // .env_prefix("AXON_MCP"), so every key pushed here must carry that
+        // prefix (e.g. AXON_MCP_AUTH_MODE, AXON_MCP_PUBLIC_URL) even though
+        // the real, user-facing env vars we read from above are unprefixed
+        // (AXON_AUTH_MODE, AXON_PUBLIC_URL, per .env.example) — these two
+        // naming schemes are unrelated; this vars Vec is an internal,
+        // synthetic source for the builder, not the real environment.
         let mut vars: Vec<(String, String)> = Vec::with_capacity(16);
-        push_var(&mut vars, "AXON_AUTH_MODE", "oauth");
+        push_var(&mut vars, "AXON_MCP_AUTH_MODE", "oauth");
         if let Some(url) = public_url.as_deref() {
-            push_var(&mut vars, "AXON_PUBLIC_URL", url);
+            push_var(&mut vars, "AXON_MCP_PUBLIC_URL", url);
         }
         if let Some(id) = google_client_id.as_deref() {
-            push_var(&mut vars, "AXON_GOOGLE_CLIENT_ID", id);
+            push_var(&mut vars, "AXON_MCP_GOOGLE_CLIENT_ID", id);
         }
         if let Some(secret) = google_client_secret.as_deref() {
-            push_var(&mut vars, "AXON_GOOGLE_CLIENT_SECRET", secret);
+            push_var(&mut vars, "AXON_MCP_GOOGLE_CLIENT_SECRET", secret);
         }
         if !admin_email.is_empty() {
-            push_var(&mut vars, "AXON_AUTH_ADMIN_EMAIL", &admin_email);
+            push_var(&mut vars, "AXON_MCP_AUTH_ADMIN_EMAIL", &admin_email);
         }
         // Pass allowed redirect URIs; always include claude.ai as a default.
         let allowed_uris = build_allowed_redirect_uris();
         if !allowed_uris.is_empty() {
-            push_var(&mut vars, "AXON_ALLOWED_REDIRECT_URIS", &allowed_uris);
+            push_var(
+                &mut vars,
+                "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+                &allowed_uris,
+            );
         }
 
         let auth_config = build_oauth_auth_config_from_sources(vars)?;
