@@ -207,7 +207,7 @@ fn maps_screenshot_result_fields() {
 
 #[test]
 fn ingest_service_exposes_start_status_cancel_list_cleanup_clear_recover() {
-    let _ = axon_services::ingest::ingest_start;
+    let _ = axon_services::ingest::ingest_start_with_context;
     let _ = axon_services::ingest::ingest_status;
     let _ = axon_services::ingest::ingest_cancel;
     let _ = axon_services::ingest::ingest_list;

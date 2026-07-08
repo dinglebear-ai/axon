@@ -114,13 +114,6 @@ fn ingest_reclaim_label(result_json: &Option<serde_json::Value>) -> Option<Strin
     }
 }
 
-fn chunks_embedded_from_payload(payload: &serde_json::Value) -> Option<u64> {
-    payload
-        .get("chunks_embedded")
-        .or_else(|| payload.get("chunks"))
-        .and_then(|value| value.as_u64())
-}
-
 pub(crate) fn render_ingest_status(
     cfg: &Config,
     job: Option<ServiceJob>,
@@ -255,88 +248,4 @@ pub fn print_ingest_sync_result(cfg: &Config, cmd_name: &str, chunks: usize, tar
             muted(target)
         );
     }
-}
-
-/// Run an ingest job synchronously (blocking until complete).
-///
-/// Dispatches to the appropriate service function based on the `IngestSource` variant
-/// and prints a completion summary. Called by `run_ingest` when `--wait true` is set.
-pub async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), Box<dyn Error>> {
-    // Stamp the ingest target as the chunk origin (seed_url), matching the async
-    // ingest job runner, so synchronous `--wait true` ingests record the same
-    // re-ingestable origin instead of falling back to per-doc page URLs.
-    let mut seeded_cfg = cfg.clone();
-    seeded_cfg.seed_url = Some(axon_jobs::ingest::types::target_label(&source));
-    let cfg = &seeded_cfg;
-    let (chunks, source_label, target_label) = match &source {
-        IngestSource::Youtube { target } => {
-            let result = ingest_service::ingest_youtube(cfg, target, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "youtube", target.clone())
-        }
-        IngestSource::Github { repo, .. } => {
-            let (owner, repo_name) = repo
-                .split_once('/')
-                .ok_or_else(|| format!("ingest: GitHub repo must be 'owner/repo', got '{repo}'"))?;
-            let result = ingest_service::ingest_github(cfg, owner, repo_name, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "github", repo.clone())
-        }
-        IngestSource::Gitlab { target, .. } => {
-            let result =
-                ingest_service::ingest_gitlab_with_progress(cfg, target, None, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "gitlab", target.clone())
-        }
-        IngestSource::Gitea { target, .. } => {
-            let result =
-                ingest_service::ingest_gitea_with_progress(cfg, target, None, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "gitea", target.clone())
-        }
-        IngestSource::GenericGit { target, .. } => {
-            let result =
-                ingest_service::ingest_generic_git_with_progress(cfg, target, None, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "git", target.clone())
-        }
-        IngestSource::Reddit { target } => {
-            let result = ingest_service::ingest_reddit(cfg, target, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "reddit", target.clone())
-        }
-        IngestSource::Rss { target } => {
-            let result = ingest_service::ingest_rss(cfg, target, None).await?;
-            let n = chunks_embedded_from_payload(&result.payload)
-                .ok_or("ingest: service payload missing chunk count field")?
-                as usize;
-            (n, "rss", target.clone())
-        }
-        IngestSource::Sessions { .. } => {
-            return Err(anyhow::anyhow!(
-                "sessions ingest is handled by the sessions command, not ingest"
-            )
-            .into());
-        }
-        IngestSource::PreparedSessions { .. } => {
-            return Err(anyhow::anyhow!(
-                "prepared sessions ingest is handled by the sessions command, not ingest"
-            )
-            .into());
-        }
-    };
-    print_ingest_sync_result(cfg, source_label, chunks, &target_label);
-    Ok(())
 }

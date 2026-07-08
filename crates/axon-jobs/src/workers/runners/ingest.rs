@@ -142,97 +142,30 @@ async fn execute_ingest_source(
     cancel_token: Option<CancellationToken>,
 ) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
     match source {
-        IngestSource::Github {
-            repo,
-            include_source,
-        } => run_github_ingest(cfg, repo, include_source, progress_tx, cancel_token).await,
-        IngestSource::Gitlab {
-            target,
-            include_source,
-        } => {
-            run_git_provider_ingest(
-                cfg,
-                target,
-                include_source,
-                progress_tx,
-                cancel_token,
-                |c, t, tx| async move {
-                    axon_ingest::orchestrate::ingest_gitlab_with_progress(&c, &t, None, Some(tx))
-                        .await
-                },
-            )
-            .await
+        // Phase 12 clean break (issue #298): github/gitlab/gitea/generic_git/
+        // reddit/youtube/rss provider orchestration was deleted outright from
+        // axon-ingest. `classify_target` still classifies these origins (for
+        // `axon refresh`), but nothing can execute them anymore.
+        IngestSource::Github { repo, .. } => {
+            Err(format!("github ingest is no longer supported (target: {repo})").into())
         }
-        IngestSource::Gitea {
-            target,
-            include_source,
-        } => {
-            run_git_provider_ingest(
-                cfg,
-                target,
-                include_source,
-                progress_tx,
-                cancel_token,
-                |c, t, tx| async move {
-                    axon_ingest::orchestrate::ingest_gitea_with_progress(&c, &t, None, Some(tx))
-                        .await
-                },
-            )
-            .await
+        IngestSource::Gitlab { target, .. } => {
+            Err(format!("gitlab ingest is no longer supported (target: {target})").into())
         }
-        IngestSource::GenericGit {
-            target,
-            include_source,
-        } => {
-            run_git_provider_ingest(
-                cfg,
-                target,
-                include_source,
-                progress_tx,
-                cancel_token,
-                |c, t, tx| async move {
-                    axon_ingest::orchestrate::ingest_generic_git_with_progress(
-                        &c,
-                        &t,
-                        None,
-                        Some(tx),
-                    )
-                    .await
-                },
-            )
-            .await
+        IngestSource::Gitea { target, .. } => {
+            Err(format!("gitea ingest is no longer supported (target: {target})").into())
+        }
+        IngestSource::GenericGit { target, .. } => {
+            Err(format!("generic git ingest is no longer supported (target: {target})").into())
         }
         IngestSource::Reddit { target } => {
-            let options = cancel_token
-                .map(axon_ingest::reddit::RedditIngestOptions::with_cancel_token)
-                .unwrap_or_default();
-            axon_ingest::orchestrate::ingest_reddit_with_progress_and_options(
-                cfg,
-                &target,
-                None,
-                Some(progress_tx),
-                &options,
-            )
-            .await
-            .map_err(lift_err)
+            Err(format!("reddit ingest is no longer supported (target: {target})").into())
         }
         IngestSource::Youtube { target } => {
-            let fut = axon_ingest::orchestrate::ingest_youtube_with_progress(
-                cfg,
-                &target,
-                None,
-                Some(progress_tx),
-            );
-            cancelable(fut, cancel_token.as_ref()).await
+            Err(format!("youtube ingest is no longer supported (target: {target})").into())
         }
         IngestSource::Rss { target } => {
-            let fut = axon_ingest::orchestrate::ingest_rss_with_progress(
-                cfg,
-                &target,
-                None,
-                Some(progress_tx),
-            );
-            cancelable(fut, cancel_token.as_ref()).await
+            Err(format!("rss ingest is no longer supported (target: {target})").into())
         }
         IngestSource::Sessions {
             sessions_claude,
@@ -256,53 +189,6 @@ async fn execute_ingest_source(
             Err("prepared sessions must be executed through sidecar loader".into())
         }
     }
-}
-
-async fn run_github_ingest(
-    cfg: &Config,
-    repo: String,
-    include_source: bool,
-    progress_tx: mpsc::Sender<serde_json::Value>,
-    cancel_token: Option<CancellationToken>,
-) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>> {
-    let (owner, repo_name) = axon_ingest::github::parse_github_repo(&repo).ok_or_else(
-        || -> Box<dyn std::error::Error + Send + Sync> {
-            format!("invalid github target: {repo}").into()
-        },
-    )?;
-    let mut github_cfg = cfg.clone();
-    github_cfg.github_include_source = include_source;
-    let fut = axon_ingest::orchestrate::ingest_github_with_progress(
-        &github_cfg,
-        &owner,
-        &repo_name,
-        None,
-        Some(progress_tx),
-    );
-    cancelable(fut, cancel_token.as_ref()).await
-}
-
-/// Shared runner for GitLab, Gitea, and generic-git providers (A-M5).
-///
-/// All three follow an identical pattern: clone config, set `github_include_source`,
-/// call the provider service function, wrap with cancellation. The only variation
-/// is the service function, which the caller supplies as a closure.
-async fn run_git_provider_ingest<F, Fut>(
-    cfg: &Config,
-    target: String,
-    include_source: bool,
-    progress_tx: mpsc::Sender<serde_json::Value>,
-    cancel_token: Option<CancellationToken>,
-    make_fut: F,
-) -> Result<IngestResult, Box<dyn std::error::Error + Send + Sync>>
-where
-    F: FnOnce(Config, String, mpsc::Sender<serde_json::Value>) -> Fut,
-    Fut: Future<Output = Result<IngestResult, Box<dyn std::error::Error>>>,
-{
-    let mut provider_cfg = cfg.clone();
-    provider_cfg.github_include_source = include_source;
-    let fut = make_fut(provider_cfg, target, progress_tx);
-    cancelable(fut, cancel_token.as_ref()).await
 }
 
 async fn cancelable<F>(
