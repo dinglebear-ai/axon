@@ -6,6 +6,8 @@ use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 use std::sync::Arc;
 
+use crate::test_support::committed_generation_payload;
+
 use super::{RedditSourceIndexInput, index_reddit_source, index_reddit_source_with_job};
 
 fn job_id() -> JobId {
@@ -131,8 +133,8 @@ async fn reddit_subreddit_refresh_writes_vectors_then_commits_source_generation(
             .points("axon-test")
             .await
             .iter()
-            .all(|point| point.payload["committed_generation"].as_str()
-                == Some(output.generation.0.as_str()))
+            .all(|point| point.payload["committed_generation"]
+                == committed_generation_payload(&output.generation))
     );
     assert!(
         vectors
