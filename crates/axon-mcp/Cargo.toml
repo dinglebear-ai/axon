@@ -10,7 +10,6 @@ license = "MIT"
 axon-core = { path = "../axon-core" }
 axon-api = { path = "../axon-api" }
 axon-vector = { path = "../axon-vector" }
-axon-extract = { path = "../axon-extract" }
 axon-jobs = { path = "../axon-jobs" }
 axon-services = { path = "../axon-services" }
 axon-authz = { path = "../axon-authz" }

@@ -1,7 +1,9 @@
 //! Service-layer wrappers for extract job lifecycle operations and prompt-aware enqueue helpers.
 
+mod sync;
+
 use crate::context::ServiceContext;
-use crate::events::{LogLevel, ServiceEvent, emit};
+use crate::events::ServiceEvent;
 use crate::jobs as job_service;
 use crate::runtime::WorkerMode;
 use crate::types::{
@@ -14,7 +16,6 @@ use axon_api::source::{
 use axon_core::config::Config;
 use axon_jobs::backend::JobKind;
 use axon_jobs::config_snapshot::extract_config_json;
-use axon_jobs::extract::start_extract_job;
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -78,49 +79,6 @@ pub async fn extract_worker(service_context: &ServiceContext) -> Result<(), Box<
 
 // --- Service functions ---
 
-/// Enqueue an extract job for the given URLs and return its job ID immediately.
-/// The extract prompt is read from cfg.query if present.
-pub async fn extract_start(
-    cfg: &Config,
-    urls: &[String],
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<ExtractStartResult, Box<dyn Error>> {
-    extract_start_with_prompt(cfg, urls, cfg.query.clone(), tx).await
-}
-
-pub async fn extract_start_with_prompt(
-    cfg: &Config,
-    urls: &[String],
-    prompt: Option<String>,
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<ExtractStartResult, Box<dyn Error>> {
-    if urls.is_empty() {
-        return Err("extract_start requires at least one URL".into());
-    }
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueueing extract job for {} URL(s)", urls.len()),
-        },
-    )
-    .await;
-
-    let job_id = start_extract_job(cfg, urls.to_vec(), prompt).await?;
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueued extract job: {job_id}"),
-        },
-    )
-    .await;
-
-    Ok(map_extract_start_result(job_id.to_string()))
-}
-
 pub async fn extract_start_with_context(
     cfg: &Config,
     urls: &[String],
@@ -182,9 +140,7 @@ pub async fn extract_start_with_context(
 
 // --- Sync extract (--wait true) ---
 
-/// Synchronous structured extraction now lives in `axon_extract::sync`; re-exported
-/// so existing `crate::extract::extract_sync` call sites resolve unchanged.
-pub use axon_extract::sync::extract_sync;
+pub use sync::extract_sync;
 
 #[cfg(test)]
 #[path = "extract_tests.rs"]

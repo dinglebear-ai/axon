@@ -5,21 +5,16 @@ use axon_api::source::{
     LifecycleStatus, PipelinePhase, Severity, SourceError, SourceProgressEvent, StageCounts,
     Timestamp, Visibility,
 };
-use axon_core::config::Config;
 use sqlx::{Row, SqlitePool};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::boundary::JobStore;
-use crate::config_snapshot::apply_config_snapshot;
 use crate::store_inventory::detect_incompatible_legacy_jobs;
 use crate::unified::SqliteUnifiedJobStore;
 
 use super::auth_enforcement::{require_job_scope, required_scope_for_kind};
 use super::{POLL_INTERVAL, WORKER_BATCH_LIMIT};
-
-mod extract_runner;
-use extract_runner::run_extract_claimed;
 
 mod helpers;
 use helpers::{
@@ -44,7 +39,6 @@ pub struct UnifiedClaimedJob {
 
 pub(crate) async fn unified_worker_loop(
     pool: Arc<SqlitePool>,
-    cfg: Arc<Config>,
     notify: Arc<Notify>,
     shutdown: CancellationToken,
     registry: Option<Arc<JobRunnerRegistry>>,
@@ -72,8 +66,7 @@ pub(crate) async fn unified_worker_loop(
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
                 match claim_next_unified_job_unchecked(&pool).await {
                     Ok(Some(claimed)) => {
-                        run_unified_claimed(&pool, &cfg, &claimed, &shutdown, registry.as_deref())
-                            .await;
+                        run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref()).await;
                         processed += 1;
                     }
                     Ok(None) => break,
@@ -217,7 +210,6 @@ async fn claim_next_unified_job_unchecked(
 
 pub(crate) async fn run_unified_claimed(
     pool: &SqlitePool,
-    cfg: &Config,
     claimed: &UnifiedClaimedJob,
     shutdown: &CancellationToken,
     registry: Option<&JobRunnerRegistry>,
@@ -239,16 +231,10 @@ pub(crate) async fn run_unified_claimed(
         return;
     }
 
-    // Extract has a dedicated in-crate runner (its real work,
-    // axon_extract::sync::extract_sync, is a pure domain call reachable
-    // directly from axon-jobs). Every other kind goes through the
-    // dependency-inversion registry the composition layer (axon-services)
-    // populates at startup; kinds with no registered runner keep failing
-    // with job_runner.unsupported_stage.
-    if claimed.kind == UnifiedJobKind::Extract {
-        run_extract_claimed(pool, cfg, &store, claimed, shutdown).await;
-        return;
-    }
+    // Every unified job kind goes through the dependency-inversion registry
+    // the composition layer (axon-services) populates at startup (including
+    // `Extract`, since Phase 12's removal of `axon-extract`); kinds with no
+    // registered runner keep failing with job_runner.unsupported_stage.
 
     let Some(runner) = registry.and_then(|registry| registry.get(claimed.kind)) else {
         let error = ApiError::new(

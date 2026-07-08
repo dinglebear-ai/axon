@@ -43,7 +43,11 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-crawl",
     "crates/axon-vector",
     "crates/axon-ingest",
-    "crates/axon-extract",
+    // axon-extract was deleted outright in Phase 12 (clean break, not a
+    // staged cutover) -- see
+    // docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md.
+    // Its two genuinely self-contained pieces (extract_sync, generic
+    // scrape's HTTP-fetch fallback) moved to axon-services/axon-crawl.
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

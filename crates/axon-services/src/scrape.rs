@@ -1,4 +1,4 @@
-use crate::events::ServiceEvent;
+use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::ScrapeResult;
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
@@ -13,13 +13,77 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-/// Single-URL scrape + its helpers now live in `axon_extract::scrape`; re-exported
-/// so existing `crate::scrape::*` call sites (and sidecar tests) resolve
-/// unchanged. Batch + embed orchestration stays in this module.
-pub use axon_extract::scrape::{
-    MAX_PUBLIC_STRUCTURED_BYTES, extract_markdown_links, map_scrape_payload, scrape,
-    scrape_with_vertical_timeout, validate_and_normalize_scrape_url, vertical_doc_to_scrape_result,
-};
+pub use axon_crawl::scrape::map_scrape_payload;
+
+/// Scrape a single URL and return a typed [`ScrapeResult`].
+///
+/// Generic HTTP-fetch path only — vertical-extractor auto-routing was removed
+/// with `axon-extract` (see
+/// docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md);
+/// no per-site enrichment happens here today.
+///
+/// `tx` is an optional progress channel. Pass `None` when progress events are
+/// not needed (CLI) or `Some(sender)` when the caller wants to observe
+/// start/complete log events (web / MCP streaming paths).
+#[must_use = "scrape returns a Result that should be handled"]
+pub async fn scrape(
+    cfg: &Config,
+    url: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<ScrapeResult, Box<dyn Error>> {
+    let normalized = validate_and_normalize_scrape_url(url, &tx).await?;
+    let mut result = axon_crawl::scrape::scrape_to_result(cfg, &normalized).await?;
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("scrape complete: {normalized}"),
+        },
+    )
+    .await;
+    // Service-side artifact write: if output_path is configured, write atomically
+    // so all callers (CLI, MCP, /v1/actions) share identical write semantics.
+    if let Some(output_path) = cfg.output_path.as_ref() {
+        axon_core::artifacts::atomic_write_explicit(output_path, result.output.as_bytes())
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+        result.artifact_handle = axon_api::contract::ArtifactHandle::try_from_path(
+            "scrape",
+            &cfg.output_dir,
+            output_path,
+            result.output.len() as u64,
+            Some(result.output.lines().count() as u64),
+            None,
+            Some(normalized.to_string()),
+        );
+    }
+    Ok(result)
+}
+
+pub async fn validate_and_normalize_scrape_url(
+    url: &str,
+    tx: &Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<String, Box<dyn Error>> {
+    let normalized = normalize_url(url);
+    emit(
+        tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("scrape starting: {normalized}"),
+        },
+    )
+    .await;
+    tokio::time::timeout(
+        Duration::from_millis(2000),
+        axon_core::http::validate_url_with_dns(&normalized),
+    )
+    .await
+    .map_err(|_| -> Box<dyn Error> {
+        format!("invalid scrape url {normalized}: DNS validation timed out").into()
+    })?
+    .map_err(|e| -> Box<dyn Error> { format!("invalid scrape url {normalized}: {e}").into() })?;
+    Ok(normalized.into_owned())
+}
 
 pub const MAX_SCRAPE_BATCH_URLS: usize = 50;
 

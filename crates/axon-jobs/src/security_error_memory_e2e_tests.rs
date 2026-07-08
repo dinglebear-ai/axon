@@ -116,14 +116,7 @@ async fn recovered_job_uses_original_auth_snapshot() {
         "reclaim must not alter the recorded auth snapshot"
     );
 
-    unified::run_unified_claimed(
-        &pool,
-        &Config::default_minimal(),
-        &reclaimed_claim,
-        &CancellationToken::new(),
-        None,
-    )
-    .await;
+    unified::run_unified_claimed(&pool, &reclaimed_claim, &CancellationToken::new(), None).await;
 
     let summary = store.get(job.job_id).await.unwrap().unwrap();
     assert_eq!(summary.status, LifecycleStatus::Failed);

@@ -11,7 +11,7 @@ mod watchdog;
 
 use heartbeat::HeartbeatGuard;
 
-use runners::{JobResult, run_crawl_job, run_embed_job, run_extract_job, run_ingest_job};
+use runners::{JobResult, run_crawl_job, run_embed_job, run_ingest_job};
 use spawn_unified::spawn_unified_worker;
 pub use unified::{JobRunnerRegistry, UnifiedJobRunner};
 
@@ -108,7 +108,6 @@ pub fn spawn_workers(
 
     worker_handles.push(spawn_unified_worker(
         Arc::clone(&pool),
-        Arc::clone(&cfg),
         Arc::clone(&unified_notify),
         shutdown.clone(),
         job_runner_registry,
@@ -142,15 +141,11 @@ pub fn spawn_workers(
         )));
     }
 
-    // Extract: single lane
-    tracing::info!(worker = "extract", lanes = 1, "jobs: spawning worker");
-    worker_handles.push(tokio::spawn(extract_worker(
-        Arc::clone(&pool),
-        Arc::clone(&cfg),
-        Arc::clone(&cancel_store),
-        Arc::clone(&extract_notify),
-        shutdown.clone(),
-    )));
+    // Extract has no legacy in-process worker lane anymore — real execution
+    // for `JobKind::Extract` runs on the unified worker
+    // (`workers/unified/extract_runner.rs`); `extract_notify` stays wired
+    // into the watchdog's generic reclaim sweep below so any pre-cutover
+    // rows still in `axon_extract_jobs` are still reclaimable.
 
     // Ingest: multi-lane
     tracing::info!(
@@ -416,27 +411,6 @@ async fn embed_worker(
         move |pool, id, token| {
             let cfg = Arc::clone(&cfg);
             async move { run_embed_job(&pool, &cfg, id, Some(token)).await }
-        },
-    )
-    .await;
-}
-
-async fn extract_worker(
-    pool: Arc<SqlitePool>,
-    cfg: Arc<Config>,
-    cancel_store: Arc<CancelStore>,
-    notify: Arc<Notify>,
-    shutdown: CancellationToken,
-) {
-    worker_loop(
-        pool,
-        JobKind::Extract,
-        cancel_store,
-        notify,
-        shutdown,
-        move |pool, id, token| {
-            let cfg = Arc::clone(&cfg);
-            async move { run_extract_job(&pool, &cfg, id, Some(token)).await }
         },
     )
     .await;

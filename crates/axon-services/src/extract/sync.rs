@@ -1,9 +1,10 @@
 //! Synchronous structured extraction over one or more URLs.
 //!
 //! Drives the deterministic extraction engine (LLM fallback) per URL, writes an
-//! NDJSON item stream + a JSON summary, and returns an `ExtractSyncResult`. Takes
-//! only `cfg` (no `ServiceContext`, no jobs), so it lives here in `axon-extract`
-//! and is called by both `services::extract` and the jobs extract runner.
+//! NDJSON item stream + a JSON summary, and returns an `ExtractSyncResult`.
+//! Relocated from the removed `axon-extract` crate (Phase 12 clean break) — it
+//! never depended on anything but `axon-core`/`axon-api`/`axon-llm`, so it
+//! moves here verbatim rather than needing a new crate of its own.
 
 use axon_api::job_dto::ExtractSyncResult;
 use axon_core::artifacts::write_configured_output;

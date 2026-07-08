@@ -485,7 +485,6 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-crawl",
- "axon-extract",
  "axon-ingest",
  "axon-jobs",
  "axon-llm",
@@ -568,6 +567,7 @@ dependencies = [
 name = "axon-crawl"
 version = "6.2.2"
 dependencies = [
+ "axon-api",
  "axon-core",
  "base64",
  "chrono",
@@ -634,33 +634,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "axon-extract"
-version = "6.2.2"
-dependencies = [
- "axon-api",
- "axon-core",
- "axon-crawl",
- "axon-graph",
- "axon-ingest",
- "axon-llm",
- "base64",
- "chrono",
- "flate2",
- "futures-util",
- "httpmock",
- "proptest",
- "regex",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "serial_test",
- "tempfile",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "axon-graph"
 version = "6.2.2"
 dependencies = [
@@ -720,7 +693,6 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-crawl",
- "axon-extract",
  "axon-graph",
  "axon-ingest",
  "axon-ledger",
@@ -795,7 +767,6 @@ dependencies = [
  "axon-api",
  "axon-authz",
  "axon-core",
- "axon-extract",
  "axon-jobs",
  "axon-services",
  "axon-vector",
@@ -918,7 +889,6 @@ dependencies = [
  "axon-document",
  "axon-embedding",
  "axon-error",
- "axon-extract",
  "axon-graph",
  "axon-ingest",
  "axon-jobs",

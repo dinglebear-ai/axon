@@ -60,10 +60,6 @@ pub enum JobPayload {
         input: String,
         config_json: String,
     },
-    Extract {
-        urls: Vec<String>,
-        config_json: String,
-    },
     Ingest {
         target: String,
         source_type: String,
@@ -90,7 +86,6 @@ impl JobPayload {
         match self {
             Self::Crawl { .. } => JobKind::Crawl,
             Self::Embed { .. } => JobKind::Embed,
-            Self::Extract { .. } => JobKind::Extract,
             Self::Ingest { .. } => JobKind::Ingest,
         }
     }
