@@ -4,6 +4,8 @@ use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorMode, FakeVectorStore};
 
+use crate::test_support::{committed_generation_payload, is_uncommitted_generation};
+
 use super::{
     LocalSourceIndexInput, LocalSourceSelectionPolicy, index_local_source,
     index_local_source_with_job,
@@ -351,7 +353,7 @@ async fn publish_generation_failure_reports_rollback_delete_failure() {
             .points("axon-test")
             .await
             .iter()
-            .all(|point| point.payload["committed_generation"].as_str() != Some("uncommitted"))
+            .all(|point| !is_uncommitted_generation(&point.payload["committed_generation"]))
     );
 }
 
@@ -416,7 +418,7 @@ async fn partial_unchanged_vector_copy_failure_keeps_previous_generation_visible
         .collect::<Vec<_>>();
     assert!(!keep_points.is_empty());
     assert!(keep_points.iter().all(|point| {
-        point.payload["committed_generation"].as_str() == Some(first.generation.0.as_str())
+        point.payload["committed_generation"] == committed_generation_payload(&first.generation)
     }));
 }
 
@@ -447,6 +449,6 @@ async fn vector_commit_marker_failure_leaves_vectors_uncommitted() {
             .points("axon-test")
             .await
             .iter()
-            .all(|point| point.payload["committed_generation"].as_str() == Some("uncommitted"))
+            .all(|point| is_uncommitted_generation(&point.payload["committed_generation"]))
     );
 }

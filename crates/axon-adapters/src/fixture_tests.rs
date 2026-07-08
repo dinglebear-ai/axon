@@ -63,7 +63,7 @@ const REQUIRED_VECTOR_PAYLOAD_FIELDS: &[&str] = &[
 ];
 
 #[test]
-fn fixture_packs_required_families_have_required_fixture_packs() {
+fn fixtures_required_families_have_required_fixture_packs() {
     for spec in source_family_matrix()
         .iter()
         .filter(|spec| spec.is_source_adapter)
