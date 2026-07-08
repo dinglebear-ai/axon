@@ -348,6 +348,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_unified_jobs"];
+        put?: never;
+        post?: never;
+        delete: operations["clear_unified_jobs"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cleanup_unified_jobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recover_unified_jobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["unified_job_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["unified_job_artifacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_unified_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["unified_job_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retry_unified_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["unified_job_stream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/map": {
         parameters: {
             query?: never;
@@ -727,7 +871,18 @@ export interface components {
         };
         ArtifactId: string;
         /** @enum {string} */
+        ArtifactKind: "raw_content" | "normalized_content" | "manifest" | "report" | "screenshot" | "warc" | "provider_trace";
+        /** @enum {string} */
         ArtifactMode: "none" | "on_large_output" | "always";
+        ArtifactRef: {
+            artifact_id: components["schemas"]["ArtifactId"];
+            artifact_kind: components["schemas"]["ArtifactKind"];
+            content_hash?: string | null;
+            created_at: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            size_bytes?: number | null;
+            uri: string;
+        };
         AuthorityEvidence: {
             /** Format: float */
             confidence: number;
@@ -741,6 +896,8 @@ export interface components {
         };
         /** @enum {string} */
         AuthorityLevel: "official" | "verified" | "user_pinned" | "inferred" | "community" | "mirror" | "conflicting" | "unknown";
+        /** Format: uuid */
+        BatchId: string;
         BrandColor: {
             count: number;
             hex: string;
@@ -756,6 +913,8 @@ export interface components {
             og_image?: string | null;
             url: string;
         };
+        CheckpointId: string;
+        ChunkId: string;
         /** @enum {string} */
         ColorUsage: "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         ContentRef: {
@@ -807,6 +966,7 @@ export interface components {
             value: string;
             verified?: null | components["schemas"]["EndpointVerification"];
         };
+        DocumentId: string;
         /** @enum {string} */
         EndpointKind: "relative_path" | "absolute_url" | "graphql" | "websocket";
         EndpointReport: {
@@ -907,6 +1067,65 @@ export interface components {
             metadata: components["schemas"]["MetadataMap"];
             summary?: string | null;
         };
+        JobArtifactListResult: {
+            artifacts: components["schemas"]["ArtifactRef"][];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+        };
+        JobCancelRequest: {
+            /** Format: int64 */
+            force_after_ms?: number | null;
+            reason?: string | null;
+        };
+        JobCancelResult: {
+            canceled_at?: null | components["schemas"]["Timestamp"];
+            job_id: components["schemas"]["JobId"];
+            reason?: string | null;
+            status: components["schemas"]["LifecycleStatus"];
+        };
+        JobCleanupRequest: {
+            dry_run: boolean;
+            kind?: null | components["schemas"]["JobKind"];
+            /** Format: int32 */
+            limit?: number | null;
+            older_than?: null | components["schemas"]["Timestamp"];
+            status?: null | components["schemas"]["LifecycleStatus"];
+        };
+        JobCleanupResult: {
+            /** Format: int64 */
+            artifacts_pruned: number;
+            /** Format: int64 */
+            attempts_pruned: number;
+            /** Format: int64 */
+            deleted: number;
+            dry_run: boolean;
+            /** Format: int64 */
+            events_pruned: number;
+            /** Format: int64 */
+            heartbeats_pruned: number;
+            /** Format: int64 */
+            jobs_pruned: number;
+            /** Format: int64 */
+            matched: number;
+            /** Format: int64 */
+            reservations_pruned: number;
+            /** Format: int64 */
+            stages_pruned: number;
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        JobClearRequest: {
+            confirm: boolean;
+            kind?: null | components["schemas"]["JobKind"];
+            older_than?: null | components["schemas"]["Timestamp"];
+            status?: null | components["schemas"]["LifecycleStatus"];
+        };
+        JobClearResult: {
+            /** Format: int64 */
+            deleted: number;
+            status?: null | components["schemas"]["LifecycleStatus"];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
         JobDescriptor: {
             cancel_url?: string | null;
             events_url: string;
@@ -917,6 +1136,30 @@ export interface components {
             retry_url?: string | null;
             status_url: string;
             stream_url: string;
+        };
+        JobEvent: {
+            /** Format: int32 */
+            attempt?: number;
+            details: components["schemas"]["MetadataMap"];
+            event_id: string;
+            job_id: components["schemas"]["JobId"];
+            message: string;
+            phase: components["schemas"]["PipelinePhase"];
+            /** Format: int64 */
+            sequence: number;
+            severity: components["schemas"]["Severity"];
+            stage_id?: null | components["schemas"]["StageId"];
+            status: components["schemas"]["LifecycleStatus"];
+            timestamp: components["schemas"]["Timestamp"];
+            visibility?: components["schemas"]["Visibility"];
+        };
+        JobEventPage: {
+            events: components["schemas"]["JobEvent"][];
+            /** Format: int64 */
+            last_sequence: number;
+            /** Format: int32 */
+            limit?: number;
+            next_cursor?: string | null;
         };
         /** @enum {string} */
         JobFamily: "embed" | "extract" | "ingest";
@@ -952,6 +1195,32 @@ export interface components {
             percent?: number | null;
             phase: components["schemas"]["JobPhase"];
         };
+        JobRecoveryRequest: {
+            kind?: null | components["schemas"]["JobKind"];
+            /** Format: int32 */
+            limit?: number | null;
+            stale_before?: null | components["schemas"]["Timestamp"];
+        };
+        JobRecoveryResult: {
+            job_ids: components["schemas"]["JobId"][];
+            /** Format: int64 */
+            recovered: number;
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /** @enum {string} */
+        JobRetryMode: "same_config" | "with_overrides";
+        JobRetryRequest: {
+            from_phase?: null | components["schemas"]["PipelinePhase"];
+            idempotency_key?: string | null;
+            mode: components["schemas"]["JobRetryMode"];
+            overrides?: components["schemas"]["MetadataMap"];
+        };
+        JobRetryResult: {
+            /** Format: int32 */
+            attempt: number;
+            original_job_id: components["schemas"]["JobId"];
+            retry_job: components["schemas"]["JobDescriptor"];
+        };
         /**
          * @description Typed job-status envelope so the `{ job, progress }` wire shape is a
          *     registered OpenAPI schema (and thus reflected into the generated palette/
@@ -965,6 +1234,18 @@ export interface components {
              */
             job: unknown;
             progress?: null | components["schemas"]["JobProgress"];
+        };
+        JobSummary: {
+            counts?: null | components["schemas"]["StageCounts"];
+            created_at: components["schemas"]["Timestamp"];
+            job_id: components["schemas"]["JobId"];
+            kind: components["schemas"]["JobKind"];
+            last_error?: null | components["schemas"]["SourceError"];
+            phase: components["schemas"]["PipelinePhase"];
+            source_id?: null | components["schemas"]["SourceId"];
+            status: components["schemas"]["LifecycleStatus"];
+            updated_at: components["schemas"]["Timestamp"];
+            watch_id?: null | components["schemas"]["WatchId"];
         };
         LedgerSummary: {
             committed_generation?: null | components["schemas"]["SourceGenerationId"];
@@ -1068,6 +1349,33 @@ export interface components {
         PanelCollectionsResponse: {
             collections: string[];
         };
+        /** @enum {string} */
+        PipelinePhase: "queued" | "requested" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "enriching" | "normalizing" | "parsing" | "graphing" | "preparing" | "batching" | "embedding" | "vectorizing" | "upserting" | "retrieving" | "synthesizing" | "evaluating" | "publishing" | "cleaning" | "complete" | "canceled";
+        ProgressCurrent: {
+            adapter?: string | null;
+            chunk_id?: null | components["schemas"]["ChunkId"];
+            document_id?: null | components["schemas"]["DocumentId"];
+            message?: string | null;
+            provider?: null | components["schemas"]["ProviderId"];
+            source_item_key?: null | components["schemas"]["SourceItemKey"];
+        };
+        ProgressThroughput: {
+            /** Format: double */
+            bytes_per_second?: number | null;
+            /** Format: double */
+            chunks_per_second?: number | null;
+            /** Format: double */
+            items_per_second?: number | null;
+        };
+        ProgressTiming: {
+            /** Format: int64 */
+            elapsed_ms: number;
+            /** Format: int64 */
+            eta_ms?: number | null;
+            started_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        ProviderId: string;
         PurgeRequest: {
             collection?: string | null;
             /**
@@ -1109,6 +1417,7 @@ export interface components {
         };
         /** @enum {string} */
         RenderMode: "http" | "chrome" | "auto-switch";
+        ReservationId: string;
         /** @enum {string} */
         ResponseMode: "path" | "inline" | "both" | "auto_inline";
         RestAskRequest: {
@@ -1250,6 +1559,14 @@ export interface components {
             url?: string | null;
             urls?: string[] | null;
         };
+        RetryState: {
+            /** Format: int32 */
+            attempt: number;
+            /** Format: int32 */
+            max_attempts?: number | null;
+            next_retry_at?: null | components["schemas"]["Timestamp"];
+            reason: string;
+        };
         /**
          * @description Result of probing a discovered endpoint for JSON-RPC 2.0 / OpenRPC / MCP support.
          *
@@ -1318,6 +1635,15 @@ export interface components {
             /** Format: int64 */
             vector_points_total: number;
         };
+        SourceError: {
+            cause?: string | null;
+            code: string;
+            message: string;
+            provider_id?: null | components["schemas"]["ProviderId"];
+            retryable: boolean;
+            severity: components["schemas"]["Severity"];
+            source_item_key?: null | components["schemas"]["SourceItemKey"];
+        };
         SourceGenerationId: string;
         SourceId: string;
         /** @enum {string} */
@@ -1340,6 +1666,37 @@ export interface components {
             max_total_bytes?: number | null;
             /** Format: int64 */
             provider_timeout_ms?: number | null;
+        };
+        SourceProgressEvent: {
+            adapter?: null | components["schemas"]["AdapterRef"];
+            /** Format: int32 */
+            attempt?: number;
+            batch_id?: null | components["schemas"]["BatchId"];
+            canonical_uri?: string | null;
+            checkpoint_id?: null | components["schemas"]["CheckpointId"];
+            counts: components["schemas"]["StageCounts"];
+            current?: null | components["schemas"]["ProgressCurrent"];
+            dedupe_key?: string | null;
+            error?: null | components["schemas"]["ApiError"];
+            event_id: string;
+            generation?: null | components["schemas"]["SourceGenerationId"];
+            job_id: components["schemas"]["JobId"];
+            message: string;
+            phase: components["schemas"]["PipelinePhase"];
+            reservation_id?: null | components["schemas"]["ReservationId"];
+            retry?: null | components["schemas"]["RetryState"];
+            scope?: null | components["schemas"]["SourceScope"];
+            /** Format: int64 */
+            sequence: number;
+            severity: components["schemas"]["Severity"];
+            source_id?: null | components["schemas"]["SourceId"];
+            stage_id?: null | components["schemas"]["StageId"];
+            status: components["schemas"]["LifecycleStatus"];
+            throughput?: null | components["schemas"]["ProgressThroughput"];
+            timestamp: components["schemas"]["Timestamp"];
+            timing?: null | components["schemas"]["ProgressTiming"];
+            visibility: components["schemas"]["Visibility"];
+            warning?: null | components["schemas"]["SourceWarning"];
         };
         /** @enum {string} */
         SourceRefreshPolicy: "if_stale" | "force" | "never";
@@ -1376,6 +1733,11 @@ export interface components {
             warnings: components["schemas"]["SourceWarning"][];
             watch?: null | components["schemas"]["WatchResult"];
         };
+        SourceResultRef: {
+            job_id: components["schemas"]["JobId"];
+            source_id: components["schemas"]["SourceId"];
+            status: components["schemas"]["LifecycleStatus"];
+        };
         /** @enum {string} */
         SourceScope: "page" | "site" | "docs" | "repo" | "workspace" | "branch" | "org" | "package" | "version" | "feed" | "subreddit" | "thread" | "comment" | "video" | "playlist" | "channel" | "issue" | "pull_request" | "merge_request" | "release" | "wiki" | "file" | "directory" | "map" | "tool" | "script" | "api";
         SourceWarning: {
@@ -1387,6 +1749,45 @@ export interface components {
         };
         /** @enum {string} */
         SourceWatchPolicy: "disabled" | "ensure" | "enabled";
+        StageCounts: {
+            /** Format: int64 */
+            bytes_done: number;
+            /** Format: int64 */
+            bytes_total?: number | null;
+            /** Format: int64 */
+            chunks_done: number;
+            /** Format: int64 */
+            chunks_total?: number | null;
+            /** Format: int64 */
+            documents_done: number;
+            /** Format: int64 */
+            documents_total?: number | null;
+            /** Format: int64 */
+            items_done: number;
+            /** Format: int64 */
+            items_total?: number | null;
+        };
+        /** Format: uuid */
+        StageId: string;
+        StreamEvent: {
+            event: components["schemas"]["SourceProgressEvent"];
+            /** @enum {string} */
+            kind: "progress";
+        } | {
+            /** @enum {string} */
+            kind: "result";
+            result: components["schemas"]["SourceResultRef"];
+        } | {
+            error: components["schemas"]["ApiError"];
+            /** @enum {string} */
+            kind: "error";
+        } | {
+            /** @enum {string} */
+            kind: "heartbeat";
+            timestamp: components["schemas"]["Timestamp"];
+        };
+        /** Format: date-time */
+        Timestamp: string;
         TraceContext: {
             attributes: components["schemas"]["MetadataMap"];
             parent_span_id?: string | null;
@@ -1401,6 +1802,8 @@ export interface components {
             ok: boolean;
             session: components["schemas"]["MobileSession"];
         };
+        /** @enum {string} */
+        Visibility: "public" | "internal" | "sensitive" | "redacted" | "derived";
         WatchDefCreateRequest: {
             enabled?: boolean | null;
             /** Format: int64 */
@@ -2589,6 +2992,445 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_unified_jobs: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["LifecycleStatus"];
+                kind?: components["schemas"]["JobKind"];
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified jobs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSummary"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    clear_unified_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobClearRequest"];
+            };
+        };
+        responses: {
+            /** @description Unified job clear */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobClearResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cleanup_unified_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCleanupRequest"];
+            };
+        };
+        responses: {
+            /** @description Unified job cleanup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobCleanupResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recover_unified_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Unified job recovery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRecoveryResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unified_job_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unified job ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified job status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSummary"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Job not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unified_job_artifacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unified job ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified job artifacts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobArtifactListResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_unified_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unified job ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Unified job cancellation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobCancelResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unified_job_events: {
+        parameters: {
+            query?: {
+                after_sequence?: number;
+                since_sequence?: number;
+                limit?: number;
+                severity?: components["schemas"]["Severity"];
+                visibility?: components["schemas"]["Visibility"];
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Unified job ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified job event page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobEventPage"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    retry_unified_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unified job ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Unified job retry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRetryResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unified_job_stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unified job ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified job events streamed as server-sent events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["StreamEvent"];
                 };
             };
             /** @description Missing or invalid authentication */

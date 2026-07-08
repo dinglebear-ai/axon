@@ -31,6 +31,9 @@ enum Command {
     CheckClaudeSymlinks,
     /// Verify target pipeline crate skeleton structure.
     CheckRepoStructure,
+    /// Audit crate structure/dependencies against docs/pipeline-unification/crates/*/README.md.
+    /// Standalone (not part of `check`): failures are genuine contract drift, not false positives.
+    CheckCrateContracts,
     /// Fail if any symlink in the worktree points to a non-existent target.
     CheckBrokenSymlinks,
     /// Fail if any relative markdown link in docs/reference points to a missing file.
@@ -144,6 +147,7 @@ fn main() -> Result<()> {
         Command::CheckUnwraps => checks::unwraps::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
         Command::CheckRepoStructure => checks::repo_structure::check(&root),
+        Command::CheckCrateContracts => checks::crate_contracts::check(&root),
         Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
         Command::CheckDocLinks => checks::doc_links::check(&root),
         Command::CheckDocContracts => checks::doc_contracts::check(&root),

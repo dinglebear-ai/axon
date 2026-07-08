@@ -3,6 +3,8 @@ use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 
+use crate::test_support::source_generation_payload;
+
 use super::{RedditSourceIndexInput, index_reddit_source};
 
 fn job_id() -> JobId {
@@ -168,8 +170,8 @@ async fn refresh_vectorizes_added_and_modified_posts_and_debts_removed_items() {
             .points("axon-test")
             .await
             .iter()
-            .any(|point| point.payload["source_generation"].as_str()
-                == Some(first.generation.0.as_str()))
+            .any(|point| point.payload["source_generation"]
+                == source_generation_payload(&first.generation))
     );
     let stable_points = vectors
         .points("axon-test")
