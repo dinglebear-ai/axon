@@ -1,6 +1,9 @@
 pub mod doctor;
 
-pub use doctor::{LlmDoctorProbe, build_doctor_report};
+pub use doctor::{
+    LlmDoctorProbe, build_doctor_report, cutover::assert_workers_allowed_by_cutover,
+    cutover::build_cutover_block,
+};
 
 use crate::config::parse::helpers::env_bool;
 use crate::paths::axon_data_dir;

@@ -875,6 +875,33 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
         super::build_config::into_config(preflight).expect("preflight should parse");
     assert!(matches!(preflight_cfg.command, CommandKind::Preflight));
 
+    let config_preflight = super::Cli::parse_from(["axon", "preflight", "--config"]);
+    let config_preflight_cfg =
+        super::build_config::into_config(config_preflight).expect("config preflight should parse");
+    assert!(matches!(
+        config_preflight_cfg.command,
+        CommandKind::Preflight
+    ));
+    assert_eq!(config_preflight_cfg.positional, vec!["--config"]);
+
+    let setup_rewrite = super::Cli::parse_from(["axon", "setup", "config", "rewrite", "--dry-run"]);
+    let setup_rewrite_cfg =
+        super::build_config::into_config(setup_rewrite).expect("setup rewrite should parse");
+    assert!(matches!(setup_rewrite_cfg.command, CommandKind::Setup));
+    assert_eq!(
+        setup_rewrite_cfg.positional,
+        vec!["config", "rewrite", "--dry-run"]
+    );
+
+    let reset_plan = super::Cli::parse_from(["axon", "reset", "--plan-id", "reset_plan_1"]);
+    let reset_plan_cfg =
+        super::build_config::into_config(reset_plan).expect("reset plan id should parse");
+    assert!(matches!(reset_plan_cfg.command, CommandKind::Reset));
+    assert_eq!(
+        reset_plan_cfg.reset_plan_id.as_deref(),
+        Some("reset_plan_1")
+    );
+
     let smoke = super::Cli::parse_from(["axon", "smoke"]);
     let smoke_cfg = super::build_config::into_config(smoke).expect("smoke should parse");
     assert!(matches!(smoke_cfg.command, CommandKind::Smoke));
