@@ -1,15 +1,40 @@
-# Axon Incus deployment — nested Docker-in-Incus
+# Axon Incus deployment — nested Docker for qdrant/tei/chrome, native axon
 
-One Incus system container (`axon-container-profile`) runs a full Docker
-Engine + Compose internally, using `docker-compose.prod.yaml` largely
-unchanged. See `docs/superpowers/plans/2026-07-07-incus-zabbly-upgrade.md`
-for the (retained, harmless) Incus 6.3+/Zabbly upgrade this deployment builds
-on, and `axon_rust-4m749` (beads epic) for the full architecture history —
-including the same-day pivot to native Incus OCI containers and revert back
-to nested Docker, after native OCI's GPU-compute path was found genuinely
-broken (`CUDA_ERROR_OUT_OF_MEMORY` during TEI warmup) on this host/Incus
-version. See bead `axon_rust-4m749.2`'s comments for the full diagnostic
-trail if you're wondering why this isn't native OCI.
+One Incus system container (`axon-container-profile`) runs:
+
+- **qdrant (default mode only)/tei/chrome as nested Docker containers**, via
+  a full Docker Engine + Compose internally, using `docker-compose.prod.yaml`
+  largely unchanged.
+- **axon itself as a native binary managed by systemd** (`axon-native.service`),
+  built directly inside the container from the repo's own Dockerfile
+  builder/runtime stages, *not* as another nested-Docker service — see
+  "Why axon is native, not nested-Docker" below.
+
+See `docs/superpowers/plans/2026-07-07-incus-zabbly-upgrade.md` for the
+(retained, harmless) Incus 6.3+/Zabbly upgrade this deployment builds on, and
+`axon_rust-4m749` (beads epic) for the full architecture history — including
+the same-day pivot to native Incus OCI containers and revert back to nested
+Docker for qdrant/tei/chrome, after native OCI's GPU-compute path was found
+genuinely broken (`CUDA_ERROR_OUT_OF_MEMORY` during TEI warmup) on this
+host/Incus version. See bead `axon_rust-4m749.2`'s comments for the full
+diagnostic trail if you're wondering why qdrant/tei/chrome aren't native OCI.
+
+## Why axon is native, not nested-Docker
+
+Confirmed in production 2026-07-08 (bead `axon_rust-4m749.3`): a
+containerized axon reaching qdrant/tei/chrome over the nested "jakenet"
+bridge works fine, but publishing axon's *own* port back out to the host (for
+SWAG/Cloudflare to reach) requires an extra Docker port-proxy NAT hop —
+docker-proxy accepted external TCP connections and forwarded bytes to the
+container, but the connection was reset mid-relay, specifically for axon
+(qdrant/tei/chrome's identical docker-proxy-published ports worked
+correctly the entire time, ruling out a general nested-networking bug).
+Running axon as a native binary via systemd sidesteps that hop entirely — it
+binds directly in the Incus container's own network namespace, and reaches
+qdrant/tei/chrome over their already-published `127.0.0.1` ports like any
+other client would. `bootstrap.sh` builds the binary via `docker build
+--target runtime` (same Dockerfile stage production images use) and installs
+`axon-native.service`.
 
 ## Profile
 
@@ -116,3 +141,31 @@ incus config device add <container> nvidia-procfs disk \
 
 This is a required boot-time step in `bootstrap.sh` (bead `.5`), not a
 one-time fix — see that bead for the automated version.
+
+### Required — nvidia-container-toolkit inside the container
+
+The nested Docker Engine needs its own `nvidia-container-toolkit` + CDI
+registration to expose the GPU to `docker run --gpus all` — the outer
+`nvidia.runtime` profile setting only gives the *outer* container GPU
+visibility (`nvidia-smi` works directly in it), not the nested Docker Engine
+automatically. Confirmed missing from a from-scratch container build
+2026-07-08: `docker run --gpus all ...` failed with `failed to discover GPU
+vendor from CDI: no known GPU vendor found` even though the outer
+container's own `nvidia-smi` worked fine. A prior working deployment had this
+installed by hand outside any script; that state does not survive a
+container recreate. `bootstrap.sh` now installs it and regenerates the CDI
+spec on every run (the spec embeds nvidia-procfs device paths, which also
+don't survive a restart — see above).
+
+### Optional — exposing axon's port to the host
+
+`bootstrap.sh` manages an Incus `proxy` device (`mcp-publish`) that forwards
+a host-side address to axon's `127.0.0.1:8001` inside the container, when
+`AXON_INCUS_PUBLISH_LISTEN` is set (e.g. `100.88.16.79:40090`, dookie's
+Tailscale IP — matching what SWAG's `axon.subdomain.conf` proxies to).
+**Scope this to a specific interface address, never `0.0.0.0`** — the point
+is to expose axon only on the address the reverse proxy actually reaches,
+not every interface on the shared host. This device does not survive a
+container recreate; losing it (recreating the container without setting the
+env var again) is exactly what took `axon.tootie.tv` down with a 502 after a
+2026-07-08 redeploy — SWAG had nothing left to reach.
