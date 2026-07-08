@@ -345,6 +345,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Debug(_) => ("debug", "None".to_string()),
         AxonRequest::Dedupe(_) => ("dedupe", "None".to_string()),
         AxonRequest::Purge(_) => ("purge", "None".to_string()),
+        AxonRequest::Prune(_) => ("prune", "None".to_string()),
         AxonRequest::Migrate(_) => ("migrate", "None".to_string()),
         AxonRequest::Watch(_) => ("watch", "None".to_string()),
         AxonRequest::Setup(_) => ("setup", "None".to_string()),

@@ -16,6 +16,13 @@ pub(crate) struct RetrievalRequest {
     pub(crate) source_id: Option<SourceId>,
     pub(crate) generation: Option<SourceGenerationId>,
     pub(crate) namespace_filters: Vec<String>,
+    /// Namespaces to drop from results when `namespace_filters` is empty
+    /// (unrestricted search). A caller that sets an explicit positive
+    /// `namespace_filters` already governs which namespaces can appear, so
+    /// this default exclusion only matters for the common unrestricted case
+    /// — e.g. plain `query`/`ask` excluding `memory` by default so memory
+    /// records don't leak into normal retrieval without intent.
+    pub(crate) excluded_namespaces: Vec<String>,
     pub(crate) byte_budget: u64,
     pub(crate) token_budget: u32,
 }

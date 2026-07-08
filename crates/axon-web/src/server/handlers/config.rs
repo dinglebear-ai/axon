@@ -222,14 +222,14 @@ pub async fn panel_status(
 }
 
 pub async fn panel_doctor(
-    State((state, cfg)): State<(AppState, Arc<Config>)>,
+    State((state, _cfg)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
         return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
             .into_response();
     }
-    match system::doctor(&cfg).await {
+    match system::doctor(&state.service_context).await {
         Ok(result) => Json(PanelDoctorResponse {
             payload: result.payload,
         })

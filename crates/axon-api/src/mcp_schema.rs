@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+#[path = "mcp_schema/prune_request.rs"]
+mod prune_request;
 #[path = "mcp_schema/requests.rs"]
 mod requests;
 #[path = "mcp_schema/utility.rs"]
 mod utility;
+pub use prune_request::*;
 pub use requests::*;
 pub use utility::*;
 
@@ -40,6 +43,7 @@ pub enum AxonRequest {
     Debug(DebugRequest),
     Dedupe(DedupeRequest),
     Purge(PurgeRequest),
+    Prune(PruneMcpRequest),
     Diff(DiffRequest),
     Migrate(MigrateRequest),
     Watch(WatchRequest),

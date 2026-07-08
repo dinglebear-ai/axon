@@ -164,7 +164,7 @@ pub(crate) async fn discover(
         .map_err(|err| format!("OAuth discovery request failed: {err}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "OAuth discovery returned HTTP {} — is the server in OAuth mode (AXON_MCP_AUTH_MODE=oauth)?",
+            "OAuth discovery returned HTTP {} — is the server in OAuth mode (AXON_AUTH_MODE=oauth)?",
             response.status()
         ));
     }

@@ -10,6 +10,13 @@ pub enum RestMemorySubaction {
     Link,
     Supersede,
     Context,
+    Reinforce,
+    Contradict,
+    Pin,
+    Archive,
+    Forget,
+    Review,
+    Compact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -49,6 +56,12 @@ pub struct RestMemoryRequest {
     pub limit: Option<usize>,
     pub depth: Option<usize>,
     pub token_budget: Option<usize>,
+    pub amount: Option<f64>,
+    pub pinned: Option<bool>,
+    pub reason: Option<String>,
+    pub memory_ids: Option<Vec<String>>,
+    pub strategy: Option<String>,
+    pub archive_sources: Option<bool>,
 }
 
 impl From<RestMemorySubaction> for axon_api::mcp_schema::MemorySubaction {
@@ -61,6 +74,13 @@ impl From<RestMemorySubaction> for axon_api::mcp_schema::MemorySubaction {
             RestMemorySubaction::Link => Self::Link,
             RestMemorySubaction::Supersede => Self::Supersede,
             RestMemorySubaction::Context => Self::Context,
+            RestMemorySubaction::Reinforce => Self::Reinforce,
+            RestMemorySubaction::Contradict => Self::Contradict,
+            RestMemorySubaction::Pin => Self::Pin,
+            RestMemorySubaction::Archive => Self::Archive,
+            RestMemorySubaction::Forget => Self::Forget,
+            RestMemorySubaction::Review => Self::Review,
+            RestMemorySubaction::Compact => Self::Compact,
         }
     }
 }
@@ -107,6 +127,12 @@ impl From<RestMemoryRequest> for axon_api::mcp_schema::MemoryRequest {
             depth: req.depth,
             token_budget: req.token_budget,
             response_mode: None,
+            amount: req.amount,
+            pinned: req.pinned,
+            reason: req.reason,
+            memory_ids: req.memory_ids,
+            strategy: req.strategy,
+            archive_sources: req.archive_sources,
         }
     }
 }

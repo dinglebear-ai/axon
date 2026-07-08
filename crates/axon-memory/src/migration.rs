@@ -13,7 +13,7 @@ use axon_api::migration::{MigrationSet, SqlMigration};
 use rusqlite::Connection;
 
 /// Schema version stamped into `PRAGMA user_version`.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// Namespace under which the composed cross-crate runner tracks memory
 /// migrations.
@@ -24,16 +24,28 @@ pub const MIGRATION_NAMESPACE: &str = "memory";
 /// runner in `axon-jobs` (via [`migration_set`]).
 const SCHEMA_SQL: &str = include_str!("migrations/0001_create_memory_tables.sql");
 
+/// Composite indexes for batch recall/review/import query patterns
+/// (0001's single-column indexes don't help a compound WHERE/ORDER BY as
+/// well as a matching composite index).
+const BATCH_INDEXES_SQL: &str = include_str!("migrations/0002_batch_recovery_indexes.sql");
+
 /// Ordered memory migration set for the composed cross-crate runner.
 ///
 /// `SqliteMemoryStore::open`/`in_memory` still call [`ensure_schema`] against
 /// their own rusqlite connection, but the production runtime shares one SQLite
 /// pool and gets these tables from the unified runner over sqlx.
-pub const MIGRATIONS: &[SqlMigration] = &[SqlMigration {
-    version: 1,
-    name: "0001_create_memory_tables",
-    sql: SCHEMA_SQL,
-}];
+pub const MIGRATIONS: &[SqlMigration] = &[
+    SqlMigration {
+        version: 1,
+        name: "0001_create_memory_tables",
+        sql: SCHEMA_SQL,
+    },
+    SqlMigration {
+        version: 2,
+        name: "0002_batch_recovery_indexes",
+        sql: BATCH_INDEXES_SQL,
+    },
+];
 
 /// The memory [`MigrationSet`] for composition into the unified runner.
 pub fn migration_set() -> MigrationSet {
@@ -45,6 +57,7 @@ pub fn migration_set() -> MigrationSet {
 pub fn ensure_schema(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     conn.execute_batch(SCHEMA_SQL)?;
+    conn.execute_batch(BATCH_INDEXES_SQL)?;
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }

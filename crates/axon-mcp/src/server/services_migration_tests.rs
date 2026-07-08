@@ -253,3 +253,143 @@ fn jobs_subactions_use_read_write_admin_scope_split() {
         Some("__deny__")
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `prune` action (auth rejection, dry-run plan, exec confirmation gate).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The MCP allow-list requires `axon:admin` for `prune` — a plain `axon:write`
+/// token must not satisfy it (mirrors the pruning contract's "destructive
+/// prune requires axon:admin" rule, distinct from every other write action).
+#[test]
+fn prune_action_requires_admin_scope_not_just_write() {
+    assert_eq!(
+        super::required_scope_for_tool("axon", "prune", "plan"),
+        Some("axon:admin")
+    );
+    assert_eq!(
+        super::required_scope_for_tool("axon", "prune", "exec"),
+        Some("axon:admin")
+    );
+
+    // A caller holding only `axon:write` must be rejected by the resolved
+    // scope requirement (the real gate check happens in `check_scope`, which
+    // exercises `axon_authz::scope_satisfies` directly — asserted below).
+    let write_only = vec!["axon:write".to_string()];
+    assert!(!axon_authz::scope_satisfies(&write_only, "axon:admin"));
+    let admin = vec!["axon:admin".to_string()];
+    assert!(axon_authz::scope_satisfies(&admin, "axon:admin"));
+}
+
+/// A `prune` call with no target is rejected before touching any store.
+#[tokio::test]
+async fn prune_missing_target_returns_invalid_params() {
+    use crate::schema::PruneMcpRequest;
+    use axon_core::config::Config;
+
+    let server = super::AxonMcpServer::new(Config::default());
+    let req = PruneMcpRequest::default();
+    let result = super::common::CURRENT_PRUNE_AUTHZ
+        .scope(axon_services::prune::PruneAuthz::admin(), async {
+            server.handle_prune(req).await
+        })
+        .await;
+    let err = result.expect_err("prune without a target must fail");
+    assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    assert!(
+        err.message.to_lowercase().contains("target"),
+        "error should mention the missing target; got: {}",
+        err.message
+    );
+}
+
+/// A `prune exec` call without `confirm: true` is rejected — the destructive
+/// path always requires explicit confirmation, mirroring the CLI's `--confirm`
+/// gate and the pruning contract's "explicit confirmation" safety rule.
+#[tokio::test]
+async fn prune_exec_without_confirm_is_rejected() {
+    use crate::schema::PruneMcpRequest;
+    use axon_core::config::Config;
+
+    let server = super::AxonMcpServer::new(Config::default());
+    let req = PruneMcpRequest {
+        subaction: Some("exec".to_string()),
+        target: Some("src_test".to_string()),
+        confirm: Some(false),
+        ..Default::default()
+    };
+    let result = super::common::CURRENT_PRUNE_AUTHZ
+        .scope(axon_services::prune::PruneAuthz::admin(), async {
+            server.handle_prune(req).await
+        })
+        .await;
+    let err = result.expect_err("prune exec without confirm must fail");
+    assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    assert!(
+        err.message.to_lowercase().contains("confirm"),
+        "error should mention the missing confirmation; got: {}",
+        err.message
+    );
+}
+
+/// A successful `prune plan` (dry-run) call — proves the selector-building,
+/// dry-run planning, and response-envelope path all wire together without
+/// requiring a live Qdrant/TEI connection (planning never touches a store; see
+/// `axon_services::prune::prune_plan`'s module docs).
+#[tokio::test]
+async fn prune_plan_dry_run_succeeds_without_live_store() {
+    use crate::schema::PruneMcpRequest;
+    use axon_core::config::Config;
+
+    // Must not point at the real default `~/.axon/jobs.db`: on a machine
+    // whose real store already has pre-cutover rows, `ServiceContext`
+    // startup's `assert_workers_allowed_by_cutover` guard would (correctly)
+    // reject it before this test ever reaches prune planning.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = Config::default();
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    let server = super::AxonMcpServer::new(cfg);
+    let req = PruneMcpRequest {
+        subaction: Some("plan".to_string()),
+        target: Some("src_test".to_string()),
+        ..Default::default()
+    };
+    let result = super::common::CURRENT_PRUNE_AUTHZ
+        .scope(axon_services::prune::PruneAuthz::anonymous(), async {
+            server.handle_prune(req).await
+        })
+        .await;
+    let response = result.expect("dry-run plan must succeed even without admin authz");
+    assert!(response.ok);
+    assert_eq!(response.action, "prune");
+    assert_eq!(response.subaction, "plan");
+    // Small payloads auto-inline under `data.data` via `respond_with_mode`
+    // (see `crates/axon-mcp/src/server/artifacts/respond.rs`).
+    let inline = &response.data["data"];
+    assert_eq!(inline["subaction"], serde_json::json!("plan"));
+    // Dry-run planning never produces an execution result.
+    assert_eq!(inline["result"], serde_json::Value::Null);
+}
+
+/// A `collection:` target with a `generation` is rejected — invalid selector
+/// combination per `build_selector`'s grammar (mirrors the CLI validation).
+#[tokio::test]
+async fn prune_collection_target_rejects_generation() {
+    use crate::schema::PruneMcpRequest;
+    use axon_core::config::Config;
+
+    let server = super::AxonMcpServer::new(Config::default());
+    let req = PruneMcpRequest {
+        subaction: Some("plan".to_string()),
+        target: Some("collection:axon".to_string()),
+        generation: Some("gen_1".to_string()),
+        ..Default::default()
+    };
+    let result = super::common::CURRENT_PRUNE_AUTHZ
+        .scope(axon_services::prune::PruneAuthz::admin(), async {
+            server.handle_prune(req).await
+        })
+        .await;
+    let err = result.expect_err("collection target with generation must fail");
+    assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+}

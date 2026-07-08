@@ -12,8 +12,8 @@ use axon_api::source::{
     JobCleanupResult, JobClearRequest, JobClearResult, JobCreateRequest, JobDescriptor,
     JobEventListRequest, JobEventPage, JobExecutionMode, JobIntent, JobListRequest, JobPolicy,
     JobPriority, JobRecoveryRequest, JobRecoveryResult, JobRetryRequest, JobRetryResult,
-    JobStagePlan, MetadataMap, OperationKind, Page, PipelinePhase, SourceWarning,
-    job_policy_for_operation,
+    JobStagePlan, JobStatusUpdate, LifecycleStatus, MetadataMap, OperationKind, Page,
+    PipelinePhase, Severity, SourceError, SourceWarning, job_policy_for_operation,
 };
 use axon_jobs::backend::JobKind;
 
@@ -211,6 +211,84 @@ pub async fn enqueue_operation(
     Ok(Some(descriptor))
 }
 
+/// Transition a freshly created job from `Queued` to `Running`.
+///
+/// Callers that execute a job-backed operation synchronously in the same
+/// call (foreground mode) must call this immediately after
+/// [`enqueue_operation`] and before running the operation — the state
+/// machine only allows the terminal transition in [`complete_operation_job`]
+/// from `Running`, never directly from `Queued`.
+pub async fn start_operation_job(
+    service_context: &ServiceContext,
+    descriptor: &JobDescriptor,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = service_context
+        .job_store()
+        .ok_or_else(|| box_send_sync("unified job store is not available"))?;
+    store
+        .update_status(JobStatusUpdate {
+            job_id: descriptor.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Preparing,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .map_err(|error| box_send_sync(error.message))?;
+    Ok(())
+}
+
+/// Mark a job created by [`enqueue_operation`] terminal — `Completed` on
+/// `Ok`, `Failed` on `Err` — from the operation's own outcome.
+///
+/// Job-tracking failures here are surfaced to the caller (so a broken jobs DB
+/// is observable) but never substitute for the operation's real result —
+/// callers should log-and-continue on error rather than let this mask a
+/// successful operation.
+pub async fn complete_operation_job(
+    service_context: &ServiceContext,
+    descriptor: &JobDescriptor,
+    outcome: Result<(), String>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = service_context
+        .job_store()
+        .ok_or_else(|| box_send_sync("unified job store is not available"))?;
+    let (status, error) = match outcome {
+        Ok(()) => (LifecycleStatus::Completed, None),
+        Err(message) => (
+            LifecycleStatus::Failed,
+            Some(SourceError {
+                code: "job.operation_failed".to_string(),
+                severity: Severity::Failed,
+                message,
+                source_item_key: None,
+                retryable: false,
+                provider_id: None,
+                cause: None,
+            }),
+        ),
+    };
+    store
+        .update_status(JobStatusUpdate {
+            job_id: descriptor.job_id,
+            source_id: None,
+            status,
+            phase: PipelinePhase::Complete,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error,
+        })
+        .await
+        .map_err(|error| box_send_sync(error.message))?;
+    Ok(())
+}
+
 pub async fn list_unified_jobs(
     service_context: &ServiceContext,
     request: JobListRequest,
@@ -331,7 +409,7 @@ pub async fn clear_unified_jobs(
         status: request.status,
         warnings: vec![SourceWarning {
             code: "jobs.clear_terminal_only".to_string(),
-            severity: axon_api::source::Severity::Info,
+            severity: Severity::Info,
             message: "clear pruned terminal jobs only; active jobs require cancel/recover first"
                 .to_string(),
             source_item_key: None,

@@ -71,11 +71,6 @@ pub(super) enum CliCommand {
     Status,
     /// Manage unified durable jobs
     Jobs(JobsArgs),
-    /// Remove duplicate points from the Qdrant collection
-    Dedupe,
-    #[command(alias = "delete-url", alias = "delete")]
-    /// Delete indexed Qdrant points by URL or seed URL
-    Purge(PurgeArgs),
     /// Re-crawl / re-ingest previously indexed origins (full docs refresh)
     Refresh(RefreshArgs),
     /// Manage embedding freshness schedules
@@ -95,6 +90,8 @@ pub(super) enum CliCommand {
     Serve(ServeArgs),
     /// Destructive clean-slate reset of local stores (dry-run by default; requires --yes to mutate)
     Reset(ResetArgs),
+    /// Plan or execute a scoped destructive cleanup (target-state replacement for dedupe/purge)
+    Prune(PruneArgs),
     /// Check host prerequisites and service readiness
     Preflight(PreflightArgs),
     /// Run crawl/ask smoke checks against the running stack
@@ -146,20 +143,6 @@ pub(super) struct DomainsArgs {
     /// Check whether this exact indexed domain/host has any stored URLs.
     #[arg(long)]
     pub(super) domain: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(super) struct PurgeArgs {
-    /// URL or seed URL to delete from Qdrant.
-    pub(super) url: String,
-
-    /// Also delete indexed page URLs below this URL prefix.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) prefix: bool,
-
-    /// Show matching point and URL counts without deleting.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) dry_run: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -295,6 +278,42 @@ pub(super) struct ResetArgs {
     /// Axon creates an invocation-local plan and binds execution to that plan.
     #[arg(long = "plan-id")]
     pub(super) plan_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct PruneArgs {
+    #[command(subcommand)]
+    pub(super) action: PruneCliSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum PruneCliSubcommand {
+    /// Resolve a prune target into a reviewable dry-run plan (mutates nothing)
+    Plan(PruneTargetArgs),
+    /// Execute a prune target's plan (destructive; requires --confirm and admin)
+    Exec(PruneExecArgs),
+}
+
+#[derive(Debug, Args)]
+pub(super) struct PruneTargetArgs {
+    /// Prune target: a source id (or `collection:<name>` to target a whole
+    /// Qdrant collection instead of one source)
+    pub(super) target: String,
+
+    /// Scope the prune to one generation of `target` instead of the whole source
+    #[arg(long)]
+    pub(super) generation: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct PruneExecArgs {
+    #[command(flatten)]
+    pub(super) target: PruneTargetArgs,
+
+    /// Explicit confirmation required to actually delete (destructive prune
+    /// also requires local admin trust — see `axon prune exec --help`)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) confirm: bool,
 }
 
 #[derive(Debug, Args)]
@@ -516,8 +535,8 @@ pub(super) enum WatchSubcommand {
         #[arg(long = "every-seconds")]
         every_seconds: Option<i64>,
     },
-    #[command(name = "run-now")]
-    RunNow {
+    #[command(name = "exec")]
+    Exec {
         id: String,
     },
     Pause {

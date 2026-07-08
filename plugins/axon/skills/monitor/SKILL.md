@@ -37,7 +37,7 @@ Manage it:
 
 ```bash
 axon watch list
-axon watch run-now <watch-id>
+axon watch exec <watch-id>
 axon watch history <watch-id> --limit 20
 ```
 

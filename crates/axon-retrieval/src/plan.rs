@@ -14,6 +14,7 @@ pub(crate) struct RetrievalPlan {
     pub(crate) generation: Option<SourceGenerationId>,
     pub(crate) allowed_visibility: Vec<Visibility>,
     pub(crate) namespace_filters: Vec<String>,
+    pub(crate) excluded_namespaces: Vec<String>,
     pub(crate) byte_budget: u64,
     pub(crate) token_budget: u32,
 }
@@ -30,6 +31,7 @@ impl RetrievalPlan {
             generation: request.generation.clone(),
             allowed_visibility,
             namespace_filters: request.namespace_filters.clone(),
+            excluded_namespaces: request.excluded_namespaces.clone(),
             byte_budget: request.byte_budget,
             token_budget: request.token_budget,
         }

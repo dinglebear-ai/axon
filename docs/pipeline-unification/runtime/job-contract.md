@@ -362,6 +362,22 @@ Parent jobs aggregate child status:
 | `failed` | Required child failed and policy is fail-fast/fail-final. |
 | `canceling` | Cancellation propagating to children. |
 
+The aggregation table above describes gating fan-out, where the parent's own
+terminal status depends on its children. One current implementation is a
+documented exception to that gating expectation: `index_source`'s baseline
+graph write and cleanup-debt drain (`crates/axon-services/src/source/
+job_tracking.rs`) record themselves as `graph`/`prune` children of the parent
+`source` job *after* that source job has already reached a terminal status
+(`completed`/`failed`). These children are non-gating audit records for
+best-effort post-publish housekeeping, not required stages the parent waits
+on — the source's own acquire/embed/publish contract is already fully
+committed before either sub-step runs. `parent_job_id`/`root_job_id` still
+correctly identify the job tree; only the "parent waits for children" gating
+behavior does not apply to this pair. See the module doc-comment in
+`job_tracking.rs` for the full rationale and
+`child_jobs_attach_to_an_already_terminal_parent_source_job` in
+`job_tracking_tests.rs` for the regression test pinning this sequence.
+
 ## Job API Requirements
 
 Every transport exposes the same job operations:

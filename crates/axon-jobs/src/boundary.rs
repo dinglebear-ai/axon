@@ -9,6 +9,17 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 pub trait JobStore: Send + Sync {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor>;
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>>;
+    /// The raw `request` payload captured at `create()` time (e.g. the
+    /// `{"urls": [...], "config_json": "..."}` shape `JobKind::Extract`
+    /// stores). `JobSummary` intentionally does not carry this -- it is a
+    /// shared, transport-facing projection reused by every job kind -- so
+    /// callers that need to redisplay the original request (like the
+    /// Extract CLI/MCP/REST bridge) fetch it separately via this method.
+    /// Default implementation returns `Ok(None)` for stores that do not
+    /// persist request payloads.
+    async fn request_json(&self, _job_id: JobId) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>>;
     async fn stages(&self, job_id: JobId) -> Result<Vec<JobStageSnapshot>>;
     async fn update_status(&self, status: JobStatusUpdate) -> Result<()>;

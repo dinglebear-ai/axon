@@ -99,3 +99,13 @@ pre-push:
             cargo xtask check-claude-symlinks;
           fi
         '
+    path-aware-checks:
+      run: >
+        scripts/with_timeout.sh 600 --
+        bash -c '
+          if [ -x "./target/debug/xtask" ]; then
+            ./target/debug/xtask pre-push;
+          else
+            cargo xtask pre-push;
+          fi
+        '

@@ -114,7 +114,7 @@ axon sessions status 550e8400-e29b-41d4-a716-446655440000
 axon setup session-watch-service install
 
 # Watch locally but upload changed prepared docs to a running server
-AXON_SERVER_URL=https://axon.example.com AXON_MCP_HTTP_TOKEN=... \
+AXON_SERVER_URL=https://axon.example.com AXON_HTTP_TOKEN=... \
   axon sessions watch --upload-to-server --json
 ```
 
@@ -123,7 +123,7 @@ AXON_SERVER_URL=https://axon.example.com AXON_MCP_HTTP_TOKEN=... \
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `AXON_SERVER_URL` | — | Server endpoint used by `axon sessions watch --upload-to-server` for prepared-session uploads. Plain `axon sessions` remains host-local. |
-| `AXON_MCP_HTTP_TOKEN` | — | Bearer token sent by `axon sessions watch --upload-to-server` to authenticated Axon HTTP servers. |
+| `AXON_HTTP_TOKEN` | — | Bearer token sent by `axon sessions watch --upload-to-server` to authenticated Axon HTTP servers. |
 | `AXON_SESSION_INGEST_MAX_BYTES` | `20971520` | Maximum bytes read from one session file before skipping it. |
 | `AXON_SESSION_INGEST_MAX_TOTAL_TEXT_BYTES` | `104857600` | Maximum total prepared text accepted in one server-mode sessions request. |
 | `AXON_COLLECTION` | `axon` | Default target collection when `--collection` is not supplied. |
@@ -147,8 +147,8 @@ just services-up
 For watcher remote upload, start a server built from the same revision before running the client:
 
 ```bash
-AXON_MCP_HTTP_HOST=127.0.0.1 AXON_MCP_HTTP_PORT=8001 axon serve mcp --transport http
-AXON_SERVER_URL=http://127.0.0.1:8001 AXON_MCP_HTTP_TOKEN=... \
+AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT=8001 axon serve mcp --transport http
+AXON_SERVER_URL=http://127.0.0.1:8001 AXON_HTTP_TOKEN=... \
   axon sessions watch --upload-to-server --codex --json
 ```
 

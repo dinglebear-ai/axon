@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
+axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
 hex = "0.4"
 qdrant-client = { version = "1.18.0", default-features = false, features = ["serde"] }

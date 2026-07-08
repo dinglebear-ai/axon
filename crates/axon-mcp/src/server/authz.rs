@@ -7,6 +7,10 @@ use rmcp::{ErrorData, RoleServer, service::RequestContext};
 pub(super) enum ActionScope {
     Read,
     Write,
+    /// Destructive/admin-gated action. Per the auth contract, `axon:write`
+    /// does NOT imply `axon:admin` — the caller must hold the fine-grained
+    /// scope explicitly.
+    Admin,
     InfoOnly,
 }
 
@@ -15,6 +19,7 @@ impl ActionScope {
         match self {
             Self::Read => Some("axon:read"),
             Self::Write => Some("axon:write"),
+            Self::Admin => Some("axon:admin"),
             Self::InfoOnly => None,
         }
     }
@@ -23,6 +28,7 @@ impl ActionScope {
         match self {
             Self::Read => "read",
             Self::Write => "write",
+            Self::Admin => "admin",
             Self::InfoOnly => "info",
         }
     }
@@ -113,6 +119,12 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         name: "purge",
         scope: ActionScope::Write,
         description: "Preview or delete indexed points by URL or seed URL prefix",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "prune",
+        scope: ActionScope::Admin,
+        description: "Plan (dry-run) or execute (destructive) a prune of a source, generation, or collection",
         cost: "write",
     },
     McpActionSpec {

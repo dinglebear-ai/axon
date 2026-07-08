@@ -10,12 +10,10 @@ tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/pruning-contract.md](../../../docs/pipeline-unification/runtime/pruning-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 11
-(Reset, Prune, And Empty-DB Cutover)**, converging today's scattered stale-cleanup
-paths (Qdrant scroll deletes, refresh, dedupe) onto ledger-driven cleanup debt.
-Do not add ledger record ownership, source acquisition, embedding, or transport
-rendering here.
+## Status — live crate, Phase 11 landed
+Cleanup-debt-driven plan/executor/safety-gating (`plan.rs`/`executor.rs`/
+`safety.rs`) is real and tested, not markers. Do not add ledger record
+ownership, source acquisition, embedding, or transport rendering here.
 
 ## Module map
 | File | Owns |

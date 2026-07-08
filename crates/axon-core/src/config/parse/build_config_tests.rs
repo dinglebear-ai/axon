@@ -163,8 +163,18 @@ pub(in crate::config::parse) fn with_env_saved<F: FnOnce()>(keys: &[&str], body:
     body();
 }
 
+#[allow(unsafe_code)]
 #[test]
 fn source_subcommand_parses_local_path_positional() {
+    // into_config() unconditionally reads AXON_COLLECTION/AXON_SQLITE_PATH/
+    // AXON_OUTPUT_DIR and (via load_toml_config()) AXON_CONFIG_PATH for the
+    // `source` command -- it is not in into_config's early-return command
+    // list that skips env/TOML reads. Without ENV_LOCK this test can run
+    // concurrently with another test in this file that mutates those same
+    // env vars (most of them do hold the lock), racing on process-global
+    // env state and occasionally observing a torn/unexpected value.
+    let _guard = ENV_LOCK.lock().unwrap();
+
     let cfg = into_config(cli_with_services(&["source", "./somepath"]))
         .expect("source subcommand should parse");
 
@@ -172,8 +182,15 @@ fn source_subcommand_parses_local_path_positional() {
     assert_eq!(cfg.positional, vec!["./somepath".to_string()]);
 }
 
+#[allow(unsafe_code)]
 #[test]
 fn source_subcommand_without_path_has_empty_positional() {
+    // See source_subcommand_parses_local_path_positional above for why this
+    // needs ENV_LOCK: into_config() reads process env for the `source`
+    // command, and other tests in this file mutate that same env under the
+    // lock.
+    let _guard = ENV_LOCK.lock().unwrap();
+
     let cfg = into_config(cli_with_services(&["source"]))
         .expect("source subcommand without a path should parse");
 

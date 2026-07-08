@@ -64,15 +64,6 @@ fn run_error(args: &[&str]) -> String {
 }
 
 #[test]
-fn ingest_help_describes_target_argument() {
-    let stdout = run_help(&["ingest", "--help"]);
-    assert!(
-        stdout.contains("Ingest target"),
-        "expected ingest help to describe TARGET argument, got:\n{stdout}"
-    );
-}
-
-#[test]
 fn memory_list_help_exposes_browse_filters() {
     let stdout = run_help(&["memory", "list", "--help"]);
     for expected in [
@@ -101,22 +92,6 @@ fn top_level_help_describes_http_mcp_runtime() {
         !stdout.contains("Start MCP stdio server"),
         "top-level help still advertises stdio MCP runtime:\n{stdout}"
     );
-}
-
-#[test]
-fn cli_help_contract_includes_code_search() {
-    let stdout = run_help(&["code-search", "--help"]);
-    for expected in [
-        "Search the existing index",
-        "--cwd",
-        "--path-prefix",
-        "--no-freshness",
-    ] {
-        assert!(
-            stdout.contains(expected),
-            "expected code-search help to include {expected}, got:\n{stdout}"
-        );
-    }
 }
 
 #[test]
@@ -189,7 +164,7 @@ fn help_does_not_print_current_env_values() {
         &["crawl", "--help"],
         &[
             ("AXON_COLLECTION", "secret_collection_for_help_test"),
-            ("AXON_MCP_HTTP_TOKEN", "secret-help-token-9999"),
+            ("AXON_HTTP_TOKEN", "secret-help-token-9999"),
             ("AXON_CHROME_REMOTE_URL", "http://secret-chrome:6000"),
         ],
     );
@@ -199,7 +174,7 @@ fn help_does_not_print_current_env_values() {
     );
     assert!(
         !stdout.contains("secret-help-token"),
-        "help output leaked AXON_MCP_HTTP_TOKEN value:\n{stdout}"
+        "help output leaked AXON_HTTP_TOKEN value:\n{stdout}"
     );
     assert!(
         !stdout.contains("secret-chrome"),
@@ -345,52 +320,18 @@ fn setup_split_help_snapshots_match() {
 }
 
 #[test]
-fn embed_help_is_focused_on_embedding_and_jobs() {
-    for args in [&["embed", "--help"][..], &["embed", "help"][..]] {
-        let stdout = run_help(args);
-        for expected in [
-            "Embed file, directory, or URL into Qdrant",
-            "axon embed [OPTIONS] [INPUT]",
-            "status <job_id>",
-            "--collection <name>",
-            "--tei-url <url>",
-            "--qdrant-url <url>",
-        ] {
-            assert!(
-                stdout.contains(expected),
-                "embed help missing {expected}: args={args:?}\n{stdout}"
-            );
-        }
-
-        for unexpected in [
-            "--start-url",
-            "--max-depth",
-            "--render-mode",
-            "--skip-embed",
-            "--chrome-remote-url",
-            "--discover-sitemaps",
-            "--research-depth",
-            "--screenshot-full-page",
-        ] {
-            assert!(
-                !stdout.contains(unexpected),
-                "embed help should not include unrelated flag {unexpected}: args={args:?}\n{stdout}"
-            );
-        }
-    }
-}
-
-#[test]
 fn all_command_help_filters_inherited_global_noise() {
+    // scrape/crawl/embed/ingest/code-search were removed at the Phase 10
+    // clean-break cutover -- they no longer have distinct help (any
+    // unrecognized positional falls through to the unified `source` command,
+    // which legitimately has flags like `--embed` that would false-positive
+    // against this loop's "unexpected" noise list).
     for command in [
-        "scrape",
-        "crawl",
         "watch",
         "map",
         "extract",
         "search",
         "research",
-        "embed",
         "debug",
         "doctor",
         "query",
@@ -404,7 +345,6 @@ fn all_command_help_filters_inherited_global_noise() {
         "stats",
         "status",
         "dedupe",
-        "ingest",
         "memory",
         "sessions",
         "screenshot",

@@ -40,10 +40,13 @@ fn prepared_document_and_embeddings_build_validated_points() {
         batch.points[0].payload["source_item_key"],
         "https://example.com/docs"
     );
-    assert_eq!(batch.points[0].payload["source_generation"], "7");
+    // `source_generation` is integer-typed per the vector-payload contract;
+    // `committed_generation` is null until a later publish step commits it
+    // (see `axon_vectors::point`'s point builder).
+    assert_eq!(batch.points[0].payload["source_generation"], json!(7));
     assert_eq!(
         batch.points[0].payload["committed_generation"],
-        "uncommitted"
+        serde_json::Value::Null
     );
     assert_eq!(batch.points[0].payload["chunk_id"], "chunk-web-1");
     assert_eq!(

@@ -65,6 +65,112 @@ fn help_omits_removed_source_commands() {
     assert!(help.contains("query"));
 }
 
+/// Full pipeline (bare-source routing + clap parse + config build) for the
+/// removed source-family command names: `axon embed` must resolve to
+/// `CommandKind::Source` with the removed token itself treated as the
+/// (unsupported) source input, never dispatched to a dedicated `embed`
+/// command (which no longer exists as a clap subcommand), and never a parse
+/// error. `axon <source>` accepts exactly one positional, so this proves the
+/// single-token case; `source_routing_tests.rs` proves the routing rewrite
+/// itself for the multi-token argv shape.
+#[allow(unsafe_code)]
+#[test]
+fn removed_command_names_dispatch_as_source() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    for removed in [
+        "embed",
+        "ingest",
+        "scrape",
+        "crawl",
+        "code-search",
+        "code-search-watch",
+    ] {
+        let raw = vec![
+            "axon".to_string(),
+            "--tei-url".to_string(),
+            "http://127.0.0.1:52000".to_string(),
+            "--qdrant-url".to_string(),
+            "http://127.0.0.1:53333".to_string(),
+            removed.to_string(),
+        ];
+        let command = super::build_cli_command();
+        let routed = crate::config::source_routing::route_bare_source(raw, &command);
+        assert_eq!(
+            routed,
+            vec![
+                "axon".to_string(),
+                "--tei-url".to_string(),
+                "http://127.0.0.1:52000".to_string(),
+                "--qdrant-url".to_string(),
+                "http://127.0.0.1:53333".to_string(),
+                "source".to_string(),
+                removed.to_string(),
+            ],
+            "removed token `{removed}` should be routed through `source`, after global flags"
+        );
+        let cli = super::Cli::try_parse_from(&routed)
+            .unwrap_or_else(|e| panic!("`{removed}` should route to source and parse: {e}"));
+        let cfg = super::build_config::into_config(cli)
+            .unwrap_or_else(|e| panic!("`{removed}` routed config should build: {e}"));
+        assert_eq!(
+            cfg.command,
+            CommandKind::Source,
+            "removed command `{removed}` must dispatch as CommandKind::Source"
+        );
+        assert_eq!(
+            cfg.positional,
+            vec![removed.to_string()],
+            "removed token `{removed}` should be the source positional, got {:?}",
+            cfg.positional
+        );
+    }
+}
+
+/// `axon dedupe` and `axon purge` were removed clap subcommands
+/// (docs/pipeline-unification/delivery/surface-removal-contract.md: replaced by
+/// `axon prune dedupe` / `axon prune ...`). With no matching clap subcommand,
+/// `route_bare_source` treats the leading token as a bare source argument and
+/// routes it through `axon source <token>` instead, exactly like any other
+/// unknown positional. This mirrors `help_omits_removed_source_commands` for
+/// the dedupe/purge removal.
+#[test]
+fn removed_dedupe_purge_dispatch_as_source() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let command = super::build_cli_command();
+
+    for removed in ["dedupe", "purge"] {
+        let argv = vec![
+            "axon".to_string(),
+            "--tei-url".to_string(),
+            "http://127.0.0.1:52000".to_string(),
+            "--qdrant-url".to_string(),
+            "http://127.0.0.1:53333".to_string(),
+            removed.to_string(),
+        ];
+        let routed = crate::config::source_routing::route_bare_source(argv, &command);
+        assert_eq!(
+            routed,
+            vec![
+                "axon".to_string(),
+                "--tei-url".to_string(),
+                "http://127.0.0.1:52000".to_string(),
+                "--qdrant-url".to_string(),
+                "http://127.0.0.1:53333".to_string(),
+                "source".to_string(),
+                removed.to_string(),
+            ],
+            "removed command `{removed}` should route as a bare source token"
+        );
+
+        let cli = super::Cli::parse_from(routed);
+        let cfg = super::build_config::into_config(cli)
+            .unwrap_or_else(|e| panic!("`{removed}` routed through source should parse: {e}"));
+        assert!(matches!(cfg.command, CommandKind::Source));
+        assert_eq!(cfg.positional, vec![removed.to_string()]);
+    }
+}
+
 #[test]
 fn parse_brand_rejects_fresh_flag() {
     let result =
@@ -113,7 +219,7 @@ fn config_example_toml_parses() {
 
 #[allow(unsafe_code)]
 #[test]
-fn parse_watch_run_now() {
+fn parse_watch_exec() {
     let _guard = ENV_LOCK.lock().unwrap();
 
     let cli = super::Cli::parse_from([
@@ -123,15 +229,15 @@ fn parse_watch_run_now() {
         "--qdrant-url",
         "http://127.0.0.1:53333",
         "watch",
-        "run-now",
+        "exec",
         "11111111-1111-4111-8111-111111111111",
     ]);
-    let cfg = super::build_config::into_config(cli).expect("watch run-now should parse");
+    let cfg = super::build_config::into_config(cli).expect("watch exec should parse");
     assert!(matches!(cfg.command, CommandKind::Watch));
     assert_eq!(
         cfg.positional,
         vec![
-            "run-now".to_string(),
+            "exec".to_string(),
             "11111111-1111-4111-8111-111111111111".to_string(),
         ]
     );
@@ -315,6 +421,10 @@ fn parse_domains_domain_flag_into_config() {
 
 #[test]
 fn parse_retrieve_max_points_into_config() {
+    // `retrieve` is not in into_config's early-return command list, so it
+    // reads AXON_COLLECTION/AXON_SQLITE_PATH/AXON_OUTPUT_DIR/AXON_CONFIG_PATH
+    // -- hold ENV_LOCK to avoid racing other tests that mutate that env.
+    let _guard = ENV_LOCK.lock().unwrap();
     let cli = super::Cli::parse_from([
         "axon",
         "--tei-url",
@@ -923,6 +1033,10 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
 
 #[test]
 fn parse_sessions_watch_provider_and_project_filters_are_typed() {
+    // `sessions` is not in into_config's early-return command list, so it
+    // reads AXON_COLLECTION/AXON_SQLITE_PATH/AXON_OUTPUT_DIR/AXON_CONFIG_PATH
+    // -- hold ENV_LOCK to avoid racing other tests that mutate that env.
+    let _guard = ENV_LOCK.lock().unwrap();
     let cli = super::Cli::parse_from([
         "axon",
         "--tei-url",

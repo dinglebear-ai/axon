@@ -25,7 +25,7 @@ use axon_api::source::prune::{
 };
 
 use crate::receipt::counts_from_steps;
-use crate::safety::{PruneDenied, fence_generation};
+use crate::safety::{PruneAuthz, PruneDenied, fence_generation};
 
 /// One executed delete against a store boundary.
 pub struct StepExecution {
@@ -79,7 +79,25 @@ impl<T: PruneTarget> PruneExecutor<T> {
     /// sequence, generation-fencing any step that names a generation. Partial
     /// failure does not abort the remaining steps — each boundary records its
     /// own status, and the failed count feeds `cleanup_debt_remaining`.
-    pub async fn execute(&self, plan: &PrunePlan) -> Result<PruneResult, PruneDenied> {
+    ///
+    /// `authz` is the caller's authorization context and is checked *before*
+    /// any mutation happens. Per the pruning contract ("destructive prune
+    /// requires `axon:admin`"), a plan with `requires_admin: true` is refused
+    /// with [`PruneDenied::AdminRequired`] unless `authz.is_admin` is set.
+    /// This is the only code path that actually deletes vector/artifact/
+    /// graph/memory/ledger state, so this is the enforcement point for the
+    /// contract's admin gate — every caller, including automatic
+    /// system-triggered drains, must pass an explicit `PruneAuthz` rather
+    /// than have the check silently skipped.
+    pub async fn execute(
+        &self,
+        plan: &PrunePlan,
+        authz: &PruneAuthz,
+    ) -> Result<PruneResult, PruneDenied> {
+        if plan.requires_admin && !authz.is_admin {
+            return Err(PruneDenied::AdminRequired);
+        }
+
         // Re-assert ordering defensively so a hand-built plan can't reorder
         // ledger before vector.
         let mut ordered: Vec<&PruneStep> = plan.steps.iter().collect();

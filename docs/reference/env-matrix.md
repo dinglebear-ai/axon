@@ -42,20 +42,20 @@ from the current env registry before treating it as operational truth.
 | `AXON_QDRANT_URL` | compose-env | compose-interpolation | — | no | runtime.rs |
 | `TEI_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_REMOTE_URL` | keep-env | both | — | no | runtime.rs |
-| `AXON_MCP_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_PROXY` | keep-env | both | — | no | runtime.rs |
 
 ### Auth / MCP Security
 
 | Key | Class | Placement | TOML dest | Secret | Source |
 |-----|-------|-----------|-----------|--------|--------|
-| `AXON_MCP_HTTP_TOKEN` | keep-env | container | — | **yes** | runtime.rs |
-| `AXON_MCP_AUTH_MODE` | keep-env | both | — | no | runtime.rs |
-| `AXON_MCP_GOOGLE_CLIENT_ID` | keep-env | both | — | no | runtime.rs |
-| `AXON_MCP_GOOGLE_CLIENT_SECRET` | keep-env | both | — | **yes** | runtime.rs |
-| `AXON_MCP_AUTH_ADMIN_EMAIL` | keep-env | both | — | no | runtime.rs |
-| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | keep-env | both | — | no | runtime.rs |
-| `AXON_MCP_ALLOWED_ORIGINS` | keep-env | both | — | no | runtime.rs |
+| `AXON_HTTP_TOKEN` | keep-env | container | — | **yes** | runtime.rs |
+| `AXON_AUTH_MODE` | keep-env | both | — | no | runtime.rs |
+| `AXON_GOOGLE_CLIENT_ID` | keep-env | both | — | no | runtime.rs |
+| `AXON_GOOGLE_CLIENT_SECRET` | keep-env | both | — | **yes** | runtime.rs |
+| `AXON_AUTH_ADMIN_EMAIL` | keep-env | both | — | no | runtime.rs |
+| `AXON_ALLOWED_REDIRECT_URIS` | keep-env | both | — | no | runtime.rs |
+| `AXON_ALLOWED_ORIGINS` | keep-env | both | — | no | runtime.rs |
 
 ### Third-Party Credentials
 
@@ -124,8 +124,8 @@ from the current env registry before treating it as operational truth.
 | `AXON_LOG_MAX_FILES` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_MCP_ARTIFACT_DIR` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | trusted-bootstrap | host-only | — | no | advanced.rs |
-| `AXON_MCP_HTTP_HOST` | trusted-bootstrap | host-only | — | no | advanced.rs |
-| `AXON_MCP_HTTP_PORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_HTTP_HOST` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_HTTP_PORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_MCP_TRANSPORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_NEO4J_URL` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_OUTPUT_DIR` | trusted-bootstrap | host-only | — | no | advanced.rs |
@@ -155,7 +155,7 @@ The Rust binary never reads most of them directly.
 
 | Key | Class | Placement | Notes | Source |
 |-----|-------|-----------|-------|--------|
-| `AXON_MCP_HTTP_PUBLISH` | compose-env | compose-interp | Port mapping `${AXON_MCP_HTTP_PUBLISH:-8001}:8001` | advanced.rs |
+| `AXON_HTTP_PUBLISH` | compose-env | compose-interp | Port mapping `${AXON_HTTP_PUBLISH:-8001}:8001` | advanced.rs |
 | `AXON_IMAGE` | compose-env | compose-interp | Docker image tag override | advanced.rs |
 | `AXON_LOG_COLOR` | compose-env | compose-interp | Sets `CLICOLOR_FORCE` inside container | advanced.rs |
 | `AXON_IN_CONTAINER` | compose-env | container | Set by Compose to `"1"`; read by Rust binary | advanced.rs |
@@ -313,8 +313,8 @@ ACP path was removed and Gemini headless standardized). They are absent from
 
 Keys in live env but not in .env.example (stale or operator-specific):
 - `AXON_HOME` — redundant with `AXON_DATA_DIR`; trusted-bootstrap
-- `AXON_MCP_HTTP_HOST` — set by Compose; trusted-bootstrap for local overrides
-- `AXON_MCP_HTTP_PORT` — set by Compose; trusted-bootstrap for local overrides
+- `AXON_HTTP_HOST` — set by Compose; trusted-bootstrap for local overrides
+- `AXON_HTTP_PORT` — set by Compose; trusted-bootstrap for local overrides
 - `AXON_WEB_ALLOWED_ORIGINS` — in advanced.rs registry; add to .env.example
 - `AXON_WEB_API_TOKEN` — secret; registered in runtime.rs; add to .env.example if the sample should advertise web API auth
 - `CHROME_URL` — stale alias; delete from live .env
@@ -361,8 +361,8 @@ The following keys were in the old `.env.example` but are omitted from the new m
 | Key | Class | Reason omitted |
 |-----|-------|---------------|
 | `AXON_DATA_DIR` | trusted-bootstrap | Operator-specific path override; not default setup |
-| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | keep-env | OAuth detail; omitted for brevity |
-| `AXON_MCP_ALLOWED_ORIGINS` | keep-env | CORS detail; omitted for brevity |
+| `AXON_ALLOWED_REDIRECT_URIS` | keep-env | OAuth detail; omitted for brevity |
+| `AXON_ALLOWED_ORIGINS` | keep-env | CORS detail; omitted for brevity |
 | `GEMINI_API_KEY` | keep-env | Optional alternate Google credential path |
 | `GOOGLE_API_KEY` | keep-env | Optional alternate Google credential path |
 | `GOOGLE_APPLICATION_CREDENTIALS` | trusted-bootstrap | Service account path; not typical setup |

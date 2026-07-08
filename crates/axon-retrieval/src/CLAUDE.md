@@ -9,23 +9,31 @@ contract (owns / API / deps / tests):
 · boundary spec:
 [../../../docs/pipeline-unification/foundation/boundary-map.md](../../../docs/pipeline-unification/foundation/boundary-map.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 7**,
-decomposed out of `axon-vector`'s retrieval/RAG logic. Do not implement vector
-store internals, embedding/LLM providers, or transport formatting here.
+## Status — live crate, Phase 7 landed (plain `query` cutover for #298)
+`RetrievalEngine`/`run_query` is real and wired: `axon-services::query::
+query_via_retrieval` routes plain `query` (no LLM) through it, embedding +
+dense/sparse hybrid-searching via injected `VectorStore`/`EmbeddingProvider`
+trait objects; `ask`/`evaluate`/`retrieve` remain on the legacy
+`axon-vector`-owned path (a separate, not-yet-migrated slice). Namespace
+isolation between plain `query`/`ask` and `memory search` is enforced here via
+`RetrievalPlan.excluded_namespaces` (only applied when no positive
+`namespace_filters` is set). `filter.rs`, `rank.rs`, and `graph.rs` remain
+marker files — filtering lives in `engine.rs`'s `search_filters`/
+`excluded_by_namespace`, ranking is delegated to the vector store's hybrid
+RRF fusion, not reimplemented here.
 
 ## Module map
 | File | Owns |
 |---|---|
-| `engine.rs` | `RetrievalEngine` — the boundary all retrieval callers use |
+| `engine.rs` | `RetrievalEngine` — the boundary all retrieval callers use; namespace/visibility/generation filter construction |
+| `service.rs` | `run_query`/`QueryServiceRequest`/`QueryServiceHit` — the public entrypoint `axon-services` calls |
 | `plan.rs` | `RetrievalPlan` — dense/sparse/hybrid planning DTOs |
-| `query.rs` | query normalization + `RetrievalRequest`/`RetrievalResult`/`SearchResult` shaping |
-| `filter.rs` | source-visibility + generation-constraint filters |
-| `rank.rs` | ranking/fusion → `RankedChunk` |
+| `query.rs` | `RetrievalRequest`/`RetrievalMatch`/`RetrievalResult` shaping |
 | `context.rs` | `ContextBundle` — context budgets, source grouping, result explanation |
 | `citation.rs` | `Citation` assembly mapped to stored source metadata/chunk spans |
-| `graph.rs` / `memory.rs` | graph- and memory-augmented retrieval joins through store/provider traits |
-| `testing.rs` | `FakeRetrievalEngine` + multi-source/graph/memory citation fixtures |
+| `memory.rs` | `MEMORY_VECTOR_NAMESPACE`/`memory_retrieval_filter()` — the memory-namespace opt-in boundary |
+| `testing.rs` | shared test fixtures |
+| `filter.rs` / `rank.rs` / `graph.rs` | marker files — logic lives in `engine.rs` and the injected vector store; do not duplicate |
 
 ## Boundary — keep OUT of this crate
 - Source ingestion, vector-store implementation, embedding provider implementation, LLM provider implementation, final answer generation.

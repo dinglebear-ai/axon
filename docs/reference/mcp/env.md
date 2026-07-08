@@ -6,16 +6,16 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 
 | Variable | Required | Default | Description | Sensitive |
 |----------|----------|---------|-------------|-----------|
-| `AXON_MCP_HTTP_HOST` | no | `127.0.0.1` | Bind address for HTTP transport; non-loopback requires `AXON_MCP_HTTP_TOKEN` | no |
-| `AXON_MCP_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
-| `AXON_MCP_HTTP_TOKEN` | no | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds | yes |
-| `AXON_MCP_AUTH_MODE` | no | `bearer` | Set to `oauth` to enable lab-auth Google OAuth/JWT mode | no |
-| `AXON_MCP_PUBLIC_URL` | oauth | -- | Public origin used in OAuth metadata and protected-resource responses | no |
-| `AXON_MCP_GOOGLE_CLIENT_ID` | oauth | -- | Google OAuth client ID | yes |
-| `AXON_MCP_GOOGLE_CLIENT_SECRET` | oauth | -- | Google OAuth client secret | yes |
-| `AXON_MCP_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer; receives full Axon OAuth scopes | yes |
-| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | no | Claude callback included | Additional comma-separated OAuth redirect URIs | no |
-| `AXON_MCP_ALLOWED_ORIGINS` | no | -- | Comma-separated allowed origins for MCP HTTP CORS (unset = strict default: only same-origin/loopback browser requests pass; non-browser tools unaffected) | no |
+| `AXON_HTTP_HOST` | no | `127.0.0.1` | Bind address for HTTP transport; non-loopback requires `AXON_HTTP_TOKEN` | no |
+| `AXON_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
+| `AXON_HTTP_TOKEN` | no | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds | yes |
+| `AXON_AUTH_MODE` | no | `bearer` | Set to `oauth` to enable lab-auth Google OAuth/JWT mode | no |
+| `AXON_PUBLIC_URL` | oauth | -- | Public origin used in OAuth metadata and protected-resource responses | no |
+| `AXON_GOOGLE_CLIENT_ID` | oauth | -- | Google OAuth client ID | yes |
+| `AXON_GOOGLE_CLIENT_SECRET` | oauth | -- | Google OAuth client secret | yes |
+| `AXON_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer; receives full Axon OAuth scopes | yes |
+| `AXON_ALLOWED_REDIRECT_URIS` | no | Claude callback included | Additional comma-separated OAuth redirect URIs | no |
+| `AXON_ALLOWED_ORIGINS` | no | -- | Comma-separated allowed origins for MCP HTTP CORS (unset = strict default: only same-origin/loopback browser requests pass; non-browser tools unaffected) | no |
 | `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts | no |
 | `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes); set to 0 to disable | no |
 | `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS` | no | `300` | Max seconds an MCP `tasks/result` request waits for terminal task state | no |
@@ -64,7 +64,7 @@ hosting command creates a worker-enabled service context.
 |-----------|-----------|
 | scrape, query, ask, search | Yes |
 | crawl (sync), embed, ingest | Yes |
-| watch scheduler | Yes for wired subcommands (`create`, `list`, `run-now`, `history`) |
+| watch scheduler | Yes for wired subcommands (`create`, `list`, `exec`, `history`) |
 
 ## Precedence
 

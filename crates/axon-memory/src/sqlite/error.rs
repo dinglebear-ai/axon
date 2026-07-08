@@ -21,3 +21,12 @@ pub fn not_found(memory_id: &str) -> ApiError {
 pub fn invalid(message: impl Into<String>) -> ApiError {
     ApiError::new("memory.invalid", ErrorStage::Validation, message)
 }
+
+/// Redaction could not be completed safely for this write — the shared
+/// redaction boundary is fail-closed (see
+/// `axon_core::redact::boundary`'s `RedactionStatus::Failed` doc comment):
+/// the caller must not persist the value at all, and must not fall back to
+/// writing it unredacted.
+pub fn redaction_failed(message: impl Into<String>) -> ApiError {
+    ApiError::new("redaction.failed", ErrorStage::Validation, message)
+}

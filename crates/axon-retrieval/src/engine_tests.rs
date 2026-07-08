@@ -26,6 +26,7 @@ fn request() -> RetrievalRequest {
         source_id: Some(SourceId::new("src-docs")),
         generation: Some(SourceGenerationId::new("7")),
         namespace_filters: vec!["docs".to_string(), "guides".to_string()],
+        excluded_namespaces: Vec::new(),
         byte_budget: 80,
         token_budget: 20,
     }
@@ -854,15 +855,25 @@ fn point_with_filters(
         json!(format!("https://example.com/{chunk_id}")),
     );
     payload.insert(
+        "source_canonical_uri".to_string(),
+        json!(format!("https://example.com/{chunk_id}")),
+    );
+    payload.insert(
         "source_item_key".to_string(),
         json!(format!("https://example.com/{chunk_id}")),
     );
     payload.insert("source_id".to_string(), json!(filters.source_id));
-    payload.insert("source_generation".to_string(), json!(filters.generation));
-    payload.insert(
-        "committed_generation".to_string(),
-        json!(filters.generation),
-    );
+    // `source_generation`/`committed_generation` are integer-typed in the
+    // vector-payload contract (see `axon-vectors/payload.rs::validate_
+    // generations` and the schema doc) — filters.generation is a numeric
+    // string like "7" purely for readability at call sites.
+    let generation_number: i64 = filters
+        .generation
+        .parse()
+        .expect("test fixture generation must be numeric");
+    payload.insert("source_generation".to_string(), json!(generation_number));
+    payload.insert("committed_generation".to_string(), json!(generation_number));
+    payload.insert("vector_point_id".to_string(), json!(point_id));
     payload.insert("document_id".to_string(), json!(format!("doc-{chunk_id}")));
     payload.insert("chunk_id".to_string(), json!(chunk_id));
     payload.insert(
@@ -895,7 +906,9 @@ fn point_with_filters(
         "embedding_batch_id".to_string(),
         json!("00000000-0000-0000-0000-00000000000c"),
     );
-    payload.insert("document_status".to_string(), json!("prepared"));
+    // "published" so this fixture is actually retrievable through the
+    // standard retrieval access filter (`search_filters` requires it).
+    payload.insert("document_status".to_string(), json!("published"));
     payload.insert("embedding_model".to_string(), json!("fake-embedding"));
     payload.insert("embedding_dimensions".to_string(), json!(4));
     payload.insert("embedding_provider".to_string(), json!("fake-embedding"));
@@ -903,6 +916,14 @@ fn point_with_filters(
     payload.insert("embedded_at".to_string(), json!("2026-07-01T00:00:00Z"));
     payload.insert("vector_namespace".to_string(), json!(filters.namespace));
     payload.insert("content_kind".to_string(), json!("markdown"));
+    payload.insert(
+        "content_hash".to_string(),
+        json!(format!("sha256:content-{chunk_id}")),
+    );
+    payload.insert(
+        "chunk_hash".to_string(),
+        json!(format!("sha256:chunk-{chunk_id}")),
+    );
     payload.insert("chunk_text".to_string(), json!(text));
 
     VectorPoint {

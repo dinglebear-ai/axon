@@ -231,7 +231,7 @@ pub(super) fn positional_from_watch_subcommand(action: WatchSubcommand) -> Vec<S
             }
             positional
         }
-        WatchSubcommand::RunNow { id } => vec!["run-now".to_string(), id],
+        WatchSubcommand::Exec { id } => vec!["exec".to_string(), id],
         WatchSubcommand::Pause { id } => vec!["pause".to_string(), id],
         WatchSubcommand::Resume { id } => vec!["resume".to_string(), id],
         WatchSubcommand::Delete { id } => vec!["delete".to_string(), id],

@@ -48,6 +48,7 @@ pub use reddit_source::{
 };
 pub mod reddit_target;
 pub use reddit_target::is_reddit_target;
+pub mod prune;
 pub mod refresh;
 pub mod reset;
 pub use reset::reset;

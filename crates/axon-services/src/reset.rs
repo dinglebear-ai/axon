@@ -269,9 +269,16 @@ async fn execute_prepared_reset(
         .into());
     }
 
+    let legacy_audit = if wants_any_sqlite(&prepared.stores) {
+        sqlite::detect_legacy_jobs(&cfg.sqlite_path).await
+    } else {
+        None
+    };
+
     let (deleted, created) = execute(
         cfg,
         &prepared.stores,
+        legacy_audit.as_ref(),
         &prepared.sqlite_inv,
         prepared.qdrant_inv.as_ref(),
         &prepared.artifact_root,

@@ -13,6 +13,7 @@ use axon_core::content::{
 };
 use axon_core::http::axon_ua;
 use axon_core::logging::log_done;
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use futures_util::StreamExt;
 use futures_util::stream;
 use std::error::Error;
@@ -205,11 +206,17 @@ async fn write_extract_summary(
         .output_path
         .clone()
         .unwrap_or_else(|| cfg.output_dir.join("extract-summary.json"));
+    // Fail-closed redaction boundary: this run summary is an artifact
+    // metadata write (per-URL run status/errors), not the scraped body
+    // content itself, so it gets the same scrub as job events/reset
+    // receipts before it lands on disk.
+    let (summary, _redaction_report) =
+        DefaultRedactor::new().redact_json(summary.clone(), &RedactionContext::artifact_metadata());
     write_configured_output(
         &cfg.output_dir,
         cfg.output_path.as_deref(),
         "extract-summary.json",
-        serde_json::to_string_pretty(summary)?.as_bytes(),
+        serde_json::to_string_pretty(&summary)?.as_bytes(),
     )
     .await
     .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;

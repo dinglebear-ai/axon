@@ -1,3 +1,4 @@
+use super::job_tracking::{finish_watch_job, start_watch_job};
 use super::{
     WATCH_RUN_STATUS_COMPLETED, WATCH_RUN_STATUS_FAILED, WATCH_RUN_STATUS_RUNNING, WatchDef,
     WatchRun, create_watch_run_with_pool, finish_watch_run_with_pool, get_watch_run_with_pool,
@@ -48,6 +49,12 @@ pub(crate) async fn run_leased_watch_now_with_pool(
         heartbeat_shutdown.clone(),
     ));
 
+    // Additive observability only: mirrors this run as a `JobKind::Watch` row
+    // on the unified job store so `axon jobs list --kind watch` has real
+    // data. Never affects the real watch run/lease below — see
+    // `job_tracking` module docs.
+    let unified_job_id = start_watch_job(pool, watch.id).await;
+
     // Execute first (no DB writes), then finalize exactly once. `err_text` is a
     // `String`, not a boxed `dyn Error`, so the box never crosses an await and
     // the future stays `Send` for the axum runtime behind `/v1/watch/{id}/run`.
@@ -58,11 +65,15 @@ pub(crate) async fn run_leased_watch_now_with_pool(
     let _ = heartbeat_handle.await;
     let err_text = match outcome {
         Ok(payload) => match finalize_completed(pool, watch, run.id, &payload).await {
-            Ok(()) => return Ok(get_watch_run_with_pool(pool, run.id).await?.unwrap_or(run)),
+            Ok(()) => {
+                finish_watch_job(pool, unified_job_id, Ok(())).await;
+                return Ok(get_watch_run_with_pool(pool, run.id).await?.unwrap_or(run));
+            }
             Err(text) => text,
         },
         Err(text) => text,
     };
+    finish_watch_job(pool, unified_job_id, Err(&err_text)).await;
     if let Err(persist_err) = finish_watch_run_with_pool(
         pool,
         watch.id,

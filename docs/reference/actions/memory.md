@@ -17,10 +17,23 @@ Parity notes: Single direct REST endpoint accepts the memory subaction envelope 
 
 Persistent agent memory. Content and embeddings are stored in the dedicated Qdrant memory collection (`axon_memory` by default, or `AXON_MEMORY_COLLECTION`), while SQLite stores the metadata/graph mirror. New memories are normalized through `SourceDocument::new_memory(...)` before embedding, so the Qdrant point uses the same deterministic UUID as SQLite and carries the shared planner fields (`chunk_content_kind`, `chunk_locator`, `source_range`).
 
-> Current runtime memory is CLI/REST/MCP subactions backed by Qdrant + SQLite.
-> The #298 target promotes memory into a first-class `axon-memory` lifecycle
-> with decay, reinforcement, review, graph/vector integration, and shared
-> source-pipeline preparation where useful. Memory is not a source adapter.
+> Memory already lives in the first-class `axon-memory` crate (not a stub) and
+> the decay/reinforcement/review lifecycle described in
+> [`docs/reference/runtime/memory.md`](../runtime/memory.md) is implemented
+> and tested today — `crates/axon-memory/src/decay.rs` (score formula) and
+> `crates/axon-memory/src/sqlite/lifecycle.rs` (reinforce/contradict/
+> set_status/review) are live, not future #298 targets. What remains
+> unfinished is **transport wiring**: this page's subaction table below (CLI/
+> REST/MCP `remember`/`list`/`search`/`show`/`link`/`supersede`/`context`)
+> only covers part of the full lifecycle — `reinforce`, `contradict`, `pin`,
+> `archive`, `forget`, `review`, and `compact` exist in the crate but are not
+> yet exposed as CLI subcommands, MCP subactions, or REST routes. That gap is
+> tracked in Task 9 of
+> `docs/pipeline-unification/plans/2026-07-04-phase-3b-security-error-memory-completion.md`.
+> The `axon-memory::graph` module (graph-mirror integration) genuinely is
+> still a marker/design-stage module — see the "Graph mirror" section of
+> `docs/reference/runtime/memory.md` for what is and isn't real there.
+> Memory is not a source adapter.
 
 ## Commands
 

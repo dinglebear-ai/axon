@@ -17,7 +17,7 @@ created, when it is required, and what fails without it.
 
 | Token | Type | Surface | Required? | Section |
 |-------|------|---------|-----------|---------|
-| `AXON_MCP_HTTP_TOKEN` | Env-set bearer | `axon mcp --transport http` (`/mcp`) | Loopback: optional. Non-loopback: yes. | [MCP HTTP token](#mcp-http-token) |
+| `AXON_HTTP_TOKEN` | Env-set bearer | `axon mcp --transport http` (`/mcp`) | Loopback: optional. Non-loopback: yes. | [MCP HTTP token](#mcp-http-token) |
 | MCP OAuth env | Google OAuth + JWT | `/mcp`, protected `/v1` routes | OAuth mode only | [MCP OAuth](#mcp-oauth) |
 | Web panel password | Auto-generated, file-backed | `axon serve` web panel (`/api/panel/*`) | Always (no anonymous access) | [Web panel password](#web-panel-password) |
 
@@ -29,7 +29,7 @@ for how they differ.
 
 ## MCP HTTP token
 
-**Variable:** `AXON_MCP_HTTP_TOKEN`
+**Variable:** `AXON_HTTP_TOKEN`
 **Source:** `src/mcp/auth.rs`, `src/mcp/server/http.rs`
 **Detailed reference:** [`docs/operations/auth/mcp-auth.md`](mcp-auth.md)
 
@@ -52,9 +52,9 @@ listener and performs no auth.
 
 ```bash
 # .env
-AXON_MCP_HTTP_TOKEN=$(openssl rand -hex 32)
-AXON_MCP_HTTP_HOST=127.0.0.1
-AXON_MCP_HTTP_PORT=8001
+AXON_HTTP_TOKEN=$(openssl rand -hex 32)
+AXON_HTTP_HOST=127.0.0.1
+AXON_HTTP_PORT=8001
 ```
 
 For client configuration (Claude Code, mcporter, raw `curl`) and the full
@@ -66,15 +66,15 @@ security model, see [`docs/operations/auth/mcp-auth.md`](mcp-auth.md).
 
 ## MCP OAuth
 
-**Variables:** `AXON_MCP_AUTH_MODE`, `AXON_MCP_PUBLIC_URL`,
-`AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`,
-`AXON_MCP_AUTH_ADMIN_EMAIL`, `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`
+**Variables:** `AXON_AUTH_MODE`, `AXON_PUBLIC_URL`,
+`AXON_GOOGLE_CLIENT_ID`, `AXON_GOOGLE_CLIENT_SECRET`,
+`AXON_AUTH_ADMIN_EMAIL`, `AXON_ALLOWED_REDIRECT_URIS`
 **Source:** `src/mcp/auth.rs`, `src/mcp/server/http.rs`
 **Detailed reference:** [`docs/operations/auth/mcp-auth.md`](mcp-auth.md)
 
-OAuth mode is enabled with `AXON_MCP_AUTH_MODE=oauth`. It mounts lab-auth OAuth
+OAuth mode is enabled with `AXON_AUTH_MODE=oauth`. It mounts lab-auth OAuth
 metadata, Google login, token, JWKS, and dynamic registration routes beside
-`/mcp`. Static bearer auth remains accepted when `AXON_MCP_HTTP_TOKEN` is also
+`/mcp`. Static bearer auth remains accepted when `AXON_HTTP_TOKEN` is also
 set.
 
 ---
@@ -157,7 +157,7 @@ surface.
 # MCP HTTP token (returns 401 without, 200/405/406 with)
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/mcp
 curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" http://localhost:8001/mcp
+  -H "Authorization: Bearer $AXON_HTTP_TOKEN" http://localhost:8001/mcp
 
 # Web panel password — verify file exists
 test -f ~/.axon/panel-password && echo "panel password present"

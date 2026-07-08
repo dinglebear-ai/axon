@@ -77,11 +77,12 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
-    cfg.purge_prefix = inputs.dispatched.purge_prefix;
-    cfg.purge_dry_run = inputs.dispatched.purge_dry_run;
     cfg.source_scope = inputs.dispatched.source_scope.clone();
     cfg.reset_stores = inputs.dispatched.reset_stores.clone();
     cfg.reset_dry_run = inputs.dispatched.reset_dry_run;
+    cfg.prune_target = inputs.dispatched.prune_target.clone();
+    cfg.prune_generation = inputs.dispatched.prune_generation.clone();
+    cfg.prune_confirm = inputs.dispatched.prune_confirm;
     cfg.reset_plan_id = inputs.dispatched.reset_plan_id.clone();
     cfg.doctor_diagnose = inputs.dispatched.doctor_diagnose;
     // `extract` defaults to the exact single-page path when omitted. The crawl

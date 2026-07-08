@@ -76,13 +76,13 @@ MCP uses the same SQLite/in-process job runtime as the CLI and HTTP server.
 Streamable-HTTP transport with MCP protocol support. Uses the `rmcp` crate with `transport-streamable-http-server` feature.
 
 ```bash
-AXON_MCP_HTTP_HOST=127.0.0.1
-AXON_MCP_HTTP_PORT=8001
+AXON_HTTP_HOST=127.0.0.1
+AXON_HTTP_PORT=8001
 axon serve mcp
 ```
 
-Non-loopback binds such as `0.0.0.0` require either `AXON_MCP_HTTP_TOKEN` or
-`AXON_MCP_AUTH_MODE=oauth` with the OAuth env vars configured. Tokenless HTTP
+Non-loopback binds such as `0.0.0.0` require either `AXON_HTTP_TOKEN` or
+`AXON_AUTH_MODE=oauth` with the OAuth env vars configured. Tokenless HTTP
 startup is limited to loopback hosts.
 
 ### Endpoints
@@ -107,14 +107,14 @@ The same listener also mounts the web panel and first-party HTTP routes. Use
       "type": "http",
       "url": "http://localhost:8001/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_AXON_MCP_HTTP_TOKEN"
+        "Authorization": "Bearer YOUR_AXON_HTTP_TOKEN"
       }
     }
   }
 }
 ```
 
-Loopback binds (`127.0.0.1`) may run without `AXON_MCP_HTTP_TOKEN`; non-loopback
+Loopback binds (`127.0.0.1`) may run without `AXON_HTTP_TOKEN`; non-loopback
 binds (e.g. `0.0.0.0`) require it or the server refuses to start.
 
 ### When to use
@@ -145,7 +145,7 @@ client/server routes.
 
 | Service | Default port | Env var |
 |---------|-------------|---------|
-| Web + MCP HTTP | 8001 | `AXON_MCP_HTTP_PORT` |
+| Web + MCP HTTP | 8001 | `AXON_HTTP_PORT` |
 
 ## See also
 

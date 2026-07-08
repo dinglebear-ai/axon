@@ -97,7 +97,21 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
     ),
     (
         "memory",
-        &["memory_id", "memory_importance", "memory_status"],
+        &[
+            "memory_id",
+            "memory_importance",
+            "memory_status",
+            "memory_recallable",
+            "memory_type",
+            "memory_scope_kind",
+            "memory_scope_value",
+            "memory_confidence",
+            "memory_salience",
+            "redaction_version",
+            "redacted_field_count",
+            "dropped_field_count",
+            "detector_names",
+        ],
     ),
     (
         "local",
@@ -126,5 +140,10 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
             "docker_volume",
         ],
     ),
-    ("env", &["env_key", "env_secret_reference"]),
+    // Not `env_secret_reference`/`env_value_*` -- "secret" and "env_value"
+    // are both fatal `FORBIDDEN_FIELD_FRAGMENTS` substrings in the shared
+    // redaction boundary (fail-closed by design), even though this field
+    // only ever holds a locator/reference, never a secret value. Currently
+    // declarative only -- no adapter reads or writes it yet.
+    ("env", &["env_key", "env_locator"]),
 ];

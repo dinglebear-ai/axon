@@ -84,8 +84,6 @@ impl fmt::Debug for Config {
             .field("wait", &self.wait)
             .field("sqlite_path", &self.sqlite_path)
             .field("yes", &self.yes)
-            .field("purge_prefix", &self.purge_prefix)
-            .field("purge_dry_run", &self.purge_dry_run)
             .field("reset_stores", &self.reset_stores)
             .field("reset_dry_run", &self.reset_dry_run)
             .field("performance_profile", &self.performance_profile)

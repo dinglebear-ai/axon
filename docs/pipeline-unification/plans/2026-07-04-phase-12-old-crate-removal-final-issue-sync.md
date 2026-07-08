@@ -8,6 +8,84 @@
 
 **Tech Stack:** Rust workspace, Cargo metadata, `cargo xtask check`, GitHub CLI, issue #298 checklist, generated schemas, Tier 5 fake/local cutover tests.
 
+## Removal Readiness Audit (2026-07-06/07, wave 2 investigation)
+
+Investigation-only pass across all five candidate crates, done by reading the
+actual `crates/*/Cargo.toml` dependency graph, `grep`-verifying every
+`axon_<crate>::` source reference (excluding test files), tracing the live
+clap `CliCommand` enum in `crates/axon-core/src/config/cli.rs`, and reading
+this repo's own `xtask/src/checks/crate_contracts_spec*.rs` +
+`xtask/src/checks/layering.rs` (both of which independently encode the same
+contract this plan describes). Findings below **supersede** the blanket "all
+five must be removed together" framing at the top of this doc — one of the
+five is genuinely orphaned today; the other four are still load-bearing.
+
+### Corrected per-crate verdicts
+
+| Crate | Verdict | Why |
+|---|---|---|
+| `axon-code-index` | **Safe to delete now** | Zero dependents. No other crate's `Cargo.toml` lists it as a path dependency, no `.rs` file outside its own crate imports `axon_code_index::`, and the `code-search`/`code-search-watch` CLI commands it existed to serve are already removed from the live `CliCommand` enum (confirmed absent from `crates/axon-core/src/config/cli.rs`; also present in `xtask`'s own `removed_commands()`/`schema_registry.rs` list). This crate is dead weight left over from the Phase 6 code-search-generation cutover (commit `966496e90`), which moved local-code-index responsibilities into `axon-ledger` + `axon-parse` + `axon-jobs` + `axon-vectors` and never deleted the old crate shell. |
+| `axon-vector` | **Blocked — still required** | Depended on (path dep in `[dependencies]`, not just dev-deps) by `axon-cli`, `axon-jobs`, `axon-ingest`, `axon-mcp`, `axon-web`, `axon-services`. Real, non-test source usage (42 files) inside `axon-services` for `embed`, `scrape` (vertical dispatch fallback), `refresh`, `reset`, `migrate`, `system::{dedupe,domains,purge,sources,stats}`, and — critically — `query/ask_retrieval.rs`. That file's own doc comment says the cutover to `axon-retrieval` only replaced the SEARCH+CONTEXT half of `ask`; **LLM synthesis is "deliberately left on the legacy path"** via `axon_vector::ops::commands::ask::ask_result_from_context`, and `ask --explain` (used by `train`) stays on the full legacy `build_ask_context` reranker. `axon-cli`'s `serve`/`mcp` startup path also calls `axon_vector::cache::enforce_core_dump_disabled_for_ask_cache` directly (a real security hardening call, not dead code). |
+| `axon-crawl` | **Blocked — still required** | Depended on by `axon-cli`, `axon-jobs`, `axon-extract`, `axon-services`. This is the actual HTTP/Chrome crawl engine. The new `axon source` dispatch path's `dispatch_web` (in `crates/axon-services/src/source/dispatch.rs`) does NOT reimplement fetching — it calls `crawl_for_source` in `crates/axon-services/src/crawl_sync.rs`, which directly calls `axon_crawl::engine::*` and `axon_crawl::chrome_bootstrap::*`. `axon-adapters/src/web.rs` (the new web "adapter") is metadata/scope/manifest-only, matching the family pattern of every other adapter — it has no HTTP client dependency at all. `dependency-order-map.md`'s own "Do Not Start X Until Y" list still says "Do not port web crawl until URL normalization, authority mapping, and map/source scope behavior are implemented" — this has not fully landed as a crawl-engine replacement, only as a routing/scoping layer in front of the same engine. `axon-cli`'s `screenshot` command also calls `axon_crawl::screenshot::url_to_screenshot_filename` directly. |
+| `axon-ingest` | **Blocked — still required, but narrower than it looks** | Depended on by `axon-cli`, `axon-jobs`, `axon-extract`, `axon-services`, `axon-web`. Good news: the new `axon source` dispatch path (`dispatch_git`/`dispatch_feed`/`dispatch_reddit`/`dispatch_youtube`/`dispatch_registry`/`dispatch_session` in `source/dispatch.rs`) does **not** touch `axon_ingest::` at all — it uses brand-new `axon-services`-owned acquisition modules (`git_acquire.rs`, `feed_acquire.rs`, `reddit_acquire.rs`, `youtube_acquire.rs`, `registry_acquire.rs`) plus `index_*_source_with_job` bridges. So the *acquisition* half of the old ingest pipeline is already superseded for those source kinds. What's still live: (1) `axon_services::ingest.rs` re-exports `axon_ingest::orchestrate::*` and is called by `axon-cli`'s `sessions` command via `commands/ingest_common.rs` (job status/cancel/list/cleanup/clear/worker/recover subcommands + the sync ingest path used by `sessions`); (2) `axon_ingest::sessions::watch::{SessionWatchEventSink, SessionWatchProcessEvent}` types are used directly by `axon-cli/src/commands/sessions.rs`; (3) `axon_ingest::github::github_repo_exists` is used inside `ingest.rs`. The legacy top-level `Ingest` clap subcommand itself is confirmed gone from `CliCommand`, but its job-runner/watch/session machinery is still reachable through the still-live `Sessions` command. |
+| `axon-extract` | **Blocked — still required, and the axon-jobs dependency is real, current, and *intentionally* undocumented as permanent (see below)** | Depended on by `axon-cli`, `axon-mcp`, `axon-jobs`, `axon-services`. `axon_services::extract::extract_sync` is a direct re-export of `axon_extract::sync::extract_sync`, and it backs the still-live `Extract` clap command (present in `CliCommand`, mutating/async job). `axon_services::scrape.rs` re-exports `axon_extract::scrape::*` and is the vertical-extractor auto-routing (`dispatch_by_url()`) used by `scrape`/`brand`/`summarize`/`diff`/`screenshot`/the web source dispatch path whenever `cfg.enable_verticals = true` (default on). |
+
+### `axon-jobs` → `axon-extract` dependency — resolved
+
+The task's open question was whether `crates/axon-jobs/src/workers/runners/extract.rs`'s
+`run_extract_job()` calling `axon_extract::sync::extract_sync()` directly makes
+`axon-extract` a **permanent** required dependency of `axon-jobs` (meaning the
+plan needs to be revised to say this crate survives Phase 12), or whether the
+plan intends that logic to relocate before `axon-extract` can go away.
+
+**Answer, straight from this repo's own layering-contract source:**
+`xtask/src/checks/crate_contracts_spec_cont.rs`'s `axon-jobs` contract entry
+says, verbatim, in a code comment:
+
+> README: axon-jobs must not depend on axon-services (contradiction-review.md:
+> "axon-jobs may not depend on axon-services" — the composition layer injects
+> worker functions instead). **Legacy crates are intentionally NOT forbidden
+> here: axon-jobs' worker runners currently wrap
+> axon-crawl/axon-vector/axon-ingest/axon-extract behavior pre-cutover.**
+
+This is decisive: the codebase's own machine-checked contract already
+anticipates and names this exact dependency, and explicitly frames it as
+**temporary pre-cutover debt**, not a sanctioned permanent architecture. Every
+*other* new-generation crate's `forbidden_axon_deps` list (in the same file)
+explicitly forbids all five legacy crate names (`axon-vector`, `axon-crawl`,
+`axon-ingest`, `axon-extract`, `axon-code-index`) — `axon-jobs` is the single,
+deliberate exception, and the comment names it as such. Separately,
+`foundation/crate-structure.md`'s target-dependency table lists `axon-jobs`'s
+allowed axon dependencies as "provider boundary crates, domain service
+traits" only — `axon-extract` is not among them in the target state.
+
+**Conclusion:** the plan should **not** be revised to say `axon-extract`
+survives Phase 12 as a permanent `axon-jobs` dependency. The correct fix is
+what `foundation/crate-structure.md` already prescribes: `axon-extract`'s
+surviving pieces ("Structured LLM extraction remains a top-level action, but
+vertical scraping/adapters move under source routing") land in `axon-llm` +
+`axon-parse` + a top-level `axon-services` extraction entry point, and
+`axon-jobs`' `run_extract_job` should call that new entry point instead of
+`axon_extract::sync::extract_sync` directly. Note `foundation/crate-structure.md`
+already hedges `axon-extract`'s disposition as "remove **or shrink**" (softer
+than the unconditional "remove after ..." wording used for the other four
+crates), which matches this: it may not fully disappear, but it must stop
+being a distinct workspace member that `axon-jobs` depends on directly. Until
+that relocation happens, Task 3 ("Delete Old Crates From Workspace") cannot
+proceed for `axon-extract` — deleting it today would break `axon-jobs`'
+extract job runner and the still-live `Extract` CLI command.
+
+### Corrected Global Constraint
+
+Line 18 below ("Remove `axon-vector`, `axon-code-index`, `axon-crawl`,
+`axon-ingest`, and `axon-extract` only after replacement paths and tests
+pass") is accurate in spirit but should not be read as "these five are
+equally close to done." As of this audit: **only `axon-code-index` currently
+has zero remaining dependents and can be deleted immediately** (Task 3 for
+that one crate only, independent of the other four). The other four each have
+real, current, non-test call sites and require the acquisition/dispatch/
+synthesis migrations described above before Task 3 applies to them.
+
 ## Engineering Review Corrections
 
 The Lavra engineering review found that old-crate deletion must be blocked by replacement-path evidence, not by import absence alone. This revision requires Tier 5 replacement/cutover cases before deletion, dispatch and call-path tests for removed operations, smaller implementation PRs, and explicit issue-scope honesty: full all-source fixture completeness cannot be deferred if issue #298 is marked complete.
@@ -144,13 +222,19 @@ Expected: no transport import reaches old domain internals.
 
 ### Task 3: Delete Old Crates From Workspace
 
+> See "Removal Readiness Audit" above for current per-crate status. As of the
+> 2026-07-06/07 audit only `crates/axon-code-index` is ready for this task
+> today (zero dependents); the other four are blocked on the migrations
+> described there. Do not batch `axon-code-index`'s removal with the other
+> four — it has no shared replacement-path prerequisite with them.
+
 **Files:**
 - Modify: `Cargo.toml`
-- Delete: `crates/axon-vector`
-- Delete: `crates/axon-code-index`
-- Delete: `crates/axon-crawl`
-- Delete: `crates/axon-ingest`
-- Delete: `crates/axon-extract`
+- Delete: `crates/axon-vector` (blocked — see audit)
+- Delete: `crates/axon-code-index` (ready now — zero dependents)
+- Delete: `crates/axon-crawl` (blocked — see audit)
+- Delete: `crates/axon-ingest` (blocked — see audit)
+- Delete: `crates/axon-extract` (blocked — see audit; also required by `axon-jobs` pre-cutover, see dependency resolution above)
 - Modify generated references through schema/docs generator.
 
 **Interfaces:**

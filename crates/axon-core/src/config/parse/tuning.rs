@@ -302,6 +302,21 @@ pub(crate) fn apply_default_minimal_tuning(cfg: &mut Config) {
 }
 
 fn load_toml_or_default() -> TomlConfig {
+    // Unit tests must be hermetic: without this guard, a developer's real
+    // `~/.axon/config.toml` (or any ambient config on the machine/CI runner)
+    // silently overrides the tuning defaults every test in this workspace
+    // assumes, since these `tuning::*()` functions read the filesystem
+    // directly rather than going through the `Config` a test constructs.
+    // An explicit `AXON_CONFIG_PATH` override still applies during tests —
+    // this only skips the implicit fallback to `~/.axon/config.toml`.
+    // `cfg!(test)` alone only covers axon-core's own test binary — other
+    // crates' tests link axon-core as a normal dependency, so this also
+    // gates on the `test-util` feature they enable as a dev-dependency
+    // (same convention as `axon_core::http`/`config_impls`).
+    #[cfg(any(test, feature = "test-util"))]
+    if std::env::var("AXON_CONFIG_PATH").is_err() {
+        return TomlConfig::default();
+    }
     match load_toml_config() {
         Ok(toml) => toml,
         Err(e) => {

@@ -71,7 +71,7 @@ compatibility = "canonical"
 reason = "Chrome/CDP endpoint URL. URLs stay in env/CLI, not TOML."
 
 [[env]]
-key = "AXON_MCP_HTTP_TOKEN"
+key = "AXON_HTTP_TOKEN"
 classification = "keep-env"
 runtime_placement = "container-required"
 surfaces = ["src", "env-template", "docs", "setup"]
@@ -83,7 +83,7 @@ compatibility = "canonical"
 reason = "Runtime auth secret for MCP/action HTTP surfaces."
 
 [[env]]
-key = "AXON_MCP_AUTH_MODE"
+key = "AXON_AUTH_MODE"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs", "setup"]
@@ -95,7 +95,7 @@ compatibility = "canonical"
 reason = "Auth runtime mode, not non-secret tuning."
 
 [[env]]
-key = "AXON_MCP_PUBLIC_URL"
+key = "AXON_PUBLIC_URL"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs", "setup"]
@@ -107,7 +107,7 @@ compatibility = "canonical"
 reason = "OAuth public origin URL. URLs stay in env."
 
 [[env]]
-key = "AXON_MCP_GOOGLE_CLIENT_ID"
+key = "AXON_GOOGLE_CLIENT_ID"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs"]
@@ -119,7 +119,7 @@ compatibility = "canonical"
 reason = "OAuth client identifier."
 
 [[env]]
-key = "AXON_MCP_GOOGLE_CLIENT_SECRET"
+key = "AXON_GOOGLE_CLIENT_SECRET"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs"]
@@ -131,7 +131,7 @@ compatibility = "canonical"
 reason = "OAuth client secret."
 
 [[env]]
-key = "AXON_MCP_AUTH_ADMIN_EMAIL"
+key = "AXON_AUTH_ADMIN_EMAIL"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs"]
@@ -143,7 +143,7 @@ compatibility = "canonical"
 reason = "OAuth admin identity."
 
 [[env]]
-key = "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS"
+key = "AXON_ALLOWED_REDIRECT_URIS"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs"]
@@ -155,7 +155,7 @@ compatibility = "canonical"
 reason = "OAuth redirect allowlist."
 
 [[env]]
-key = "AXON_MCP_ALLOWED_ORIGINS"
+key = "AXON_ALLOWED_ORIGINS"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "env-template", "docs"]
@@ -347,7 +347,7 @@ compatibility = "canonical"
 reason = "Changed-file embedding batch size for code-search freshness; env-backed v1 tuning."
 
 [[env]]
-key = "AXON_MCP_HTTP_PUBLISH"
+key = "AXON_HTTP_PUBLISH"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"
 surfaces = ["compose", "env-template", "docs", "setup"]
@@ -1823,7 +1823,7 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
-key = "AXON_MCP_HTTP_HOST"
+key = "AXON_HTTP_HOST"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
 surfaces = ["src", "scripts", "docs", "compose"]
@@ -1835,7 +1835,7 @@ compatibility = "advanced"
 reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
 
 [[env]]
-key = "AXON_MCP_HTTP_PORT"
+key = "AXON_HTTP_PORT"
 classification = "trusted-operator-bootstrap"
 runtime_placement = "host-only"
 surfaces = ["src", "scripts", "docs", "compose"]

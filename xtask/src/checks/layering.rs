@@ -16,7 +16,6 @@ use walkdir::WalkDir;
 
 /// Domain-crate internal import prefixes that transports must not use directly.
 const FORBIDDEN: &[&str] = &[
-    "axon_code_index::store::",
     "axon_crawl::engine::",
     "axon_extract::registry::",
     "axon_extract::verticals::",

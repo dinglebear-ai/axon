@@ -21,7 +21,7 @@ pub mod severity;
 pub mod stage;
 pub mod testing;
 
-pub use api_error::ApiError;
+pub use api_error::{ApiError, SourceItemError};
 pub use code::ErrorCode;
 pub use context::{ErrorContext, ErrorContextEntry, ErrorVisibility};
 pub use conversion::{IntoApiError, api_error_from_parts, project};

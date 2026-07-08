@@ -8,15 +8,13 @@ policy logic. Full contract (owns / API / deps / tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/auth-contract.md](../../../docs/pipeline-unification/runtime/auth-contract.md).
 
-## Status — PR0 skeleton, partly live
-The **OAuth scope constants are already real, not markers**: `AXON_READ_SCOPE`
-(`axon:read`), `AXON_WRITE_SCOPE` (`axon:write`), `AXON_FULL_ACCESS_SCOPE`, and
-scope-satisfaction logic (`http.rs`) are live and load-bearing — these strings
-are embedded in issued OAuth tokens, so changing the literals invalidates every
-existing token (a hard security invariant). The broader policy surface
-(`CallerContext`, `SecurityPolicy`, `ExecutionAffinity`, `SecurityDecision`,
-`VisibilityPolicy`) folds in as the auth/scope-policy boundary is generalized. Do
-not add OAuth/bearer HTTP middleware, source fetching, or redaction detectors.
+## Status — live crate
+The OAuth scope constants (`AXON_READ_SCOPE`/`axon:read`, `AXON_WRITE_SCOPE`/
+`axon:write`, `AXON_FULL_ACCESS_SCOPE`) and the full auth/scope-checking policy
+surface (`policy.rs`, `http.rs` bearer/OAuth bind-mode gating) are real and
+tested, not markers — these strings are embedded in issued OAuth tokens, so
+changing the literals invalidates every existing token (a hard security
+invariant). Do not add source fetching or redaction detectors here.
 
 ## Module map
 | File | Owns |

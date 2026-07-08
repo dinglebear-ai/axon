@@ -493,6 +493,8 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let routes = [
         ("POST", "/v1/dedupe"),
         ("POST", "/v1/purge"),
+        ("POST", "/v1/prune/plan"),
+        ("POST", "/v1/prune/exec"),
         ("POST", "/v1/sources"),
         ("POST", "/v1/watch"),
         ("POST", watch_run.as_str()),

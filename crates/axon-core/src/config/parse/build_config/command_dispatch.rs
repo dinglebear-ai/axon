@@ -7,9 +7,9 @@
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
     FreshSubcommand, JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs,
-    ResetArgs, ServeArgs, ServeSubcommand, SessionWatchServiceSubcommand, SessionsArgs,
-    SessionsSubcommand, SetupArgs, SetupAuthMode, SetupConfigSubcommand, SetupInitArgs,
-    SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
+    PruneCliSubcommand, PruneTargetArgs, ResetArgs, ServeArgs, ServeSubcommand,
+    SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode,
+    SetupConfigSubcommand, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -80,8 +80,6 @@ pub(super) struct DispatchOutput {
     pub sources_domain: Option<String>,
     pub sources_domain_all: bool,
     pub domains_domain: Option<String>,
-    pub purge_prefix: bool,
-    pub purge_dry_run: bool,
     /// Binary acquisition method passed in by install.sh via `axon setup --method pull|build`
     pub setup_method: Option<String>,
     /// `--scope` override for `axon <source>` / `axon source <input>`.
@@ -90,6 +88,12 @@ pub(super) struct DispatchOutput {
     pub reset_stores: Vec<String>,
     /// `--dry-run` pin for `axon reset`.
     pub reset_dry_run: bool,
+    /// Prune target for `axon prune plan|exec` (source id or `collection:<name>`).
+    pub prune_target: Option<String>,
+    /// `--generation` scope for `axon prune plan|exec`.
+    pub prune_generation: Option<String>,
+    /// `--confirm` for `axon prune exec`.
+    pub prune_confirm: bool,
     /// `--plan-id` binding for `axon reset --yes`.
     pub reset_plan_id: Option<String>,
 }
@@ -146,12 +150,13 @@ impl DispatchOutput {
             sources_domain: None,
             sources_domain_all: false,
             domains_domain: None,
-            purge_prefix: false,
-            purge_dry_run: false,
             setup_method: None,
             source_scope: None,
             reset_stores: Vec::new(),
             reset_dry_run: false,
+            prune_target: None,
+            prune_generation: None,
+            prune_confirm: false,
             reset_plan_id: None,
         }
     }
@@ -276,13 +281,6 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Stats => out.command = CommandKind::Stats,
         CliCommand::Status => out.command = CommandKind::Status,
         CliCommand::Jobs(args) => apply_jobs(&mut out, args.action),
-        CliCommand::Dedupe => out.command = CommandKind::Dedupe,
-        CliCommand::Purge(args) => {
-            out.command = CommandKind::Purge;
-            out.positional = vec![args.url];
-            out.purge_prefix = args.prefix;
-            out.purge_dry_run = args.dry_run;
-        }
         CliCommand::Refresh(args) => {
             out.command = CommandKind::Refresh;
             out.positional = args.filter.into_iter().collect();
@@ -310,6 +308,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Serve(args) => apply_serve(&mut out, args),
         CliCommand::Reset(args) => apply_reset(&mut out, args),
+        CliCommand::Prune(args) => apply_prune(&mut out, args.action),
         CliCommand::Preflight(args) => {
             out.command = CommandKind::Preflight;
             if args.config {
@@ -661,6 +660,27 @@ fn apply_reset(out: &mut DispatchOutput, args: ResetArgs) {
         .collect();
     out.reset_dry_run = args.dry_run;
     out.reset_plan_id = args.plan_id;
+}
+
+fn apply_prune_target(out: &mut DispatchOutput, target: PruneTargetArgs) {
+    out.prune_target = Some(target.target);
+    out.prune_generation = target.generation;
+}
+
+fn apply_prune(out: &mut DispatchOutput, action: PruneCliSubcommand) {
+    match action {
+        PruneCliSubcommand::Plan(target) => {
+            out.command = CommandKind::Prune;
+            out.positional = vec!["plan".to_string()];
+            apply_prune_target(out, target);
+        }
+        PruneCliSubcommand::Exec(args) => {
+            out.command = CommandKind::Prune;
+            out.positional = vec!["exec".to_string()];
+            out.prune_confirm = args.confirm;
+            apply_prune_target(out, args.target);
+        }
+    }
 }
 
 fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {

@@ -463,25 +463,25 @@ AXON_WATCH_LEASE_SECS=300          # watch lease TTL; must exceed one run's wall
 ### MCP Security Env
 
 MCP HTTP auth is selected at startup:
-- `AXON_MCP_AUTH_MODE=oauth` enables the lab-auth Google OAuth/JWT flow and mounts `/.well-known/*`, `/authorize`, `/token`, `/register`, and related routes.
-- `AXON_MCP_HTTP_TOKEN` enables static bearer auth and also remains accepted in OAuth dual-mode.
+- `AXON_AUTH_MODE=oauth` enables the lab-auth Google OAuth/JWT flow and mounts `/.well-known/*`, `/authorize`, `/token`, `/register`, and related routes.
+- `AXON_HTTP_TOKEN` enables static bearer auth and also remains accepted in OAuth dual-mode.
 - OAuth email allowlisting is the access boundary. Allowed OAuth users receive full Axon server access; newly issued OAuth tokens default to both `axon:read` and `axon:write`, and either Axon scope is accepted for all Axon read/write routes for compatibility with existing tokens.
 - Tokenless HTTP is allowed only for loopback development binds; non-loopback binds require either OAuth mode or a static token.
 
 ```bash
 # Static bearer token accepted as Authorization: Bearer ... or x-api-key
-AXON_MCP_HTTP_TOKEN=
+AXON_HTTP_TOKEN=
 
 # OAuth mode (optional; HTTP transport only)
-AXON_MCP_AUTH_MODE=oauth
-AXON_MCP_PUBLIC_URL=https://axon.example.com
-AXON_MCP_GOOGLE_CLIENT_ID=
-AXON_MCP_GOOGLE_CLIENT_SECRET=
-AXON_MCP_AUTH_ADMIN_EMAIL=
-AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS=
+AXON_AUTH_MODE=oauth
+AXON_PUBLIC_URL=https://axon.example.com
+AXON_GOOGLE_CLIENT_ID=
+AXON_GOOGLE_CLIENT_SECRET=
+AXON_AUTH_ADMIN_EMAIL=
+AXON_ALLOWED_REDIRECT_URIS=
 
 # MCP allowed origins (comma-separated)
-AXON_MCP_ALLOWED_ORIGINS=
+AXON_ALLOWED_ORIGINS=
 ```
 
 ## Runtime Mode

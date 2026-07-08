@@ -228,13 +228,6 @@ pub struct Config {
     /// Skip confirmation prompts (non-interactive mode). Flag: `--yes`.
     pub yes: bool,
 
-    /// Delete every indexed point whose URL or seed URL is under the purge target.
-    /// Flag: `purge --prefix`.
-    pub purge_prefix: bool,
-
-    /// Preview Qdrant URL purge matches without deleting points. Flag: `purge --dry-run`.
-    pub purge_dry_run: bool,
-
     /// Binary acquisition method passed from install.sh via `axon setup --method pull|build`.
     /// `None` when setup is run directly (not via install.sh).
     pub setup_method: Option<String>,
@@ -250,6 +243,18 @@ pub struct Config {
     /// Force `axon reset` to stay a dry-run plan even under `--yes`. Flag:
     /// `reset --dry-run`. Reset is dry-run by default regardless; this pins it.
     pub reset_dry_run: bool,
+
+    /// Prune target for `axon prune plan`/`axon prune exec`: a source id, or
+    /// `collection:<name>` to target a whole Qdrant collection.
+    pub prune_target: Option<String>,
+
+    /// Scope a `axon prune` selector to one generation of `prune_target`
+    /// instead of the whole source. Flag: `prune plan|exec --generation`.
+    pub prune_generation: Option<String>,
+
+    /// Explicit destructive confirmation for `axon prune exec`. Flag:
+    /// `prune exec --confirm`.
+    pub prune_confirm: bool,
 
     /// Optional reusable plan id for destructive reset execution.
     pub reset_plan_id: Option<String>,

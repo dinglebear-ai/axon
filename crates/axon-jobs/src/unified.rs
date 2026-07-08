@@ -6,7 +6,10 @@ use axon_observe::sink::SqliteObservabilitySink;
 use sqlx::SqlitePool;
 
 use crate::boundary::{JobStore, Result};
-pub use crate::store_inventory::detect_incompatible_legacy_jobs;
+pub use crate::store_inventory::{
+    LegacyJobStoreBlocker, RECEIPT_KIND_LEGACY_RESET, RECEIPT_KIND_PREFLIGHT_CLEAN_CUTOVER,
+    detect_incompatible_legacy_jobs, record_cutover_receipt,
+};
 
 #[path = "unified/control.rs"]
 mod control;
@@ -20,6 +23,8 @@ mod observe;
 mod ops;
 #[path = "unified/pagination.rs"]
 mod pagination;
+#[path = "unified/request_read.rs"]
+mod request_read;
 #[path = "unified/schema.rs"]
 mod schema;
 
@@ -64,6 +69,10 @@ impl JobStore for SqliteUnifiedJobStore {
 
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>> {
         self.get_job(job_id).await
+    }
+
+    async fn request_json(&self, job_id: JobId) -> Result<Option<serde_json::Value>> {
+        self.get_job_request_json(job_id).await
     }
 
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>> {

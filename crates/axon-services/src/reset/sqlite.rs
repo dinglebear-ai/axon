@@ -3,6 +3,10 @@
 
 use axon_core::sqlite::open_pool_unlocked;
 use axon_jobs::migrations::apply_all_migrations;
+use axon_jobs::unified::{
+    LegacyJobStoreBlocker, RECEIPT_KIND_LEGACY_RESET, detect_incompatible_legacy_jobs,
+    record_cutover_receipt,
+};
 use sqlx::SqlitePool;
 use std::error::Error;
 use std::path::Path;
@@ -148,6 +152,31 @@ pub async fn wipe_and_remigrate(path: &Path) -> Result<i64, Box<dyn Error>> {
     let version = max_applied_version(&pool).await;
     pool.close().await;
     Ok(version)
+}
+
+/// Best-effort pre-wipe legacy job audit, used only to enrich the cutover
+/// receipt message. Read-only; never mutates. Returns `None` on any error
+/// (missing file, unreadable DB) rather than blocking the reset on it.
+pub async fn detect_legacy_jobs(path: &Path) -> Option<LegacyJobStoreBlocker> {
+    if !path.exists() {
+        return None;
+    }
+    let connect = format!("sqlite://{}?mode=ro", path.display());
+    let pool = SqlitePool::connect(&connect).await.ok()?;
+    let result = detect_incompatible_legacy_jobs(&pool).await.ok().flatten();
+    pool.close().await;
+    result
+}
+
+/// Record a `legacy_reset` cutover receipt in the freshly re-migrated DB.
+/// Called after [`wipe_and_remigrate`] so future unified-worker starts (and
+/// `detect_incompatible_legacy_jobs`) have an auditable record of the reset,
+/// even though the wipe itself already dropped any legacy rows.
+pub async fn record_legacy_reset_receipt(path: &Path, message: &str) -> Result<(), Box<dyn Error>> {
+    let pool = open_pool_unlocked(&path.to_string_lossy()).await?;
+    let result = record_cutover_receipt(&pool, RECEIPT_KIND_LEGACY_RESET, message).await;
+    pool.close().await;
+    result.map_err(|e| e.to_string().into())
 }
 
 /// Remove the SQLite file plus its `-wal` / `-shm` sidecars if present. Missing

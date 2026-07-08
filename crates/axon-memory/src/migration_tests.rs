@@ -39,6 +39,28 @@ fn ensure_schema_is_idempotent() {
 }
 
 #[test]
+fn ensure_schema_creates_batch_recovery_composite_indexes() {
+    let conn = Connection::open_in_memory().unwrap();
+    ensure_schema(&conn).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name")
+        .unwrap();
+    let names: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    for expected in [
+        "idx_memory_records_status_scope",
+        "idx_memory_records_type_status",
+        "idx_memory_records_updated",
+        "idx_memory_reinforcement_memory_time",
+    ] {
+        assert!(names.contains(&expected.to_string()), "missing {expected}");
+    }
+}
+
+#[test]
 fn foreign_keys_are_enabled() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_schema(&conn).unwrap();

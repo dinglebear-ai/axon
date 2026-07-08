@@ -84,7 +84,7 @@ provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compos
 The hook only does:
 
 1. Refresh the user's `~/.local/bin/axon` copy and apply plugin env options.
-2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_MCP_HTTP_HOST`/`AXON_MCP_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself asserts qdrant + tei readiness, so a 200 means the whole stack is up.
+2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_HTTP_HOST`/`AXON_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself asserts qdrant + tei readiness, so a 200 means the whole stack is up.
    - **Up** → exit `0` immediately, **no stdout** in human mode (`--json` prints `{"stack":"already_healthy",...}`).
    - **Down** → print one line, `axon stack not reachable on /readyz — run /axon-deploy to start it`, and exit `0` (non-blocking advisory; `--json` prints `{"stack":"down","action":"run /axon-deploy",...}`).
 
@@ -96,14 +96,14 @@ restart the stack, use the `/axon-deploy` plugin slash command, or `axon setup` 
 
 | Option | Env key | Purpose |
 |--------|---------|---------|
-| `--mcp-host <host>` | `AXON_MCP_HTTP_HOST` | MCP HTTP bind host. |
-| `--mcp-port <port>` | `AXON_MCP_HTTP_PORT` | MCP HTTP bind port. |
-| `--auth-mode bearer\|oauth` | `AXON_MCP_AUTH_MODE` | Auth mode. Defaults to `bearer`. |
-| `--mcp-token <token>` | `AXON_MCP_HTTP_TOKEN` | Static bearer token. Generated when bearer mode is selected and no token exists. |
-| `--oauth-public-url <url>` | `AXON_MCP_PUBLIC_URL` | Required for OAuth mode. |
-| `--google-client-id <id>` | `AXON_MCP_GOOGLE_CLIENT_ID` | Required for OAuth mode. |
-| `--google-client-secret <secret>` | `AXON_MCP_GOOGLE_CLIENT_SECRET` | Required for OAuth mode. |
-| `--auth-admin-email <email>` | `AXON_MCP_AUTH_ADMIN_EMAIL` | Required for OAuth mode. |
+| `--mcp-host <host>` | `AXON_HTTP_HOST` | MCP HTTP bind host. |
+| `--mcp-port <port>` | `AXON_HTTP_PORT` | MCP HTTP bind port. |
+| `--auth-mode bearer\|oauth` | `AXON_AUTH_MODE` | Auth mode. Defaults to `bearer`. |
+| `--mcp-token <token>` | `AXON_HTTP_TOKEN` | Static bearer token. Generated when bearer mode is selected and no token exists. |
+| `--oauth-public-url <url>` | `AXON_PUBLIC_URL` | Required for OAuth mode. |
+| `--google-client-id <id>` | `AXON_GOOGLE_CLIENT_ID` | Required for OAuth mode. |
+| `--google-client-secret <secret>` | `AXON_GOOGLE_CLIENT_SECRET` | Required for OAuth mode. |
+| `--auth-admin-email <email>` | `AXON_AUTH_ADMIN_EMAIL` | Required for OAuth mode. |
 | `--tavily-api-key <key>` | `TAVILY_API_KEY` | Enables Tavily fallback search/research when SearXNG is not configured. |
 | `--github-token <token>` | `GITHUB_TOKEN` | Raises GitHub ingest rate limits. |
 | `--reddit-client-id <id>` | `REDDIT_CLIENT_ID` | Required for Reddit ingest. |
@@ -113,7 +113,7 @@ restart the stack, use the `/axon-deploy` plugin slash command, or `axon setup` 
 
 For local bearer-token operation, no manual env values are required. `setup init`
 creates the local home, defaults to loopback MCP HTTP, writes
-`AXON_MCP_AUTH_MODE=bearer`, and generates `AXON_MCP_HTTP_TOKEN`.
+`AXON_AUTH_MODE=bearer`, and generates `AXON_HTTP_TOKEN`.
 
 Optional features need their own credentials:
 
@@ -123,7 +123,7 @@ Optional features need their own credentials:
 | Web search / research | `TAVILY_API_KEY`. |
 | GitHub ingest with higher rate limits | `GITHUB_TOKEN`. |
 | Reddit ingest | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |
-| OAuth MCP auth | `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`. |
+| OAuth MCP auth | `AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`, `AXON_GOOGLE_CLIENT_SECRET`, and `AXON_AUTH_ADMIN_EMAIL`. |
 
 ## Examples
 

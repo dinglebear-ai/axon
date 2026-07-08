@@ -1,10 +1,12 @@
 use super::*;
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 
 /// Perform the destructive actions for the selected stores. Any single SQLite
 /// store selection wipes+re-migrates the whole unified DB exactly once.
 pub(super) async fn execute(
     cfg: &Config,
     stores: &[String],
+    legacy_audit: Option<&axon_jobs::unified::LegacyJobStoreBlocker>,
     sqlite_inv: &SqliteInventory,
     qdrant_inv: Option<&QdrantInventory>,
     artifact_root: &std::path::Path,
@@ -21,6 +23,18 @@ pub(super) async fn execute(
             "reset sqlite wiped + re-migrated path={} schema_version={version}",
             cfg.sqlite_path.display()
         ));
+
+        // Wipe already drops any legacy job tables, but a receipt gives
+        // operators an auditable record of when/why a reset cleared them —
+        // otherwise `axon_job_cutover_receipts` (and `detect_incompatible_
+        // legacy_jobs`'s escape hatch) would be permanently dead code.
+        let message = match legacy_audit {
+            Some(blocker) => format!("reset wiped legacy job rows: {}", blocker.message),
+            None => "reset wiped + re-migrated the unified SQLite DB".to_string(),
+        };
+        if let Err(e) = sqlite::record_legacy_reset_receipt(&cfg.sqlite_path, &message).await {
+            warnings.push(format!("failed to record cutover receipt: {e}"));
+        }
     }
 
     if wants(stores, RESET_STORE_VECTORS) {
@@ -113,6 +127,11 @@ pub(super) async fn write_receipt(
         "created": receipt.created,
         "warnings": warnings,
     });
+    // Fail-closed redaction boundary: this receipt is a durable audit-trail
+    // artifact returned to callers verbatim; a warning/plan entry carrying a
+    // provider error body or path fragment must not persist a secret.
+    let (receipt, _redaction_report) =
+        DefaultRedactor::new().redact_json(receipt, &RedactionContext::artifact_metadata());
     let bytes = serde_json::to_vec_pretty(&receipt)?;
     let path = axon_core::artifacts::atomic_write_under(&root, &relative, &bytes).await?;
     Ok(path.display().to_string())

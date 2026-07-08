@@ -26,6 +26,7 @@ pub struct FakeJobWatchStore {
 #[derive(Debug, Default)]
 struct FakeJobWatchState {
     jobs: BTreeMap<JobId, JobSummary>,
+    requests: BTreeMap<JobId, serde_json::Value>,
     stages: BTreeMap<JobId, Vec<JobStageSnapshot>>,
     events: BTreeMap<JobId, Vec<JobEvent>>,
     idempotency_keys: BTreeMap<String, JobId>,
@@ -86,6 +87,9 @@ impl JobStore for FakeJobWatchStore {
             warnings: Vec::new(),
         };
         state.jobs.insert(job_id, summary);
+        if let Some(request_json) = request.request.clone() {
+            state.requests.insert(job_id, request_json);
+        }
         let mut stages = Vec::new();
         for stage in request.stage_plan {
             state.next_stage += 1;
@@ -110,6 +114,10 @@ impl JobStore for FakeJobWatchStore {
 
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>> {
         Ok(self.state.lock().await.jobs.get(&job_id).cloned())
+    }
+
+    async fn request_json(&self, job_id: JobId) -> Result<Option<serde_json::Value>> {
+        Ok(self.state.lock().await.requests.get(&job_id).cloned())
     }
 
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>> {
@@ -471,6 +479,7 @@ impl JobStore for FakeJobWatchStore {
     async fn reset(&self) -> Result<()> {
         let mut state = self.state.lock().await;
         state.jobs.clear();
+        state.requests.clear();
         state.stages.clear();
         state.events.clear();
         state.idempotency_keys.clear();

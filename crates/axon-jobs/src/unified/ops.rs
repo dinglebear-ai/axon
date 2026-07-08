@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor, redact_metadata};
 use sqlx::Row;
 use sqlx::Sqlite;
 use sqlx::query::Query;
@@ -280,7 +281,16 @@ impl SqliteUnifiedJobStore {
         } else {
             false
         };
-        let mut details = event_details(&event);
+        // Fail-closed redaction boundary: `message` (its own column) and
+        // `details_json` (the full serialized event, including any
+        // `error.message`/adapter-supplied fields) both cross into a row
+        // that is later returned verbatim over REST/MCP/CLI. Neither is
+        // trusted content — scrub before the write, not after.
+        let redactor = DefaultRedactor::new();
+        let redaction_context = RedactionContext::job_event();
+        let redacted_message = redactor.redact_text(&event.message, &redaction_context);
+        let (mut details, _redaction_report) =
+            redact_metadata(event_details(&event), &redaction_context, &redactor);
         let dedupe_key = if duplicate_dedupe {
             details.insert("dedupe_duplicate".to_string(), serde_json::json!(true));
             None
@@ -302,7 +312,7 @@ impl SqliteUnifiedJobStore {
         .bind(enum_name(event.status)?)
         .bind(enum_name(event.severity)?)
         .bind(enum_name(event.visibility)?)
-        .bind(event.message)
+        .bind(redacted_message)
         .bind(event.timestamp.0)
         .bind(dedupe_key)
         .bind(to_json(&details)?)

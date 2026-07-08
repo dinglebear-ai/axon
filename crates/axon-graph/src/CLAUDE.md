@@ -10,10 +10,15 @@ agents, issues, PRs, and artifacts through one graph model. Full contract
 · behavior spec:
 [../../../docs/pipeline-unification/sources/source-graph.md](../../../docs/pipeline-unification/sources/source-graph.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 7**
-(the `axon-graph` boundary and SQLite implementation, after `axon-parse`). Do not
-add source fetching, embedding, vector retrieval, or ledger lifecycle here.
+## Status — live crate, Phase 7 landed
+`SqliteGraphStore` is the real, tested `GraphStore` implementation: node/edge
+upsert with authority + confidence merge rules, evidence-required candidate
+ingestion, and query by source/node kind/edge kind/generation. `FakeGraphStore`
+backs unit tests elsewhere in the workspace (e.g. `axon-memory`'s graph mirror
+tests) but does not overwrite node metadata on conflict the way the real SQLite
+store does — prefer `SqliteGraphStore::connect(":memory:")` for tests that
+depend on that. Do not add source fetching, embedding, vector retrieval, or
+ledger lifecycle here.
 
 ## Module map
 | File | Owns |

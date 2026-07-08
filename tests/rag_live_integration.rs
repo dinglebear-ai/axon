@@ -18,7 +18,10 @@
 //! semantic query through the real `services::query` entry point, asserts the
 //! embedded content comes back, and deletes the collection on the way out.
 
+use std::sync::Arc;
+
 use axon_core::config::Config;
+use axon_services::context::ServiceContext;
 use axon_services::query::query;
 use axon_services::types::Pagination;
 
@@ -80,7 +83,11 @@ async fn embed_then_query_roundtrip_returns_embedded_content() {
         assert_eq!(summary.docs_failed, 0, "no docs may fail in the roundtrip");
 
         // Query the real retrieval path for the unique marker.
+        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("build live service context");
         let res = query(
+            &ctx,
             &cfg,
             &format!("{marker} widget reconciliation subsystem"),
             Pagination {

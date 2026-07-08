@@ -115,9 +115,14 @@ pub async fn run_research(
         offset: 0,
         time_range: parse_service_time_range(cfg.search_time_range.as_deref()),
     };
-    let result =
-        search_service::research_with_context(cfg, service_context, &query, opts, Some(event_tx))
-            .await;
+    let result = search_service::research_with_context_tracked(
+        cfg,
+        service_context,
+        &query,
+        opts,
+        Some(event_tx),
+    )
+    .await;
 
     // Drain the consumer with a bounded timeout. The mpsc sender held by
     // the service call is dropped when the call returns, so the consumer

@@ -166,7 +166,7 @@ async fn run_source_rejects_unsupported_input() {
     let err = run_source(&cfg, &ctx).await.unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("is none of these"),
+        msg.contains("unsupported source input"),
         "expected unsupported-input error, got: {msg}"
     );
 }

@@ -1,7 +1,7 @@
 use axon_core::llm::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult, UsageSnapshot,
-    complete_streaming_with_runner, complete_text_with_runner,
 };
+use axon_llm::runtime::{complete_streaming_with_runner, complete_text_with_runner};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 

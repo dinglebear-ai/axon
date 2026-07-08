@@ -11,6 +11,7 @@ pub(crate) mod change_detect;
 pub(crate) mod cluster;
 pub(crate) mod dispatch;
 pub(crate) mod filter;
+mod job_tracking;
 pub(crate) mod orchestrate;
 pub(crate) mod report;
 mod rows;

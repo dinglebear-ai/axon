@@ -34,15 +34,13 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "sources",
             "domains",
             "stats",
-            "dedupe",
-            "purge",
             "migrate",
         ],
     ),
     (
         "Jobs And Imports",
         &[
-            "status", "source", "sessions", "watch", "monitor", "sync", "refresh", "fresh",
+            "status", "jobs", "source", "sessions", "watch", "monitor", "sync", "refresh", "fresh",
         ],
     ),
     (
@@ -53,6 +51,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "mcp",
             "serve",
             "setup",
+            "reset",
             "preflight",
             "smoke",
             "compose",
@@ -62,6 +61,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
             "palette",
         ],
     ),
+    ("Destructive Cleanup", &["reset", "prune"]),
 ];
 
 const VECTOR_OPTIONS: &[(&str, &str)] = &[
@@ -403,7 +403,7 @@ fn subcommand_description(parent_name: &str, command: &Command) -> String {
         ("watch", "list") => "List watch definitions".to_string(),
         ("watch", "get") => "Show a watch definition".to_string(),
         ("watch", "update") => "Update a watch definition".to_string(),
-        ("watch", "run-now") => "Run a watch immediately".to_string(),
+        ("watch", "exec") => "Run a watch immediately".to_string(),
         ("watch", "pause") => "Pause a watch".to_string(),
         ("watch", "resume") => "Resume a paused watch".to_string(),
         ("watch", "delete") => "Delete a watch definition".to_string(),
@@ -468,7 +468,7 @@ fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, St
             ("--json", "Output machine-readable JSON"),
         ],
         "query" | "retrieve" | "ask" | "evaluate" | "train" | "sources" | "domains" | "stats"
-        | "dedupe" | "migrate" | "suggest" => VECTOR_OPTIONS,
+        | "migrate" | "suggest" => VECTOR_OPTIONS,
         "status" => JOB_VIEW_OPTIONS,
         "sessions" | "watch" => &[
             ("--wait <bool>", "Block until async jobs complete"),

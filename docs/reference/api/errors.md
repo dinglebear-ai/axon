@@ -14,9 +14,9 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-error/src/api_error.rs` | `sha256:3f04b3919509ee296cd5badafac5a9dcbc653215827e70f0d8bf98bbb0eb5f7e` |
+| `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
 | `crates/axon-error/src/code.rs` | `sha256:abf9bc24f7596983e5fc8bd1228156b8360be4ea20b4d48ceb3e8ed5dd974929` |
-| `crates/axon-error/src/lib.rs` | `sha256:5c45ead85b77fdfe29a0949317c5ba68a5aca9f3a9cc2b0703dd8fe713d428ae` |
+| `crates/axon-error/src/lib.rs` | `sha256:4498c249c8c1476db9c365d0b097fa35e8db871672f40208787bbb4afcd353a1` |
 | `crates/axon-error/src/schema_registry.rs` | `sha256:7e1f574864bbbe1c71622b9a6a2677c14213f45333990916c6b601b508a36f99` |
 | `crates/axon-error/src/stage.rs` | `sha256:e52da99d501094079edd9f9e24b806fb6b7b32307eea546a63ae461e82cacb6c` |
 | `docs/pipeline-unification/schemas/error-schema.md` | `sha256:e922cf9a9275494393949f37a1ff3325234e7a874bf5a78425eb5c16fc2a6c46` |

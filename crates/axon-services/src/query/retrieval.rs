@@ -72,10 +72,21 @@ pub async fn query_via_retrieval_with_cfg(
     )
     .await
     .map_err(|e| -> Box<dyn Error> {
-        Box::new(ServiceError::new(format!(
-            "retrieval query failed for {}: {e}",
-            text.chars().take(80).collect::<String>()
-        )))
+        // Diagnostics wiring lost in the #298 cutover from the legacy
+        // `axon_vector` dispatch path (which built this via
+        // `ServiceError::vector_dispatch_failure`) -- restore it here so
+        // `--diagnostics` still surfaces a structured payload on failure.
+        Box::new(ServiceError::vector_dispatch_failure_with_message(
+            format!(
+                "retrieval query failed for {}: {e}",
+                text.chars().take(80).collect::<String>()
+            ),
+            "query_vector_search_dispatch",
+            cfg,
+            text.len(),
+            serde_json::json!({ "limit": fetch_limit }),
+            &e,
+        ))
     })?;
 
     let results = result

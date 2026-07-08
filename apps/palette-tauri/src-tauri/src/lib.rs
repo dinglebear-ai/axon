@@ -207,7 +207,7 @@ fn default_settings(env_entries: &[(String, String)]) -> PaletteSettings {
         .map(|value| value.trim().trim_end_matches('/').to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string());
-    let token = value_for("AXON_MCP_HTTP_TOKEN", env_entries)
+    let token = value_for("AXON_HTTP_TOKEN", env_entries)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     let collection = value_for("AXON_COLLECTION", env_entries)

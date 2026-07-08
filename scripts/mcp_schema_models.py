@@ -127,11 +127,21 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Diff": "diff",
     "Brand": "brand",
     "Purge": "purge",
+    "Prune": "prune",
     "ElicitDemo": "elicit_demo",
 }
 
+# Overrides where the request struct name doesn't follow the `f"{Variant}Request"`
+# convention. `Prune` uses `PruneMcpRequest` (not `PruneRequest`) because
+# `axon_api::source::prune::PruneRequest` already owns that name for the
+# service-layer DTO — the MCP wire type needed a distinct name to avoid
+# ambiguity in glob-imported call sites.
+STRUCT_NAME_OVERRIDES: dict[str, str] = {
+    "Prune": "PruneMcpRequest",
+}
+
 STRUCT_TO_ACTION: dict[str, str] = {
-    f"{k}Request": v for k, v in VARIANT_TO_ACTION.items()
+    STRUCT_NAME_OVERRIDES.get(k, f"{k}Request"): v for k, v in VARIANT_TO_ACTION.items()
 }
 
 # Lifecycle families get special documentation treatment.

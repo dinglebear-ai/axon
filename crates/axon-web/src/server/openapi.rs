@@ -74,6 +74,8 @@ use super::{handlers, openapi_jobs, routing};
         openapi_jobs::recover_extract_jobs,
         handlers::admin::dedupe,
         handlers::admin::purge,
+        handlers::admin::prune_plan,
+        handlers::admin::prune_exec,
         handlers::admin::list_watch,
         handlers::admin::create_watch,
         handlers::admin::run_watch,
@@ -142,6 +144,17 @@ use super::{handlers, openapi_jobs, routing};
         handlers::admin::DedupeRequest,
         axon_api::mcp_schema::PurgeRequest,
         axon_api::PurgeResult,
+        handlers::admin::PrunePlanRequest,
+        handlers::admin::PruneExecRequest,
+        axon_api::source::prune::PrunePlan,
+        axon_api::source::prune::PruneResult,
+        axon_api::source::prune::PruneEstimate,
+        axon_api::source::prune::PruneStep,
+        axon_api::source::prune::PruneStepResult,
+        axon_api::source::prune::PruneCounts,
+        axon_api::source::prune::PruneSelector,
+        axon_api::source::prune::PruneTargetKind,
+        axon_api::source::vector::VectorDeleteSelector,
         handlers::admin::WatchCreateRequest,
         handlers::jobs::JobStatusResponse,
         axon_api::source::JobCancelRequest,
@@ -203,6 +216,7 @@ fn apply_security_metadata(document: &mut utoipa::openapi::OpenApi) {
                 Scopes::from_iter([
                     ("axon:read", "Authenticated Axon REST access"),
                     ("axon:write", "Authenticated Axon REST access"),
+                    ("axon:admin", "Administrative/destructive Axon REST access"),
                 ]),
             ),
         )])),
@@ -215,11 +229,22 @@ fn apply_security_metadata(document: &mut utoipa::openapi::OpenApi) {
         let Some(operation) = operation_mut(document, route.path, route.method) else {
             continue;
         };
-        operation.security = Some(vec![
-            SecurityRequirement::new("bearerAuth", Vec::<&str>::new()),
-            SecurityRequirement::new("oauth2", ["axon:read"]),
-            SecurityRequirement::new("oauth2", ["axon:write"]),
-        ]);
+        // Admin routes require exactly `axon:admin` -- broad read/write
+        // tokens are insufficient (see `RestRouteAuth::Admin`'s doc comment),
+        // so they must NOT also list the read/write requirement sets below
+        // (that would document read/write tokens as an accepted alternative).
+        operation.security = Some(if route.auth == RestRouteAuth::Admin {
+            vec![
+                SecurityRequirement::new("bearerAuth", Vec::<&str>::new()),
+                SecurityRequirement::new("oauth2", ["axon:admin"]),
+            ]
+        } else {
+            vec![
+                SecurityRequirement::new("bearerAuth", Vec::<&str>::new()),
+                SecurityRequirement::new("oauth2", ["axon:read"]),
+                SecurityRequirement::new("oauth2", ["axon:write"]),
+            ]
+        });
         add_auth_error_responses(&mut operation.responses);
     }
 }
@@ -237,9 +262,13 @@ fn add_auth_error_responses(responses: &mut Responses) {
 
 fn auth_error_response(description: &'static str) -> RefOr<Response> {
     let mut response = Response::new(description);
+    // `ErrorBody` -- matches what every handler that documents its own
+    // 401/403 already uses (and what the runtime auth middleware actually
+    // returns for these two statuses); this fallback only fires for routes
+    // that don't declare their own 401/403 response.
     response.content.insert(
         "application/json".to_string(),
-        Content::new(Some(Ref::from_schema_name("ErrorEnvelope"))),
+        Content::new(Some(Ref::from_schema_name("ErrorBody"))),
     );
     RefOr::T(response)
 }

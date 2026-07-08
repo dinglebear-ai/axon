@@ -170,7 +170,7 @@ download routes are historical surfaces only.
 
 The web panel uses local setup/session cookies for panel state. MCP and
 first-party REST routes share the HTTP auth boundary controlled by
-`AXON_MCP_HTTP_TOKEN` or `AXON_MCP_AUTH_MODE=oauth`.
+`AXON_HTTP_TOKEN` or `AXON_AUTH_MODE=oauth`.
 
 ## Serve runtime
 

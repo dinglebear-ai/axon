@@ -398,3 +398,158 @@ pub struct MemoryReviewResult {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<SourceWarning>,
 }
+
+/// Edit a memory's editable fields in place. Contract: "Memory DTOs" —
+/// `MemoryUpdateRequest`; REST `PATCH /v1/memories/{memory_id}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryUpdateRequest {
+    pub memory_id: MemoryId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_type: Option<MemoryType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub salience: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<MemoryScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub timestamp: Timestamp,
+}
+
+/// Pin or unpin a memory (exempts it from decay while pinned). Contract:
+/// "Memory Service" — `pin`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryPinRequest {
+    pub memory_id: MemoryId,
+    pub pinned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub timestamp: Timestamp,
+}
+
+/// Archive a memory. Contract: "Memory Service" — `archive`. Thin request
+/// shape over the shared status transition (`MemoryStatusRequest`) so
+/// transports get a dedicated, self-documenting action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryArchiveRequest {
+    pub memory_id: MemoryId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub timestamp: Timestamp,
+}
+
+/// Forget (soft-delete) a memory. Contract: "Memory Service" — `forget`.
+/// Forgotten memories are never recalled again, but history is preserved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryForgetRequest {
+    pub memory_id: MemoryId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub timestamp: Timestamp,
+}
+
+/// Merge `memory_ids` into one new memory. Contract: "Memory DTOs" —
+/// `MemoryCompactRequest`; REST `POST /v1/memories/compact`.
+///
+/// `strategy` selects how the compacted `body` is produced. Only
+/// `"concatenate"` (deterministic, no LLM) is implemented; other values
+/// (e.g. `"semantic_summary"`, which the REST contract example shows) are
+/// reserved for a future LLM-backed synthesis strategy and currently reject
+/// with `memory.unsupported_strategy`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryCompactRequest {
+    pub memory_ids: Vec<MemoryId>,
+    pub strategy: String,
+    pub result_type: MemoryType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub scope: MemoryScope,
+    #[serde(default)]
+    pub archive_sources: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    pub timestamp: Timestamp,
+}
+
+/// How an import reconciles with existing memories for the same content.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryImportMode {
+    /// Add records not already present (deduped by content hash/scope/type);
+    /// leave existing memories untouched.
+    Merge,
+    /// Archive every existing memory in the target scope before importing.
+    /// Requires `axon:admin` at the transport boundary.
+    ReplaceScope,
+}
+
+/// Bulk-import memory records. Contract: "Memory DTOs" —
+/// `MemoryImportRequest`; REST `POST /v1/memories/import`.
+///
+/// Carries records directly rather than an artifact/upload bundle
+/// reference — no bundle serialization format is specified anywhere in the
+/// pipeline-unification docs. A transport that wants to accept an uploaded
+/// bundle can deserialize it into `records` itself; axon-memory does not own
+/// artifact/upload storage (out of this crate's boundary).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryImportRequest {
+    pub records: Vec<MemoryRecord>,
+    pub mode: MemoryImportMode,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// Result of a memory import (or dry-run plan).
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryImportResult {
+    pub created: u32,
+    pub updated: u32,
+    pub skipped: u32,
+    pub dry_run: bool,
+    /// Memory ids actually inserted (empty on a dry run). Lets a decorator
+    /// (e.g. vector embedding) act on exactly what was created without a
+    /// second lookup.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub created_ids: Vec<MemoryId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<SourceWarning>,
+}
+
+/// Export memory records matching a scope. Contract: "Memory DTOs" —
+/// `MemoryExportRequest`; REST `GET /v1/memories/export`.
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryExportRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<MemoryScope>,
+    #[serde(default)]
+    pub include_archived: bool,
+}
+
+/// Exported memory records.
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryExportResult {
+    pub records: Vec<MemoryRecord>,
+    pub count: u32,
+}

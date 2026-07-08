@@ -33,8 +33,8 @@ enum WatchRuntimeSubcommand {
         #[arg(long = "every-seconds")]
         every_seconds: Option<i64>,
     },
-    #[command(name = "run-now")]
-    RunNow {
+    #[command(name = "exec")]
+    Exec {
         id: String,
     },
     Pause {
@@ -113,8 +113,8 @@ pub async fn run_watch(
                 println!("  {} total", watches.len());
             }
         }
-        WatchRuntimeSubcommand::RunNow { id } => {
-            handle_watch_run_now(cfg, shared_pool.as_deref(), &id).await?
+        WatchRuntimeSubcommand::Exec { id } => {
+            handle_watch_exec(cfg, shared_pool.as_deref(), &id).await?
         }
         WatchRuntimeSubcommand::History { id, limit } => {
             let watch_id = parse_uuid(Some(&id), "history")?;
@@ -218,12 +218,12 @@ async fn handle_watch_create(
     Ok(())
 }
 
-async fn handle_watch_run_now(
+async fn handle_watch_exec(
     cfg: &Config,
     pool: Option<&SqlitePool>,
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let watch_id = parse_uuid(Some(&raw_id.to_string()), "run-now")?;
+    let watch_id = parse_uuid(Some(&raw_id.to_string()), "exec")?;
     let watch = match pool {
         Some(pool) => watch_svc::get_watch_def_with_pool(pool, watch_id).await?,
         None => watch_svc::get_watch_def(cfg, watch_id).await?,

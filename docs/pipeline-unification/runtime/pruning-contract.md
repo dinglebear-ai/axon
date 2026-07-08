@@ -77,6 +77,24 @@ pub struct PruneResult {
 - partial failure records remaining cleanup debt
 - repeated prune execution is idempotent
 
+`PruneExecutor::execute()` is the single code path that performs any
+destructive delete against a store boundary, so it is where the `axon:admin`
+gate is actually enforced: it takes an explicit `PruneAuthz` argument and
+refuses a `requires_admin: true` plan with `PruneDenied::AdminRequired` unless
+`authz.is_admin` is set, before any step runs. There is no way to reach a
+store delete through this crate without passing through that check.
+
+**Automatic cleanup-debt drain is a documented exception, not a bypass.** The
+in-process cleanup-debt drain that `axon-services` runs automatically after
+every `index_source` call (`crates/axon-services/src/source/prune.rs::drain_cleanup_debt`)
+is system-trusted, in-process maintenance — not a user-invoked "delete my
+data" request — so it calls `PruneExecutor::execute()` with an explicit
+`PruneAuthz::admin()` passed at the call site (mirroring how
+`AuthSnapshot::trusted_system` is used elsewhere for system-triggered work).
+The admin check still executes on every call; it is simply pre-authorized for
+this specific, audited, system-owned path, and that authorization is visible
+in the call site rather than defaulted or silently skipped.
+
 ## Cleanup Debt Execution
 
 Cleanup debt execution is maintenance prune. It may run in the background, but

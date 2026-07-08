@@ -12,6 +12,15 @@ fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
         then.status(200)
             .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32, 0.4_f32]]));
     });
+    // `derive_embedding_identity()` probes `/info` (model id) before any real
+    // query embed runs; an unmocked `/info` 404s and falls back to the
+    // 1024-dim default, which then mismatches the 4-dim vector `/embed`
+    // actually returns above.
+    tei.mock(|when, then| {
+        when.method(GET).path("/info");
+        then.status(200)
+            .json_body(serde_json::json!({"model_id": "diag-test-model"}));
+    });
 
     let qdrant = MockServer::start();
     let collection = "diag_test_collection";
@@ -62,7 +71,7 @@ fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
         "expected collection diagnostics in stderr, got:\n{stderr}"
     );
     assert!(
-        stderr.contains("404"),
-        "expected 404 diagnostics in stderr, got:\n{stderr}"
+        stderr.contains("vector.collection_not_found"),
+        "expected collection-not-found diagnostics in stderr, got:\n{stderr}"
     );
 }

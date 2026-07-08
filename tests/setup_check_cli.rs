@@ -94,7 +94,7 @@ fn preflight_skips_mutation_and_warnings_are_nonfatal() {
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
+        .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
 
@@ -122,7 +122,7 @@ fn preflight_warns_when_required_child_dirs_are_missing() {
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
+        .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
 
@@ -140,7 +140,7 @@ fn preflight_reads_oauth_config_from_managed_env_file() {
     create_required_axon_dirs(home.path());
     std::fs::write(
         home.path().join(".axon/.env"),
-        "AXON_MCP_AUTH_MODE=oauth\nAXON_MCP_PUBLIC_URL=https://axon.example.com\n",
+        "AXON_AUTH_MODE=oauth\nAXON_PUBLIC_URL=https://axon.example.com\n",
     )
     .unwrap();
 
@@ -149,17 +149,17 @@ fn preflight_reads_oauth_config_from_managed_env_file() {
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
-        .env_remove("AXON_MCP_GOOGLE_CLIENT_ID")
-        .env_remove("AXON_MCP_GOOGLE_CLIENT_SECRET")
-        .env_remove("AXON_MCP_AUTH_ADMIN_EMAIL")
+        .env_remove("AXON_AUTH_MODE")
+        .env_remove("AXON_GOOGLE_CLIENT_ID")
+        .env_remove("AXON_GOOGLE_CLIENT_SECRET")
+        .env_remove("AXON_AUTH_ADMIN_EMAIL")
         .output()
         .unwrap();
 
     assert!(!output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("✗ oauth"));
-    assert!(stdout.contains("AXON_MCP_GOOGLE_CLIENT_ID"));
+    assert!(stdout.contains("AXON_GOOGLE_CLIENT_ID"));
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn setup_skips_runtime_phases_after_prerequisite_errors() {
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
+        .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
 
@@ -197,7 +197,7 @@ fn preflight_returns_nonzero_after_printing_plain_error_report() {
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
+        .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
 
@@ -222,7 +222,7 @@ fn preflight_returns_nonzero_after_printing_json_error_report() {
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
+        .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
 
@@ -253,7 +253,7 @@ fn setup_plugin_hook_json_reports_policy_without_setup() {
         .env("HOME", home.path())
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
-        .env_remove("AXON_MCP_AUTH_MODE")
+        .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
 

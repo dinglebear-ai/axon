@@ -9,10 +9,10 @@ progress streams render one error shape. Full contract (owns / API / deps / test
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/error-handling.md](../../../docs/pipeline-unification/runtime/error-handling.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 1
-(Shared DTO And Enum Spine)** as the error taxonomy is built. Do not add
-transport rendering, provider clients, stores, or job scheduling here.
+## Status — live crate, Phase 1 landed
+`ApiError`/`ErrorCode`/`ErrorStage`/retry-policy taxonomy are real and tested,
+not markers. Do not add transport rendering, provider clients, stores, or job
+scheduling here.
 
 ## Module map
 | File | Owns |

@@ -83,6 +83,20 @@ impl Visit for EventVisitor {
     }
 }
 
+/// Fail-closed redaction boundary: scrub every console log line's message and
+/// structured fields before they're written to stderr. Every `tracing::*!`
+/// call site in the codebase funnels through here — this is the one place
+/// that can catch a secret an individual call site forgot to scrub.
+fn redact_event_fields(v: &mut EventVisitor) {
+    use super::redact::Redactor;
+    let redactor = super::redact::DefaultRedactor::new();
+    let context = super::redact::RedactionContext::transport_response();
+    v.message = redactor.redact_text(&v.message, &context);
+    for (_, value) in v.extra.iter_mut() {
+        *value = redactor.redact_text(value, &context);
+    }
+}
+
 /// Write the log level to `writer`, with Aurora ANSI 256 colour when `ansi` is true.
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> fmt::Result {
     if ansi {
@@ -204,6 +218,7 @@ where
         // MESSAGE
         let mut v = EventVisitor::default();
         event.record(&mut v);
+        redact_event_fields(&mut v);
 
         if ansi && !v.message.is_empty() {
             // Iterate directly instead of collecting into an intermediate Vec.
@@ -417,5 +432,19 @@ mod tests {
         );
 
         COLOR_OVERRIDE.store(prev, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn redact_event_fields_scrubs_message_and_extra() {
+        let mut v = super::EventVisitor {
+            message: "auth failed: Authorization: Bearer abcdef0123456789abcdef".to_string(),
+            extra: vec![(
+                "cause".to_string(),
+                "token=deadbeefdeadbeefdeadbeefdeadbeef".to_string(),
+            )],
+        };
+        super::redact_event_fields(&mut v);
+        assert!(!v.message.contains("abcdef0123456789abcdef"));
+        assert!(!v.extra[0].1.contains("deadbeefdeadbeefdeadbeef"));
     }
 }

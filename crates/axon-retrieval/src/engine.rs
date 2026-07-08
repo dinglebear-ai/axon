@@ -114,6 +114,7 @@ where
         let matches = search
             .results
             .iter()
+            .filter(|item| !excluded_by_namespace(item, &plan))
             .map(match_from_vector)
             .collect::<Result<Vec<_>, _>>()?;
         let context = ContextBundle::from_matches(&matches, plan.byte_budget, plan.token_budget);
@@ -213,6 +214,24 @@ where
         }
         Ok(vector.values)
     }
+}
+
+/// True when `item` must be dropped by [`RetrievalPlan::excluded_namespaces`].
+/// Only applies when `namespace_filters` is empty — an explicit positive
+/// namespace allow-list already governs which namespaces can appear, so the
+/// default exclusion is only meaningful for unrestricted search.
+fn excluded_by_namespace(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bool {
+    if !plan.namespace_filters.is_empty() || plan.excluded_namespaces.is_empty() {
+        return false;
+    }
+    let Some(namespace) = item
+        .payload
+        .get("vector_namespace")
+        .and_then(|v| v.as_str())
+    else {
+        return false;
+    };
+    plan.excluded_namespaces.iter().any(|n| n == namespace)
 }
 
 pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiError> {

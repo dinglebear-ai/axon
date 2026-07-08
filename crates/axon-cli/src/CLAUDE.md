@@ -10,13 +10,17 @@ nothing more. Full contract (owns / API / deps / tests):
 · help text:
 [../../../docs/pipeline-unification/surfaces/axon-help.md](../../../docs/pipeline-unification/surfaces/axon-help.md).
 
-## Status — live crate, cutover at Phase 10
-The current clap tree still ships `embed`/`ingest`/`scrape`/`crawl`/`code-search`/
-`code-search-watch`/`purge`/`dedupe` as user-facing commands, and works today.
-At the **Phase 10 surface cutover** it moves to the target `axon <source>`
-grammar: those commands are **removed** (not aliased), and the parser routes any
-first positional that is not a canonical command or global flag to a
-`SourceRequest`. Do not add back-compat aliases for removed commands.
+## Status — live crate, Phase 10 surface cutover already applied
+`embed`, `ingest`, `scrape`, `crawl`, `code-search`, and `code-search-watch`
+are already **removed** from the clap tree (not aliased) — verified against
+the live binary, they do not appear in the `Command` enum in
+`crates/axon-core/src/config/cli.rs`. The clap tree today still ships
+`purge`/`dedupe` as user-facing commands, plus `refresh`/`fresh` (freshness
+scheduling). The target `axon <source>` grammar is implemented: the parser
+(`route_bare_source` in `crates/axon-core/src/config/source_routing.rs`)
+routes any first positional that is not a canonical/removed command or global
+flag to the `source` subcommand (a `SourceRequest`). Do not add back-compat
+aliases for removed commands.
 
 ## Module map
 Current groups from `crates/axon-cli/src/`:

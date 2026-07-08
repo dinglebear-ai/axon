@@ -76,18 +76,23 @@ reviews, plans) live under the history directories at the bottom.
 | [operations/security.md](operations/security.md) | Security model, SSRF guards, port boundaries |
 | [operations/auth/](operations/auth/) | Authentication — MCP auth + static API token |
 
-### `contributing/` — development & repo conventions
+### `development/` — development & repo conventions
 
 | Doc | Description |
 |-----|-------------|
-| [contributing/rust.md](contributing/rust.md) | Rust conventions and best practices |
-| [contributing/testing.md](contributing/testing.md) | Test strategy, how to run, coverage targets |
-| [contributing/monolith-policy.md](contributing/monolith-policy.md) | File/function size policy and enforcement |
-| [contributing/guardrails.md](contributing/guardrails.md) | Security guardrails and safety patterns |
-| [contributing/checklist.md](contributing/checklist.md) | Pre-release quality checklist |
-| [contributing/feature-delivery-framework.md](contributing/feature-delivery-framework.md) | Feature development process |
-| [contributing/desktop-palette-testing.md](contributing/desktop-palette-testing.md) | Desktop palette testing harness |
-| [contributing/repo/](contributing/repo/) | Repo tree, coding rules, Justfile recipes, scripts, memory |
+| [development/contributing.md](development/contributing.md) | Rust build setup, monolith policy, security guardrails |
+| [development/testing.md](development/testing.md) | Test strategy, how to run, coverage targets |
+| [development/release-checklist.md](development/release-checklist.md) | Pre-release quality checklist |
+| [development/feature-delivery-framework.md](development/feature-delivery-framework.md) | Feature development process |
+| [development/desktop-palette-testing.md](development/desktop-palette-testing.md) | Desktop palette testing harness |
+| [development/adding-source.md](development/adding-source.md) | End-to-end checklist for onboarding a new source family |
+| [development/adding-source-adapter.md](development/adding-source-adapter.md) | `SourceAdapter` trait + family-matrix pattern |
+| [development/adding-parser.md](development/adding-parser.md) | `SourceParser`/`ParserRegistry` pattern |
+| [development/adding-provider.md](development/adding-provider.md) | Embedding provider and vector store boundaries |
+| [development/adding-vector-store.md](development/adding-vector-store.md) | `VectorStore` trait + generation-aware semantics |
+| [development/adding-rest-route.md](development/adding-rest-route.md) | Axum handler + router + OpenAPI pattern |
+| [development/adding-mcp-action.md](development/adding-mcp-action.md) | `AxonRequest` + action-dispatch pattern |
+| [development/repo/](development/repo/) | Repo tree, coding rules, Justfile recipes, scripts, memory |
 
 ### History (dated records — not kept up to date)
 
@@ -103,5 +108,5 @@ reviews, plans) live under the history directories at the bottom.
 
 - **First time?** [guides/getting-started.md](guides/getting-started.md), then [architecture/stack/arch.md](architecture/stack/arch.md)
 - **MCP integration?** [reference/mcp/connect.md](reference/mcp/connect.md), then [reference/mcp/tools.md](reference/mcp/tools.md)
-- **Contributing?** [contributing/repo/rules.md](contributing/repo/rules.md), then [contributing/repo/recipes.md](contributing/repo/recipes.md)
+- **Contributing?** [development/repo/rules.md](development/repo/rules.md), then [development/repo/recipes.md](development/repo/recipes.md)
 - **Deploying?** [reference/mcp/deploy.md](reference/mcp/deploy.md), then [guides/configuration.md](guides/configuration.md)

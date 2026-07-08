@@ -127,7 +127,7 @@ fn source_family_registry_covers_phase_7_emitted_fields() {
         ("docker", "docker_port"),
         ("docker", "docker_volume"),
         ("env", "env_key"),
-        ("env", "env_secret_reference"),
+        ("env", "env_locator"),
     ] {
         assert!(
             source_family_allows_field(family, field),

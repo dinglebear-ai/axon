@@ -211,6 +211,18 @@ pub struct MemoryRequest {
     pub depth: Option<usize>,
     pub token_budget: Option<usize>,
     pub response_mode: Option<ResponseMode>,
+    /// `reinforce` positive-use signal strength.
+    pub amount: Option<f64>,
+    /// `pin` — pin (`true`, default) or unpin (`false`).
+    pub pinned: Option<bool>,
+    /// Free-text reason recorded on `archive`/`forget`/`pin` history events.
+    pub reason: Option<String>,
+    /// `compact` source memory ids to merge.
+    pub memory_ids: Option<Vec<String>>,
+    /// `compact` distillation strategy. Only `"concatenate"` is implemented.
+    pub strategy: Option<String>,
+    /// `compact` — archive the source memories once merged.
+    pub archive_sources: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -223,6 +235,13 @@ pub enum MemorySubaction {
     Link,
     Supersede,
     Context,
+    Reinforce,
+    Contradict,
+    Pin,
+    Archive,
+    Forget,
+    Review,
+    Compact,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -444,7 +463,7 @@ pub enum WatchSubaction {
     Create,
     List,
     Get,
-    RunNow,
+    Exec,
     History,
 }
 

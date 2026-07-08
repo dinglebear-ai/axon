@@ -22,6 +22,12 @@ fn remember_req(body: &str) -> MemoryRequest {
         depth: None,
         token_budget: None,
         response_mode: None,
+        amount: None,
+        pinned: None,
+        reason: None,
+        memory_ids: None,
+        strategy: None,
+        archive_sources: None,
     }
 }
 
@@ -250,4 +256,160 @@ async fn remember_search_show_round_trip_through_sqlite() {
     let item = item_from_record(&record, Some(search.results[0].score as f64));
     assert!(item.body.as_deref().unwrap().contains("bm42"));
     assert_eq!(item.repo.as_deref(), Some("jmagar/axon"));
+}
+
+async fn test_ctx() -> ServiceContext {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg = axon_core::config::Config {
+        sqlite_path: dir.path().join("jobs.db"),
+        ..axon_core::config::Config::test_default()
+    };
+    // Leak the tempdir so the DB file survives for the life of the test —
+    // an in-process short-lived ServiceContext test, not a long-running one.
+    std::mem::forget(dir);
+    ServiceContext::new(std::sync::Arc::new(cfg))
+        .await
+        .expect("service context")
+}
+
+fn dispatch_req(subaction: MemorySubaction) -> MemoryRequest {
+    MemoryRequest {
+        subaction: Some(subaction),
+        ..MemoryRequest::default()
+    }
+}
+
+#[tokio::test]
+async fn dispatch_covers_full_lifecycle_surface() {
+    let ctx = test_ctx().await;
+
+    let remembered = remember(
+        &ctx,
+        MemoryRequest {
+            body: Some("axon uses qdrant for vectors".to_string()),
+            project: Some("axon".to_string()),
+            ..dispatch_req(MemorySubaction::Remember)
+        },
+    )
+    .await
+    .expect("remember");
+
+    // reinforce
+    let reinforced = reinforce(
+        &ctx,
+        MemoryRequest {
+            id: Some(remembered.id.clone()),
+            amount: Some(0.3),
+            ..dispatch_req(MemorySubaction::Reinforce)
+        },
+    )
+    .await
+    .expect("reinforce");
+    assert_eq!(reinforced.id, remembered.id);
+
+    // pin
+    let pinned = pin(
+        &ctx,
+        MemoryRequest {
+            id: Some(remembered.id.clone()),
+            pinned: Some(true),
+            ..dispatch_req(MemorySubaction::Pin)
+        },
+    )
+    .await
+    .expect("pin");
+    assert_eq!(pinned.id, remembered.id);
+
+    // contradict — needs a second memory
+    let other = remember(
+        &ctx,
+        MemoryRequest {
+            body: Some("axon uses postgres for vectors".to_string()),
+            project: Some("axon".to_string()),
+            ..dispatch_req(MemorySubaction::Remember)
+        },
+    )
+    .await
+    .expect("remember second");
+    let edge = contradict(
+        &ctx,
+        MemoryRequest {
+            source_id: Some(remembered.id.clone()),
+            target_id: Some(other.id.clone()),
+            reason: Some("conflicting claim".to_string()),
+            ..dispatch_req(MemorySubaction::Contradict)
+        },
+    )
+    .await
+    .expect("contradict");
+    assert_eq!(edge.source_id, remembered.id);
+    assert_eq!(edge.target_id, other.id);
+
+    // review — both contradicted memories should now be in the queue
+    let reviewed = review(&ctx, dispatch_req(MemorySubaction::Review))
+        .await
+        .expect("review");
+    assert!(reviewed.iter().any(|item| item.id == remembered.id));
+    assert!(reviewed.iter().any(|item| item.id == other.id));
+
+    // compact — merge both into a new memory
+    let compacted = compact(
+        &ctx,
+        MemoryRequest {
+            memory_ids: Some(vec![remembered.id.clone(), other.id.clone()]),
+            strategy: Some("concatenate".to_string()),
+            project: Some("axon".to_string()),
+            archive_sources: Some(true),
+            ..dispatch_req(MemorySubaction::Compact)
+        },
+    )
+    .await
+    .expect("compact");
+    assert!(compacted.body.as_deref().unwrap().contains("qdrant"));
+    assert!(compacted.body.as_deref().unwrap().contains("postgres"));
+
+    // compact records a completed unified job (Task 6: job-backed operations).
+    let jobs = ctx
+        .job_store()
+        .expect("unified job store")
+        .list(axon_api::source::JobListRequest {
+            status: None,
+            kind: Some(axon_api::source::JobKind::Memory),
+            source_id: None,
+            watch_id: None,
+            limit: None,
+            cursor: None,
+        })
+        .await
+        .expect("list jobs");
+    assert_eq!(jobs.items.len(), 1);
+    assert_eq!(
+        jobs.items[0].status,
+        axon_api::source::LifecycleStatus::Completed
+    );
+
+    // archive the compacted memory, then forget it
+    let archived = archive(
+        &ctx,
+        MemoryRequest {
+            id: Some(compacted.id.clone()),
+            reason: Some("no longer needed".to_string()),
+            ..dispatch_req(MemorySubaction::Archive)
+        },
+    )
+    .await
+    .expect("archive");
+    assert_eq!(archived.status, "archived");
+
+    let forgotten = forget(
+        &ctx,
+        MemoryRequest {
+            id: Some(compacted.id.clone()),
+            ..dispatch_req(MemorySubaction::Forget)
+        },
+    )
+    .await
+    .expect("forget");
+    assert_eq!(forgotten.status, "forgotten");
+    assert_eq!(forgotten.body.as_deref(), Some(""));
 }

@@ -117,7 +117,10 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
     payload.insert("visibility".to_string(), json!("internal"));
     payload.insert("redaction_status".to_string(), json!("clean"));
     payload.insert("job_id".to_string(), json!(spec.job_id));
-    payload.insert("document_status".to_string(), json!("prepared"));
+    // "published" — this helper is documented for "upsert + retrieval
+    // tests", and the standard retrieval access filter requires
+    // `document_status = "published"` to surface a point at all.
+    payload.insert("document_status".to_string(), json!("published"));
     payload.insert("embedding_batch_id".to_string(), json!(spec.batch_id));
     payload.insert("embedding_model".to_string(), json!(spec.model));
     payload.insert("embedding_dimensions".to_string(), json!(spec.dimensions));

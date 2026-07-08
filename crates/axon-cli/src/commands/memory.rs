@@ -48,8 +48,193 @@ fn request_from_positionals(args: &[String]) -> Result<MemoryRequest, Box<dyn Er
                 ..MemoryRequest::default()
             })
         }
+        "reinforce" => parse_reinforce(args),
+        "contradict" => parse_contradict(args),
+        "pin" => parse_pin(args),
+        "archive" => parse_id_and_reason(args, MemorySubaction::Archive, "archive"),
+        "forget" => parse_id_and_reason(args, MemorySubaction::Forget, "forget"),
+        "review" => parse_review(args),
+        "compact" => parse_compact(args),
         other => Err(format!("unknown memory subaction: {other}").into()),
     }
+}
+
+fn parse_reinforce(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {
+    let id = args
+        .get(1)
+        .ok_or("memory reinforce requires an id")?
+        .clone();
+    let mut req = MemoryRequest {
+        subaction: Some(MemorySubaction::Reinforce),
+        id: Some(id),
+        ..MemoryRequest::default()
+    };
+    let mut i = 2;
+    while i < args.len() {
+        let value = args
+            .get(i + 1)
+            .ok_or_else(|| format!("{} requires a value", args[i]))?
+            .clone();
+        match args[i].as_str() {
+            "--amount" => req.amount = Some(value.parse()?),
+            "--reason" => req.reason = Some(value),
+            other => return Err(format!("unknown memory reinforce option: {other}").into()),
+        }
+        i += 2;
+    }
+    Ok(req)
+}
+
+fn parse_contradict(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {
+    let source_id = args
+        .get(1)
+        .ok_or("memory contradict requires a memory id")?
+        .clone();
+    let target_id = args
+        .get(2)
+        .ok_or("memory contradict requires a conflicting memory id")?
+        .clone();
+    let mut req = MemoryRequest {
+        subaction: Some(MemorySubaction::Contradict),
+        source_id: Some(source_id),
+        target_id: Some(target_id),
+        ..MemoryRequest::default()
+    };
+    let mut i = 3;
+    while i < args.len() {
+        let value = args
+            .get(i + 1)
+            .ok_or_else(|| format!("{} requires a value", args[i]))?
+            .clone();
+        match args[i].as_str() {
+            "--reason" => req.reason = Some(value),
+            other => return Err(format!("unknown memory contradict option: {other}").into()),
+        }
+        i += 2;
+    }
+    Ok(req)
+}
+
+fn parse_pin(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {
+    let id = args.get(1).ok_or("memory pin requires an id")?.clone();
+    let mut req = MemoryRequest {
+        subaction: Some(MemorySubaction::Pin),
+        id: Some(id),
+        pinned: Some(true),
+        ..MemoryRequest::default()
+    };
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--unpin" => {
+                req.pinned = Some(false);
+                i += 1;
+            }
+            "--reason" => {
+                let value = args
+                    .get(i + 1)
+                    .ok_or_else(|| format!("{} requires a value", args[i]))?
+                    .clone();
+                req.reason = Some(value);
+                i += 2;
+            }
+            other => return Err(format!("unknown memory pin option: {other}").into()),
+        }
+    }
+    Ok(req)
+}
+
+fn parse_id_and_reason(
+    args: &[String],
+    subaction: MemorySubaction,
+    verb: &str,
+) -> Result<MemoryRequest, Box<dyn Error>> {
+    let id = args
+        .get(1)
+        .ok_or_else(|| format!("memory {verb} requires an id"))?
+        .clone();
+    let mut req = MemoryRequest {
+        subaction: Some(subaction),
+        id: Some(id),
+        ..MemoryRequest::default()
+    };
+    let mut i = 2;
+    while i < args.len() {
+        let value = args
+            .get(i + 1)
+            .ok_or_else(|| format!("{} requires a value", args[i]))?
+            .clone();
+        match args[i].as_str() {
+            "--reason" => req.reason = Some(value),
+            other => return Err(format!("unknown memory {verb} option: {other}").into()),
+        }
+        i += 2;
+    }
+    Ok(req)
+}
+
+fn parse_review(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {
+    let mut req = MemoryRequest {
+        subaction: Some(MemorySubaction::Review),
+        ..MemoryRequest::default()
+    };
+    let mut i = 1;
+    while i < args.len() {
+        let value = args
+            .get(i + 1)
+            .ok_or_else(|| format!("{} requires a value", args[i]))?
+            .clone();
+        match args[i].as_str() {
+            "--type" => req.memory_type = Some(parse_memory_type(&value)?),
+            "--limit" => req.limit = Some(value.parse()?),
+            "--reason" => req.reason = Some(value),
+            other => return Err(format!("unknown memory review option: {other}").into()),
+        }
+        i += 2;
+    }
+    Ok(req)
+}
+
+fn parse_compact(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {
+    let mut memory_ids = Vec::new();
+    let mut i = 1;
+    while i < args.len() && !args[i].starts_with("--") {
+        memory_ids.push(args[i].clone());
+        i += 1;
+    }
+    if memory_ids.len() < 2 {
+        return Err("memory compact requires at least 2 source memory ids".into());
+    }
+    let mut req = MemoryRequest {
+        subaction: Some(MemorySubaction::Compact),
+        memory_ids: Some(memory_ids),
+        ..MemoryRequest::default()
+    };
+    while i < args.len() {
+        match args[i].as_str() {
+            "--archive-sources" => {
+                req.archive_sources = Some(true);
+                i += 1;
+            }
+            other => {
+                let value = args
+                    .get(i + 1)
+                    .ok_or_else(|| format!("{other} requires a value"))?
+                    .clone();
+                match other {
+                    "--strategy" => req.strategy = Some(value),
+                    "--title" => req.title = Some(value),
+                    "--type" => req.memory_type = Some(parse_memory_type(&value)?),
+                    "--project" => req.project = Some(value),
+                    "--repo" => req.repo = Some(value),
+                    "--file" => req.file = Some(value),
+                    other => return Err(format!("unknown memory compact option: {other}").into()),
+                }
+                i += 2;
+            }
+        }
+    }
+    Ok(req)
 }
 
 fn parse_list(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {
@@ -210,99 +395,5 @@ fn parse_edge_type(value: &str) -> Result<axon_mcp::schema::MemoryEdgeType, Box<
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_minimal_remember_request() {
-        let req = request_from_positionals(&[
-            "remember".to_string(),
-            "Memory content lives in Qdrant.".to_string(),
-        ])
-        .expect("request");
-
-        assert!(matches!(req.subaction, Some(MemorySubaction::Remember)));
-        assert_eq!(req.body.as_deref(), Some("Memory content lives in Qdrant."));
-    }
-
-    #[test]
-    fn parses_link_request() {
-        let req = request_from_positionals(&[
-            "link".to_string(),
-            "source".to_string(),
-            "target".to_string(),
-            "--type".to_string(),
-            "supersedes".to_string(),
-        ])
-        .expect("request");
-
-        assert!(matches!(req.subaction, Some(MemorySubaction::Link)));
-        assert_eq!(req.source_id.as_deref(), Some("source"));
-        assert_eq!(req.target_id.as_deref(), Some("target"));
-        assert!(matches!(
-            req.edge_type,
-            Some(axon_mcp::schema::MemoryEdgeType::Supersedes)
-        ));
-    }
-
-    #[test]
-    fn parses_list_request() {
-        let req = request_from_positionals(&[
-            "list".to_string(),
-            "--project".to_string(),
-            "axon".to_string(),
-            "--repo".to_string(),
-            "jmagar/axon".to_string(),
-            "--file".to_string(),
-            "src/services/memory.rs".to_string(),
-            "--type".to_string(),
-            "decision".to_string(),
-            "--status".to_string(),
-            "superseded".to_string(),
-            "--limit".to_string(),
-            "20".to_string(),
-        ])
-        .expect("request");
-
-        assert!(matches!(req.subaction, Some(MemorySubaction::List)));
-        assert_eq!(req.project.as_deref(), Some("axon"));
-        assert_eq!(req.repo.as_deref(), Some("jmagar/axon"));
-        assert_eq!(req.file.as_deref(), Some("src/services/memory.rs"));
-        assert!(matches!(req.memory_type, Some(MemoryNodeType::Decision)));
-        assert_eq!(req.status.as_deref(), Some("superseded"));
-        assert_eq!(req.limit, Some(20));
-    }
-
-    #[test]
-    fn parses_supersede_request() {
-        let req = request_from_positionals(&[
-            "supersede".to_string(),
-            "replacement".to_string(),
-            "old".to_string(),
-        ])
-        .expect("request");
-
-        assert!(matches!(req.subaction, Some(MemorySubaction::Supersede)));
-        assert_eq!(req.source_id.as_deref(), Some("replacement"));
-        assert_eq!(req.target_id.as_deref(), Some("old"));
-    }
-
-    #[test]
-    fn parses_context_request() {
-        let req = request_from_positionals(&[
-            "context".to_string(),
-            "--project".to_string(),
-            "axon".to_string(),
-            "--query".to_string(),
-            "memory storage".to_string(),
-            "--token-budget".to_string(),
-            "2000".to_string(),
-        ])
-        .expect("request");
-
-        assert!(matches!(req.subaction, Some(MemorySubaction::Context)));
-        assert_eq!(req.project.as_deref(), Some("axon"));
-        assert_eq!(req.query.as_deref(), Some("memory storage"));
-        assert_eq!(req.token_budget, Some(2000));
-    }
-}
+#[path = "memory_tests.rs"]
+mod tests;
