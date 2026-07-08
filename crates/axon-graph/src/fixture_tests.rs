@@ -10,7 +10,9 @@ use crate::candidate::validate_candidate;
 #[test]
 fn ledger_vector_graph_fixture_shares_source_generation_lineage() {
     let source_id = SourceId::from("src_local_repo");
-    let generation = "7";
+    // Integer-typed per the vector-payload contract (source_generation /
+    // committed_generation are `PayloadFieldSchema::Integer`).
+    let generation: i64 = 7;
     let document_id = DocumentId::from("doc_Dockerfile");
     let chunk_id = ChunkId::from("chunk_Dockerfile_1");
     let job_id = JobId::new(Uuid::from_u128(7));

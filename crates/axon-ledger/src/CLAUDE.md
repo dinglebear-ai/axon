@@ -8,10 +8,16 @@ generation, and what is safe to search." Full contract (owns / API / deps / test
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/ledger-contract.md](../../../docs/pipeline-unification/runtime/ledger-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 6
-(Ledger-Owned Source Lifecycle)**, generalized out of `axon-code-index`'s existing
-generation logic. Do not add acquisition/embedding/vector behavior here.
+## Status — live crate, Phase 6 landed
+`LedgerStore` (trait) and `SqliteLedgerStore` (`sqlite.rs`) are real and tested:
+source upsert, generation create/commit/publish with failed-generation state,
+manifest diffing, document status tracking, leases, and cleanup debt recording.
+Per the DTO ownership rule, `SourceRecord`/`SourceManifest`/`SourceGeneration`/
+`DocumentStatus`/`CleanupDebt`/etc. live in `axon-api`, not here — `source.rs`,
+`item.rs`, `manifest.rs`, `diff.rs`, `generation.rs`, `document_status.rs`,
+`lease.rs`, `cleanup_debt.rs`, and `transaction.rs` remain marker files for that
+reason, not because the functionality is unimplemented. Do not add
+acquisition/embedding/vector behavior here.
 
 ## Module map
 | File | Owns |

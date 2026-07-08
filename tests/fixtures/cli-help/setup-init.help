@@ -4,10 +4,10 @@ Usage
   axon setup init [OPTIONS]
 
 Options
-  --mcp-host <MCP_HOST>            MCP HTTP bind host written to AXON_MCP_HTTP_HOST
-  --mcp-port <MCP_PORT>            MCP HTTP bind port written to AXON_MCP_HTTP_PORT
-  --auth-mode <AUTH_MODE>          MCP auth mode. Bearer generates/requires AXON_MCP_HTTP_TOKEN; OAuth requires Google OAuth vars
-  --mcp-token <MCP_TOKEN>          Static bearer token for AXON_MCP_HTTP_TOKEN
+  --mcp-host <MCP_HOST>            MCP HTTP bind host written to AXON_HTTP_HOST
+  --mcp-port <MCP_PORT>            MCP HTTP bind port written to AXON_HTTP_PORT
+  --auth-mode <AUTH_MODE>          MCP auth mode. Bearer generates/requires AXON_HTTP_TOKEN; OAuth requires Google OAuth vars
+  --mcp-token <MCP_TOKEN>          Static bearer token for AXON_HTTP_TOKEN
   --oauth-public-url <OAUTH_PUBLIC_URL>
                                    Public URL for OAuth metadata and callbacks
   --google-client-id <GOOGLE_CLIENT_ID>

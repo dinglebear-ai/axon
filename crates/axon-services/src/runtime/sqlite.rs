@@ -17,6 +17,8 @@ use axon_jobs::store::reclaim_stale_running_jobs_for_table;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_observe::sink::SqliteObservabilitySink;
 
+mod extract_bridge;
+
 pub struct SqliteServiceRuntime {
     pub(crate) cfg: Arc<Config>,
     pub(crate) backend: Arc<SqliteJobBackend>,
@@ -28,6 +30,17 @@ impl SqliteServiceRuntime {
             cfg,
             backend: Arc::new(backend),
         }
+    }
+
+    /// A fresh unified `JobStore` handle over the same pool this runtime's
+    /// `job_status`/`list_jobs`/etc. bridge to for `JobKind::Extract`.
+    fn unified_store(&self) -> Arc<dyn JobStore> {
+        Arc::new(SqliteUnifiedJobStore::with_observe_sink(
+            self.backend.pool().as_ref().clone(),
+            Arc::new(SqliteObservabilitySink::from_migrated_pool(
+                self.backend.pool().as_ref().clone(),
+            )),
+        ))
     }
 }
 
@@ -91,6 +104,10 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
         offset: i64,
     ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
         let pagination = JobPagination::new(limit, offset)?;
+        if kind == JobKind::Extract {
+            let store = self.unified_store();
+            return extract_bridge::list(&store, pagination.limit, pagination.offset).await;
+        }
         Ok(job_query::list_service_jobs(
             self.backend.pool(),
             kind,
@@ -121,6 +138,9 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
         kind: JobKind,
         id: Uuid,
     ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
+        if kind == JobKind::Extract {
+            return extract_bridge::status(&self.unified_store(), id).await;
+        }
         Ok(job_query::service_job(self.backend.pool(), kind, id).await?)
     }
 
@@ -129,6 +149,9 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
         kind: JobKind,
         id: Uuid,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        if kind == JobKind::Extract {
+            return extract_bridge::cancel(&self.unified_store(), id).await;
+        }
         Ok(self
             .backend
             .cancel_store()
@@ -137,10 +160,16 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        if kind == JobKind::Extract {
+            return extract_bridge::cleanup(&self.unified_store()).await;
+        }
         Ok(job_query::cleanup_jobs(self.backend.pool(), kind).await?)
     }
 
     async fn clear_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        if kind == JobKind::Extract {
+            return extract_bridge::clear(&self.unified_store()).await;
+        }
         Ok(job_query::clear_jobs(self.backend.pool(), kind).await?)
     }
 
@@ -149,6 +178,9 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
         kind: JobKind,
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        if kind == JobKind::Extract {
+            return extract_bridge::recover(&self.unified_store(), stale_threshold_ms).await;
+        }
         Ok(reclaim_stale_running_jobs_for_table(
             self.backend.pool(),
             kind,

@@ -556,6 +556,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/prune/exec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["prune_exec"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/prune/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["prune_plan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/purge": {
         parameters: {
             query?: never;
@@ -915,6 +947,7 @@ export interface components {
         };
         CheckpointId: string;
         ChunkId: string;
+        CleanupDebtId: string;
         /** @enum {string} */
         ColorUsage: "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         ContentRef: {
@@ -1053,6 +1086,8 @@ export interface components {
             /** Format: int64 */
             wait_timeout_secs?: number | null;
         };
+        GraphEdgeId: string;
+        GraphNodeId: string;
         GraphWriteSummary: {
             degraded: boolean;
             /** Format: int64 */
@@ -1288,6 +1323,7 @@ export interface components {
          * @enum {string}
          */
         McpProbeOutcome: "confirmed" | "unconfirmed" | "blocked";
+        MemoryId: string;
         MetadataChange: {
             field: string;
             new?: string | null;
@@ -1376,6 +1412,165 @@ export interface components {
             updated_at: components["schemas"]["Timestamp"];
         };
         ProviderId: string;
+        /** @description Actual deletion counts from an executed prune (the receipt's tallies). */
+        PruneCounts: {
+            /** Format: int64 */
+            artifacts: number;
+            /** Format: int64 */
+            cache_entries: number;
+            /** Format: int64 */
+            graph_edges: number;
+            /** Format: int64 */
+            graph_nodes: number;
+            /** Format: int64 */
+            jobs: number;
+            /** Format: int64 */
+            ledger_generations: number;
+            /** Format: int64 */
+            memory_records: number;
+            /** Format: int64 */
+            vector_points: number;
+        };
+        /** @description Estimated impact counts for a plan (what *would* be deleted). */
+        PruneEstimate: {
+            /** Format: int64 */
+            artifacts: number;
+            /** Format: int64 */
+            cache_entries: number;
+            /** Format: int64 */
+            graph_edges: number;
+            /** Format: int64 */
+            graph_nodes: number;
+            /** Format: int64 */
+            jobs: number;
+            /** Format: int64 */
+            ledger_generations: number;
+            /** Format: int64 */
+            memory_records: number;
+            /** Format: int64 */
+            vector_points: number;
+        };
+        /**
+         * @description Body for `POST /v1/prune/exec` — destructive; requires `axon:admin` (see
+         *     [`super::super::routing::admin_routes`]) and `confirm: true`.
+         */
+        PruneExecRequest: {
+            confirm?: boolean;
+            generation?: string | null;
+            target: string;
+        };
+        /**
+         * @description A resolved, reviewable plan describing exactly what a prune would delete.
+         *
+         *     A plan is produced by dry-run resolution and never mutates state. It must be
+         *     serializable to JSON for review (safety rule: "prune plans must be
+         *     reviewable as JSON").
+         */
+        PrunePlan: {
+            destructive: boolean;
+            estimated: components["schemas"]["PruneEstimate"];
+            job_id: components["schemas"]["JobId"];
+            requires_admin: boolean;
+            selector: components["schemas"]["PruneSelector"];
+            steps: components["schemas"]["PruneStep"][];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        /**
+         * @description Body for `POST /v1/prune/plan` — a dry-run plan, always safe to call.
+         *
+         *     `target` is either a bare source id or `collection:<name>` for a
+         *     whole-collection prune, mirroring the CLI's `axon prune plan <target>`
+         *     selector grammar (`crates/axon-cli/src/commands/prune.rs::build_selector`).
+         */
+        PrunePlanRequest: {
+            generation?: string | null;
+            target: string;
+        };
+        /** @description The outcome of executing a prune plan. */
+        PruneResult: {
+            /** Format: int64 */
+            cleanup_debt_remaining: number;
+            deleted_counts: components["schemas"]["PruneCounts"];
+            job_id: components["schemas"]["JobId"];
+            status: components["schemas"]["LifecycleStatus"];
+            steps: components["schemas"]["PruneStepResult"][];
+        };
+        /**
+         * @description The scope of a prune. Each variant resolves to a concrete plan by the
+         *     `axon-prune` planner. Variants mirror the pruning contract exactly.
+         */
+        PruneSelector: {
+            /** @enum {string} */
+            kind: "source";
+            source_id: components["schemas"]["SourceId"];
+        } | {
+            generation: components["schemas"]["SourceGenerationId"];
+            /** @enum {string} */
+            kind: "generation";
+            source_id: components["schemas"]["SourceId"];
+        } | {
+            debt_id: components["schemas"]["CleanupDebtId"];
+            /** @enum {string} */
+            kind: "cleanup_debt";
+        } | {
+            collection: string;
+            /** @enum {string} */
+            kind: "collection";
+        } | {
+            artifact_id: components["schemas"]["ArtifactId"];
+            /** @enum {string} */
+            kind: "artifact";
+        } | {
+            edge_id?: null | components["schemas"]["GraphEdgeId"];
+            /** @enum {string} */
+            kind: "graph";
+            node_id?: null | components["schemas"]["GraphNodeId"];
+        } | {
+            /** @enum {string} */
+            kind: "memory";
+            memory_id?: null | components["schemas"]["MemoryId"];
+        } | {
+            /** @enum {string} */
+            kind: "job_retention";
+            /** Format: int32 */
+            older_than_days: number;
+        } | {
+            /** @enum {string} */
+            kind: "cache";
+            /** Format: int32 */
+            older_than_days: number;
+        };
+        /**
+         * @description One ordered step in a prune plan. Steps follow the cleanup-debt execution
+         *     order (vector → artifact → graph → memory → ledger → job/cache).
+         */
+        PruneStep: {
+            description: string;
+            /** Format: int64 */
+            estimated_deletes: number;
+            generation?: null | components["schemas"]["SourceGenerationId"];
+            source_id?: null | components["schemas"]["SourceId"];
+            target: components["schemas"]["PruneTargetKind"];
+            vector_selector?: null | components["schemas"]["VectorDeleteSelector"];
+        };
+        /**
+         * @description Per-step execution outcome. Records what was actually deleted plus any
+         *     skipped reason, satisfying the receipt requirement.
+         */
+        PruneStepResult: {
+            /** Format: int64 */
+            deleted: number;
+            generation?: null | components["schemas"]["SourceGenerationId"];
+            skipped_reason?: string | null;
+            source_id?: null | components["schemas"]["SourceId"];
+            status: components["schemas"]["LifecycleStatus"];
+            target: components["schemas"]["PruneTargetKind"];
+        };
+        /**
+         * @description The store boundary a prune step targets, in cleanup-debt execution order.
+         * @enum {string}
+         */
+        PruneTargetKind: "vector" | "artifact" | "graph" | "memory" | "ledger" | "job_retention" | "cache";
         PurgeRequest: {
             collection?: string | null;
             /**
@@ -1491,6 +1686,9 @@ export interface components {
         /** @enum {string} */
         RestMemoryNodeType: "decision" | "fact" | "preference" | "task" | "bug";
         RestMemoryRequest: {
+            /** Format: double */
+            amount?: number | null;
+            archive_sources?: boolean | null;
             body?: string | null;
             /** Format: double */
             confidence?: number | null;
@@ -1499,19 +1697,23 @@ export interface components {
             file?: string | null;
             id?: string | null;
             limit?: number | null;
+            memory_ids?: string[] | null;
             memory_type?: null | components["schemas"]["RestMemoryNodeType"];
+            pinned?: boolean | null;
             project?: string | null;
             query?: string | null;
+            reason?: string | null;
             repo?: string | null;
             source_id?: string | null;
             status?: string | null;
+            strategy?: string | null;
             subaction?: null | components["schemas"]["RestMemorySubaction"];
             target_id?: string | null;
             title?: string | null;
             token_budget?: number | null;
         };
         /** @enum {string} */
-        RestMemorySubaction: "remember" | "list" | "search" | "show" | "link" | "supersede" | "context";
+        RestMemorySubaction: "remember" | "list" | "search" | "show" | "link" | "supersede" | "context" | "reinforce" | "contradict" | "pin" | "archive" | "forget" | "review" | "compact";
         RestQueryRequest: {
             before?: string | null;
             collection?: string | null;
@@ -1802,6 +2004,47 @@ export interface components {
             ok: boolean;
             session: components["schemas"]["MobileSession"];
         };
+        VectorDeleteSelector: {
+            collection: string;
+            generation?: null | components["schemas"]["SourceGenerationId"];
+            /** @enum {string} */
+            kind: "source";
+            source_id: components["schemas"]["SourceId"];
+        } | {
+            collection: string;
+            generation: components["schemas"]["SourceGenerationId"];
+            /** @enum {string} */
+            kind: "generation";
+            source_id: components["schemas"]["SourceId"];
+        } | {
+            collection: string;
+            document_id: components["schemas"]["DocumentId"];
+            generation?: null | components["schemas"]["SourceGenerationId"];
+            /** @enum {string} */
+            kind: "document";
+        } | {
+            chunk_ids: components["schemas"]["ChunkId"][];
+            collection: string;
+            /** @enum {string} */
+            kind: "chunks";
+        } | {
+            collection: string;
+            /** @enum {string} */
+            kind: "points";
+            point_ids: components["schemas"]["VectorPointId"][];
+        } | {
+            canonical_uri: string;
+            collection: string;
+            /** @enum {string} */
+            kind: "canonical_uri";
+            match_prefix: boolean;
+        } | {
+            collection: string;
+            filter: unknown;
+            /** @enum {string} */
+            kind: "filter";
+        };
+        VectorPointId: string;
         /** @enum {string} */
         Visibility: "public" | "internal" | "sensitive" | "redacted" | "derived";
         WatchDefCreateRequest: {
@@ -1925,7 +2168,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Path escapes the output root */
@@ -1985,7 +2228,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -1994,7 +2237,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Ask request exceeds limits */
@@ -2063,7 +2306,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2072,7 +2315,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Ask request exceeds limits */
@@ -2123,7 +2366,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2132,7 +2375,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream page fetch unavailable */
@@ -2173,13 +2416,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description Authenticated token lacks Axon access */
+            /** @description Insufficient scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -2221,7 +2464,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2230,7 +2473,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Chat request exceeds limits */
@@ -2290,7 +2533,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2299,7 +2542,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Chat request exceeds limits */
@@ -2337,7 +2580,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2346,7 +2589,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Qdrant collections request failed */
@@ -2397,7 +2640,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2406,7 +2649,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Unsupported request body content type */
@@ -2466,7 +2709,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2475,7 +2718,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream scrape unavailable */
@@ -2513,7 +2756,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2522,7 +2765,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Health check failed */
@@ -2565,7 +2808,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2574,7 +2817,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector service unavailable */
@@ -2625,7 +2868,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2634,7 +2877,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream fetch or verification service unavailable */
@@ -2685,7 +2928,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2694,7 +2937,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream LLM or vector service unavailable */
@@ -2735,7 +2978,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2744,7 +2987,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -2786,7 +3029,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2795,7 +3038,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream extract service unavailable */
@@ -2833,7 +3076,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2842,7 +3085,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -2871,7 +3114,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2880,7 +3123,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -2909,7 +3152,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2918,7 +3161,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -2950,7 +3193,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -2959,7 +3202,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Job not found */
@@ -3000,7 +3243,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3009,7 +3252,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3043,7 +3286,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3052,7 +3295,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3085,7 +3328,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3094,7 +3337,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3127,7 +3370,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3136,7 +3379,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3169,7 +3412,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3178,7 +3421,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3210,7 +3453,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3219,7 +3462,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Job not found */
@@ -3260,7 +3503,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3269,7 +3512,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3305,7 +3548,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3314,7 +3557,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3353,7 +3596,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3362,7 +3605,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3398,7 +3641,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3407,7 +3650,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3439,7 +3682,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3448,7 +3691,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3490,7 +3733,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3499,7 +3742,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream crawl service unavailable */
@@ -3550,7 +3793,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3559,7 +3802,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector or embedding service unavailable */
@@ -3597,7 +3840,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3606,7 +3849,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Session store error */
@@ -3647,7 +3890,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3656,7 +3899,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Session not found */
@@ -3710,7 +3953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3719,7 +3962,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Stale mobile session update */
@@ -3760,7 +4003,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3769,11 +4012,131 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Session store error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    prune_exec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PruneExecRequest"];
+            };
+        };
+        responses: {
+            /** @description Prune execution result (receipt of what was actually deleted) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PruneResult"];
+                };
+            };
+            /** @description Invalid prune request, or missing confirm=true */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Caller lacks axon:admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream vector service unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    prune_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrunePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Dry-run prune plan (never mutates state) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrunePlan"];
+                };
+            };
+            /** @description Invalid prune request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream vector service unavailable */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3820,7 +4183,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3829,7 +4192,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector service unavailable */
@@ -3880,7 +4243,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3889,7 +4252,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector service unavailable */
@@ -3940,7 +4303,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -3949,7 +4312,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Research request timed out */
@@ -4000,7 +4363,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4009,7 +4372,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -4051,7 +4414,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4060,7 +4423,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector service unavailable */
@@ -4111,7 +4474,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4120,7 +4483,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Chrome screenshot service unavailable */
@@ -4171,7 +4534,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4180,7 +4543,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream search service unavailable */
@@ -4223,7 +4586,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4232,7 +4595,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector service unavailable */
@@ -4283,7 +4646,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Source not authorized for caller scopes */
@@ -4330,7 +4693,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4339,7 +4702,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream vector service unavailable */
@@ -4377,7 +4740,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4386,7 +4749,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Job storage unavailable */
@@ -4428,7 +4791,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4437,7 +4800,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream LLM or search provider rate limited */
@@ -4497,7 +4860,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4506,7 +4869,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Upstream crawl, render, or LLM service unavailable */
@@ -4557,7 +4920,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4566,7 +4929,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -4597,7 +4960,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4606,7 +4969,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Watch storage unavailable */
@@ -4657,7 +5020,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4666,7 +5029,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Watch storage unavailable */
@@ -4707,7 +5070,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Authenticated token lacks Axon access */
@@ -4716,7 +5079,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Watch not found */

@@ -57,7 +57,7 @@ Override with `AXON_OPENAPI_URL` or pass `--live` to fetch from a live instance.
 The app reads Axon connection settings from the environment first, then `~/.axon/.env`:
 
 - `AXON_SERVER_URL`
-- `AXON_MCP_HTTP_TOKEN`
+- `AXON_HTTP_TOKEN`
 - `AXON_COLLECTION`
 
 Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is on by default so clicking outside the palette dismisses it.
@@ -78,12 +78,12 @@ so public-origin/CORS drift remains visible.
 
 The palette authenticates to Axon two ways, and both can be configured at once:
 
-- **Static bearer token** — set `AXON_MCP_HTTP_TOKEN` or the **Bearer token** field in the Connection settings tab.
+- **Static bearer token** — set `AXON_HTTP_TOKEN` or the **Bearer token** field in the Connection settings tab.
 - **OAuth "Sign in with Google"** — click **Sign in with Google** in the Connection tab's **Authentication** block. The palette runs an OAuth 2.0 Authorization Code + PKCE flow (RFC 8414 discovery → RFC 7591 dynamic client registration → server-native callback polling → `/token` exchange) **entirely in the Rust shell**. The system browser is launched with the `open` crate and completes on the Axon server's HTTPS `/native/callback` endpoint; the palette polls `/native/poll` for the short-lived authorization code and then exchanges it with PKCE. No webview HTTP and no new Tauri capabilities or CSP changes are involved.
 
 Issued credentials are stored beside `settings.json` as `<app config dir>/oauth.json` (mode `0o600`, holding the refresh token) and cached in-process. The access token is refreshed proactively (60s skew) with single-flight safety: concurrent requests at expiry produce exactly one `/token` call and one disk write, against the `token_endpoint` persisted from discovery (so reverse-proxy deployments refresh correctly). **When signed in, the OAuth token takes precedence over the static token**; if no valid OAuth token exists for the active server, the static token is used.
 
-OAuth requires the network calls and browser-open URL to be `https` (or loopback `http`), and the target server must run with `AXON_MCP_AUTH_MODE=oauth` and dynamic client registration enabled — otherwise sign-in reports that the server does not support OAuth login and you should use a static bearer token.
+OAuth requires the network calls and browser-open URL to be `https` (or loopback `http`), and the target server must run with `AXON_AUTH_MODE=oauth` and dynamic client registration enabled — otherwise sign-in reports that the server does not support OAuth login and you should use a static bearer token.
 
 **Known tradeoff:** each sign-in dynamically registers a fresh client on the server for the fixed native callback endpoint advertised by discovery. Registrations are still not reused because the palette keeps the login flow stateless across launches; server-side registration is rate-limited and bounded by operator policy, and the palette does not garbage-collect prior registrations.
 

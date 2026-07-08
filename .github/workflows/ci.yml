@@ -746,6 +746,42 @@ jobs:
       - name: Enforce generated pipeline schema artifacts are in sync
         run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- schemas generate --check
 
+  version-sync:
+    name: version-sync
+    runs-on: ubuntu-latest
+    needs: [changes]
+    # TEMP(refactor): disable version-bump enforcement while pipeline-unification
+    # lands. Release-please is the only supported version-bump path now
+    # (see CLAUDE.md "Release Pipeline") -- it bumps versions in its own
+    # generated release PR after CI succeeds on main, not per feature PR, so
+    # this per-PR gate is redundant with (and fights) that flow.
+    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true') }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            Cargo.toml
+            Cargo.lock
+            src
+            crates
+            xtask
+            .cargo
+            release/components.toml
+            apps/android
+            apps/chrome-extension
+            apps/palette-tauri
+            apps/web/openapi/axon.json
+            migrations
+            README.md
+            CHANGELOG.md
+            .release-please-manifest.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - name: Enforce per-component release version parity
+        run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
+
   rest-api-parity:
     name: rest-api-parity
     runs-on: ubuntu-latest
@@ -1641,6 +1677,7 @@ jobs:
       - web-panel
       - mcp-schema-doc-sync
       - schema-contract-sync
+      - version-sync
       - rest-api-parity
       - mcp-oauth-smoke
       - advisory-lock-policy
@@ -1683,6 +1720,7 @@ jobs:
           require_success_or_skipped web-panel "${{ needs.web-panel.result }}"
           require_success_or_skipped mcp-schema-doc-sync "${{ needs.mcp-schema-doc-sync.result }}"
           require_success_or_skipped schema-contract-sync "${{ needs.schema-contract-sync.result }}"
+          require_success_or_skipped version-sync "${{ needs.version-sync.result }}"
           require_success_or_skipped rest-api-parity "${{ needs.rest-api-parity.result }}"
           require_success_or_skipped mcp-oauth-smoke "${{ needs.mcp-oauth-smoke.result }}"
           require_success_or_skipped advisory-lock-policy "${{ needs.advisory-lock-policy.result }}"

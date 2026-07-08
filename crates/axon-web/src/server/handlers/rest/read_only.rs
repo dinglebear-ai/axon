@@ -100,7 +100,11 @@ pub(crate) async fn v1_stats(State(state): State<RestState>) -> Response {
 }
 
 pub(crate) async fn v1_doctor(State(state): State<RestState>) -> Response {
-    match system::doctor(state.cfg.as_ref()).await {
+    let ctx = match state.service_context().await {
+        Ok(ctx) => ctx,
+        Err(err) => return map_service_error(err.as_ref()),
+    };
+    match system::doctor(&ctx).await {
         Ok(result) => Json::<Value>(result.payload).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

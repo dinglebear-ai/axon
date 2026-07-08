@@ -40,8 +40,8 @@ This creates or refreshes `~/.axon`, `~/.axon/config.toml`, `~/.axon/.env`, and
 Compose assets. It is non-destructive and safe to re-run.
 
 For local bearer-token operation, no manual env values are required. `setup init`
-defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
-`AXON_MCP_HTTP_TOKEN`.
+defaults to loopback MCP HTTP, writes `AXON_AUTH_MODE=bearer`, and generates
+`AXON_HTTP_TOKEN`.
 
 Optional features need their own credentials:
 
@@ -51,7 +51,7 @@ Optional features need their own credentials:
 | Web search / research | `TAVILY_API_KEY`. |
 | GitHub ingest with higher rate limits | `GITHUB_TOKEN`. |
 | Reddit ingest | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |
-| OAuth MCP auth | `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`. |
+| OAuth MCP auth | `AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`, `AXON_GOOGLE_CLIENT_SECRET`, and `AXON_AUTH_ADMIN_EMAIL`. |
 
 ## 3. Inspect configuration
 

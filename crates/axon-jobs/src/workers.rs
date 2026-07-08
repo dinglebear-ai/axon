@@ -1,16 +1,19 @@
+pub mod auth_enforcement;
 mod heartbeat;
 mod panic_guard;
 mod progress;
 mod runners;
+mod spawn_unified;
 mod starvation;
-#[allow(dead_code)]
-mod unified;
+pub mod unified;
 mod watch_scheduler;
 mod watchdog;
 
 use heartbeat::HeartbeatGuard;
 
 use runners::{JobResult, run_crawl_job, run_embed_job, run_extract_job, run_ingest_job};
+use spawn_unified::spawn_unified_worker;
+pub use unified::{JobRunnerRegistry, UnifiedJobRunner};
 
 use crate::backend::JobKind;
 
@@ -81,6 +84,7 @@ pub fn spawn_workers(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
     cancel_store: Arc<CancelStore>,
+    job_runner_registry: Option<Arc<JobRunnerRegistry>>,
 ) -> WorkerHandles {
     let crawl_notify = Arc::new(Notify::new());
     let embed_notify = Arc::new(Notify::new());
@@ -102,11 +106,13 @@ pub fn spawn_workers(
         "jobs: spawning in-process job workers"
     );
 
-    tracing::info!(
-        worker = "unified",
-        lanes = 0,
-        "jobs: unified worker disabled until executable runners are wired"
-    );
+    worker_handles.push(spawn_unified_worker(
+        Arc::clone(&pool),
+        Arc::clone(&cfg),
+        Arc::clone(&unified_notify),
+        shutdown.clone(),
+        job_runner_registry,
+    ));
 
     // Crawl: single lane (spider futures are !Send — must stay single-task)
     tracing::info!(worker = "crawl", lanes = 1, "jobs: spawning worker");
@@ -460,3 +466,7 @@ async fn ingest_worker(
 #[cfg(test)]
 #[path = "workers_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "security_error_memory_e2e_tests.rs"]
+mod security_error_memory_e2e_tests;

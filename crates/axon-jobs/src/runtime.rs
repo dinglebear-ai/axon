@@ -84,6 +84,18 @@ impl SqliteJobBackend {
     pub async fn new_with_workers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::new_with_workers_and_registry(cfg, None).await
+    }
+
+    /// Like [`Self::new_with_workers`], but also accepts a
+    /// [`workers::JobRunnerRegistry`] built by the composition layer
+    /// (`axon-services`) so the unified worker can execute job kinds whose
+    /// real domain logic lives above this crate. `axon-jobs` never depends on
+    /// `axon-services` itself — the registry is passed in as a trait object.
+    pub async fn new_with_workers_and_registry(
+        cfg: Arc<Config>,
+        job_runner_registry: Option<Arc<workers::JobRunnerRegistry>>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = cfg.sqlite_path.to_string_lossy().to_string();
         tracing::info!(
             sqlite_path = %cfg.sqlite_path.display(),
@@ -97,6 +109,7 @@ impl SqliteJobBackend {
             Arc::clone(&pool),
             Arc::clone(&cfg),
             Arc::clone(&cancel_store),
+            job_runner_registry,
         );
 
         Ok(Self {

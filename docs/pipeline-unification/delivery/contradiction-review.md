@@ -45,6 +45,41 @@ Resolution:
 The repo structure doc now states that the per-crate README files are canonical
 and mirrors their module lists.
 
+### `refresh`/`fresh` Removal Was Missing From `command-contract.md`
+
+Problem:
+
+`surfaces/command-contract.md`'s "Removed Commands" enumeration omitted
+`axon refresh` and `axon fresh`, while `delivery/surface-removal-contract.md`,
+`foundation/source-pipeline.md` (`refresh existing` crosswalk row), and
+`plans/finish-unification-metaplan.md` all already treated both as removed
+commands with documented canonical replacements
+(`axon <source> --refresh` and `axon watch ...` / source freshness config,
+respectively). A Phase 10 drift review initially read this gap as "refresh/fresh
+are in scope to keep," but the weight of evidence across the other three
+contract docs says they are genuinely removed — `command-contract.md` was
+simply stale.
+
+Resolution:
+
+`surfaces/command-contract.md`'s Removed Commands list now includes
+`axon refresh [filter]` and `axon fresh <sub>`, matching the other three docs.
+No scope change: refresh/fresh removal was already the intended target state.
+
+This does **not** mean `watch` (current URL-diff scheduler, or its future
+source-request-backed replacement) already reproduces `refresh`'s bulk
+re-enqueue-by-origin semantics or `fresh`'s CLI-created recurring-schedule
+semantics today. `crates/axon-services/src/refresh.rs` (facet-and-re-enqueue by
+`seed_url`/`source_type`) and `crates/axon-services/src/freshness/` (SQLite
+`FreshnessDef`/`FreshnessRun` lease-based scheduler dispatching
+scrape/crawl/embed/ingest) are both real, load-bearing, and have no drop-in
+replacement in `crates/axon-jobs/src/watch.rs` today. Removing them without
+first building the target `watch <source>` / `SourceLedger`-backed freshness
+lifecycle (see `foundation/source-pipeline.md`, `surfaces/command-contract.md`
+Watch Commands section) would be a real functionality regression, not a
+same-day-safe deletion — treat the actual removal as scoped, sequenced work
+under the Phase 10/11 cutover, not a quick surface-drift fix.
+
 ### Current Ingest Coverage Was Understated
 
 Problem:

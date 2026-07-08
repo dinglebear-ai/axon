@@ -99,3 +99,43 @@ fn provider_cooling_present_only_when_cooldown_set() {
     assert_eq!(cooling.provider_id.as_deref(), Some("tei"));
     assert_eq!(cooling.cooldown_until, until);
 }
+
+#[test]
+fn builders_attach_retry_cooling_and_item_projection() {
+    let until = chrono::Utc::now();
+    let err = ApiError::new("provider.cooling", ErrorStage::Embedding, "cooling")
+        .with_retry_after_ms(30_000)
+        .with_provider_cooling(crate::ProviderCooling::new(until).with_provider("tei"))
+        .with_context("safe_detail", "redacted");
+
+    assert_eq!(err.retry_after_ms, Some(30_000));
+    assert_eq!(err.cooldown_until, Some(until));
+    assert_eq!(err.provider_id.as_deref(), Some("tei"));
+
+    let item = err.to_source_item_error("src_1", "item.md", "7", "failed", 2);
+    assert_eq!(item.source_id, "src_1");
+    assert_eq!(item.source_item_key, "item.md");
+    assert_eq!(item.generation, "7");
+    assert_eq!(item.error_code.to_string(), "provider.cooling");
+    assert_eq!(item.error_stage, ErrorStage::Embedding);
+    assert!(item.retryable);
+    assert_eq!(item.attempt, 2);
+    assert_eq!(
+        item.details.get("safe_detail").map(String::as_str),
+        Some("redacted")
+    );
+}
+
+#[test]
+fn redaction_failed_constructor_is_fail_closed_public() {
+    let err = ApiError::redaction_failed("vector_payload");
+    assert_eq!(err.code.to_string(), "redaction.failed");
+    assert_eq!(err.stage, ErrorStage::Authorizing);
+    assert_eq!(err.severity, ErrorSeverity::Fatal);
+    assert_eq!(err.visibility, ErrorVisibility::Public);
+    assert!(!err.retryable);
+    assert_eq!(
+        err.details.get("surface").map(String::as_str),
+        Some("vector_payload")
+    );
+}

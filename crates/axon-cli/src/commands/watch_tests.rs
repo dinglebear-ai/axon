@@ -18,7 +18,7 @@ fn parse_uuid_requires_id() {
 #[test]
 fn parse_uuid_rejects_invalid_uuid() {
     let raw = "not-a-uuid".to_string();
-    let err = parse_uuid(Some(&raw), "run-now").expect_err("invalid uuid should error");
+    let err = parse_uuid(Some(&raw), "exec").expect_err("invalid uuid should error");
     assert!(err.to_string().contains("invalid character") || err.to_string().contains("UUID"));
 }
 

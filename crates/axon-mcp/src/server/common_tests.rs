@@ -132,6 +132,13 @@ fn logged_internal_error_terminates_on_self_referential_source() {
 }
 
 #[test]
+fn logged_internal_error_redacts_secrets_from_message() {
+    let e = LeafErr("connection failed: Authorization: Bearer abcdef0123456789abcdef");
+    let err = logged_internal_error("ask", &e);
+    assert!(!err.message.contains("abcdef0123456789abcdef"));
+}
+
+#[test]
 fn logged_internal_error_surfaces_service_taxonomy_data() {
     let err = ServiceTaxonomyError::VerticalAuthMissing {
         vertical: "github_repo",

@@ -1,12 +1,16 @@
 use axon_api::mcp_schema::PurgeRequest;
+use axon_api::source::ids::{SourceGenerationId, SourceId};
+use axon_api::source::prune::{PruneRequest as ApiPruneRequest, PruneResult, PruneSelector};
 use axon_core::config::Config;
 use axon_services as services;
+use axon_services::prune::PruneAuthz;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     routing::post,
 };
+use lab_auth::AuthContext;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -15,6 +19,8 @@ use uuid::Uuid;
 use super::super::error::HttpError;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
+
+const PRUNE_COLLECTION_PREFIX: &str = "collection:";
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub(crate) struct WatchListQuery {
@@ -141,6 +147,145 @@ pub(crate) async fn purge(
         .await
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+/// Body for `POST /v1/prune/plan` — a dry-run plan, always safe to call.
+///
+/// `target` is either a bare source id or `collection:<name>` for a
+/// whole-collection prune, mirroring the CLI's `axon prune plan <target>`
+/// selector grammar (`crates/axon-cli/src/commands/prune.rs::build_selector`).
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PrunePlanRequest {
+    pub target: String,
+    pub generation: Option<String>,
+}
+
+/// Body for `POST /v1/prune/exec` — destructive; requires `axon:admin` (see
+/// [`super::super::routing::admin_routes`]) and `confirm: true`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PruneExecRequest {
+    pub target: String,
+    pub generation: Option<String>,
+    #[serde(default)]
+    pub confirm: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/prune/plan",
+    request_body = PrunePlanRequest,
+    responses(
+        (status = 200, description = "Dry-run prune plan (never mutates state)", body = axon_api::source::prune::PrunePlan),
+        (status = 400, description = "Invalid prune request", body = crate::server::error::ErrorBody),
+        (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn prune_plan(
+    State((_state, _cfg)): State<WebState>,
+    Json(req): Json<PrunePlanRequest>,
+) -> Result<Json<axon_api::source::prune::PrunePlan>, HttpError> {
+    let selector = prune_selector_from_body(&req.target, req.generation.as_deref())?;
+    let request = ApiPruneRequest::dry_run(selector, "rest prune plan");
+    // Dry-run planning never mutates state and never checks authz — mirrors
+    // `axon_services::prune::prune_plan`'s own contract.
+    let plan = services::prune::prune_plan(&request);
+    Ok(Json(plan))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/prune/exec",
+    request_body = PruneExecRequest,
+    responses(
+        (status = 200, description = "Prune execution result (receipt of what was actually deleted)", body = PruneResult),
+        (status = 400, description = "Invalid prune request, or missing confirm=true", body = crate::server::error::ErrorBody),
+        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody),
+        (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn prune_exec(
+    State((state, _cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
+    Json(req): Json<PruneExecRequest>,
+) -> Result<Json<PruneResult>, HttpError> {
+    if !req.confirm {
+        return Err(HttpError::bad_request(
+            "prune exec requires confirm=true to run destructively",
+        ));
+    }
+    let selector = prune_selector_from_body(&req.target, req.generation.as_deref())?;
+    let api_request = ApiPruneRequest::execute(selector, "rest prune exec");
+
+    // `axon:admin` derived from the caller's real resolved scopes — never
+    // hardcoded. The router's `admin_routes` layer (require_admin_scope) has
+    // already rejected non-admin Mounted callers before this handler runs;
+    // re-deriving here (rather than assuming `PruneAuthz::admin()`) keeps
+    // this handler honest on its own and correct if the router layer is ever
+    // relaxed. `LoopbackDev` has no `AuthContext` at all — the loopback bind
+    // itself is the trust boundary there, matching every other admin route.
+    let authz = match auth {
+        Some(Extension(ref auth_ctx)) => PruneAuthz {
+            is_admin: axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE),
+        },
+        None => PruneAuthz::admin(),
+    };
+
+    let (_plan, result) = services::prune::prune(&state.service_context, &api_request, &authz)
+        .await
+        .map_err(|err| HttpError::new(StatusCode::FORBIDDEN, "forbidden", err.to_string()))?;
+    let result = result.ok_or_else(|| {
+        HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "prune exec did not produce a result",
+        )
+    })?;
+    Ok(Json(result))
+}
+
+/// Build a [`PruneSelector`] from a REST body's `target`/`generation` fields.
+/// Mirrors `crates/axon-cli/src/commands/prune.rs::build_selector`'s
+/// `collection:<name>` / bare-source-id grammar.
+fn prune_selector_from_body(
+    target: &str,
+    generation: Option<&str>,
+) -> Result<PruneSelector, HttpError> {
+    let target = target.trim();
+    if target.is_empty() {
+        return Err(HttpError::bad_request(
+            "target is required (source id, or collection:<name>)",
+        ));
+    }
+
+    if let Some(collection) = target.strip_prefix(PRUNE_COLLECTION_PREFIX) {
+        let collection = collection.trim();
+        if collection.is_empty() {
+            return Err(HttpError::bad_request(
+                "collection: target requires a non-empty collection name",
+            ));
+        }
+        if generation.is_some() {
+            return Err(HttpError::bad_request(
+                "generation is not valid with a collection: target",
+            ));
+        }
+        return Ok(PruneSelector::Collection {
+            collection: collection.to_string(),
+        });
+    }
+
+    let source_id = SourceId::new(target);
+    Ok(match generation.map(str::trim).filter(|g| !g.is_empty()) {
+        Some(generation) => PruneSelector::Generation {
+            source_id,
+            generation: SourceGenerationId::new(generation),
+        },
+        None => PruneSelector::Source { source_id },
+    })
 }
 
 fn parse_optional_json_body<T>(headers: &HeaderMap, body: &str) -> Result<Option<T>, HttpError>
@@ -289,3 +434,7 @@ impl RunWatchError {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "admin_tests.rs"]
+mod tests;

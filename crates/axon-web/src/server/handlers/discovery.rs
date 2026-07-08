@@ -146,12 +146,12 @@ pub(crate) async fn status(
     tag = "discovery"
 )]
 pub(crate) async fn doctor(
-    State((_state, cfg)): State<WebState>,
+    State((state, _cfg)): State<WebState>,
 ) -> Result<Json<services::types::DoctorResult>, HttpError> {
-    services::system::doctor(&cfg)
+    services::system::doctor(&state.service_context)
         .await
         .map(Json)
-        .map_err(HttpError::from_box)
+        .map_err(HttpError::from_box_send_sync)
 }
 
 #[cfg(test)]

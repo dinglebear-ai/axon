@@ -80,13 +80,20 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             _ => Some("axon:write"),
         },
         AxonRequest::Memory(req) => match req.subaction.unwrap_or(MemorySubaction::Remember) {
-            MemorySubaction::Remember | MemorySubaction::Link | MemorySubaction::Supersede => {
-                Some("axon:write")
-            }
+            MemorySubaction::Remember
+            | MemorySubaction::Link
+            | MemorySubaction::Supersede
+            | MemorySubaction::Reinforce
+            | MemorySubaction::Contradict
+            | MemorySubaction::Pin
+            | MemorySubaction::Archive
+            | MemorySubaction::Forget
+            | MemorySubaction::Compact => Some("axon:write"),
             MemorySubaction::List
             | MemorySubaction::Search
             | MemorySubaction::Show
-            | MemorySubaction::Context => Some("axon:read"),
+            | MemorySubaction::Context
+            | MemorySubaction::Review => Some("axon:read"),
         },
         AxonRequest::Jobs(req) => match req.subaction.unwrap_or(JobsSubaction::List) {
             JobsSubaction::List
@@ -124,6 +131,12 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) | AxonRequest::Purge(_) => {
             Some("axon:write")
         }
+        // Prune is admin-gated per the pruning contract: destructive prune
+        // requires axon:admin, not just axon:write. The action-level scope
+        // check here is the coarse "can call this action at all" gate;
+        // axon_services::prune::prune's own PruneAuthz derivation is the
+        // fine-grained "is this specific execution destructive" gate.
+        AxonRequest::Prune(_) => Some("axon:admin"),
         // ElicitDemo is an MCP elicitation primitive. Explicit arm prevents it silently
         // absorbing a future wildcard default change.
         AxonRequest::ElicitDemo(_) => Some("axon:write"),
@@ -131,7 +144,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
                 Some("axon:read")
             }
-            WatchSubaction::Create | WatchSubaction::RunNow => Some("axon:write"),
+            WatchSubaction::Create | WatchSubaction::Exec => Some("axon:write"),
         },
         AxonRequest::Setup(req) => match req.mode.unwrap_or(SetupMode::Check) {
             SetupMode::Check => Some("axon:read"),
@@ -195,6 +208,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Diff(_) => "diff",
         AxonRequest::Dedupe(_) => "dedupe",
         AxonRequest::Purge(_) => "purge",
+        AxonRequest::Prune(_) => "prune",
         AxonRequest::Migrate(_) => "migrate",
         AxonRequest::Watch(_) => "watch",
         AxonRequest::Setup(_) => "setup",

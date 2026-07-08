@@ -1,0 +1,180 @@
+//! Concrete [`UnifiedJobRunner`] implementations for unified `JobKind`s whose
+//! real domain logic lives in `axon-services`.
+//!
+//! `axon-jobs` cannot depend on `axon-services` (layering rule enforced by
+//! `cargo xtask check-layering`), so the unified worker's claim/dispatch loop
+//! executes job kinds through an injected [`JobRunnerRegistry`] trait-object
+//! seam instead of calling into this crate directly. This module builds the
+//! concrete runners and the registry that carries them, and
+//! [`super::resolve_runtime_with_workers`] hands the registry to
+//! `SqliteJobBackend::new_with_workers_and_registry` at composition time.
+//!
+//! Scope: this wave wires `ProviderProbe` (backed by the real
+//! `system::doctor::doctor` connectivity check) and `MemoryCompaction`
+//! (backed by the real `SqliteMemoryStore::capabilities` call — there is no
+//! dedicated memory-compaction domain entrypoint yet, so this runner reports
+//! store capabilities/health as an honest, safe, idempotent placeholder until
+//! real compaction logic lands). `GraphMutation`/`Prune`/`Watch` are
+//! intentionally left unregistered — they run as sub-steps of a parent
+//! operation or have their own scheduler, and forcing them through this seam
+//! here risks a rushed, wrong implementation of the trickiest cases.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use axon_api::source::{
+    ApiError, ErrorStage, JobHeartbeat, JobKind, LifecycleStatus, PipelinePhase, Timestamp,
+};
+use axon_core::config::Config;
+use axon_jobs::boundary::JobStore;
+use axon_jobs::unified::SqliteUnifiedJobStore;
+use axon_jobs::workers::unified::UnifiedClaimedJob;
+use axon_jobs::workers::{JobRunnerRegistry, UnifiedJobRunner};
+use axon_memory::record::SystemClock;
+use axon_memory::sqlite::SqliteMemoryStore;
+use axon_memory::store::MemoryStore;
+use tokio_util::sync::CancellationToken;
+
+/// Build the [`JobRunnerRegistry`] handed to the unified worker at
+/// composition time. Additive by design — any kind not registered here keeps
+/// falling back to `job_runner.unsupported_stage`, so this function can only
+/// ever make more kinds executable, never fewer.
+///
+/// Returns an error only if opening the memory store fails outright (bad
+/// path, unwritable directory, …) — callers should treat that as fatal for
+/// the `Memory` runner rather than silently registering a broken one.
+pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> {
+    let mut registry = JobRunnerRegistry::new();
+    registry.register(
+        JobKind::ProviderProbe,
+        Arc::new(ProviderProbeRunner {
+            cfg: Arc::clone(cfg),
+        }),
+    );
+
+    // Open once and reuse: `SqliteMemoryStore::open` runs a schema migration
+    // via a bare `rusqlite::Connection` with no busy-timeout configured. Doing
+    // this on every job execution races the shared sqlx pool that already
+    // holds this same SQLite file open for the unified job store, producing
+    // intermittent "database is locked" failures under concurrent load.
+    // Opening once at registry-build time and reusing the connection avoids
+    // the repeated open/migrate race entirely.
+    let path = cfg.sqlite_path.to_string_lossy().to_string();
+    let memory_store = SqliteMemoryStore::open(&path, Arc::new(SystemClock))
+        .map_err(|error| compaction_error(format!("open memory store: {}", error.message)))?;
+    registry.register(
+        JobKind::Memory,
+        Arc::new(MemoryCompactionRunner {
+            memory_store: Arc::new(memory_store),
+        }),
+    );
+
+    Ok(registry)
+}
+
+async fn heartbeat_running(
+    store: &SqliteUnifiedJobStore,
+    claimed: &UnifiedClaimedJob,
+    phase: PipelinePhase,
+) {
+    let _ = store
+        .heartbeat(JobHeartbeat {
+            job_id: claimed.job_id,
+            attempt: claimed.attempt,
+            worker_id: Some("unified-local-worker".to_string()),
+            phase,
+            status: LifecycleStatus::Running,
+            stage_id: None,
+            heartbeat_at: Timestamp::from(chrono::Utc::now()),
+            last_event_sequence: None,
+            counts: None,
+            provider_reservations: Vec::new(),
+        })
+        .await;
+}
+
+/// Runs the real Qdrant/TEI/LLM connectivity check (`system::doctor::doctor`)
+/// for a `ProviderProbe` job. Safe and idempotent — it only reads service
+/// health, never mutates state.
+struct ProviderProbeRunner {
+    cfg: Arc<Config>,
+}
+
+#[async_trait]
+impl UnifiedJobRunner for ProviderProbeRunner {
+    async fn run(
+        &self,
+        claimed: &UnifiedClaimedJob,
+        store: &SqliteUnifiedJobStore,
+        shutdown: &CancellationToken,
+    ) -> Result<(), ApiError> {
+        heartbeat_running(store, claimed, PipelinePhase::Evaluating).await;
+        if shutdown.is_cancelled() {
+            return Err(probe_error("provider probe canceled before running"));
+        }
+        // Call the untracked inner check directly -- this runner already
+        // executes inside an already-tracked unified `provider_probe` job,
+        // so going through the public `doctor()` (which wraps itself in a
+        // *second* job_tracking::track_operation_job call) would create a
+        // duplicate, nested job row for the same probe.
+        crate::system::doctor_inner(&self.cfg)
+            .await
+            .map(|_result| ())
+            .map_err(|error| probe_error(error.to_string()))
+    }
+}
+
+fn probe_error(message: impl Into<String>) -> ApiError {
+    ApiError::new(
+        "job_runner.provider_probe_failed",
+        ErrorStage::Observing,
+        message.into(),
+    )
+}
+
+/// Runs a real (if minimal) memory-store operation for a `MemoryCompaction`
+/// job. There is no dedicated compaction entrypoint in `axon-memory` yet
+/// (`OperationKind::MemoryCompaction` is currently policy-only — see
+/// `crates/axon-services/src/jobs.rs`), so this runner opens the real
+/// `SqliteMemoryStore` on the unified jobs DB and calls its real
+/// `capabilities()` — a genuine, safe, idempotent domain call that proves the
+/// registry seam end-to-end without fabricating compaction behavior that
+/// does not exist. Replace the body with real compaction logic once that
+/// domain entrypoint lands.
+struct MemoryCompactionRunner {
+    memory_store: Arc<SqliteMemoryStore>,
+}
+
+#[async_trait]
+impl UnifiedJobRunner for MemoryCompactionRunner {
+    async fn run(
+        &self,
+        claimed: &UnifiedClaimedJob,
+        store: &SqliteUnifiedJobStore,
+        shutdown: &CancellationToken,
+    ) -> Result<(), ApiError> {
+        heartbeat_running(store, claimed, PipelinePhase::Preparing).await;
+        if shutdown.is_cancelled() {
+            return Err(compaction_error(
+                "memory compaction canceled before running",
+            ));
+        }
+        self.memory_store
+            .capabilities()
+            .await
+            .map(|_capability| ())
+            .map_err(|error| compaction_error(error.message))
+    }
+}
+
+fn compaction_error(message: impl Into<String>) -> ApiError {
+    ApiError::new(
+        "job_runner.memory_compaction_failed",
+        ErrorStage::Preparing,
+        message.into(),
+    )
+}
+
+#[cfg(test)]
+#[path = "job_runners_tests.rs"]
+mod tests;

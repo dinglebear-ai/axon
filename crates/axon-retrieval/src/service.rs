@@ -98,6 +98,11 @@ pub async fn run_query(
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
+        // Plain `query` is unrestricted (no positive namespace_filters), so
+        // exclude the memory namespace by default — memory search has its
+        // own dedicated request path (`crate::memory::memory_retrieval_filter`)
+        // that opts in explicitly.
+        excluded_namespaces: vec![crate::memory::MEMORY_VECTOR_NAMESPACE.to_string()],
         byte_budget: DEFAULT_BYTE_BUDGET,
         token_budget: DEFAULT_TOKEN_BUDGET,
     };

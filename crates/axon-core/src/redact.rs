@@ -140,6 +140,21 @@ pub fn is_secret_like(lower_name: &str) -> bool {
     false
 }
 
+mod boundary;
+mod detectors;
+
+pub use boundary::{
+    DefaultRedactor, MAX_REDACTABLE_TEXT_BYTES, REDACTION_VERSION, RedactionContext,
+    RedactionReport, RedactionStatus, RedactionSurface, Redactor, redact_metadata,
+    redact_text_checked,
+};
+pub use detectors::{
+    BARE_SECRET_TOKEN_PREFIXES, FORBIDDEN_FIELD_FRAGMENTS, FORBIDDEN_VALUE_FRAGMENTS,
+    SECRET_LIKE_FIELD_FRAGMENTS, contains_bare_secret_token, forbidden_field_name,
+    raw_dotenv_assignment, secret_like_field_name, value_contains_secret,
+    value_is_absolute_local_path,
+};
+
 #[cfg(test)]
 #[path = "redact_tests.rs"]
 mod tests;

@@ -230,6 +230,54 @@ fn openapi_security_schemes_and_operation_security_match_inventory() {
                     );
                 }
             }
+            RestRouteAuth::Admin => {
+                let security = operation
+                    .get("security")
+                    .and_then(serde_json::Value::as_array)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "protected operation {} must declare security",
+                            route.display()
+                        )
+                    });
+                assert!(
+                    security
+                        .iter()
+                        .any(|entry| entry.get("bearerAuth").is_some()),
+                    "{} must allow bearer auth",
+                    route.display()
+                );
+                // Admin routes require exactly `axon:admin` -- broad
+                // read/write tokens are insufficient (see `RestRouteAuth::
+                // Admin`'s doc comment), so only that scope needs to appear.
+                assert!(
+                    security.iter().any(|entry| {
+                        entry
+                            .get("oauth2")
+                            .and_then(serde_json::Value::as_array)
+                            .is_some_and(|scopes| {
+                                scopes
+                                    .iter()
+                                    .any(|scope| scope.as_str() == Some("axon:admin"))
+                            })
+                    }),
+                    "{} must allow OAuth scope axon:admin",
+                    route.display()
+                );
+                for status in ["401", "403"] {
+                    let response = operation
+                        .pointer(&format!(
+                            "/responses/{status}/content/application~1json/schema/$ref"
+                        ))
+                        .and_then(serde_json::Value::as_str);
+                    assert_eq!(
+                        response,
+                        Some("#/components/schemas/ErrorBody"),
+                        "{} must document JSON ErrorBody auth response {status}",
+                        route.display()
+                    );
+                }
+            }
         }
     }
 }

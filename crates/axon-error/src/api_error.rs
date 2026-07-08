@@ -67,6 +67,23 @@ pub struct ApiError {
     pub cooldown_until: Option<DateTime<Utc>>,
 }
 
+/// Item-level source failure projection.
+///
+/// This lives beside [`ApiError`] so ledger/jobs/services can attach per-item
+/// failures without creating local error DTOs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+pub struct SourceItemError {
+    pub source_id: String,
+    pub source_item_key: String,
+    pub generation: String,
+    pub status: String,
+    pub error_code: ErrorCode,
+    pub error_stage: ErrorStage,
+    pub retryable: bool,
+    pub attempt: u32,
+    pub details: BTreeMap<String, String>,
+}
+
 impl ApiError {
     /// Construct a new error from a code, stage, and message.
     ///
@@ -135,6 +152,79 @@ impl ApiError {
     pub fn with_cooldown_until(mut self, cooldown_until: DateTime<Utc>) -> Self {
         self.cooldown_until = Some(cooldown_until);
         self
+    }
+
+    /// Set the minimum retry delay in milliseconds.
+    pub fn with_retry_after_ms(mut self, retry_after_ms: u64) -> Self {
+        self.retry_after_ms = Some(retry_after_ms);
+        self
+    }
+
+    /// Apply a full retry policy projection to this error.
+    pub fn with_retry_policy(mut self, retry_policy: RetryPolicy) -> Self {
+        self.retryable = retry_policy.retryable;
+        self.retry_after_ms = retry_policy.retry_after_ms;
+        self.cooldown_until = retry_policy.cooldown_until;
+        self.details.insert(
+            "retry_scope".to_string(),
+            format!("{:?}", retry_policy.retry_scope),
+        );
+        self.details
+            .insert("attempt".to_string(), retry_policy.attempt.to_string());
+        if let Some(max_attempts) = retry_policy.max_attempts {
+            self.details
+                .insert("max_attempts".to_string(), max_attempts.to_string());
+        }
+        if let Some(backoff_ms) = retry_policy.backoff_ms {
+            self.details
+                .insert("backoff_ms".to_string(), backoff_ms.to_string());
+        }
+        self
+    }
+
+    /// Apply provider cooling metadata and mark the error retryable.
+    pub fn with_provider_cooling(mut self, cooling: ProviderCooling) -> Self {
+        self.provider_id = cooling.provider_id;
+        self.cooldown_until = Some(cooling.cooldown_until);
+        if let Some(reason) = cooling.reason {
+            self.details.insert("cooling_reason".to_string(), reason);
+        }
+        self.retryable = true;
+        self
+    }
+
+    /// Construct the fail-closed redaction error used before public writes.
+    pub fn redaction_failed(surface: impl Into<String>) -> Self {
+        Self::new(
+            "redaction.failed",
+            ErrorStage::Authorizing,
+            "content could not be safely redacted",
+        )
+        .with_context("surface", surface.into())
+        .with_severity(ErrorSeverity::Fatal)
+        .with_visibility(ErrorVisibility::Public)
+    }
+
+    /// Project this error into a per-source-item error record.
+    pub fn to_source_item_error(
+        &self,
+        source_id: impl Into<String>,
+        source_item_key: impl Into<String>,
+        generation: impl Into<String>,
+        status: impl Into<String>,
+        attempt: u32,
+    ) -> SourceItemError {
+        SourceItemError {
+            source_id: source_id.into(),
+            source_item_key: source_item_key.into(),
+            generation: generation.into(),
+            status: status.into(),
+            error_code: self.code.clone(),
+            error_stage: self.stage,
+            retryable: self.retryable,
+            attempt,
+            details: self.details.clone(),
+        }
     }
 
     /// Machine-readable retry policy for this error.

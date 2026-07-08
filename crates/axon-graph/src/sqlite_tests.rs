@@ -100,6 +100,39 @@ async fn upsert_then_get_node_and_edge_roundtrip() {
 }
 
 #[tokio::test]
+async fn upsert_redacts_secrets_from_node_and_edge_properties() {
+    let graph = store().await;
+    let mut secret_properties = MetadataMap::new();
+    secret_properties.insert(
+        "note".to_string(),
+        serde_json::json!("authorization: bearer abcdef0123456789abcdef"),
+    );
+    let mut candidate = repo_docs_candidate("gc-secret", "src", vec![ev("ev-1", "sitemap", 0.5)]);
+    candidate.nodes[0].properties = secret_properties.clone();
+    candidate.edges[0].properties = secret_properties;
+    graph.upsert_candidates(vec![candidate]).await.unwrap();
+
+    let repo_id = node_id_for("repo", "https://github.com/x/y");
+    let fetched_node = graph.get_node(repo_id.clone()).await.unwrap().unwrap();
+    assert!(
+        !fetched_node.metadata["note"]
+            .as_str()
+            .unwrap()
+            .contains("abcdef0123456789abcdef")
+    );
+
+    let docs_id = node_id_for("docs_site", "https://x.dev/docs");
+    let edge_id = edge_id_for("repo_has_docs", &repo_id, &docs_id);
+    let fetched_edge = graph.get_edge(edge_id).await.unwrap().unwrap();
+    assert!(
+        !fetched_edge.metadata["note"]
+            .as_str()
+            .unwrap()
+            .contains("abcdef0123456789abcdef")
+    );
+}
+
+#[tokio::test]
 async fn upsert_is_idempotent_by_stable_key_and_tuple() {
     let graph = store().await;
     let cand = || repo_docs_candidate("gc", "src", vec![ev("ev-1", "github_homepage", 0.9)]);

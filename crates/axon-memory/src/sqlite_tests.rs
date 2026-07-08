@@ -60,6 +60,22 @@ async fn remember_then_get_round_trips_record() {
 }
 
 #[tokio::test]
+async fn remember_redacts_secrets_from_body_and_title_before_persisting() {
+    let (store, _clock) = store();
+    let mut remembered = request(
+        MemoryType::Fact,
+        "the deploy token is Authorization: Bearer abcdef0123456789abcdef",
+        "axon",
+    );
+    remembered.title = Some("token: sk-proj-abcdefghijklmnopqrstuvwx".to_string());
+    let result = store.remember(remembered).await.unwrap();
+
+    let record = store.get(result.memory_id).await.unwrap().unwrap();
+    assert!(!record.body.contains("abcdef0123456789abcdef"));
+    assert!(!record.title.unwrap().contains("abcdefghijklmnopqrstuvwx"));
+}
+
+#[tokio::test]
 async fn remember_rejects_empty_body() {
     let (store, _c) = store();
     let err = store
@@ -542,4 +558,282 @@ async fn capabilities_report_owner_and_features() {
     assert_eq!(cap.0.name, "sqlite-memory");
     assert!(cap.0.features.contains(&"decay".to_string()));
     assert!(cap.0.features.contains(&"supersede".to_string()));
+}
+
+#[tokio::test]
+async fn update_edits_body_and_appends_history() {
+    let (store, clock) = store();
+    let m = store
+        .remember(request(MemoryType::Fact, "old body", "axon"))
+        .await
+        .unwrap();
+
+    store
+        .update(MemoryUpdateRequest {
+            memory_id: m.memory_id.clone(),
+            body: Some("new body".to_string()),
+            title: None,
+            memory_type: None,
+            confidence: None,
+            salience: None,
+            scope: None,
+            reason: Some("correction".to_string()),
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let record = store.get(m.memory_id).await.unwrap().unwrap();
+    assert_eq!(record.body, "new body");
+    assert!(record.history.iter().any(|h| h.message == "correction"));
+}
+
+#[tokio::test]
+async fn pin_sets_decay_pinned_flag_without_changing_status() {
+    let (store, clock) = store();
+    let m = store
+        .remember(request(MemoryType::Fact, "pin me", "axon"))
+        .await
+        .unwrap();
+
+    store
+        .pin(MemoryPinRequest {
+            memory_id: m.memory_id.clone(),
+            pinned: true,
+            reason: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let record = store.get(m.memory_id).await.unwrap().unwrap();
+    assert_eq!(record.status, MemoryStatus::Active);
+    assert!(record.decay.unwrap().pinned);
+}
+
+#[tokio::test]
+async fn archive_transitions_status_and_excludes_from_default_search() {
+    let (store, clock) = store();
+    let m = store
+        .remember(request(MemoryType::Fact, "archive me", "axon"))
+        .await
+        .unwrap();
+
+    store
+        .archive(MemoryArchiveRequest {
+            memory_id: m.memory_id.clone(),
+            reason: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let record = store.get(m.memory_id).await.unwrap().unwrap();
+    assert_eq!(record.status, MemoryStatus::Archived);
+}
+
+#[tokio::test]
+async fn forget_transitions_status_to_forgotten() {
+    let (store, clock) = store();
+    let m = store
+        .remember(request(MemoryType::Fact, "forget me", "axon"))
+        .await
+        .unwrap();
+
+    store
+        .forget(MemoryForgetRequest {
+            memory_id: m.memory_id.clone(),
+            reason: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let record = store.get(m.memory_id).await.unwrap().unwrap();
+    assert_eq!(record.status, MemoryStatus::Forgotten);
+}
+
+#[tokio::test]
+async fn compact_merges_sources_and_archives_them_when_requested() {
+    let (store, clock) = store();
+    let a = store
+        .remember(request(MemoryType::Fact, "fact one", "axon"))
+        .await
+        .unwrap();
+    let b = store
+        .remember(request(MemoryType::Fact, "fact two", "axon"))
+        .await
+        .unwrap();
+
+    let result = store
+        .compact(MemoryCompactRequest {
+            memory_ids: vec![a.memory_id.clone(), b.memory_id.clone()],
+            strategy: "concatenate".to_string(),
+            result_type: MemoryType::Fact,
+            title: Some("combined".to_string()),
+            scope: MemoryScope {
+                kind: "project".to_string(),
+                value: "axon".to_string(),
+            },
+            archive_sources: true,
+            instructions: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let compacted = store.get(result.memory_id).await.unwrap().unwrap();
+    assert!(compacted.body.contains("fact one"));
+    assert!(compacted.body.contains("fact two"));
+
+    let source_a = store.get(a.memory_id).await.unwrap().unwrap();
+    let source_b = store.get(b.memory_id).await.unwrap().unwrap();
+    assert_eq!(source_a.status, MemoryStatus::Archived);
+    assert_eq!(source_b.status, MemoryStatus::Archived);
+}
+
+#[tokio::test]
+async fn compact_rejects_unsupported_strategy() {
+    let (store, clock) = store();
+    let a = store
+        .remember(request(MemoryType::Fact, "fact one", "axon"))
+        .await
+        .unwrap();
+    let b = store
+        .remember(request(MemoryType::Fact, "fact two", "axon"))
+        .await
+        .unwrap();
+
+    let err = store
+        .compact(MemoryCompactRequest {
+            memory_ids: vec![a.memory_id, b.memory_id],
+            strategy: "semantic_summary".to_string(),
+            result_type: MemoryType::Fact,
+            title: None,
+            scope: MemoryScope {
+                kind: "project".to_string(),
+                value: "axon".to_string(),
+            },
+            archive_sources: false,
+            instructions: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "memory.unsupported_strategy");
+}
+
+#[tokio::test]
+async fn import_merge_dedupes_by_body_type_and_scope() {
+    let (store, _clock) = store();
+    let existing = store
+        .remember(request(MemoryType::Fact, "duplicate content", "axon"))
+        .await
+        .unwrap();
+    let existing_record = store.get(existing.memory_id).await.unwrap().unwrap();
+
+    let mut fresh_record = existing_record.clone();
+    fresh_record.memory_id = MemoryId::new("mem_incoming_dup");
+    let mut new_record = existing_record.clone();
+    new_record.memory_id = MemoryId::new("mem_incoming_new");
+    new_record.body = "brand new content".to_string();
+
+    let result = store
+        .import(MemoryImportRequest {
+            records: vec![fresh_record, new_record],
+            mode: MemoryImportMode::Merge,
+            dry_run: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.created, 1);
+    assert_eq!(result.skipped, 1);
+    assert!(!result.dry_run);
+}
+
+#[tokio::test]
+async fn import_dry_run_reports_plan_without_writing() {
+    let (store, _clock) = store();
+    let mut record = MemoryRecord {
+        memory_id: MemoryId::new("mem_dry_run"),
+        memory_type: MemoryType::Fact,
+        status: MemoryStatus::Active,
+        body: "dry run content".to_string(),
+        confidence: 0.8,
+        salience: 0.5,
+        scope: MemoryScope {
+            kind: "project".to_string(),
+            value: "axon".to_string(),
+        },
+        history: Vec::new(),
+        title: None,
+        links: Vec::new(),
+        decay: None,
+        embedding_refs: Vec::new(),
+        superseded_by: None,
+        contradicts: None,
+    };
+    record.history.push(MemoryHistoryEvent {
+        status: MemoryStatus::Active,
+        message: "created".to_string(),
+        timestamp: Timestamp("2026-01-01T00:00:00Z".to_string()),
+    });
+
+    let result = store
+        .import(MemoryImportRequest {
+            records: vec![record],
+            mode: MemoryImportMode::Merge,
+            dry_run: true,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.created, 1);
+    assert!(result.dry_run);
+    // Nothing was actually written.
+    let review = store.review(MemoryReviewRequest::default()).await.unwrap();
+    assert!(review.memories.is_empty());
+}
+
+#[tokio::test]
+async fn export_excludes_archived_and_forgotten_by_default() {
+    let (store, clock) = store();
+    let active = store
+        .remember(request(MemoryType::Fact, "stays visible", "axon"))
+        .await
+        .unwrap();
+    let archived = store
+        .remember(request(MemoryType::Fact, "archived one", "axon"))
+        .await
+        .unwrap();
+    store
+        .archive(MemoryArchiveRequest {
+            memory_id: archived.memory_id.clone(),
+            reason: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let result = store
+        .export(MemoryExportRequest {
+            scope: None,
+            include_archived: false,
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        result
+            .records
+            .iter()
+            .any(|r| r.memory_id == active.memory_id)
+    );
+    assert!(
+        !result
+            .records
+            .iter()
+            .any(|r| r.memory_id == archived.memory_id)
+    );
 }

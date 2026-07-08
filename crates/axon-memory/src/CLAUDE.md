@@ -10,25 +10,32 @@ contract (owns / API / deps / tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/memory-contract.md](../../../docs/pipeline-unification/runtime/memory-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 8**
-(move memory into `axon-memory`). Do not turn memory into a source adapter, a
-vector-store owner, or an LLM synthesis path here.
+## Status — live crate, Phase 8 landed
+The full lifecycle is real and tested: `SqliteMemoryStore` (remember, search,
+show, link, supersede, reinforce, decay, review, update, pin, archive, forget,
+compact, import, export), `VectorBackedMemoryStore` (Qdrant indexing via
+`MemoryVectorConfig`/`MemoryBatchLimits`, batched embedding with partial-failure
+recovery), and `GraphBackedMemoryStore` (mirrors lifecycle transitions into
+`axon-graph` via `GraphBackedMemoryMirror`) all compose in `axon-services::memory::
+memory_store()` as `Vector(Graph(Sqlite))`. `context.rs`, `link.rs`, `recall.rs`,
+and `review.rs` remain marker files — their real logic already lives inside
+`store.rs`/`sqlite.rs`/`sqlite/*.rs` rather than as separate modules; do not
+duplicate it there. Memory is still **not** a generic source adapter and does
+**not** own the vector store directly — it composes over injected
+`VectorStore`/`GraphStore` boundaries.
 
 ## Module map
 | File | Owns |
 |---|---|
-| `store.rs` | `MemoryStore` trait — the durable boundary all callers use |
-| `sqlite.rs` | SQLite `MemoryStore` implementation |
+| `store.rs` | `MemoryStore` trait + `FakeMemoryStore` — the durable boundary all callers use |
+| `sqlite.rs` + `sqlite/{error,lifecycle,compact,rows}.rs` | `SqliteMemoryStore` — full lifecycle implementation (remember/search/show/link/supersede/reinforce/decay/review/update/pin/archive/forget/compact/import/export) |
+| `vector.rs` + `vector/{batch,payload}.rs` | `VectorBackedMemoryStore` decorator — Qdrant indexing, batched embed with partial-failure recovery |
+| `graph.rs` | `GraphBackedMemoryStore`/`GraphBackedMemoryMirror` decorator — mirrors lifecycle into `axon-graph`; also `memory_graph_candidates()` |
 | `migration.rs` | forward-only SQLite memory schema |
 | `record.rs` | `MemoryRecord` — memory record shape + retention rules |
-| `link.rs` | `MemoryLink` — graph links to sources/sessions/repos/issues/artifacts/tools |
 | `decay.rs` | `MemoryDecayPolicy` — decay + reinforcement rules |
-| `review.rs` | `MemoryReviewPolicy` — review/archive policy |
-| `recall.rs` | `MemoryRecallRequest` — lexical + vector + graph recall |
-| `context.rs` | `MemoryContext` — bounded, source-cited context assembly |
-| `graph.rs` | SourceGraph link integration points + vector indexing request builder |
-| `testing.rs` | `FakeMemoryStore` + fixtures (stable, superseded chain, decay, context) |
+| `testing.rs` | `FixedClock` + fixtures |
+| `link.rs` / `recall.rs` / `review.rs` / `context.rs` | marker files — superseded by the real logic in `store.rs`/`sqlite.rs`/`sqlite/*.rs`; do not duplicate |
 
 ## Boundary — keep OUT of this crate
 - General source acquisition, source routing, parser registry, general SourceGraph storage.

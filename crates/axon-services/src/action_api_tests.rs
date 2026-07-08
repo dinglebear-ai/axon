@@ -403,6 +403,12 @@ fn req_memory(subaction: MemorySubaction) -> AxonRequest {
         depth: None,
         token_budget: None,
         response_mode: None,
+        amount: None,
+        pinned: None,
+        reason: None,
+        memory_ids: None,
+        strategy: None,
+        archive_sources: None,
     })
 }
 
@@ -539,6 +545,34 @@ fn required_scope_memory_subactions_are_read_write() {
     assert_eq!(
         required_scope(&req_memory(MemorySubaction::Context)),
         Some("axon:read")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Reinforce)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Contradict)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Pin)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Archive)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Forget)),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Review)),
+        Some("axon:read")
+    );
+    assert_eq!(
+        required_scope(&req_memory(MemorySubaction::Compact)),
+        Some("axon:write")
     );
 }
 #[test]

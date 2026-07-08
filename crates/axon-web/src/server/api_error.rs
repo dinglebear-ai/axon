@@ -13,6 +13,7 @@
 
 use axon_api::ApiError;
 use axon_api::source::{ErrorEnvelope, TraceContext};
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_error::{ErrorSeverity, ErrorStage};
 use axum::{
     Json,
@@ -45,6 +46,7 @@ pub(crate) fn error_envelope_response(error: ApiError) -> Response {
 /// status (used where the transport already decided the status, e.g. auth
 /// middleware 401/403).
 pub(crate) fn error_envelope_response_with_status(error: ApiError, status: StatusCode) -> Response {
+    let error = redact_api_error(error);
     let envelope = ErrorEnvelope {
         ok: false,
         contract_version: CONTRACT_VERSION.to_string(),
@@ -67,6 +69,19 @@ pub(crate) fn error_envelope_response_with_status(error: ApiError, status: Statu
 
 fn new_correlation_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4().simple())
+}
+
+/// Fail-closed redaction boundary: `error.message`/`error.details` may embed
+/// an underlying cause chain (connection strings, file paths, provider
+/// response bodies) that must not reach an untrusted REST caller verbatim.
+fn redact_api_error(mut error: ApiError) -> ApiError {
+    let redactor = DefaultRedactor::new();
+    let context = RedactionContext::transport_response();
+    error.message = redactor.redact_text(&error.message, &context);
+    for value in error.details.values_mut() {
+        *value = redactor.redact_text(value, &context);
+    }
+    error
 }
 
 /// Derive the HTTP status for an [`ApiError`] from its code family, stage, and

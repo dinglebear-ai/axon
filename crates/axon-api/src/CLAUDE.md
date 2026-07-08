@@ -10,14 +10,13 @@ layer and the services facade can depend on it without a cycle. Full contract
 · behavior spec:
 [../../../docs/pipeline-unification/foundation/api-contract.md](../../../docs/pipeline-unification/foundation/api-contract.md).
 
-## Status — PR0 skeleton, partly live
-The `source.rs` DTO spike is **already real, not a marker** — it defines
-`SourceIntent`, `SourceRefreshPolicy`, and the transport-neutral source shapes as
-the first narrow clean-break spike. The remaining request/result/envelope
-families fold in during **Phase 1 (Shared DTO And Enum Spine)** as bead
-`axon_rust-23dw.2` continues, moving canonical enums out of markdown into
-Rust-owned registries. Do not add provider clients, stores, or runtime side
-effects.
+## Status — live crate, Phase 1 landed
+The full transport-neutral DTO/enum spine is real and tested, not a marker:
+`source.rs` (`SourceIntent`, `SourceRefreshPolicy`, source request/result
+shapes), `mcp_schema.rs` (MCP wire DTOs, generated tool schema), `result.rs`,
+job/status/reset/route-inventory DTOs, and the schema/enum registries used by
+`xtask schemas` generation. Do not add provider clients, stores, or runtime
+side effects.
 
 ## Module map
 | File | Owns |

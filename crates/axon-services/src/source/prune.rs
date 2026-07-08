@@ -16,6 +16,21 @@
 //! collision, or a ledger error is logged and leaves the debt row pending for a
 //! later retry. Acquisition never crashes because of a cleanup failure: the
 //! source is already acquired, embedded, and published by the time this runs.
+//!
+//! ## Authorization
+//!
+//! The pruning contract requires `axon:admin` for any destructive execution
+//! (`docs/pipeline-unification/runtime/pruning-contract.md`, "Safety Rules").
+//! This drain is **not** a user-invoked "delete my data" request — it is
+//! trusted, in-process, system-triggered maintenance that always runs
+//! immediately after `index_source` publishes a new generation, regardless of
+//! the caller's own scopes. It is therefore pre-authorized as system-trusted
+//! (mirroring `AuthSnapshot::trusted_system` used elsewhere for
+//! system-triggered work), but that authorization is passed **explicitly** at
+//! this call site via [`PruneAuthz::admin`] rather than silently bypassing the
+//! [`PruneExecutor::execute`] admin gate. The gate still runs on every call —
+//! it just always resolves to "authorized" for this specific, audited,
+//! system-owned path.
 
 use async_trait::async_trait;
 use axon_api::source::{
@@ -24,7 +39,7 @@ use axon_api::source::{
 };
 use axon_ledger::store::LedgerStore;
 use axon_prune::{
-    PruneExecutor, PrunePlan, PruneStep, PruneTarget, PruneTargetKind, StepExecution,
+    PruneAuthz, PruneExecutor, PrunePlan, PruneStep, PruneTarget, PruneTargetKind, StepExecution,
 };
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
@@ -84,9 +99,15 @@ pub async fn drain_cleanup_debt(
     };
     let executor = PruneExecutor::new(target);
 
+    // System-trusted authorization for this automatic, in-process cleanup
+    // drain — see the module-level "Authorization" note. Passed explicitly
+    // (never implicitly defaulted) so the executor's admin gate is exercised
+    // and the authorization decision is visible at the call site.
+    let authz = PruneAuthz::admin();
+
     let mut summary = DebtDrainSummary::default();
     for debt in pending {
-        drain_one_debt(ledger, &executor, &debt, &mut summary).await;
+        drain_one_debt(ledger, &executor, &authz, &debt, &mut summary).await;
     }
 
     tracing::debug!(
@@ -103,6 +124,7 @@ pub async fn drain_cleanup_debt(
 async fn drain_one_debt(
     ledger: &dyn LedgerStore,
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
+    authz: &PruneAuthz,
     debt: &CleanupDebt,
     summary: &mut DebtDrainSummary,
 ) {
@@ -118,7 +140,7 @@ async fn drain_one_debt(
     };
 
     let plan = single_step_plan(step);
-    let result = match executor.execute(&plan).await {
+    let result = match executor.execute(&plan, authz).await {
         Ok(result) => result,
         Err(denied) => {
             // Generation fence / admin / confirmation refusal. Leave pending.

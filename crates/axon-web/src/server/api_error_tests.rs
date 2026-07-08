@@ -76,3 +76,25 @@ fn envelope_response_carries_status_and_shape() {
     let response = error_envelope_response(err);
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[test]
+fn redact_api_error_scrubs_message_and_details() {
+    let mut err = api_error_from_status_kind(
+        StatusCode::BAD_GATEWAY,
+        "upstream_unavailable",
+        "upstream failed: Authorization: Bearer abcdef0123456789abcdef",
+    );
+    err.details.insert(
+        "cause".to_string(),
+        "connection string had sk-proj-abcdefghijklmnopqrstuvwx".to_string(),
+    );
+
+    let redacted = redact_api_error(err);
+
+    assert!(!redacted.message.contains("abcdef0123456789abcdef"));
+    assert!(
+        !redacted.details["cause"].contains("abcdefghijklmnopqrstuvwx"),
+        "details value should be redacted: {}",
+        redacted.details["cause"]
+    );
+}

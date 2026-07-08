@@ -1714,6 +1714,11 @@
         "path": "crates/axon-adapters/src/boundary.rs"
       },
       {
+        "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/schema_registry.rs"
+      },
+      {
         "checksum": "sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/capability.rs"

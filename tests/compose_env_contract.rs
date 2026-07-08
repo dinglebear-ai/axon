@@ -23,7 +23,7 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.prod.yaml must keep TEI data under the canonical ~/.axon appdata root"
     );
     assert!(
-        compose.contains("${AXON_MCP_HTTP_PUBLISH:-8001}:8001"),
+        compose.contains("${AXON_HTTP_PUBLISH:-8001}:8001"),
         "docker-compose.prod.yaml must use short port syntax without a host/interface prefix"
     );
     assert!(
@@ -175,7 +175,7 @@ fn plugin_setup_uses_canonical_axon_home() {
         "plugin setup must not create or manage systemd units"
     );
     assert!(
-        setup.contains("export_if_set AXON_MCP_HTTP_TOKEN CLAUDE_PLUGIN_OPTION_API_TOKEN"),
+        setup.contains("export_if_set AXON_HTTP_TOKEN CLAUDE_PLUGIN_OPTION_API_TOKEN"),
         "plugin setup should pass plugin options through to the shared setup command"
     );
     assert!(
@@ -202,7 +202,7 @@ fn plugin_setup_smoke_delegates_to_shared_setup() {
     fs::write(
         &axon_bin,
         format!(
-            "#!/usr/bin/env bash\nprintf '%s|%s|%s\\n' \"$*\" \"${{AXON_HOME:-}}\" \"${{AXON_MCP_HTTP_TOKEN:-}}\" >> '{}'\nexit 0\n",
+            "#!/usr/bin/env bash\nprintf '%s|%s|%s\\n' \"$*\" \"${{AXON_HOME:-}}\" \"${{AXON_HTTP_TOKEN:-}}\" >> '{}'\nexit 0\n",
             axon_log.display()
         ),
     )
@@ -331,7 +331,7 @@ fn dev_setup_does_not_seed_removed_full_stack_services() {
         );
     }
     assert!(
-        setup.contains("set_env_if_missing AXON_MCP_HTTP_TOKEN"),
+        setup.contains("set_env_if_missing AXON_HTTP_TOKEN"),
         "dev setup should seed a token for Compose full-stack axon startup"
     );
 }
@@ -412,17 +412,17 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_COLLECTION",
         "AXON_QDRANT_URL",
         // MCP HTTP transport + auth
-        "AXON_MCP_HTTP_PUBLISH",
-        "AXON_MCP_HTTP_HOST",
-        "AXON_MCP_HTTP_PORT",
-        "AXON_MCP_HTTP_TOKEN",
-        "AXON_MCP_AUTH_MODE",
-        "AXON_MCP_PUBLIC_URL",
-        "AXON_MCP_GOOGLE_CLIENT_ID",
-        "AXON_MCP_GOOGLE_CLIENT_SECRET",
-        "AXON_MCP_AUTH_ADMIN_EMAIL",
-        "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
-        "AXON_MCP_ALLOWED_ORIGINS",
+        "AXON_HTTP_PUBLISH",
+        "AXON_HTTP_HOST",
+        "AXON_HTTP_PORT",
+        "AXON_HTTP_TOKEN",
+        "AXON_AUTH_MODE",
+        "AXON_PUBLIC_URL",
+        "AXON_GOOGLE_CLIENT_ID",
+        "AXON_GOOGLE_CLIENT_SECRET",
+        "AXON_AUTH_ADMIN_EMAIL",
+        "AXON_ALLOWED_REDIRECT_URIS",
+        "AXON_ALLOWED_ORIGINS",
         // Vector stack
         "QDRANT_URL",
         "AXON_QDRANT_URL",

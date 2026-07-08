@@ -31,6 +31,13 @@ fn memory_subaction_label(subaction: MemorySubaction) -> &'static str {
         MemorySubaction::Link => "link",
         MemorySubaction::Supersede => "supersede",
         MemorySubaction::Context => "context",
+        MemorySubaction::Reinforce => "reinforce",
+        MemorySubaction::Contradict => "contradict",
+        MemorySubaction::Pin => "pin",
+        MemorySubaction::Archive => "archive",
+        MemorySubaction::Forget => "forget",
+        MemorySubaction::Review => "review",
+        MemorySubaction::Compact => "compact",
     }
 }
 

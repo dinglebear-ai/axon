@@ -37,7 +37,7 @@ The following subcommands are implemented:
 ```bash
 axon watch create <name> --task-type <type> --every-seconds <n> [--task-payload <json>]
 axon watch list
-axon watch run-now <id>
+axon watch exec <id>
 axon watch history <id> [--limit <n>]
 ```
 
@@ -60,7 +60,7 @@ axon watch artifacts <run_id> [--limit <n>]
 |------------|-----------|-------------|
 | `create` | `<name>` | Create a new watch definition |
 | `list` | — | List all watch definitions (up to 200) |
-| `run-now` | `<id>` | Dispatch one immediate run for a watch definition (UUID) |
+| `exec` | `<id>` | Dispatch one immediate run for a watch definition (UUID) |
 | `history` | `<id>` | List recent runs for a watch definition. Default `--limit 50` |
 
 ### create flags
@@ -123,7 +123,7 @@ axon watch create docs-watch \
 axon watch list --json
 
 # Force one immediate run (pass the UUID from list output)
-axon watch run-now <uuid> --json
+axon watch exec <uuid> --json
 
 # Inspect recent run history (default: last 50 runs)
 axon watch history <uuid> --limit 20

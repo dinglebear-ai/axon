@@ -201,7 +201,7 @@ async fn file_source_target_payload_fixture_validates_without_legacy_unknown_fie
             .is_some_and(|value| value.starts_with("legacy-vector:fnv1a64:"))
     );
     assert_eq!(payload["source_item_key"], prepared.url());
-    assert_eq!(payload["source_generation"], "legacy-vector:gen-1");
+    assert_eq!(payload["source_generation"], serde_json::json!(1));
     assert!(
         payload["document_id"]
             .as_str()

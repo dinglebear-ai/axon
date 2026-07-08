@@ -23,6 +23,7 @@
 pub mod classify;
 pub mod dispatch;
 pub mod graph;
+pub mod job_tracking;
 pub mod prune;
 pub mod result_map;
 pub mod routing;
@@ -239,16 +240,37 @@ pub async fn index_source_with_auth(
     )
     .await;
 
+    // Record the graph write as a child `graph` job of the parent source job,
+    // when it produced non-trivial output (see `job_tracking` module docs for
+    // why this is a child job rather than a standalone `axon graph` command).
+    job_tracking::track_graph_mutation(
+        ctx.job_store(),
+        counts.job_id,
+        auth_snapshot.as_ref(),
+        &graph,
+    )
+    .await;
+
     // Drain cleanup debt: after the new generation is committed, the ledger has
     // recorded superseded-item vector deletes for the prior generation. Run the
     // prune executor to perform those generation-fenced deletes and mark the
     // debt resolved. Failures degrade gracefully — the index is already
     // published, so a cleanup problem must not fail acquisition.
-    let _drain = prune::drain_cleanup_debt(
+    let drain = prune::drain_cleanup_debt(
         runtime.ledger.as_ref(),
         runtime.vector_store.as_ref(),
         &collection,
         &counts,
+    )
+    .await;
+
+    // Record the drain as a child `prune` job of the parent source job, when
+    // it touched at least one pending debt entry.
+    job_tracking::track_prune(
+        ctx.job_store(),
+        counts.job_id,
+        auth_snapshot.as_ref(),
+        &drain,
     )
     .await;
 

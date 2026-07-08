@@ -118,13 +118,29 @@ fn load_dotenv() {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::process::ExitCode {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(8 * 1024 * 1024)
         .build()
         .expect("failed to build tokio runtime");
-    rt.block_on(async_main())
+    match rt.block_on(async_main()) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(err) => {
+            // Fail-closed redaction boundary: this is the last-mile CLI error
+            // path. `main() -> Result<...>`'s default `Termination` impl would
+            // otherwise print the raw `Debug` of `err` (which can embed a URL,
+            // connection string, or file path) straight to stderr.
+            use axon_core::redact::Redactor;
+            let redactor = axon_core::redact::DefaultRedactor::new();
+            let message = redactor.redact_text(
+                &err.to_string(),
+                &axon_core::redact::RedactionContext::transport_response(),
+            );
+            eprintln!("Error: {message}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 async fn async_main() -> Result<(), Box<dyn std::error::Error>> {

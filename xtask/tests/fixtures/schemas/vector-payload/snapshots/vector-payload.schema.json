@@ -929,6 +929,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -994,7 +1044,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -1287,6 +1337,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -1352,7 +1452,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -1615,6 +1715,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -1680,7 +1830,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -1938,6 +2088,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -2003,7 +2203,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -2311,6 +2511,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -2376,7 +2626,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -2689,6 +2939,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -2754,7 +3054,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -3062,6 +3362,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -3127,7 +3477,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -3440,6 +3790,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -3505,7 +3905,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -3883,7 +4283,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -4211,6 +4611,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "tool_name"
               ]
             },
@@ -4256,7 +4706,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -4584,6 +5034,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -4629,7 +5129,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -4957,6 +5457,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -5002,7 +5552,7 @@
             },
             {
               "required": [
-                "env_secret_reference"
+                "env_locator"
               ]
             }
           ]
@@ -5330,6 +5880,56 @@
             },
             {
               "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -5469,6 +6069,9 @@
       "minLength": 1,
       "type": "string"
     },
+    "detector_names": {
+      "type": "string"
+    },
     "docker_image": {
       "type": "string"
     },
@@ -5490,6 +6093,9 @@
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "dropped_field_count": {
+      "type": "string"
     },
     "embedded_at": {
       "format": "date-time",
@@ -5524,7 +6130,7 @@
     "env_key": {
       "type": "string"
     },
-    "env_secret_reference": {
+    "env_locator": {
       "type": "string"
     },
     "feed_entry_author": {
@@ -5599,13 +6205,31 @@
     "manifest": {
       "type": "boolean"
     },
+    "memory_confidence": {
+      "type": "string"
+    },
     "memory_id": {
       "type": "string"
     },
     "memory_importance": {
       "type": "integer"
     },
+    "memory_recallable": {
+      "type": "string"
+    },
+    "memory_salience": {
+      "type": "string"
+    },
+    "memory_scope_kind": {
+      "type": "string"
+    },
+    "memory_scope_value": {
+      "type": "string"
+    },
     "memory_status": {
+      "type": "string"
+    },
+    "memory_type": {
       "type": "string"
     },
     "package_ecosystem": {
@@ -5622,6 +6246,9 @@
       "type": "string",
       "x-qdrant-index": "keyword"
     },
+    "redacted_field_count": {
+      "type": "string"
+    },
     "redaction_status": {
       "enum": [
         "clean",
@@ -5631,6 +6258,9 @@
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "redaction_version": {
+      "type": "string"
     },
     "reddit_author": {
       "type": "string"
@@ -5917,7 +6547,7 @@
         "code_symbol_kind": "struct",
         "code_symbol_name": "VectorPayload",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:codehash",
         "content_kind": "content_kind",
         "document_id": "doc-code",
@@ -5940,7 +6570,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "code",
-        "source_generation": "gen-code-7",
+        "source_generation": 7,
         "source_id": "src-code",
         "source_item_key": "code-item",
         "source_kind": "source_kind",
@@ -5999,7 +6629,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:feedhash",
         "content_kind": "content_kind",
         "document_id": "doc-feed",
@@ -6022,7 +6652,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "feed",
-        "source_generation": "gen-feed-7",
+        "source_generation": 7,
         "source_id": "src-feed",
         "source_item_key": "feed-item",
         "source_kind": "source_kind",
@@ -6082,7 +6712,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:socialhash",
         "content_kind": "content_kind",
         "document_id": "doc-social",
@@ -6112,7 +6742,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "social",
-        "source_generation": "gen-social-7",
+        "source_generation": 7,
         "source_id": "src-social",
         "source_item_key": "social-item",
         "source_kind": "source_kind",
@@ -6173,7 +6803,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:mediahash",
         "content_kind": "content_kind",
         "document_id": "doc-media",
@@ -6191,7 +6821,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "media",
-        "source_generation": "gen-media-7",
+        "source_generation": 7,
         "source_id": "src-media",
         "source_item_key": "media-item",
         "source_kind": "source_kind",
@@ -6261,7 +6891,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:webhash",
         "content_kind": "content_kind",
         "document_id": "doc-web",
@@ -6278,7 +6908,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "web",
-        "source_generation": "gen-web-7",
+        "source_generation": 7,
         "source_id": "src-web",
         "source_item_key": "web-item",
         "source_kind": "source_kind",
@@ -6341,7 +6971,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:packagehash",
         "content_kind": "content_kind",
         "document_id": "doc-package",
@@ -6361,7 +6991,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "package",
-        "source_generation": "gen-package-7",
+        "source_generation": 7,
         "source_id": "src-package",
         "source_item_key": "package-item",
         "source_kind": "source_kind",
@@ -6420,7 +7050,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:sessionhash",
         "content_kind": "content_kind",
         "document_id": "doc-session",
@@ -6441,7 +7071,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "session",
-        "source_generation": "gen-session-7",
+        "source_generation": 7,
         "source_id": "src-session",
         "source_item_key": "session-item",
         "source_kind": "source_kind",
@@ -6500,7 +7130,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:graphhash",
         "content_kind": "content_kind",
         "document_id": "doc-graph",
@@ -6525,7 +7155,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "graph",
-        "source_generation": "gen-graph-7",
+        "source_generation": 7,
         "source_id": "src-graph",
         "source_item_key": "graph-item",
         "source_kind": "source_kind",
@@ -6584,11 +7214,13 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:memoryhash",
         "content_kind": "content_kind",
+        "detector_names": "detector_names",
         "document_id": "doc-memory",
         "document_status": "prepared",
+        "dropped_field_count": "dropped_field_count",
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -6596,15 +7228,23 @@
         "embedding_provider": "tei",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-memory",
+        "memory_confidence": "memory_confidence",
         "memory_id": "memory-memory",
         "memory_importance": 5,
+        "memory_recallable": "memory_recallable",
+        "memory_salience": "memory_salience",
+        "memory_scope_kind": "memory_scope_kind",
+        "memory_scope_value": "memory_scope_value",
         "memory_status": "active",
+        "memory_type": "memory_type",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": "redacted_field_count",
         "redaction_status": "clean",
+        "redaction_version": "redaction_version",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "memory",
-        "source_generation": "gen-memory-7",
+        "source_generation": 7,
         "source_id": "src-memory",
         "source_item_key": "memory-item",
         "source_kind": "source_kind",
@@ -6663,7 +7303,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:localhash",
         "content_kind": "content_kind",
         "document_id": "doc-local",
@@ -6684,7 +7324,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "local",
-        "source_generation": "gen-local-7",
+        "source_generation": 7,
         "source_id": "src-local",
         "source_item_key": "local-item",
         "source_kind": "source_kind",
@@ -6743,7 +7383,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:toolhash",
         "content_kind": "content_kind",
         "document_id": "doc-tool",
@@ -6760,7 +7400,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "tool",
-        "source_generation": "gen-tool-7",
+        "source_generation": 7,
         "source_id": "src-tool",
         "source_item_key": "tool-item",
         "source_kind": "source_kind",
@@ -6823,7 +7463,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:dockerhash",
         "content_kind": "content_kind",
         "docker_image": "docker_image",
@@ -6844,7 +7484,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "docker",
-        "source_generation": "gen-docker-7",
+        "source_generation": 7,
         "source_id": "src-docker",
         "source_item_key": "docker-item",
         "source_kind": "source_kind",
@@ -6903,7 +7543,7 @@
         },
         "chunk_text": "chunk_text",
         "collection": "axon",
-        "committed_generation": "uncommitted",
+        "committed_generation": null,
         "content_hash": "sha256:envhash",
         "content_kind": "content_kind",
         "document_id": "doc-env",
@@ -6914,7 +7554,7 @@
         "embedding_profile": "default",
         "embedding_provider": "tei",
         "env_key": "env_key",
-        "env_secret_reference": "env_secret_reference",
+        "env_locator": "env_locator",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-env",
         "payload_contract_version": "2026-07-01",
@@ -6922,7 +7562,7 @@
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "env",
-        "source_generation": "gen-env-7",
+        "source_generation": 7,
         "source_id": "src-env",
         "source_item_key": "env-item",
         "source_kind": "source_kind",
@@ -7121,7 +7761,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:935c16dcd58bac358bcb78eb1e72634941709135d7148adcb8cbe3c09e6e7808",
+        "checksum": "sha256:9336d0c89dcf90394087fbc070553207ed0c838ddeab5bd51e881b058269699f",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -7259,7 +7899,17 @@
         "fields": [
           "memory_id",
           "memory_importance",
-          "memory_status"
+          "memory_status",
+          "memory_recallable",
+          "memory_type",
+          "memory_scope_kind",
+          "memory_scope_value",
+          "memory_confidence",
+          "memory_salience",
+          "redaction_version",
+          "redacted_field_count",
+          "dropped_field_count",
+          "detector_names"
         ],
         "source_family": "memory"
       },
@@ -7293,7 +7943,7 @@
       {
         "fields": [
           "env_key",
-          "env_secret_reference"
+          "env_locator"
         ],
         "source_family": "env"
       }

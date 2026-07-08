@@ -43,21 +43,46 @@ impl ServiceError {
         search_context: Value,
         err: &dyn StdError,
     ) -> Self {
-        let diagnostics = json!({
-            "stage": stage,
-            "collection": cfg.collection,
-            "qdrant_url": safe_qdrant_url(&cfg.qdrant_url),
-            "query_len": query_len,
-            "mode": {
-                "hybrid_search_enabled": cfg.hybrid_search_enabled,
-                "hnsw_ef_search": cfg.hnsw_ef_search,
-                "hnsw_ef_search_legacy": cfg.hnsw_ef_search_legacy,
-            },
-            "search_context": search_context,
-            "error": err.to_string(),
-        });
+        let diagnostics = vector_dispatch_diagnostics(stage, cfg, query_len, search_context, err);
         Self::with_diagnostics(format!("vector search dispatch: {err}"), diagnostics)
     }
+
+    /// Same structured diagnostics as [`Self::vector_dispatch_failure`], but
+    /// with a caller-supplied message instead of the fixed "vector search
+    /// dispatch: {err}" text.
+    pub fn vector_dispatch_failure_with_message(
+        message: impl Into<String>,
+        stage: &'static str,
+        cfg: &Config,
+        query_len: usize,
+        search_context: Value,
+        err: &dyn StdError,
+    ) -> Self {
+        let diagnostics = vector_dispatch_diagnostics(stage, cfg, query_len, search_context, err);
+        Self::with_diagnostics(message, diagnostics)
+    }
+}
+
+fn vector_dispatch_diagnostics(
+    stage: &'static str,
+    cfg: &Config,
+    query_len: usize,
+    search_context: Value,
+    err: &dyn StdError,
+) -> Value {
+    json!({
+        "stage": stage,
+        "collection": cfg.collection,
+        "qdrant_url": safe_qdrant_url(&cfg.qdrant_url),
+        "query_len": query_len,
+        "mode": {
+            "hybrid_search_enabled": cfg.hybrid_search_enabled,
+            "hnsw_ef_search": cfg.hnsw_ef_search,
+            "hnsw_ef_search_legacy": cfg.hnsw_ef_search_legacy,
+        },
+        "search_context": search_context,
+        "error": err.to_string(),
+    })
 }
 
 fn safe_qdrant_url(raw: &str) -> String {

@@ -41,32 +41,49 @@ terminal affordances. It is not allowed to bypass `axon-api`, `axon-services`,
 
 ## Current Implementation Snapshot
 
+Verified against the live binary (`cargo build --bin axon`, `axon --help`,
+`axon <cmd> --help`) as of this snapshot:
+
 Implemented today:
 
-- `Cli` requires a subcommand; there is no default `axon <source>` parser path.
-- Current implemented subcommands include `scrape`, `crawl`, `embed`, `ingest`,
-  `code-search`, `code-search-watch`, `query`, `retrieve`, `ask`, `search`,
-  `research`, `map`, `watch`, `monitor`, `endpoints`, `memory`, `sessions`,
-  `extract`, `purge`, `dedupe`, `refresh`, `fresh`, `stats`, `sources`,
-  `domains`, `status`, `debug`, `doctor`, `brand`, `diff`, `summarize`,
-  `evaluate`, `train`, `suggest`, `screenshot`, `completions`, `setup`,
-  `preflight`, `smoke`, `compose`, `serve`, `mcp`, `migrate`, `config`,
-  `sync`, `update`, and `palette`.
-- Async job subcommands are family-specific for `crawl`, `extract`, `embed`,
-  and `ingest`: `status`, `cancel`, `errors`, `list`, `cleanup`, `clear`,
-  `worker`, and `recover`.
-- `--json` output is command-specific today. For example, `search --json`,
-  `query --json`, and async crawl job output do not share one strict envelope.
-
-Planned by this contract:
-
-- `axon <source>` becomes the acquisition/indexing happy path.
 - `embed`, `ingest`, `scrape`, `crawl`, `code-search`, and
-  `code-search-watch` are removed user-facing commands rather than
-  compatibility aliases.
-- CLI JSON output is rendered from the same `axon-api` envelopes as MCP/REST.
-- Job, watch, artifact, prune, graph, provider, and collection operations move
-  under canonical grouped commands.
+  `code-search-watch` are already **removed** as `clap` subcommands — they do
+  not appear in the `Command` enum (`crates/axon-core/src/config/cli.rs`).
+- A default `axon <source>` parser path already exists: `route_bare_source`
+  in `crates/axon-core/src/config/source_routing.rs` rewrites argv before
+  clap parsing so any leading token that isn't a recognized subcommand,
+  removed-command name, or global flag is routed to the `source` subcommand
+  (`axon https://x`, `axon ./dir`, `axon r/rust`, `axon pkg:npm/foo`, and
+  even `axon scrape <url>` all resolve to `axon source <target>`). The
+  target grammar's implicit-`<source>`-as-first-positional shape is not yet
+  literal (there is still a real `source` subcommand under the hood), but the
+  removed-command list and default-routing behavior this snapshot previously
+  called "not implemented" are both live.
+- Current subcommands (from `axon --help`) are: `map`, `endpoints`, `search`,
+  `research`, `extract`, `screenshot`, `diff`, `brand`, `query`, `retrieve`,
+  `ask`, `evaluate`, `train`, `summarize`, `suggest`, `memory`, `sources`,
+  `domains`, `stats`, `dedupe`, `purge`, `migrate`, `status`, `source`,
+  `sessions`, `watch`, `monitor`, `sync`, `refresh`, `fresh`, `debug`,
+  `doctor`, `mcp`, `serve`, `setup`, `preflight`, `smoke`, `compose`,
+  `completions`, `config`, `update`, `palette`, `jobs`, and `reset`.
+- Async job subcommands are consolidated under `jobs` (`axon jobs --help`)
+  rather than remaining family-specific per `crawl`/`extract`/`embed`/
+  `ingest` — those parent commands no longer exist to hang job subcommands
+  off of.
+- `--json` output is command-specific today. For example, `search --json`,
+  `query --json`, and job output do not share one strict envelope.
+
+Remaining gap vs. this contract:
+
+- `axon <source>` is implemented via an explicit `source` subcommand plus
+  argv-rewriting, not as a literal top-level positional in the clap grammar
+  itself. The contract's grammar block (`axon [global-options] <source>
+  [source-options]`) is satisfied behaviorally but not structurally.
+- CLI JSON output is not yet rendered from one shared `axon-api` envelope
+  across all commands — it remains command-specific.
+- Job, watch, artifact, prune, graph, provider, and collection operations are
+  partially grouped (`jobs`, `watch`, `sync`, `fresh`, `config`) but not all
+  under one canonical grouped-command taxonomy this contract describes.
 
 ## Top-Level Grammar
 
@@ -454,6 +471,18 @@ axon memory review
 axon memory compact <memory_id>...
 ```
 
+**CLI wiring gap (not a missing feature):** `crates/axon-cli/src/commands/memory.rs`
+today only implements `remember`, `list`, `search`, `show`, `link`, `supersede`,
+and `context` as CLI subcommands. `reinforce`, `contradict`, `pin`, `archive`,
+`forget`, `review`, and `compact` are not yet wired into the CLI's `clap` tree —
+running any of them fails as an unrecognized subcommand. The underlying
+lifecycle **is** implemented in `axon-memory` (see
+`crates/axon-memory/src/CLAUDE.md` and the reinforcement/decay/review/pin/
+archive/forget/compact operations there); this is purely a CLI transport gap.
+It is tracked as **Task 9 ("CLI, MCP, And REST Memory Contract")** in
+`docs/pipeline-unification/plans/2026-07-04-phase-3b-security-error-memory-completion.md`,
+which requires CLI/MCP/REST to expose the full lifecycle as one contract.
+
 Subcommand matrix:
 
 | Command | Required | Optional | Mutates |
@@ -755,7 +784,17 @@ axon code-search <query>
 axon code-search-watch <path>
 axon purge <target>
 axon dedupe
+axon refresh [filter]
+axon fresh <sub>
 ```
+
+`refresh` and `fresh` were missing from this enumeration even though
+`delivery/surface-removal-contract.md`, `foundation/source-pipeline.md`, and
+`plans/finish-unification-metaplan.md` all already treat them as removed
+(`axon refresh ...` → `axon <source> --refresh` or a source operation;
+`axon fresh ...` → `axon watch ...` or source freshness config). This was a
+doc-sync gap in this file, not a scope decision — the canonical list above now
+matches those contracts.
 
 The final parser should treat removed commands like any other unknown command.
 Documentation can explain the new command model, but runtime aliases/remap

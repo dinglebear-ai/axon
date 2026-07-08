@@ -10,11 +10,11 @@ scope) may acquire it." Full contract (owns / API / deps / tests):
 [../../../docs/pipeline-unification/sources/url-normalization.md](../../../docs/pipeline-unification/sources/url-normalization.md)
 · [../../../docs/pipeline-unification/sources/adapter-scopes.md](../../../docs/pipeline-unification/sources/adapter-scopes.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 4
-(Source Resolver, Router, And Adapter Registry)**, generalized out of the root
-crate's existing URL-normalization and crawl-scoping logic. Do not add
-acquisition/fetching, parsing, ledger, or vector behavior here.
+## Status — live crate, Phase 4 landed
+URL canonicalization, capability detection, and source resolution/routing
+(`canonical.rs`/`capability.rs`/`resolver.rs`/`router.rs`) are real and tested,
+not markers. Do not add acquisition/fetching, parsing, ledger, or vector
+behavior here.
 
 ## Module map
 | File | Owns |

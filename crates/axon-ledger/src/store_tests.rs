@@ -34,7 +34,10 @@ fn source() -> SourceSummary {
         updated_at: ts(),
         tags: Vec::new(),
         watch_id: None,
+        graph_node_ids: Vec::new(),
         last_job_id: None,
+        last_refreshed_at: None,
+        user_label: None,
     }
 }
 

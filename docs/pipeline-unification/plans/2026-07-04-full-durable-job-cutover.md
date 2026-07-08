@@ -34,6 +34,50 @@
 
 ---
 
+## Scope Exception: `reset` Stays Jobless
+
+Line 15 above and `OperationKind::Reset`/`job_policy_for_operation` (Task 1)
+classify `reset` as job-backed by default. In practice `axon reset` is
+implemented and shipped (`crates/axon-services/src/reset.rs`) as an
+intentionally jobless, pre-runtime admin operation, and that is correct — not
+a gap to close later:
+
+- `reset`'s **default** mode is a dry-run, and its own tested contract
+  (`crates/axon-services/src/reset_tests.rs::dry_run_reset_mutates_nothing_and_reports_plan`)
+  requires that a dry-run touch nothing, including never creating the SQLite
+  DB file if it does not already exist. Any job-backed tracking path
+  (`enqueue_operation`/`start_operation_job`/`complete_operation_job`, or a
+  bare `SqliteUnifiedJobStore` construction) opens and migrates the SQLite DB
+  as a side effect of writing a job row, which would violate that invariant
+  on the common (dry-run) path.
+- `crates/axon-cli/src/lib.rs` deliberately runs `reset` *before* any
+  `ServiceContext` (and therefore any job store) is constructed, precisely
+  because constructing that runtime opens/migrates the DB. This is documented
+  in-line at the `CommandKind::Reset` branch.
+- `reset` can also select `RESET_STORE_JOBS` itself (see `SQLITE_STORES` in
+  `reset.rs`), which wipes and re-migrates the same unified SQLite DB that
+  would hold the job row. A job row created immediately before that wipe does
+  not survive it — the wipe recreates a fresh empty schema — so tracking would
+  be a non-durable artifact on exactly the runs where the plan's job-backed
+  guarantee matters most.
+- `reset` already has its own audit trail that serves the same purpose a job
+  row would: the `ResetResult`/receipt written by
+  `crates/axon-services/src/reset/artifacts.rs`, which is durable at the
+  filesystem level and is not lost by the very wipe it documents.
+
+Conclusion: `reset` is exempted from job-backed tracking. `OperationKind::Reset`
+and its classification in `job_policy_for_operation` remain in the DTO/schema
+for forward compatibility with `docs/pipeline-unification/foundation/types/*`
+consumers that enumerate `OperationKind`, but no caller wires
+`enqueue_operation`/`start_operation_job`/`complete_operation_job` for it, and
+Task 6's "every job-backed operation creates a unified job descriptor" test
+should exclude `OperationKind::Reset` (or assert it is jobless) rather than
+assert it produces a `JobDescriptor`. Revisit only if `reset` is redesigned to
+run after a durable job store is guaranteed to already exist and dry-run's
+"mutate nothing" contract is relaxed or moved to a non-SQLite check.
+
+---
+
 ## Engineering Review Corrections
 
 Remove or rewrite any task that imports legacy job rows or preserves old family job IDs. The replacement is:
@@ -842,6 +886,11 @@ In `crates/axon-services/src/jobs_tests.rs`, add:
 async fn every_job_backed_operation_creates_unified_job_descriptor() {
     let ctx = test_context_with_unified_jobs().await;
 
+    // `Reset` is intentionally excluded — see "Scope Exception: `reset` Stays
+    // Jobless" above. `reset`'s dry-run default must not create/migrate the
+    // SQLite DB, which every job-backed tracking path does as a side effect,
+    // so it is not wired through enqueue_operation despite being classified
+    // JobBacked in job_policy_for_operation for DTO/schema completeness.
     for operation in [
         OperationKind::Source,
         OperationKind::Watch,
@@ -852,7 +901,6 @@ async fn every_job_backed_operation_creates_unified_job_descriptor() {
         OperationKind::GraphMutation,
         OperationKind::Prune,
         OperationKind::ProviderProbe,
-        OperationKind::Reset,
     ] {
         let descriptor = enqueue_operation_fixture(&ctx, operation).await.unwrap();
         assert_eq!(descriptor.status, LifecycleStatus::Queued);

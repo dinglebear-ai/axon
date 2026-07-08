@@ -1,6 +1,7 @@
 //! Candidate write path for the SQLite graph store.
 
 use axon_api::source::{GraphCandidate, GraphWriteResult, SourceId};
+use axon_core::redact::{DefaultRedactor, RedactionContext, redact_metadata};
 use sqlx::SqlitePool;
 
 use super::header::{now_timestamp, stage_header};
@@ -91,6 +92,14 @@ async fn upsert_node(
     fallback_confidence: f32,
 ) -> StoreResult<()> {
     let now = now_timestamp();
+    // Fail-closed redaction boundary: node properties are adapter-supplied
+    // evidence metadata surfaced back through graph queries — scrub before
+    // the write, not after.
+    let (redacted_properties, _redaction_report) = redact_metadata(
+        node.properties.clone(),
+        &RedactionContext::graph_evidence(),
+        &DefaultRedactor::new(),
+    );
     // Read the existing node (if any) to merge authority + source ids.
     let existing = sqlx::query(
         "SELECT authority, source_ids_json, confidence FROM graph_nodes WHERE node_id = ?",
@@ -144,7 +153,7 @@ async fn upsert_node(
     .bind(&node.label)
     .bind(authority_to_str(authority.to_level()))
     .bind(confidence as f64)
-    .bind(metadata_to_json(&node.properties)?)
+    .bind(metadata_to_json(&redacted_properties)?)
     .bind(source_ids_json)
     .bind(&now)
     .bind(&now)
@@ -182,6 +191,11 @@ async fn upsert_edge(
     edge: &crate::merge::ResolvedEdge,
 ) -> StoreResult<()> {
     let now = now_timestamp();
+    let (redacted_properties, _redaction_report) = redact_metadata(
+        edge.properties.clone(),
+        &RedactionContext::graph_evidence(),
+        &DefaultRedactor::new(),
+    );
     let existing = sqlx::query("SELECT authority, confidence FROM graph_edges WHERE edge_id = ?")
         .bind(&edge.edge_id.0)
         .fetch_optional(&mut **tx)
@@ -226,7 +240,7 @@ async fn upsert_edge(
     .bind(&edge.to_node_id.0)
     .bind(authority_to_str(authority))
     .bind(confidence as f64)
-    .bind(metadata_to_json(&edge.properties)?)
+    .bind(metadata_to_json(&redacted_properties)?)
     .bind(&now)
     .bind(&now)
     .execute(&mut **tx)

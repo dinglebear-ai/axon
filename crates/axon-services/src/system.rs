@@ -10,6 +10,7 @@ mod collections;
 mod dedupe;
 mod doctor;
 mod domains;
+mod job_tracking;
 mod purge;
 mod sources;
 mod stats;
@@ -18,6 +19,7 @@ mod watchdog;
 
 pub use self::collections::{CollectionsError, collections, map_collections_payload};
 pub use self::dedupe::dedupe;
+pub(crate) use self::doctor::doctor_inner;
 pub use self::doctor::{doctor, map_doctor_payload};
 pub use self::domains::{
     detailed_domains, domain_indexed, domains, map_domains_payload, summarize_detailed_domains,

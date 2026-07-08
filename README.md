@@ -133,15 +133,15 @@ axon setup targets  # list SSH aliases discovered from ~/.ssh/config (informatio
 ```
 
 For local bearer-token operation, no manual env values are required. `setup init`
-defaults to loopback MCP HTTP, writes `AXON_MCP_AUTH_MODE=bearer`, and generates
-`AXON_MCP_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
+defaults to loopback MCP HTTP, writes `AXON_AUTH_MODE=bearer`, and generates
+`AXON_HTTP_TOKEN`. Optional features need credentials: Gemini auth under
 `~/.gemini` for default LLM features or `AXON_LLM_BACKEND=openai-compat` plus
 `AXON_OPENAI_BASE_URL` and `AXON_SYNTHESIS_OPENAI_MODEL` for OpenAI-compatible synthesis,
 `TAVILY_API_KEY` for search/research, `GITHUB_TOKEN` for higher-rate GitHub
 ingest, and `REDDIT_CLIENT_ID` plus `REDDIT_CLIENT_SECRET` for Reddit ingest.
 OAuth mode also requires
-`AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
-`AXON_MCP_GOOGLE_CLIENT_SECRET`, and `AXON_MCP_AUTH_ADMIN_EMAIL`.
+`AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`,
+`AXON_GOOGLE_CLIENT_SECRET`, and `AXON_AUTH_ADMIN_EMAIL`.
 
 The warm-path setup goal is under 2 minutes once images and model weights are cached. Cold starts that pull images and model weights can take longer; target-hardware timing still needs to be measured against published release artifacts.
 
@@ -221,8 +221,8 @@ CLI flags > environment variables > ~/.axon/config.toml > built-in defaults
 Keep in `.env`:
 
 - URLs: `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`, `AXON_SEARXNG_URL`.
-- Secrets: `AXON_MCP_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
-- Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_MCP_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
+- Secrets: `AXON_HTTP_TOKEN`, `TAVILY_API_KEY`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, Reddit credentials, OAuth credentials, `HF_TOKEN`.
+- Docker/runtime bootstrap: `AXON_HOME`, `AXON_DATA_DIR`, `AXON_IMAGE`, `AXON_HTTP_PUBLISH`, `TEI_HTTP_PORT`, GPU device values.
 - LLM runtime pointers when needed: `AXON_HEADLESS_GEMINI_CMD`,
   `AXON_HEADLESS_GEMINI_HOME`, `AXON_LLM_BACKEND`, `AXON_OPENAI_BASE_URL`,
   `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`), and
@@ -335,8 +335,8 @@ Examples:
 
 HTTP auth modes:
 
-- Static bearer token with `AXON_MCP_HTTP_TOKEN`.
-- OAuth/lab-auth with `AXON_MCP_AUTH_MODE=oauth`.
+- Static bearer token with `AXON_HTTP_TOKEN`.
+- OAuth/lab-auth with `AXON_AUTH_MODE=oauth`.
 
 `/mcp` and the `/v1/*` REST routes (e.g. `/v1/ask`, `/v1/scrape`, `/v1/query`) share the same auth policy. Tokenless HTTP is only for loopback development binds.
 
@@ -418,7 +418,7 @@ Common failures:
   or configure `AXON_LLM_BACKEND=openai-compat` for an OpenAI-compatible
   endpoint.
 - TEI slow on first boot: model download/cache warmup is the cold path.
-- Auth failures: make sure Claude/plugin config uses the same token as `AXON_MCP_HTTP_TOKEN` in `~/.axon/.env`.
+- Auth failures: make sure Claude/plugin config uses the same token as `AXON_HTTP_TOKEN` in `~/.axon/.env`.
 
 ## Related Files
 

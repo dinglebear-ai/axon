@@ -3,24 +3,35 @@ use serde_json::{Map, Value};
 use super::{LedgerPayload, PreparedDoc};
 use axon_vectors::payload::VECTOR_PAYLOAD_CONTRACT_VERSION;
 
-pub(in crate::ops) fn target_vector_payload_fixture_for_chunk(
-    doc: &PreparedDoc,
+/// Locally-derived values needed to build the target payload for one chunk —
+/// split out of `target_vector_payload_fixture_for_chunk` to keep it under
+/// the monolith function-length cap.
+struct TargetChunkFields<'a> {
+    source_family: &'static str,
+    source_generation: i64,
+    source_id: String,
+    source_item_key: String,
+    chunk_id: String,
+    chunk_key: String,
+    content_hash: String,
+    chunk_locator: String,
+    source_range: Value,
+    chunk: &'a str,
+}
+
+fn derive_target_chunk_fields<'a>(
+    doc: &'a PreparedDoc,
     chunk_index: usize,
-    collection: &str,
-) -> Result<Value, String> {
-    let chunk = doc
-        .chunks
-        .get(chunk_index)
-        .ok_or_else(|| format!("chunk index {chunk_index} out of bounds"))?;
-    let chunk_extra = doc.chunk_extra.get(chunk_index).and_then(Value::as_object);
-    let doc_extra = doc.extra.as_ref().and_then(Value::as_object);
-    let source_family = target_source_family(doc, chunk_extra);
-    let source_generation = doc
+    chunk: &'a str,
+    chunk_extra: Option<&Map<String, Value>>,
+) -> TargetChunkFields<'a> {
+    // Integer-typed per the vector-payload contract (`PayloadFieldSchema::
+    // Integer`) — never a string, even in this legacy-vector-bridge fixture.
+    let source_generation: i64 = doc
         .ledger_payload
         .as_ref()
         .map(LedgerPayload::generation)
-        .map(|generation| generation.to_string())
-        .unwrap_or_else(|| "legacy-vector:gen-1".to_string());
+        .unwrap_or(1);
     let source_id = doc
         .ledger_payload
         .as_ref()
@@ -56,13 +67,52 @@ pub(in crate::ops) fn target_vector_payload_fixture_for_chunk(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
 
+    TargetChunkFields {
+        source_family: target_source_family(doc, chunk_extra),
+        source_generation,
+        source_id,
+        source_item_key,
+        chunk_id,
+        chunk_key,
+        content_hash,
+        chunk_locator,
+        source_range,
+        chunk,
+    }
+}
+
+fn build_target_payload(
+    doc: &PreparedDoc,
+    collection: &str,
+    f: TargetChunkFields<'_>,
+) -> Map<String, Value> {
     let mut payload = Map::new();
     payload.insert(
         "payload_contract_version".to_string(),
         VECTOR_PAYLOAD_CONTRACT_VERSION.into(),
     );
     payload.insert("collection".to_string(), collection.into());
-    payload.insert("source_family".to_string(), source_family.into());
+    payload.insert(
+        "vector_point_id".to_string(),
+        format!(
+            "legacy-vector:{}",
+            fnv1a64(&format!("{}#{}", doc.url, f.chunk_id))
+        )
+        .into(),
+    );
+    payload.insert(
+        "vector_namespace".to_string(),
+        // Memory's namespace is the bare literal "memory" (see
+        // `axon_retrieval::memory::MEMORY_VECTOR_NAMESPACE`); every other
+        // source family namespaces as "source:<family>".
+        if f.source_family == "memory" {
+            "memory".to_string()
+        } else {
+            format!("source:{}", f.source_family)
+        }
+        .into(),
+    );
+    payload.insert("source_family".to_string(), f.source_family.into());
     payload.insert("source_type".to_string(), doc.source_type.clone().into());
     payload.insert("source_kind".to_string(), target_source_kind(doc).into());
     payload.insert(
@@ -70,36 +120,41 @@ pub(in crate::ops) fn target_vector_payload_fixture_for_chunk(
         target_source_adapter(doc).into(),
     );
     payload.insert("source_scope".to_string(), target_source_scope(doc).into());
-    payload.insert("source_id".to_string(), source_id.into());
-    payload.insert("source_item_key".to_string(), source_item_key.into());
+    payload.insert("source_id".to_string(), f.source_id.into());
+    payload.insert("source_item_key".to_string(), f.source_item_key.into());
+    payload.insert(
+        "source_canonical_uri".to_string(),
+        target_safe_uri(&doc.url).into(),
+    );
     payload.insert(
         "item_canonical_uri".to_string(),
         target_safe_uri(&doc.url).into(),
     );
+    payload.insert("source_generation".to_string(), f.source_generation.into());
     payload.insert(
-        "source_generation".to_string(),
-        source_generation.clone().into(),
+        "committed_generation".to_string(),
+        f.source_generation.into(),
     );
-    payload.insert("committed_generation".to_string(), source_generation.into());
     payload.insert(
         "document_id".to_string(),
         format!("legacy-vector:{}", fnv1a64(&doc.url)).into(),
     );
-    payload.insert("chunk_id".to_string(), chunk_id.into());
-    payload.insert("chunk_text".to_string(), chunk.clone().into());
-    payload.insert("chunk_key".to_string(), chunk_key.clone().into());
-    payload.insert("content_hash".to_string(), content_hash.into());
+    payload.insert("chunk_id".to_string(), f.chunk_id.into());
+    payload.insert("chunk_text".to_string(), f.chunk.into());
+    payload.insert("chunk_key".to_string(), f.chunk_key.clone().into());
+    payload.insert("content_hash".to_string(), f.content_hash.clone().into());
+    payload.insert("chunk_hash".to_string(), f.content_hash.into());
     payload.insert(
         "chunk_locator".to_string(),
         serde_json::json!({
-            "canonical_uri": chunk_locator,
-            "path": chunk_key,
+            "canonical_uri": f.chunk_locator,
+            "path": f.chunk_key,
             "heading_path": [],
             "symbol": Value::Null,
-            "range": source_range.clone(),
+            "range": f.source_range.clone(),
         }),
     );
-    payload.insert("source_range".to_string(), source_range);
+    payload.insert("source_range".to_string(), f.source_range);
     payload.insert("visibility".to_string(), "internal".into());
     payload.insert("redaction_status".to_string(), "clean".into());
     payload.insert(
@@ -116,6 +171,29 @@ pub(in crate::ops) fn target_vector_payload_fixture_for_chunk(
     payload.insert("embedding_provider".to_string(), "legacy-vector".into());
     payload.insert("embedding_profile".to_string(), doc.content_type.into());
     payload.insert("embedded_at".to_string(), "1970-01-01T00:00:00Z".into());
+    payload
+}
+
+pub(in crate::ops) fn target_vector_payload_fixture_for_chunk(
+    doc: &PreparedDoc,
+    chunk_index: usize,
+    collection: &str,
+) -> Result<Value, String> {
+    let chunk = doc
+        .chunks
+        .get(chunk_index)
+        .ok_or_else(|| format!("chunk index {chunk_index} out of bounds"))?;
+    let chunk_extra = doc.chunk_extra.get(chunk_index).and_then(Value::as_object);
+    let doc_extra = doc.extra.as_ref().and_then(Value::as_object);
+
+    let fields = derive_target_chunk_fields(doc, chunk_index, chunk, chunk_extra);
+    let content_kind = chunk_extra
+        .and_then(|extra| extra.get("chunk_content_kind"))
+        .and_then(Value::as_str)
+        .unwrap_or("plain_text")
+        .to_string();
+    let mut payload = build_target_payload(doc, collection, fields);
+    payload.insert("content_kind".to_string(), content_kind.into());
 
     enrich_source_specific_fields(&mut payload, doc, chunk_extra, doc_extra);
     validate_target_payload(payload)

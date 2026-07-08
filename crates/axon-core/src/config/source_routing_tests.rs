@@ -33,6 +33,30 @@ fn bare_registry_target_routes_to_source() {
     );
 }
 
+/// Removed source-family command names (`embed`, `ingest`, `scrape`, `crawl`,
+/// `code-search`, `code-search-watch`) are not registered clap subcommands
+/// after the Phase 10 clean break, so they fall through the same bare-source
+/// routing as any other unrecognized first token: `axon embed <path>` behaves
+/// like `axon <path>` with `embed` treated as (the start of) the source value,
+/// never dispatching to a removed command. There are no compatibility aliases.
+#[test]
+fn removed_command_names_route_to_source_not_dispatch() {
+    for removed in [
+        "embed",
+        "ingest",
+        "scrape",
+        "crawl",
+        "code-search",
+        "code-search-watch",
+    ] {
+        assert_eq!(
+            route(&["axon", removed, "https://example.com"]),
+            vec!["axon", "source", removed, "https://example.com"],
+            "removed command `{removed}` must route through `source`, not dispatch directly"
+        );
+    }
+}
+
 #[test]
 fn explicit_source_subcommand_is_untouched() {
     assert_eq!(
@@ -53,10 +77,26 @@ fn known_subcommand_is_untouched() {
 
 #[test]
 fn subcommand_alias_is_untouched() {
-    // `delete-url` is an alias of `purge`.
+    // `completion` is an alias of `completions`.
+    assert_eq!(
+        route(&["axon", "completion", "bash"]),
+        vec!["axon", "completion", "bash"]
+    );
+}
+
+#[test]
+fn removed_purge_aliases_route_as_source() {
+    // `delete-url` and `delete` were aliases of the removed `purge` command
+    // (docs/pipeline-unification/delivery/surface-removal-contract.md). With
+    // `purge` gone, these tokens are no longer known subcommands and route as
+    // bare source arguments like any other unrecognized positional.
     assert_eq!(
         route(&["axon", "delete-url", "https://x"]),
-        vec!["axon", "delete-url", "https://x"]
+        vec!["axon", "source", "delete-url", "https://x"]
+    );
+    assert_eq!(
+        route(&["axon", "delete", "https://x"]),
+        vec!["axon", "source", "delete", "https://x"]
     );
 }
 

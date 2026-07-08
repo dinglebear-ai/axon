@@ -376,6 +376,18 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "POST",
+        path: "/v1/prune/plan",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/prune/exec",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "GET",
         path: "/v1/watch",
         auth: RestRouteAuth::Write,

@@ -8,7 +8,7 @@ use axon_api::source::*;
 use rusqlite::Connection;
 
 use crate::record::age_days;
-use crate::sqlite::error::{invalid, not_found, store_error};
+use crate::sqlite::error::{invalid, not_found, redaction_failed, store_error};
 use crate::sqlite::{SqliteMemoryStore, age_and_bounds, result_from_record, update_record};
 use crate::store::Result;
 
@@ -211,6 +211,123 @@ pub async fn set_status(
         .unwrap_or_else(|| format!("status -> {:?}", request.status));
     record.history.push(MemoryHistoryEvent {
         status: request.status,
+        message,
+        timestamp: request.timestamp,
+    });
+    update_record(&conn, &record, &now)?;
+
+    let age = age_days(&record, now_secs);
+    let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
+    let (_, created, _) = age_and_bounds(&record, now_secs);
+    Ok(result_from_record(&record, score, &created, &now))
+}
+
+/// Edit a memory's editable fields (body/title/type/confidence/salience/
+/// scope) in place. Only fields present in `request` change.
+pub async fn update(
+    store: &SqliteMemoryStore,
+    request: MemoryUpdateRequest,
+) -> Result<MemoryResult> {
+    let now_secs = store.clock().now_epoch_secs();
+    let now = request.timestamp.0.clone();
+    let conn = store.conn().lock().await;
+    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
+        .ok_or_else(|| not_found(&request.memory_id.0))?;
+
+    // Fail-closed redaction boundary: an updated body/title is durable and
+    // recalled back through CLI/MCP/REST in later sessions — same rule as
+    // `remember`. Oversized input blocks the write rather than persisting
+    // unscrubbed content (see `redact_text_checked`'s doc comment).
+    let redactor = axon_core::redact::DefaultRedactor::new();
+    let redaction_context = axon_core::redact::RedactionContext::memory_record();
+    if let Some(body) = request.body {
+        record.body = axon_core::redact::redact_text_checked(&redactor, &body, &redaction_context)
+            .map_err(|_| {
+                redaction_failed(format!(
+                    "memory body exceeds {} bytes; redaction cannot be safely verified",
+                    axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
+                ))
+            })?;
+    }
+    if let Some(title) = request.title {
+        record.title = Some(
+            axon_core::redact::redact_text_checked(&redactor, &title, &redaction_context).map_err(
+                |_| {
+                    redaction_failed(format!(
+                        "memory title exceeds {} bytes; redaction cannot be safely verified",
+                        axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
+                    ))
+                },
+            )?,
+        );
+    }
+    if let Some(memory_type) = request.memory_type {
+        record.memory_type = memory_type;
+    }
+    if let Some(confidence) = request.confidence {
+        if confidence.is_nan() {
+            return Err(invalid("confidence must be a number"));
+        }
+        record.confidence = confidence;
+    }
+    if let Some(salience) = request.salience {
+        if salience.is_nan() {
+            return Err(invalid("salience must be a number"));
+        }
+        record.salience = salience;
+    }
+    if let Some(scope) = request.scope {
+        record.scope = scope;
+    }
+
+    let message = request.reason.unwrap_or_else(|| "updated".to_string());
+    record.history.push(MemoryHistoryEvent {
+        status: record.status,
+        message,
+        timestamp: request.timestamp,
+    });
+    update_record(&conn, &record, &now)?;
+
+    let age = age_days(&record, now_secs);
+    let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
+    let (_, created, _) = age_and_bounds(&record, now_secs);
+    Ok(result_from_record(&record, score, &created, &now))
+}
+
+/// Pin or unpin a memory: sets the decay policy `pinned` flag without
+/// changing status. A memory with no decay policy yet gets the type's
+/// default profile stamped alongside the flag.
+pub async fn pin(store: &SqliteMemoryStore, request: MemoryPinRequest) -> Result<MemoryResult> {
+    let now_secs = store.clock().now_epoch_secs();
+    let now = request.timestamp.0.clone();
+    let conn = store.conn().lock().await;
+    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
+        .ok_or_else(|| not_found(&request.memory_id.0))?;
+
+    let mut decay = record.decay.clone().unwrap_or_else(|| {
+        let profile = record.memory_type.default_decay_profile();
+        MemoryDecayPolicy {
+            profile: crate::sqlite::decay_profile_str(profile).to_string(),
+            half_life_days: profile.half_life_days().map(|d| d as u32),
+            last_reinforced_at: None,
+            reinforcement_count: 0,
+            review_after: None,
+            expires_at: None,
+            pinned: false,
+        }
+    });
+    decay.pinned = request.pinned;
+    record.decay = Some(decay);
+
+    let message = request.reason.unwrap_or_else(|| {
+        if request.pinned {
+            "pinned".to_string()
+        } else {
+            "unpinned".to_string()
+        }
+    });
+    record.history.push(MemoryHistoryEvent {
+        status: record.status,
         message,
         timestamp: request.timestamp,
     });

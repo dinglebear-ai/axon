@@ -10,10 +10,10 @@ render observed state; they do not invent alternate status models. Full contract
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/observability-contract.md](../../../docs/pipeline-unification/runtime/observability-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 8
-(Unified Jobs And Observability)**. Do not add durable job storage, worker
-scheduling, or transport-specific status rendering here.
+## Status — live crate, Phase 8 landed
+`SourceProgressEvent`/event registry and provider reservation tracking
+(`reservation.rs`) are real and tested, not markers. Do not add durable job
+storage, worker scheduling, or transport-specific status rendering here.
 
 ## Module map
 | File | Owns |

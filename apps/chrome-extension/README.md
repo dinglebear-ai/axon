@@ -124,8 +124,8 @@ The popup chat still supports inline Axon commands and auto-scrape:
 ## Authentication
 
 If `axon serve` is bound to loopback, Axon allows tokenless HTTP. If the server is
-non-loopback, uses `AXON_MCP_HTTP_TOKEN`, or runs OAuth/lab-auth mode, the request
-must authenticate. Paste the `AXON_MCP_HTTP_TOKEN` value into the Options token
+non-loopback, uses `AXON_HTTP_TOKEN`, or runs OAuth/lab-auth mode, the request
+must authenticate. Paste the `AXON_HTTP_TOKEN` value into the Options token
 field; the extension sends it as:
 
 ```http

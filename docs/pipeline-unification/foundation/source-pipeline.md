@@ -67,6 +67,16 @@ Partially implemented:
 - URL watch and code-search watch are separate systems today. URL watch is a
   SQLite URL change detector; `code-search-watch` is a filesystem watcher over
   local Git checkouts.
+- `graphing` currently runs **after** `publishing`, not before it as the Stage
+  Registry order below implies. `axon-services::source::index_source_with_auth`
+  dispatches acquire+prepare+embed+publish through the family bridge first,
+  then calls `graph::write_baseline_graph` (which reads the already-published
+  manifest to build the source container + document nodes/edges) and only
+  after that runs `prune::drain_cleanup_debt`. So the real order is
+  `... -> upserting -> publishing -> graphing -> cleaning -> complete`, with
+  graph writes derived from committed state rather than gating it. See
+  `crates/axon-services/src/source.rs::index_source_with_auth` and
+  `crates/axon-services/src/source/graph.rs::write_baseline_graph`.
 
 Planned by this contract:
 

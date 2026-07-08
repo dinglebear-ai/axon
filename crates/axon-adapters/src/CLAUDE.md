@@ -10,12 +10,12 @@ family, at what declared scope, and what did the fetch return." Full contract
 [../../../docs/pipeline-unification/sources/adapter-scopes.md](../../../docs/pipeline-unification/sources/adapter-scopes.md)
 · [../../../docs/pipeline-unification/sources/new-source-contract.md](../../../docs/pipeline-unification/sources/new-source-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. The adapter framework (trait, registry,
-capability, manifest) lands in **Phase 4 (Source Resolver, Router, And Adapter
-Registry)**; per-source ports land in **Phase 9 (Port Source Families)**,
-migrated one family at a time from the root crate's crawl/ingest logic. Do not
-add ledger, embedding, vector, or transport behavior here.
+## Status — live crate, Phase 4 + Phase 9 landed
+The adapter framework (trait, registry, capability, manifest) and per-source
+ports (git, web, local, sessions, reddit, youtube, registry, cli_tool, mcp_tool,
+feed — see `family_matrix.rs`) are real and tested, not markers. Do not add
+ledger, embedding, vector, or transport behavior here — adapters classify and
+normalize; they don't own storage.
 
 ## Module map
 | File | Owns |

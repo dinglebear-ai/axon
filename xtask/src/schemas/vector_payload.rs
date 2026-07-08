@@ -372,8 +372,12 @@ fn required_example_value(field: &str, family: &str) -> Value {
         "payload_contract_version" => json!("2026-07-01"),
         "collection" => json!("axon"),
         "source_id" => json!(format!("src-{family}")),
-        "source_generation" => json!(format!("gen-{family}-7")),
-        "committed_generation" => json!("uncommitted"),
+        // Integer-typed per the vector-payload contract
+        // (`PayloadFieldSchema::Integer`); never a string.
+        "source_generation" => json!(7),
+        // Null until a publisher commits the generation (never the string
+        // "uncommitted" -- see `axon_vectors::payload::validate_generations`).
+        "committed_generation" => Value::Null,
         "document_id" => json!(format!("doc-{family}")),
         "chunk_id" => json!(format!("chunk-{family}-0")),
         "chunk_locator" => json!({

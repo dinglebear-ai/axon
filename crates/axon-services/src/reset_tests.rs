@@ -1,5 +1,10 @@
 use super::*;
+use axon_api::reset::{
+    ResetCreated, ResetDeleted, ResetEstimate, ResetExecutionState, ResetPlan, ResetReceipt,
+    ResetStorePlan,
+};
 use axon_core::config::Config;
+use serial_test::serial;
 
 fn cfg_with(stores: Vec<&str>, dry_run: bool, yes: bool) -> Config {
     let mut cfg = Config::test_default();
@@ -111,4 +116,130 @@ async fn sqlite_wipe_and_remigrate_yields_fresh_schema() {
     assert!(inv.table_count > 0);
     assert_eq!(inv.content_rows, 0);
     assert!(!inv.non_empty());
+}
+
+#[tokio::test]
+async fn real_reset_records_legacy_cutover_receipt() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_path = dir.path().join("jobs.db");
+
+    // Seed a legacy job row before the reset destroys everything.
+    let version = sqlite::wipe_and_remigrate(&db_path)
+        .await
+        .expect("initial migrate");
+    assert!(version > 0);
+    {
+        let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
+            .await
+            .expect("open pool");
+        sqlx::query(
+            "INSERT INTO axon_crawl_jobs (id, created_at, updated_at) VALUES ('legacy-1', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .expect("seed legacy row");
+        pool.close().await;
+    }
+
+    let mut cfg = cfg_with(vec!["jobs"], false, true);
+    cfg.sqlite_path = db_path.clone();
+
+    let result = reset(&cfg).await.expect("real reset");
+    assert!(!result.dry_run);
+
+    let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
+        .await
+        .expect("open post-reset pool");
+    let row: (String, String) = sqlx::query_as(
+        "SELECT receipt_kind, message FROM axon_job_cutover_receipts ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("fetch receipt");
+    pool.close().await;
+
+    assert_eq!(row.0, "legacy_reset");
+    assert!(row.1.contains("axon_crawl_jobs"));
+}
+
+#[tokio::test]
+async fn reset_writes_no_unified_job_row_for_itself() {
+    // `reset` is intentionally NOT job-tracked (see docs/pipeline-unification/
+    // plans/2026-07-04-full-durable-job-cutover.md, "Scope Exception: `reset`
+    // Stays Jobless"): its dry-run default must not create/migrate the SQLite
+    // DB at all, and any job-backed tracking path
+    // (enqueue_operation/start_operation_job/complete_operation_job) does
+    // exactly that as a side effect of writing a job row. Prove a real
+    // (--yes) reset that wipes the `jobs` store leaves the freshly
+    // re-migrated unified `jobs` table empty -- reset never enqueues a job
+    // for its own execution.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_path = dir.path().join("jobs.db");
+
+    let mut cfg = cfg_with(vec!["jobs"], false, true);
+    cfg.sqlite_path = db_path.clone();
+
+    let result = reset(&cfg).await.expect("real reset");
+    assert!(!result.dry_run);
+
+    let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
+        .await
+        .expect("open post-reset pool");
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM jobs")
+        .fetch_one(&pool)
+        .await
+        .expect("count jobs rows");
+    pool.close().await;
+
+    assert_eq!(
+        count.0, 0,
+        "reset must not create a unified job row for its own execution"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn reset_receipt_redacts_secrets_before_writing() {
+    // This crate denies `unsafe`, which `std::env::set_var` now requires, so
+    // this writes under the real `axon_data_base_dir()` (matching the
+    // `reddit_acquire.rs`/`youtube_acquire_tests.rs` precedent for the same
+    // constraint) with a uniquely-named reset id, then cleans up after.
+    let reset_id = "phase3b-redaction-test";
+    let plan_id = "phase3b-redaction-test-plan";
+    let reset_plan = ResetPlan {
+        plan_id: plan_id.to_string(),
+        reset_id: reset_id.to_string(),
+        stores: Vec::new(),
+        estimates: ResetEstimate::default(),
+        inventory_checksum: String::new(),
+        config_snapshot_id: String::new(),
+        auth_snapshot_id: String::new(),
+        confirmation_text: String::new(),
+        receipt_path: None,
+        expires_at_utc: String::new(),
+        blockers: Vec::new(),
+    };
+    let receipt = ResetReceipt {
+        plan_id: plan_id.to_string(),
+        reset_id: reset_id.to_string(),
+        state: ResetExecutionState::Completed,
+        chunks: Vec::new(),
+        deleted: ResetDeleted::default(),
+        created: ResetCreated::default(),
+        audit_events: Vec::new(),
+    };
+    let path = write_receipt(
+        reset_id,
+        &[],
+        &[] as &[ResetStorePlan],
+        &reset_plan,
+        &receipt,
+        &["provider error: Authorization: Bearer abcdef0123456789abcdef".to_string()],
+    )
+    .await
+    .expect("write receipt");
+
+    let written = std::fs::read_to_string(&path).expect("read receipt");
+    let _ = std::fs::remove_file(&path);
+    assert!(!written.contains("abcdef0123456789abcdef"));
 }

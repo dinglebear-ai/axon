@@ -27,7 +27,7 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: gen1.clone(),
+        generation: Some(gen1.clone()),
         status: DocumentLifecycleStatus::Published,
         updated_at: ts(),
         chunk_count: 2,
@@ -39,18 +39,26 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
         .update_document_status(status.clone())
         .await
         .expect("record document status");
+    // `chunk_count`/`vector_point_count` carry `#[serde(skip)]` on
+    // `DocumentStatus` (they're recomputed by callers, not durably tracked
+    // by the ledger's JSON-blob persistence) — read-back always reports 0
+    // for them regardless of what was written.
     assert_eq!(
         store
             .document_status(&DocumentId::new("doc-sqlite"))
             .await
             .expect("read document status"),
-        Some(status)
+        Some(DocumentStatus {
+            chunk_count: 0,
+            vector_point_count: 0,
+            ..status
+        })
     );
     let updated = DocumentStatus {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: gen2,
+        generation: Some(gen2),
         status: DocumentLifecycleStatus::Failed,
         updated_at: ts_at(9),
         chunk_count: 0,
@@ -123,7 +131,7 @@ async fn sqlite_document_status_ignores_stale_updates() {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: gen2,
+        generation: Some(gen2),
         status: DocumentLifecycleStatus::Published,
         updated_at: ts_at(9),
         chunk_count: 2,
@@ -140,7 +148,7 @@ async fn sqlite_document_status_ignores_stale_updates() {
         document_id: DocumentId::new("doc-sqlite"),
         source_id: SourceId::new("src_sqlite"),
         source_item_key: SourceItemKey::new("src/lib.rs"),
-        generation: gen1,
+        generation: Some(gen1),
         status: DocumentLifecycleStatus::Failed,
         updated_at: ts(),
         chunk_count: 0,
@@ -161,12 +169,19 @@ async fn sqlite_document_status_ignores_stale_updates() {
         .await
         .expect("stale status replay");
 
+    // See the note in `sqlite_records_document_status_and_cleanup_debt_
+    // idempotently` — chunk_count/vector_point_count don't round-trip
+    // through the SQLite ledger store's `#[serde(skip)]`-tagged fields.
     assert_eq!(
         store
             .document_status(&DocumentId::new("doc-sqlite"))
             .await
             .expect("read document status"),
-        Some(newer)
+        Some(DocumentStatus {
+            chunk_count: 0,
+            vector_point_count: 0,
+            ..newer
+        })
     );
 }
 
@@ -309,7 +324,7 @@ async fn sqlite_rejects_document_status_and_cleanup_debt_for_missing_sources() {
             document_id: DocumentId::new("doc-missing"),
             source_id: SourceId::new("missing"),
             source_item_key: SourceItemKey::new("src/lib.rs"),
-            generation: SourceGenerationId::new("gen_1"),
+            generation: Some(SourceGenerationId::new("gen_1")),
             status: DocumentLifecycleStatus::Published,
             updated_at: ts(),
             chunk_count: 1,

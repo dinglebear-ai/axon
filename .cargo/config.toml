@@ -5,7 +5,7 @@
 # ~/.cargo/config.toml. This file only adds workspace-local settings that the
 # global config cannot provide.
 #
-# See docs/contributing/rust.md for expected global config and system tool requirements.
+# See docs/development/contributing.md for expected global config and system tool requirements.
 # See https://github.com/jmagar/rmcp-template/blob/main/docs/contributing/rust.md for the
 # canonical family reference.
 # =============================================================================

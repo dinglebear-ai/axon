@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use axon_core::config::Config;
 use axon_jobs::SqliteJobBackend;
+use axon_jobs::workers::JobRunnerRegistry;
 
+pub mod job_runners;
 pub mod sqlite;
 pub mod traits;
 
@@ -31,12 +33,29 @@ pub async fn resolve_runtime(
 /// MCP server, web server) or CLI commands that block until completion (`--wait`).
 /// `spawn_workers = false` (default via `resolve_runtime`) creates an enqueue-only
 /// backend — jobs are persisted but not processed in this process.
+///
+/// When workers are spawned, this also builds and hands the unified worker a
+/// [`JobRunnerRegistry`] (see [`job_runners`]) so job kinds whose real domain
+/// logic lives in `axon-services` (memory compaction, provider probes, …) can
+/// execute through the unified worker's claim/dispatch loop instead of always
+/// falling back to `job_runner.unsupported_stage`.
 pub async fn resolve_runtime_with_workers(
     cfg: Arc<Config>,
     spawn_workers: bool,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
     let backend = if spawn_workers {
-        SqliteJobBackend::new_with_workers(Arc::clone(&cfg)).await
+        let registry: Arc<JobRunnerRegistry> = match job_runners::build_registry(&cfg) {
+            Ok(registry) => Arc::new(registry),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error.message,
+                    "failed to build unified job runner registry; unified worker will fall back to \
+                     job_runner.unsupported_stage for every kind"
+                );
+                Arc::new(JobRunnerRegistry::new())
+            }
+        };
+        SqliteJobBackend::new_with_workers_and_registry(Arc::clone(&cfg), Some(registry)).await
     } else {
         SqliteJobBackend::new(Arc::clone(&cfg)).await
     }

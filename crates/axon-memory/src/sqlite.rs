@@ -10,30 +10,30 @@
 //! durable subsystem, so serializing access is correct and keeps the async
 //! trait surface simple without a connection pool.
 
+pub mod compact;
 pub mod error;
 pub mod lifecycle;
 pub mod recall;
 pub mod rows;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use axon_api::source::*;
+use axon_core::redact::{DefaultRedactor, RedactionContext, redact_text_checked};
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
 use crate::migration::ensure_schema;
 use crate::record::Clock;
 use crate::store::{MemoryStore, Result};
-use error::{invalid, not_found, store_error};
+use error::{invalid, not_found, redaction_failed, store_error};
 use rows::{record_from_row, record_json_columns, status_to_str, type_to_str};
 
 /// A durable memory store backed by SQLite.
 pub struct SqliteMemoryStore {
     conn: Arc<Mutex<Connection>>,
     clock: Arc<dyn Clock>,
-    id_seq: AtomicU64,
 }
 
 impl SqliteMemoryStore {
@@ -54,15 +54,16 @@ impl SqliteMemoryStore {
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             clock,
-            id_seq: AtomicU64::new(0),
         })
     }
 
+    /// Generate a fresh memory id. UUIDv4-based rather than a per-instance
+    /// counter: `axon-services` opens a new `SqliteMemoryStore` handle on
+    /// every dispatch call, so a process-local sequence resets each time and
+    /// two `remember`s in the same wall-clock second could otherwise collide
+    /// on `mem_<secs>_<seq>`.
     fn next_id(&self) -> MemoryId {
-        let seq = self.id_seq.fetch_add(1, Ordering::Relaxed);
-        // Epoch seconds + monotonic sequence keeps ids unique within a process.
-        let secs = self.clock.now_epoch_secs();
-        MemoryId::new(format!("mem_{secs}_{seq}"))
+        MemoryId::new(format!("mem_{}", uuid::Uuid::new_v4().simple()))
     }
 
     pub(crate) fn conn(&self) -> &Arc<Mutex<Connection>> {
@@ -101,6 +102,35 @@ impl MemoryStore for SqliteMemoryStore {
         let memory_id = self.next_id();
         let now = self.clock.now_rfc3339();
 
+        // Fail-closed redaction boundary: a remembered body/title is durable
+        // and recalled back through CLI/MCP/REST in later sessions, so a
+        // secret pasted into "remember this" content must not persist
+        // verbatim. Scrub before the write, not after. When the boundary
+        // cannot safely scan the input (oversized text — unbounded regex
+        // scanning over attacker-controlled content is itself a DoS
+        // surface), block the write entirely rather than persist it
+        // unscrubbed.
+        let redactor = DefaultRedactor::new();
+        let redaction_context = RedactionContext::memory_record();
+        let request_body = redact_text_checked(&redactor, &request.body, &redaction_context)
+            .map_err(|_| {
+                redaction_failed(format!(
+                    "memory body exceeds {} bytes; redaction cannot be safely verified",
+                    axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
+                ))
+            })?;
+        let request_title = request
+            .title
+            .as_deref()
+            .map(|title| redact_text_checked(&redactor, title, &redaction_context))
+            .transpose()
+            .map_err(|_| {
+                redaction_failed(format!(
+                    "memory title exceeds {} bytes; redaction cannot be safely verified",
+                    axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
+                ))
+            })?;
+
         // Default decay policy from the memory type when none supplied.
         let decay = request.decay.clone().or_else(|| {
             let profile = request.memory_type.default_decay_profile();
@@ -119,7 +149,7 @@ impl MemoryStore for SqliteMemoryStore {
             memory_id: memory_id.clone(),
             memory_type: request.memory_type,
             status: MemoryStatus::Active,
-            body: request.body,
+            body: request_body,
             confidence: request.confidence,
             salience: request.salience,
             scope: request.scope,
@@ -128,7 +158,7 @@ impl MemoryStore for SqliteMemoryStore {
                 message: "created".to_string(),
                 timestamp: Timestamp(now.clone()),
             }],
-            title: request.title,
+            title: request_title,
             links: request.links.clone(),
             decay,
             embedding_refs: Vec::new(),
@@ -149,6 +179,14 @@ impl MemoryStore for SqliteMemoryStore {
     async fn get(&self, memory_id: MemoryId) -> Result<Option<MemoryRecord>> {
         let conn = self.conn.lock().await;
         Self::load_record(&conn, &memory_id.0)
+    }
+
+    async fn load_many(&self, memory_ids: Vec<MemoryId>) -> Result<Vec<Option<MemoryRecord>>> {
+        let conn = self.conn.lock().await;
+        memory_ids
+            .into_iter()
+            .map(|memory_id| Self::load_record(&conn, &memory_id.0))
+            .collect()
     }
 
     async fn search(&self, request: MemorySearchRequest) -> Result<MemorySearchResult> {
@@ -199,6 +237,52 @@ impl MemoryStore for SqliteMemoryStore {
 
     async fn review(&self, request: MemoryReviewRequest) -> Result<MemoryReviewResult> {
         recall::review(self, request).await
+    }
+
+    async fn update(&self, request: MemoryUpdateRequest) -> Result<MemoryResult> {
+        lifecycle::update(self, request).await
+    }
+
+    async fn pin(&self, request: MemoryPinRequest) -> Result<MemoryResult> {
+        lifecycle::pin(self, request).await
+    }
+
+    async fn archive(&self, request: MemoryArchiveRequest) -> Result<MemoryResult> {
+        lifecycle::set_status(
+            self,
+            MemoryStatusRequest {
+                memory_id: request.memory_id,
+                status: MemoryStatus::Archived,
+                reason: request.reason,
+                timestamp: request.timestamp,
+            },
+        )
+        .await
+    }
+
+    async fn forget(&self, request: MemoryForgetRequest) -> Result<MemoryResult> {
+        lifecycle::set_status(
+            self,
+            MemoryStatusRequest {
+                memory_id: request.memory_id,
+                status: MemoryStatus::Forgotten,
+                reason: request.reason,
+                timestamp: request.timestamp,
+            },
+        )
+        .await
+    }
+
+    async fn compact(&self, request: MemoryCompactRequest) -> Result<MemoryResult> {
+        compact::compact(self, request).await
+    }
+
+    async fn import(&self, request: MemoryImportRequest) -> Result<MemoryImportResult> {
+        compact::import(self, request).await
+    }
+
+    async fn export(&self, request: MemoryExportRequest) -> Result<MemoryExportResult> {
+        compact::export(self, request).await
     }
 
     async fn reset(&self) -> Result<()> {

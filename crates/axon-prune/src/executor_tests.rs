@@ -64,7 +64,7 @@ async fn executes_steps_in_cleanup_debt_order() {
     let plan = cleanup_plan();
     let target = FakePruneTarget::from_steps(&plan.steps);
     let executor = PruneExecutor::new(target);
-    let result = executor.execute(&plan).await.unwrap();
+    let result = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
 
     // Result step order must be the canonical execution order.
     let order: Vec<PruneTargetKind> = result.steps.iter().map(|s| s.target).collect();
@@ -91,7 +91,7 @@ async fn deleted_counts_match_estimate_on_full_execute() {
     let est = cleanup_debt_estimate();
     let target = FakePruneTarget::from_steps(&plan.steps);
     let executor = PruneExecutor::new(target);
-    let result = executor.execute(&plan).await.unwrap();
+    let result = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
 
     assert_eq!(result.status, LifecycleStatus::Completed);
     assert_eq!(result.deleted_counts.vector_points, est.vector_points);
@@ -115,11 +115,11 @@ async fn re_execution_is_idempotent() {
     let target = FakePruneTarget::from_steps(&plan.steps);
     let executor = PruneExecutor::new(target);
 
-    let first = executor.execute(&plan).await.unwrap();
+    let first = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
     assert!(first.deleted_counts.total() > 0);
 
     // Second run against the drained target deletes nothing and skips.
-    let second = executor.execute(&plan).await.unwrap();
+    let second = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
     assert_eq!(second.deleted_counts.total(), 0);
     assert!(
         second
@@ -146,7 +146,7 @@ async fn generation_fence_blocks_current_generation() {
         .with_current_generation(SourceGenerationId::new("gen-current"));
     let executor = PruneExecutor::new(target);
 
-    let out = executor.execute(&plan).await;
+    let out = executor.execute(&plan, &PruneAuthz::admin()).await;
     assert!(matches!(
         out,
         Err(crate::safety::PruneDenied::CurrentGenerationFenced { .. })
@@ -168,7 +168,7 @@ async fn old_generation_passes_fence_and_deletes() {
         .with_current_generation(SourceGenerationId::new("gen-current"));
     let executor = PruneExecutor::new(target);
 
-    let out = executor.execute(&plan).await.unwrap();
+    let out = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
     assert_eq!(out.deleted_counts.vector_points, 3);
 }
 
@@ -178,7 +178,7 @@ async fn partial_failure_records_remaining_debt() {
     // Force the graph boundary to fail; other boundaries still delete.
     let target = FakePruneTarget::from_steps(&plan.steps).failing(PruneTargetKind::Graph);
     let executor = PruneExecutor::new(target);
-    let result = executor.execute(&plan).await.unwrap();
+    let result = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
 
     assert_eq!(result.status, LifecycleStatus::CompletedDegraded);
     // The failed graph step contributes its estimated deletes to remaining debt.
@@ -194,4 +194,96 @@ async fn partial_failure_records_remaining_debt() {
     assert_eq!(graph_step.status, LifecycleStatus::Failed);
     assert_eq!(graph_step.deleted, 0);
     assert!(graph_step.skipped_reason.is_some());
+}
+
+// --- Admin gate on execute() ------------------------------------------------
+//
+// `PruneExecutor::execute()` is the ONLY code path that actually deletes
+// vector/artifact/graph/memory/ledger state. Per the pruning contract
+// ("destructive prune requires axon:admin"), it must refuse a
+// `requires_admin: true` plan unless the caller's `PruneAuthz` is admin —
+// checked before any step is applied, not just planned in `safety.rs` and
+// left unreachable.
+
+#[tokio::test]
+async fn execute_rejects_admin_required_plan_without_admin_authz() {
+    let plan = cleanup_plan();
+    assert!(plan.requires_admin, "cleanup plans are admin-gated");
+    let target = FakePruneTarget::from_steps(&plan.steps);
+    let executor = PruneExecutor::new(target);
+
+    let out = executor.execute(&plan, &PruneAuthz::anonymous()).await;
+
+    assert!(matches!(
+        out,
+        Err(crate::safety::PruneDenied::AdminRequired)
+    ));
+}
+
+#[tokio::test]
+async fn execute_rejects_admin_required_plan_with_default_authz() {
+    // PruneAuthz::default() is non-admin; a caller that forgets to pass an
+    // explicit authorized context must be refused, not silently allowed.
+    let plan = cleanup_plan();
+    let target = FakePruneTarget::from_steps(&plan.steps);
+    let executor = PruneExecutor::new(target);
+
+    let out = executor.execute(&plan, &PruneAuthz::default()).await;
+
+    assert!(matches!(
+        out,
+        Err(crate::safety::PruneDenied::AdminRequired)
+    ));
+}
+
+#[tokio::test]
+async fn execute_does_not_mutate_target_when_admin_required_and_denied() {
+    let plan = cleanup_plan();
+    let target = FakePruneTarget::from_steps(&plan.steps);
+    let executor = PruneExecutor::new(target);
+
+    let out = executor.execute(&plan, &PruneAuthz::anonymous()).await;
+    assert!(out.is_err());
+
+    // Re-execute the same executor with admin authz: if the denied attempt
+    // had mutated anything, the estimate below would already be drained.
+    let ok = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
+    assert_eq!(
+        ok.deleted_counts.vector_points,
+        cleanup_debt_estimate().vector_points
+    );
+}
+
+#[tokio::test]
+async fn execute_succeeds_with_admin_authz() {
+    let plan = cleanup_plan();
+    let target = FakePruneTarget::from_steps(&plan.steps);
+    let executor = PruneExecutor::new(target);
+
+    let result = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
+
+    assert_eq!(result.status, LifecycleStatus::Completed);
+    assert_eq!(
+        result.deleted_counts.vector_points,
+        cleanup_debt_estimate().vector_points
+    );
+}
+
+#[tokio::test]
+async fn execute_allows_non_admin_when_plan_does_not_require_admin() {
+    // A plan that isn't admin-gated (requires_admin: false) must not be
+    // refused for a non-admin caller — the admin check is scoped to
+    // `plan.requires_admin`, not a blanket "always require admin".
+    let plan = cleanup_plan();
+    let mut plan = plan;
+    plan.requires_admin = false;
+    let target = FakePruneTarget::from_steps(&plan.steps);
+    let executor = PruneExecutor::new(target);
+
+    let result = executor
+        .execute(&plan, &PruneAuthz::anonymous())
+        .await
+        .unwrap();
+
+    assert_eq!(result.status, LifecycleStatus::Completed);
 }

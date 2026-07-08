@@ -14,6 +14,7 @@ pub(super) fn provider_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         root,
         &[
             "crates/axon-api/src/source/capability.rs",
+            "crates/axon-api/src/schema_registry.rs",
             "crates/axon-embedding/src/provider.rs",
             "crates/axon-embedding/src/fake.rs",
             "crates/axon-llm/src/provider.rs",

@@ -109,29 +109,29 @@ Sources: `src/mcp/auth.rs`, `src/mcp/server/http.rs`.
 
 | Policy | How selected | Behavior |
 |--------|--------------|----------|
-| OAuth/JWT | `AXON_MCP_AUTH_MODE=oauth` | Builds `lab_auth::state::AuthState`, mounts OAuth routes, validates JWT bearer tokens, and enforces `axon:read` / `axon:write` scopes. |
-| Bearer-only | default mode with `AXON_MCP_HTTP_TOKEN` set | Validates a static token with `lab_auth::AuthLayer::with_static_token`; static tokens receive both read and write scopes. |
+| OAuth/JWT | `AXON_AUTH_MODE=oauth` | Builds `lab_auth::state::AuthState`, mounts OAuth routes, validates JWT bearer tokens, and enforces `axon:read` / `axon:write` scopes. |
+| Bearer-only | default mode with `AXON_HTTP_TOKEN` set | Validates a static token with `lab_auth::AuthLayer::with_static_token`; static tokens receive both read and write scopes. |
 | Loopback dev | default mode, no token, loopback bind | No auth layer; loopback bind is the trust boundary. |
 
 Static bearer tokens are accepted on either header:
 - `Authorization: Bearer <token>`
 - `x-api-key: <token>` (normalized to bearer before lab-auth sees the request)
 
-Empty or whitespace-only `AXON_MCP_HTTP_TOKEN` values are treated as unset.
+Empty or whitespace-only `AXON_HTTP_TOKEN` values are treated as unset.
 
 ### 4.2 OAuth mode
 
-When `AXON_MCP_AUTH_MODE=oauth`, `src/mcp/auth.rs` initializes lab-auth with
+When `AXON_AUTH_MODE=oauth`, `src/mcp/auth.rs` initializes lab-auth with
 Google OAuth, JWKS/JWT validation, dynamic client registration, and OAuth
-metadata routes. `AXON_MCP_PUBLIC_URL`, Google client credentials, and admin
-email are required. `AXON_MCP_HTTP_TOKEN` remains valid in dual mode when set.
+metadata routes. `AXON_PUBLIC_URL`, Google client credentials, and admin
+email are required. `AXON_HTTP_TOKEN` remains valid in dual mode when set.
 
-OAuth mode reads `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
-`AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL`, and
-`AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`. The OAuth router exposes
+OAuth mode reads `AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`,
+`AXON_GOOGLE_CLIENT_SECRET`, `AXON_AUTH_ADMIN_EMAIL`, and
+`AXON_ALLOWED_REDIRECT_URIS`. The OAuth router exposes
 `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`,
 `/jwks`, `/authorize`, `/auth/google/callback`, `/token`, and `/register`.
-The account configured as `AXON_MCP_AUTH_ADMIN_EMAIL` is always granted the full
+The account configured as `AXON_AUTH_ADMIN_EMAIL` is always granted the full
 configured Axon OAuth scope set (`axon:read axon:write`) after Google email
 verification. Other allowlisted users receive only the scope approved for their
 authorization request.
@@ -174,7 +174,7 @@ Source: `src/web/security.rs` (used by `src/mcp/server/http.rs:23-26`).
 
 - `127.0.0.1:<port>`, `localhost:<port>`, `[::1]:<port>`
 - The configured bind host on its port
-- Every entry in `AXON_MCP_ALLOWED_ORIGINS` (origin → authority via `Uri::authority()`)
+- Every entry in `AXON_ALLOWED_ORIGINS` (origin → authority via `Uri::authority()`)
 
 Requests with a `Host` header outside that set return `403 forbidden: host not allowed`. Missing `Host` returns `400`.
 
@@ -182,7 +182,7 @@ Requests with a `Host` header outside that set return `403 forbidden: host not a
 
 Source: `src/mcp/cors.rs` (mounted by `server/http.rs:148-151`).
 
-- Allowlist driven by `AXON_MCP_ALLOWED_ORIGINS` (comma-separated). Unset = strict default (only same-origin / loopback). Non-browser tools (curl, MCP SDKs) are unaffected because they do not send `Origin`.
+- Allowlist driven by `AXON_ALLOWED_ORIGINS` (comma-separated). Unset = strict default (only same-origin / loopback). Non-browser tools (curl, MCP SDKs) are unaffected because they do not send `Origin`.
 - Preflight `OPTIONS` requests with a disallowed origin return `403`.
 - `Access-Control-Allow-Headers` is the **static** list `authorization, content-type, x-api-key`. The middleware never reflects the client-supplied `Access-Control-Request-Headers` value, which would grant an effective wildcard (CWE-942).
 
@@ -213,7 +213,7 @@ Recommendations:
 
 - Service URLs and credentials live in `~/.axon/.env`. Repo-local `.env` is a gitignored development fallback only. `.env.example` is the tracked template.
 - `~/.axon/config.toml` is for **non-secret** tuning knobs only (search params, worker limits). The loader treats unknown fields as fatal so accidentally pasting a secret there fails fast (`src/core/config/parse/toml_config.rs`).
-- The MCP HTTP static token is `AXON_MCP_HTTP_TOKEN`; OAuth/JWT mode is configured with the `AXON_MCP_*` auth variables documented above.
+- The MCP HTTP static token is `AXON_HTTP_TOKEN`; OAuth/JWT mode is configured with the `AXON_MCP_*` auth variables documented above.
 
 ### 7.2 `Debug` redaction
 
@@ -251,7 +251,7 @@ path.
 
 | Service | Compose publish (`docker-compose.prod.yaml`) | Notes |
 |---------|----------------------------------------------|-------|
-| `axon mcp` / `axon serve` / Compose `axon` (HTTP) | `${AXON_MCP_HTTP_PUBLISH:-8001}:8001` | Host mapping publishes on all interfaces by default, but the in-container axon process binds `AXON_MCP_HTTP_HOST` (default `127.0.0.1`), so the port is not actually reachable until you set `AXON_MCP_HTTP_HOST=0.0.0.0`. A non-loopback process bind requires bearer or OAuth auth — the startup policy refuses to start a tokenless non-loopback bind. |
+| `axon mcp` / `axon serve` / Compose `axon` (HTTP) | `${AXON_HTTP_PUBLISH:-8001}:8001` | Host mapping publishes on all interfaces by default, but the in-container axon process binds `AXON_HTTP_HOST` (default `127.0.0.1`), so the port is not actually reachable until you set `AXON_HTTP_HOST=0.0.0.0`. A non-loopback process bind requires bearer or OAuth auth — the startup policy refuses to start a tokenless non-loopback bind. |
 | `axon-qdrant` (compose) | `53333:6333`, `53334:6334` | **Published on all interfaces.** No `127.0.0.1:` prefix. |
 | `axon-tei` (compose) | `${TEI_HTTP_PORT:-52000}:80` | **Published on all interfaces.** |
 | `axon-chrome` (compose) | `6000:6000`, `9222:9222`, `9223:9223` | **Published on all interfaces.** Ports: 6000 = `headless_browser` management API, 9222 = CDP proxy, 9223 = raw Chrome DevTools. **All three are unauthenticated control planes** with no built-in access control. |
@@ -262,7 +262,7 @@ path.
 > `127.0.0.1:` prefix — and the pre-commit check `scripts/check_compose_port_bindings.py`
 > **forbids** adding such a prefix. The host-port mapping is therefore NOT the
 > access boundary. The remaining protections are (a) the in-container process
-> bind — `axon` binds `AXON_MCP_HTTP_HOST` (default `127.0.0.1`), so its port is
+> bind — `axon` binds `AXON_HTTP_HOST` (default `127.0.0.1`), so its port is
 > unreachable unless opened deliberately — and (b) whatever host firewall /
 > private network you place around the stack. Qdrant, TEI (`axon-tei:80`), and the
 > unauthenticated Chrome control planes listen on
@@ -273,7 +273,7 @@ path.
 Hardening guidance:
 
 - Do not run this stack as-is on a host with untrusted network reachability. Front the infra ports with a host firewall or a private/internal Docker network before exposing the host. (Do **not** add `127.0.0.1:` prefixes to the compose mappings — the repo lint rejects them.)
-- For the MCP server on a non-loopback host, set a long random `AXON_MCP_HTTP_TOKEN` (`openssl rand -hex 32`) or configure `AXON_MCP_AUTH_MODE=oauth`.
+- For the MCP server on a non-loopback host, set a long random `AXON_HTTP_TOKEN` (`openssl rand -hex 32`) or configure `AXON_AUTH_MODE=oauth`.
 - Never expose Qdrant or Chrome's CDP / management ports to a network. The upstream `headless_browser` and Chrome DevTools Protocol have **no built-in authentication** — anyone who can reach 6000/9222/9223 can run arbitrary JS, navigate to internal URLs, exfiltrate cookies from any origin Chrome has visited, and (via `Page.navigate` on `file://` URLs) read local files inside the container.
 
 Cross-host deployments (operator-managed):
@@ -290,7 +290,7 @@ Before deploy:
 1. `~/.axon/.env` exists and contains every required secret. Repo-local `.env`, if present for development fallback, is not committed.
 2. `git diff -- . ':!*.lock'` shows no secret material in the changeset.
 3. For history scans, run a dedicated tool (`gitleaks detect --source=. --log-opts="HEAD~50..HEAD"` or similar). `git diff` only sees uncommitted changes.
-4. `AXON_MCP_HTTP_TOKEN` or OAuth mode is configured if `AXON_MCP_HTTP_HOST` is anything other than `127.0.0.1` / `localhost` / `::1`.
+4. `AXON_HTTP_TOKEN` or OAuth mode is configured if `AXON_HTTP_HOST` is anything other than `127.0.0.1` / `localhost` / `::1`.
 5. `~/.axon/panel-password` exists and is mode `0600` if `axon serve` will run.
 6. `./scripts/axon doctor` reports Qdrant and TEI healthy.
 

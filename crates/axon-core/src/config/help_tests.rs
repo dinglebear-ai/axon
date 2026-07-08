@@ -24,8 +24,6 @@ fn top_level_help_commands_come_from_clap_surface() {
         "domains",
         "stats",
         "status",
-        "dedupe",
-        "purge",
         "fresh",
         "memory",
         "sessions",
@@ -42,7 +40,15 @@ fn top_level_help_commands_come_from_clap_surface() {
     }
 
     // The pipeline-unification clean break (#298 P10) removed these commands.
-    for removed in ["scrape", "crawl", "embed", "ingest", "code-search"] {
+    for removed in [
+        "scrape",
+        "crawl",
+        "embed",
+        "ingest",
+        "code-search",
+        "dedupe",
+        "purge",
+    ] {
         assert!(
             !names.iter().any(|name| name == removed),
             "removed command still present in clap surface: {removed}"

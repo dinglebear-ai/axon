@@ -380,6 +380,97 @@ async fn append_events_assigns_monotonic_per_job_sequence() {
 }
 
 #[tokio::test]
+async fn job_event_preserves_structured_provider_cooling_fields() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+
+    let error = ApiError::new(
+        "provider.cooling",
+        ErrorStage::Embedding,
+        "provider cooling",
+    )
+    .with_retry_after_ms(30_000)
+    .with_cooldown_until(
+        chrono::DateTime::parse_from_rfc3339("2026-07-04T12:30:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+    )
+    .with_provider_id("tei");
+    let mut event = progress_event(job.job_id, 1, Visibility::Public);
+    event.error = Some(error);
+    store.append_event(event).await.expect("append event");
+
+    let page = store
+        .events(JobEventListRequest {
+            job_id: job.job_id,
+            after_sequence: None,
+            limit: Some(10),
+            severity: None,
+            visibility: Some(Visibility::Public),
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await
+        .expect("event page");
+
+    // `JobEvent` has no top-level typed `error` field — the full
+    // `SourceProgressEvent` (including its structured `ApiError`) is
+    // preserved verbatim under `details["source_progress_event"]["error"]`
+    // so retry/cooling metadata is never silently dropped, even though it
+    // isn't hoisted to a first-class field.
+    let stored_event = page
+        .events
+        .last()
+        .unwrap()
+        .details
+        .get("source_progress_event")
+        .expect("source_progress_event detail present");
+    let stored_error = &stored_event["error"];
+    assert_eq!(stored_error["code"], "provider.cooling");
+    assert_eq!(stored_error["retry_after_ms"], 30_000);
+    assert_eq!(stored_error["cooldown_until"], "2026-07-04T12:30:00Z");
+    assert_eq!(stored_error["provider_id"], "tei");
+}
+
+#[tokio::test]
+async fn append_event_redacts_secrets_from_message_and_details_before_persisting() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+
+    let mut event = progress_event(job.job_id, 1, Visibility::Public);
+    event.message = "failed: Authorization: Bearer abcdef0123456789abcdef".to_string();
+    store.append_event(event).await.expect("append event");
+
+    let page = store
+        .events(JobEventListRequest {
+            job_id: job.job_id,
+            after_sequence: None,
+            limit: Some(10),
+            severity: None,
+            visibility: Some(Visibility::Public),
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await
+        .expect("event page");
+
+    let stored = page.events.last().unwrap();
+    assert!(!stored.message.contains("abcdef0123456789abcdef"));
+    let stored_event_detail = stored
+        .details
+        .get("source_progress_event")
+        .expect("source_progress_event detail present");
+    assert!(
+        !stored_event_detail["message"]
+            .as_str()
+            .unwrap()
+            .contains("abcdef0123456789abcdef")
+    );
+}
+
+#[tokio::test]
 async fn append_event_requires_monotonic_sequences_and_filters_events() {
     let store = store().await;
     let job = store.create(create_request()).await.expect("create job");

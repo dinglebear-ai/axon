@@ -134,7 +134,7 @@ To diagnose stale runtime drift:
 which -a axon
 axon --version
 ss -ltnp '( sport = :8001 )'
-curl -H "x-api-key: $AXON_MCP_HTTP_TOKEN" http://127.0.0.1:8001/v1/status
+curl -H "x-api-key: $AXON_HTTP_TOKEN" http://127.0.0.1:8001/v1/status
 ```
 
 If the binary or schema is stale, rebuild and restart the server on port

@@ -23,7 +23,7 @@ src/
 │   ├── schema.rs                    # AxonRequest / AxonToolResponse + action/subaction enums
 │   ├── server.rs                    # AxonMcpServer + tool dispatch + stdio entry point
 │   ├── auth.rs                      # AuthPolicy, lab-auth OAuth/JWT, static bearer/x-api-key
-│   ├── cors.rs                      # AXON_MCP_ALLOWED_ORIGINS CORS middleware
+│   ├── cors.rs                      # AXON_ALLOWED_ORIGINS CORS middleware
 │   └── server/
 │       ├── http.rs                  # Streamable HTTP server + auth + host allowlist
 │       ├── common.rs                # Shared handler utilities
@@ -126,15 +126,15 @@ The smoke test starts an MCP server, sends tool calls, and verifies responses.
 
 ```bash
 # Tool call (loopback bind without a token works; non-loopback requires
-# AXON_MCP_HTTP_TOKEN — pass it via Authorization or x-api-key)
+# AXON_HTTP_TOKEN — pass it via Authorization or x-api-key)
 curl -X POST http://localhost:8001/mcp \
-  -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"axon","arguments":{"action":"doctor"}}}'
 
 # List tools
 curl -X POST http://localhost:8001/mcp \
-  -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -197,4 +197,4 @@ removed or now return runtime errors when their backing service is missing.
 
 - [TOOLS.md](tools.md) -- action/subaction reference
 - [PATTERNS.md](patterns.md) -- code patterns
-- [../repo/RECIPES.md](../../contributing/repo/recipes.md) -- Justfile recipes
+- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes

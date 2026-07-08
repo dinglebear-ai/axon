@@ -26,6 +26,7 @@ pub mod review;
 pub mod sqlite;
 pub mod store;
 pub mod testing;
+pub mod vector;
 
 pub const CRATE_NAME: &str = "axon-memory";
 

@@ -15,7 +15,7 @@ Use these recipes when a workflow needs concrete Axon evidence.
 | Brand/design signals | `axon brand <url> --json` |
 | Rendered page evidence | `axon --output-dir <dir> screenshot <url> --json` |
 | Compare URL versions | `axon diff <url-a> <url-b> --json` |
-| Monitor recurring changes | `axon watch create ...`, then `watch run-now` and `watch history` |
+| Monitor recurring changes | `axon watch create ...`, then `watch exec` and `watch history` |
 | Reuse indexed material | `axon ask "<question>"` or `axon query "<text>" --json` |
 
 ## Browser Boundary

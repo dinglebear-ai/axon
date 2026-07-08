@@ -1,3 +1,4 @@
+mod job_tracking;
 mod searxng;
 mod synthesis;
 
@@ -235,6 +236,42 @@ pub fn map_search_results(results: Vec<serde_json::Value>) -> SearchResult {
 /// Wrap a typed [`crate::types::ResearchPayload`] in a [`ResearchResult`].
 pub fn map_research_payload(payload: crate::types::ResearchPayload) -> ResearchResult {
     ResearchResult { payload }
+}
+
+/// Run `research_with_context` under unified job tracking.
+///
+/// `axon research <query>` runs synchronously (no `--wait` knob — the CLI
+/// handler always blocks on this call), but `OperationKind::Research` is
+/// unconditionally `JobPolicy::JobBacked` (see
+/// `axon_api::source::job_policy_for_operation`), so a real job record is
+/// still created and driven through `Queued -> Running ->
+/// Completed`/`Failed` around the call. See `job_tracking::track_research_job`
+/// for the lifecycle wrapper. It drives the transitions directly against the
+/// unified `JobStore` (via `crate::jobs::enqueue_operation` plus its own
+/// `update_status` calls) rather than delegating to generic
+/// `start_operation_job`/`complete_operation_job` helpers, because those are
+/// not present in `crate::jobs` in this checkout yet — if/when they land,
+/// `job_tracking::track_research_job`'s body can be swapped to call them
+/// directly, mirroring how other job-backed operations (e.g. memory
+/// compaction) use them.
+#[must_use = "research_with_context_tracked returns a Result that should be handled"]
+pub async fn research_with_context_tracked(
+    cfg: &Config,
+    service_context: &crate::context::ServiceContext,
+    query: &str,
+    opts: SearchOptions,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<ResearchResult, Box<dyn Error>> {
+    let request_json = serde_json::json!({
+        "operation": "research",
+        "query": query,
+        "limit": opts.limit,
+        "offset": opts.offset,
+    });
+    job_tracking::track_research_job(service_context, request_json, || {
+        research_with_context(cfg, service_context, query, opts, tx)
+    })
+    .await
 }
 
 /// Run a web search via the configured backend and return a typed [`SearchResult`].

@@ -12,7 +12,10 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
     files.extend(collect_files(
         &workspace_root.join("crates/axon-document/src"),
     ));
-    files.push(workspace_root.join("crates/axon-cli/src/commands/scrape.rs"));
+    // `scrape.rs` was removed from axon-cli's command surface at the Phase 10
+    // clean-break cutover (embed/ingest/scrape/crawl/code-search); the unified
+    // `axon source` command in `source.rs` is its replacement.
+    files.push(workspace_root.join("crates/axon-cli/src/commands/source.rs"));
     files.push(workspace_root.join("crates/axon-services/src/memory.rs"));
     files.push(workspace_root.join("crates/axon-services/src/scrape.rs"));
     files.push(workspace_root.join("crates/axon-vector/src/ops/source_doc.rs"));

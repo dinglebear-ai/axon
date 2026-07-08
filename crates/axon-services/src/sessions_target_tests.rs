@@ -40,10 +40,12 @@ fn provider_is_case_insensitive() {
 }
 
 #[test]
-fn relative_file_defaults_root_to_dot() {
+fn relative_file_root_is_the_file_itself() {
+    // `sessions_root` is the path itself, not its parent (see the module doc
+    // comment) — matches every other file-selector test in this file.
     let sel = parse_session_selector("session:claude:run.jsonl").expect("parses");
     assert_eq!(sel.session_id, "run");
-    assert_eq!(sel.sessions_root, PathBuf::from("."));
+    assert_eq!(sel.sessions_root, PathBuf::from("run.jsonl"));
 }
 
 #[test]

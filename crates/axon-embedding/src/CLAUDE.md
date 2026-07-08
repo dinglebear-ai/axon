@@ -9,10 +9,10 @@ tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/provider-contract.md](../../../docs/pipeline-unification/runtime/provider-contract.md).
 
-## Status — PR0 skeleton
-Modules below are **markers only**. Real implementation lands in **Phase 7**,
-decomposed out of `axon-vector`'s embedding logic. Do not add vector-store
-writes, Qdrant point construction, or LLM chat behavior here.
+## Status — live crate, Phase 7 landed
+`TeiEmbeddingProvider` (real TEI HTTP client + identity derivation) and
+`FakeEmbeddingProvider` are real and tested, not markers. Do not add
+vector-store writes, Qdrant point construction, or LLM chat behavior here.
 
 ## Module map
 | File | Owns |

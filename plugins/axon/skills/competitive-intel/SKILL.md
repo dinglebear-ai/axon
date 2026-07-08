@@ -20,7 +20,7 @@ For each competitor, use Axon surfaces by cadence:
 - One-off: `axon scrape` or `axon extract` for current pages; use `axon diff`
   when a prior URL/version exists.
 - Recurring: create a URL watch with `axon watch create`, verify with
-  `axon watch run-now`, and review history with `axon watch history`.
+  `axon watch exec`, and review history with `axon watch history`.
 - Alerts: treat these as report sections unless a notification path is
   separately configured.
 

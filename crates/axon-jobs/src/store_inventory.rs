@@ -1,5 +1,15 @@
 use axon_api::source::{ApiError, ErrorStage};
 use sqlx::{Row, SqlitePool};
+use uuid::Uuid;
+
+/// Receipt kind recorded by `axon reset` after wiping the unified SQLite DB —
+/// the wipe itself already drops any legacy job tables, but the receipt gives
+/// operators an auditable record of when/why that happened.
+pub const RECEIPT_KIND_LEGACY_RESET: &str = "legacy_reset";
+/// Receipt kind an operator can record to acknowledge legacy job rows are
+/// intentional (e.g. a reviewed, in-progress migration) without running a
+/// destructive `axon reset`.
+pub const RECEIPT_KIND_PREFLIGHT_CLEAN_CUTOVER: &str = "preflight_clean_cutover";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LegacyJobTable {
@@ -59,6 +69,32 @@ pub async fn detect_incompatible_legacy_jobs(
     }))
 }
 
+/// Record a cutover receipt row. Callers pass `RECEIPT_KIND_LEGACY_RESET`
+/// after a destructive `axon reset` wipes+re-migrates the unified DB, or
+/// `RECEIPT_KIND_PREFLIGHT_CLEAN_CUTOVER` when an operator has manually
+/// reviewed pre-existing legacy job rows and wants unified workers to start
+/// without blocking on them.
+pub async fn record_cutover_receipt(
+    pool: &SqlitePool,
+    receipt_kind: &str,
+    message: &str,
+) -> Result<(), ApiError> {
+    let receipt_id = format!("receipt_{}", Uuid::new_v4().simple());
+    let created_at = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO axon_job_cutover_receipts (receipt_id, receipt_kind, message, created_at)
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(&receipt_id)
+    .bind(receipt_kind)
+    .bind(message)
+    .bind(&created_at)
+    .execute(pool)
+    .await
+    .map_err(sql_error)?;
+    Ok(())
+}
+
 async fn has_cutover_receipt(pool: &SqlitePool) -> Result<bool, ApiError> {
     if !table_exists(pool, "axon_job_cutover_receipts").await? {
         return Ok(false);
@@ -103,3 +139,7 @@ fn sql_error(error: sqlx::Error) -> ApiError {
         error.to_string(),
     )
 }
+
+#[cfg(test)]
+#[path = "store_inventory_tests.rs"]
+mod tests;
