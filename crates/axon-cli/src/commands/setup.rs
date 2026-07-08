@@ -24,6 +24,9 @@ const USAGE_LINES: &[&str] = &[
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.command {
         CommandKind::Preflight => {
+            if cfg.positional.iter().any(|arg| arg == "--config") {
+                return run_config_preflight(cfg);
+            }
             return run_local_setup_command(cfg, LocalSetupMode::Preflight).await;
         }
         CommandKind::Smoke => return run_local_setup_command(cfg, LocalSetupMode::Smoke).await,
@@ -38,12 +41,89 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
         None => run_setup_wizard(cfg).await,
         Some("plugin-hook" | "hook") => run_plugin_hook_setup_command(cfg).await,
+        Some("config") => run_setup_config_command(cfg),
         Some("init") => run_setup_init_command(cfg).await,
         Some("preflight" | "check") => {
             run_local_setup_command(cfg, LocalSetupMode::Preflight).await
         }
         Some("install") => run_install_setup_command(cfg).await,
         Some("targets") => run_targets_command(cfg),
+        _ => print_usage(cfg),
+    }
+}
+
+fn run_config_preflight(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let preview = axon_services::config::config_rewrite_preview()?;
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "status": if preview.stale_keys.is_empty() { "ok" } else { "stale_config" },
+                "removed_keys": preview.stale_keys,
+                "env_path": preview.env_path,
+                "toml_path": preview.toml_path,
+            }))?
+        );
+        return Ok(());
+    }
+    println!("{}", primary("Config Preflight"));
+    if preview.stale_keys.is_empty() {
+        println!("{}", muted("No removed config keys found."));
+        return Ok(());
+    }
+    for edit in &preview.stale_keys {
+        println!(
+            "  {} {} -> {} {}",
+            primary("removed"),
+            accent(&edit.removed_key),
+            accent(&edit.replacement),
+            muted(&format!("({})", edit.target))
+        );
+    }
+    Err("config.removed_key: run `axon setup config rewrite --dry-run` for the rewrite plan".into())
+}
+
+fn run_setup_config_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    match cfg.positional.get(1).map(String::as_str) {
+        Some("rewrite") => {
+            let dry_run = cfg.positional.iter().any(|arg| arg == "--dry-run");
+            if !dry_run {
+                return Err("setup config rewrite currently supports --dry-run only".into());
+            }
+            let preview = axon_services::config::config_rewrite_preview()?;
+            if cfg.json_output {
+                println!("{}", serde_json::to_string_pretty(&preview)?);
+                return Ok(());
+            }
+            println!("{}", primary("Config Rewrite Preview"));
+            println!(
+                "{} {}",
+                muted(".env:"),
+                accent(&preview.env_path.clone().unwrap_or_default())
+            );
+            println!(
+                "{} {}",
+                muted("config.toml:"),
+                accent(&preview.toml_path.clone().unwrap_or_default())
+            );
+            if preview.stale_keys.is_empty() {
+                println!("{}", muted("No removed config keys found."));
+            } else {
+                for edit in &preview.stale_keys {
+                    println!(
+                        "  {} {} -> {} {}",
+                        accent(&edit.removed_key),
+                        muted(&format!("({})", edit.value_preview)),
+                        accent(&edit.replacement),
+                        muted(&format!("in {}", edit.target))
+                    );
+                }
+            }
+            if dry_run {
+                println!("{}", muted("dry-run: no files were written."));
+            }
+            Ok(())
+        }
         _ => print_usage(cfg),
     }
 }

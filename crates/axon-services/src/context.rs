@@ -88,6 +88,11 @@ impl ServiceContext {
         spawn_workers: bool,
         spawn_freshness_scheduler: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        if spawn_workers {
+            axon_core::health::assert_workers_allowed_by_cutover(&cfg)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+        }
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
         let target_local_source = Self::build_target_local_source(&cfg, &jobs, spawn_workers).await;
         let context = Self {

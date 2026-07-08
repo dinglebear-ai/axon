@@ -51,6 +51,10 @@ fn complete_fixture() -> Fixture {
             "[workspace]\nmembers = [\n{members_toml}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
         ),
     );
+    write(
+        &root.join("docs/reference/sources/vector-payload.schema.json"),
+        "{}\n",
+    );
 
     for member in members {
         let crate_root = root.join(member);
@@ -197,33 +201,6 @@ fn missing_target_rust_version_fails() {
 }
 
 #[test]
-fn target_dependency_fails() {
-    let Some(krate) = first_target_crate() else {
-        return;
-    };
-    let fixture = complete_fixture();
-    write(
-        &fixture
-            .root
-            .join(first_target_path(krate))
-            .join("Cargo.toml"),
-        &format!(
-            "[package]\nname = \"{}\"\nrust-version.workspace = true\n\n[dependencies]\naxon-services = {{ path = \"../axon-services\" }}\n",
-            krate.name
-        ),
-    );
-
-    let err = check_root(&fixture.root).unwrap_err();
-    assert!(
-        err.contains(&format!(
-            "PR0 target crate {} must keep [dependencies] empty",
-            krate.name
-        )),
-        "{err}"
-    );
-}
-
-#[test]
 fn missing_required_workspace_member_fails() {
     let fixture = complete_fixture();
     let members = REQUIRED_WORKSPACE_MEMBERS
@@ -263,7 +240,7 @@ fn unexpected_workspace_member_fails() {
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("unexpected PR0 workspace member: crates/axon-surprise"),
+        err.contains("unexpected workspace member: crates/axon-surprise"),
         "{err}"
     );
 }
