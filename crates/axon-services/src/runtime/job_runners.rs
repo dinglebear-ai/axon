@@ -27,6 +27,7 @@ use axon_api::source::{
 };
 use axon_core::config::Config;
 use axon_jobs::boundary::JobStore;
+use axon_jobs::config_snapshot::apply_config_snapshot;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_jobs::workers::unified::UnifiedClaimedJob;
 use axon_jobs::workers::{JobRunnerRegistry, UnifiedJobRunner};
@@ -48,6 +49,12 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
     registry.register(
         JobKind::ProviderProbe,
         Arc::new(ProviderProbeRunner {
+            cfg: Arc::clone(cfg),
+        }),
+    );
+    registry.register(
+        JobKind::Extract,
+        Arc::new(ExtractRunner {
             cfg: Arc::clone(cfg),
         }),
     );
@@ -171,6 +178,72 @@ fn compaction_error(message: impl Into<String>) -> ApiError {
     ApiError::new(
         "job_runner.memory_compaction_failed",
         ErrorStage::Preparing,
+        message.into(),
+    )
+}
+
+/// Runs a claimed `Extract` unified job via `crate::extract::extract_sync`.
+///
+/// Replaces the old special-cased dispatch (`axon-jobs` calling directly
+/// into the now-removed `axon-extract` crate — Phase 12 clean break) with the
+/// same dependency-inversion seam every other axon-services-backed job kind
+/// uses. `claimed.request_json` carries `{"urls": [...], "config_json": "..."}`.
+struct ExtractRunner {
+    cfg: Arc<Config>,
+}
+
+#[async_trait]
+impl UnifiedJobRunner for ExtractRunner {
+    async fn run(
+        &self,
+        claimed: &UnifiedClaimedJob,
+        store: &SqliteUnifiedJobStore,
+        shutdown: &CancellationToken,
+    ) -> Result<(), ApiError> {
+        heartbeat_running(store, claimed, PipelinePhase::Parsing).await;
+        if shutdown.is_cancelled() {
+            return Err(extract_error("extract canceled before running"));
+        }
+
+        let request = claimed
+            .request_json
+            .as_ref()
+            .ok_or_else(|| extract_error("extract job has no request payload"))?;
+        let urls: Vec<String> = request
+            .get("urls")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .ok_or_else(|| extract_error("extract job request is missing a `urls` array"))?;
+        let config_json = request
+            .get("config_json")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+
+        let mut effective_cfg = apply_config_snapshot(&self.cfg, config_json).map_err(|error| {
+            ApiError::new(
+                "job_runner.invalid_config_snapshot",
+                ErrorStage::Planning,
+                error.to_string(),
+            )
+        })?;
+        effective_cfg.output_dir = effective_cfg
+            .output_dir
+            .join("extract-jobs")
+            .join(claimed.job_id.0.to_string());
+        effective_cfg.output_path = None;
+
+        let prompt = effective_cfg.query.clone().unwrap_or_default();
+        let extract_fut = crate::extract::extract_sync(&effective_cfg, &urls, &prompt);
+        tokio::select! {
+            _ = shutdown.cancelled() => Err(extract_error("extract canceled")),
+            result = extract_fut => result.map(|_summary| ()).map_err(|error| extract_error(error.to_string())),
+        }
+    }
+}
+
+fn extract_error(message: impl Into<String>) -> ApiError {
+    ApiError::new(
+        "job_runner.extract_failed",
+        ErrorStage::ParsingContent,
         message.into(),
     )
 }

@@ -14,7 +14,6 @@ axon-api = { path = "../axon-api" }
 axon-crawl = { path = "../axon-crawl" }
 axon-vector = { path = "../axon-vector" }
 axon-ingest = { path = "../axon-ingest" }
-axon-extract = { path = "../axon-extract" }
 axon-memory = { path = "../axon-memory" }
 axon-jobs = { path = "../axon-jobs" }
 axon-observe = { path = "../axon-observe" }

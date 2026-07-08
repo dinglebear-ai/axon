@@ -21,7 +21,6 @@ members = [
     "crates/axon-crawl",
     "crates/axon-vector",
     "crates/axon-ingest",
-    "crates/axon-extract",
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

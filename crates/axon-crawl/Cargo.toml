@@ -7,6 +7,7 @@ description = "Axon crawl engine: Spider-based HTTP/Chrome crawl, manifest, site
 license = "MIT"
 
 [dependencies]
+axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }

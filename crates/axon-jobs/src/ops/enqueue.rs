@@ -168,21 +168,6 @@ async fn insert_payload(
             .execute(&mut *conn)
             .await?;
         }
-        JobPayload::Extract { urls, config_json } => {
-            let urls_json =
-                serde_json::to_string(urls).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-            sqlx::query(
-                "INSERT INTO axon_extract_jobs (id, status, urls_json, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?)",
-            )
-            .bind(id_str)
-            .bind(&urls_json)
-            .bind(config_json)
-            .bind(now)
-            .bind(now)
-            .execute(&mut *conn)
-            .await?;
-        }
         JobPayload::Ingest {
             target,
             source_type,

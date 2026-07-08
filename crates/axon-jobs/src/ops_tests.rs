@@ -383,59 +383,6 @@ async fn progress_updates_are_separate_from_final_result_json() {
 }
 
 #[tokio::test]
-async fn extract_shaped_completion_keeps_progress_lifecycle_only() {
-    let pool = test_pool().await;
-    let id = enqueue_job(
-        &pool,
-        &JobPayload::Extract {
-            urls: vec!["https://example.com".into()],
-            config_json: "{}".into(),
-        },
-        &Config::default_minimal(),
-    )
-    .await
-    .expect("enqueue");
-    let attempt = claim_next_pending_for_attempt(&pool, JobKind::Extract)
-        .await
-        .expect("claim")
-        .expect("claimed");
-
-    mark_completed_for_attempt(
-        &pool,
-        JobKind::Extract,
-        id,
-        Some(&attempt.attempt_id),
-        Some(&serde_json::json!({
-            "summary_path": "extract-jobs/job/summary.json",
-            "items_path": "extract-jobs/job/items.ndjson",
-            "artifacts": {
-                "summary": {"path": "extract-jobs/job/summary.json"},
-                "items": {"path": "extract-jobs/job/items.ndjson"}
-            }
-        })),
-    )
-    .await
-    .expect("complete");
-
-    let row: (String, String) =
-        sqlx::query_as("SELECT progress_json, result_json FROM axon_extract_jobs WHERE id = ?")
-            .bind(id.to_string())
-            .fetch_one(&pool)
-            .await
-            .expect("row");
-    let progress: serde_json::Value = serde_json::from_str(&row.0).expect("progress json");
-    let result: serde_json::Value = serde_json::from_str(&row.1).expect("result json");
-
-    assert_eq!(progress["phase"], "completed");
-    assert_eq!(progress["lifecycle_progress"], serde_json::json!(1.0));
-    assert_eq!(progress["summary_path"], serde_json::Value::Null);
-    assert_eq!(progress["items_path"], serde_json::Value::Null);
-    assert_eq!(progress["artifacts"], serde_json::Value::Null);
-    assert_eq!(result["summary_path"], "extract-jobs/job/summary.json");
-    assert!(result["artifacts"].is_object());
-}
-
-#[tokio::test]
 async fn reclaim_marks_progress_json_requeued_and_keeps_previous_attempt_progress() {
     let pool = test_pool().await;
     let id = enqueue_job(

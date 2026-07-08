@@ -381,6 +381,80 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
     ))
 }
 
+/// Map a raw JSON payload into a [`ScrapeResult`].
+///
+/// This is a pure function — no network required. Tests call it with JSON literals.
+pub fn map_scrape_payload(
+    payload: serde_json::Value,
+) -> Result<axon_api::job_dto::ScrapeResult, Box<dyn Error>> {
+    let url = payload
+        .get("url")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("scrape payload missing url")?
+        .to_string();
+    let markdown = payload
+        .get("markdown")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("scrape payload missing markdown")?
+        .to_string();
+    let output = markdown.clone();
+    Ok(axon_api::job_dto::ScrapeResult {
+        payload,
+        url,
+        markdown,
+        output,
+        artifact_handle: None,
+        truncated: false,
+        token_estimate: None,
+        next_cursor: None,
+        remaining_tokens_estimate: None,
+        backend: Some(axon_api::result::DocumentBackend::LiveScrape),
+        follow_crawl_urls: vec![],
+        extra: None,
+        structured: None,
+        structured_for_embedding: None,
+        extractor_name: None,
+        title: None,
+    })
+}
+
+/// Scrape a single URL and return a typed [`axon_api::job_dto::ScrapeResult`],
+/// including the format-selected `output` field (markdown/html/rawHtml/json
+/// per `cfg.format`). Generic HTTP-fetch path only — no vertical-extractor
+/// dispatch (that framework was removed with `axon-extract`; see
+/// `docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md`).
+pub async fn scrape_to_result(
+    cfg: &Config,
+    url: &str,
+) -> Result<axon_api::job_dto::ScrapeResult, Box<dyn Error>> {
+    let normalized = normalize_url(url);
+    validate_url(&normalized).map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
+
+    let mut website = build_scrape_website(cfg, &normalized)
+        .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
+    let page = fetch_single_page(cfg, &mut website, &normalized)
+        .await
+        .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;
+    let html = page.html;
+    let status_code = page.status_code;
+    if !(200..300).contains(&status_code) {
+        return Err(format!("scrape failed: HTTP {} for {}", status_code, normalized).into());
+    }
+
+    let sel_cfg = build_selector_config(cfg);
+    let payload = build_scrape_json(&normalized, &html, status_code, sel_cfg.as_ref());
+    let output = select_output(
+        cfg.format,
+        &normalized,
+        &html,
+        status_code,
+        sel_cfg.as_ref(),
+    )?;
+    let mut result = map_scrape_payload(payload)?;
+    result.output = output;
+    Ok(result)
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
