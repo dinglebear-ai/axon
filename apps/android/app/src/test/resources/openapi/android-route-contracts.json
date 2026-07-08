@@ -151,6 +151,56 @@
   },
   {
     "method": "GET",
+    "path": "/v1/jobs",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/jobs/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/jobs/{id}/events",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/jobs/{id}/stream",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/jobs/{id}/artifacts",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/jobs",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/jobs/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/jobs/{id}/retry",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/jobs/recover",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/jobs/cleanup",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
     "path": "/v1/mobile/sessions",
     "requiresAuth": true
   },
