@@ -12,38 +12,14 @@ axon-api = { path = "../axon-api" }
 axon-vector = { path = "../axon-vector" }
 anyhow = "1"
 async-trait = "0.1"
-base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.18"
 notify = "8"
-octocrab = "0.49"
 futures-util = "0.3"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
-spider = { version = "2", default-features = false, features = [
-  "basic",
-  "chrome",
-  "regex",
-  "sitemap",
-  "adblock",
-  "chrome_stealth",
-  "chrome_screenshot",
-  "chrome_store_page",
-  "chrome_headless_new",
-  "chrome_simd",
-  "simd",
-  "inline-more",
-  "cache_mem",
-  "ua_generator",
-  "headers",
-  "time",
-  "control",
-  "hedge",
-  "etag_cache",
-  "warc",
-] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
 tokio = { version = "1", features = [
   "macros",
@@ -56,14 +32,11 @@ tokio = { version = "1", features = [
   "sync",
   "time",
 ] }
-tokio-util = { version = "0.7", features = ["compat", "io"] }
 tracing = "0.1"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 sha2 = "0.11"
 hex = "0.4"
-feed-rs = "2"
-url = "2"
 
 [lints.rust]
 unsafe_code = "deny"
@@ -79,6 +52,4 @@ test-util = []
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
 axon-vector = { path = "../axon-vector", features = ["test-util"] }
-httpmock = "0.8"
 serial_test = "3"
-proptest = "1"

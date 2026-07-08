@@ -10,7 +10,7 @@ use axon_jobs::backend::{JobKind, JobPayload};
 use axon_jobs::config_snapshot::ingest_config_json;
 use axon_jobs::ingest::types::{source_type_label, target_label};
 pub use axon_jobs::ingest::{IngestJob, IngestSource};
-use axon_jobs::ingest::{count_ingest_jobs, get_ingest_job, list_ingest_jobs, start_ingest_job};
+use axon_jobs::ingest::{count_ingest_jobs, get_ingest_job, list_ingest_jobs};
 use std::error::Error;
 use uuid::Uuid;
 
@@ -18,11 +18,8 @@ pub mod classify;
 mod prepared_sessions;
 pub mod request;
 pub use axon_ingest::orchestrate::{
-    ingest_generic_git_with_progress, ingest_gitea_with_progress, ingest_github,
-    ingest_github_with_progress, ingest_gitlab_with_progress, ingest_payload, ingest_reddit,
-    ingest_reddit_with_progress, ingest_reddit_with_progress_and_options, ingest_rss,
-    ingest_rss_with_progress, ingest_sessions, ingest_sessions_prepared_with_progress,
-    ingest_sessions_with_progress, ingest_youtube, ingest_youtube_with_progress, map_ingest_result,
+    ingest_payload, ingest_sessions, ingest_sessions_prepared_with_progress,
+    ingest_sessions_with_progress, map_ingest_result,
 };
 pub use classify::classify_target;
 pub use prepared_sessions::ingest_sessions_prepared_start_with_context;
@@ -38,47 +35,16 @@ pub fn map_ingest_job_result(payload: serde_json::Value) -> IngestJobResult {
 
 // --- Service lifecycle wrappers ---
 
-pub async fn ingest_start(
-    cfg: &Config,
-    source: IngestSource,
-) -> Result<IngestStartResult, Box<dyn Error>> {
-    let job_id = start_ingest_job(cfg, source).await?;
-    Ok(map_ingest_start_result(job_id.to_string()))
-}
-
 /// Pre-flight existence check run before an ingest job is enqueued.
 ///
-/// Currently GitHub-only and **fail-open**: only a definitive `NotFound`
-/// rejects the submission (surfaced as a `vertical_target_not_found` /
-/// HTTP 404). Any inconclusive result (rate limit, network error, missing
-/// token on a private repo, timeout) lets the job proceed as before, so a
-/// transient GitHub outage never blocks ingest. Other source types
-/// (GitLab/Gitea/Reddit/YouTube/RSS) are not probed here.
+/// Phase 12 clean break (issue #298): the GitHub existence probe this used to
+/// run was deleted along with `axon-ingest`'s provider orchestration — every
+/// non-session `IngestSource` now fails at execution time in the legacy job
+/// runner instead, so there is nothing left to preflight here.
 pub async fn preflight_ingest_source(
-    cfg: &Config,
-    source: &IngestSource,
+    _cfg: &Config,
+    _source: &IngestSource,
 ) -> Result<(), Box<dyn Error>> {
-    use axon_core::error::ServiceTaxonomyError;
-    use axon_ingest::github::{RepoExistence, github_repo_exists};
-
-    if let IngestSource::Github { repo, .. } = source {
-        match github_repo_exists(cfg, repo).await {
-            RepoExistence::NotFound => {
-                return Err(Box::new(ServiceTaxonomyError::VerticalTargetNotFound {
-                    vertical: "github_repo",
-                    url: repo.clone(),
-                }));
-            }
-            RepoExistence::Unknown(reason) => {
-                // Fail open — proceed, but leave a breadcrumb for why the check
-                // was inconclusive (rate limit, offline, private repo + no token).
-                axon_core::logging::log_warn(&format!(
-                    "ingest preflight inconclusive for github repo={repo}: {reason}"
-                ));
-            }
-            RepoExistence::Exists => {}
-        }
-    }
     Ok(())
 }
 

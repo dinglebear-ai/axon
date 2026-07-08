@@ -101,14 +101,14 @@ pub fn validate_ingest_source(source: &IngestSource) -> Result<(), String> {
 }
 
 fn validate_github_ingest_target(target: &str) -> Result<String, String> {
-    let (owner, repo) = ingest::github::parse_github_repo(target).ok_or_else(|| {
+    let (owner, repo) = ingest::target_parse::parse_github_repo(target).ok_or_else(|| {
         "invalid GitHub target; expected owner/repo or github.com/owner/repo".to_string()
     })?;
     Ok(format!("{owner}/{repo}"))
 }
 
 fn validate_gitlab_ingest_target(target: &str) -> Result<String, String> {
-    ingest::gitlab::normalize_gitlab_target(target).map_err(|err| {
+    ingest::target_parse::normalize_gitlab_target(target).map_err(|err| {
         format!(
             "invalid GitLab target; expected gitlab.com/group/project URL or gitlab:<host>/<group>/<project>: {err}"
         )
@@ -116,20 +116,20 @@ fn validate_gitlab_ingest_target(target: &str) -> Result<String, String> {
 }
 
 fn validate_gitea_ingest_target(target: &str) -> Result<String, String> {
-    ingest::gitea::normalize_gitea_target(target).map_err(|err| {
+    ingest::target_parse::normalize_gitea_target(target).map_err(|err| {
         format!("invalid Gitea target; expected gitea:<host>/<owner>/<repo> or known Gitea/Forgejo URL: {err}")
     })
 }
 
 fn validate_git_ingest_target(target: &str) -> Result<String, String> {
-    ingest::generic_git::normalize_generic_git_target(target).map_err(|err| {
+    ingest::target_parse::normalize_generic_git_target(target).map_err(|err| {
         format!("invalid generic git target; expected git:https://host/path/repo.git: {err}")
     })
 }
 
 fn validate_reddit_ingest_target(target: &str) -> Result<(), String> {
-    match ingest::reddit::classify_target(target).map_err(|err| err.to_string())? {
-        ingest::reddit::RedditTarget::Subreddit(name) => {
+    match ingest::target_parse::classify_reddit_target(target).map_err(|err| err.to_string())? {
+        ingest::target_parse::RedditTarget::Subreddit(name) => {
             let len = name.len();
             let valid = (3..=21).contains(&len)
                 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
@@ -142,7 +142,7 @@ fn validate_reddit_ingest_target(target: &str) -> Result<(), String> {
                 )
             }
         }
-        ingest::reddit::RedditTarget::Thread(url) => {
+        ingest::target_parse::RedditTarget::Thread(url) => {
             if url.starts_with("/r/") && url.contains("/comments/") {
                 Ok(())
             } else {
@@ -156,7 +156,7 @@ fn validate_reddit_ingest_target(target: &str) -> Result<(), String> {
 }
 
 fn validate_youtube_ingest_target(target: &str) -> Result<(), String> {
-    ingest::youtube::classify_youtube_target(target)
+    ingest::target_parse::classify_youtube_target(target)
         .map(|_| ())
         .map_err(|err| format!("invalid YouTube target: {err}"))
 }
