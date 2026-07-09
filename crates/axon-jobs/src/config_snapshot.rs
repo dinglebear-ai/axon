@@ -331,3 +331,7 @@ fn decode_config_envelope(
         prompt: None,
     })
 }
+
+#[cfg(test)]
+#[path = "config_snapshot_tests.rs"]
+mod tests;

@@ -409,6 +409,11 @@ fn req_memory(subaction: MemorySubaction) -> AxonRequest {
         memory_ids: None,
         strategy: None,
         archive_sources: None,
+        records: None,
+        import_mode: None,
+        dry_run: None,
+        export_scope: None,
+        include_archived: None,
     })
 }
 

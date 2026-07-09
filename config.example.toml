@@ -388,6 +388,10 @@
 # Env: AXON_EMBED_LANES
 # embed-lanes = 2
 
+# Maximum concurrent jobs the unified job-store worker runs at once (clamped 1-64).
+# Env: AXON_UNIFIED_WORKER_CONCURRENCY
+# unified-worker-concurrency = 8
+
 # Per-document embed timeout in seconds.
 # Env: AXON_EMBED_DOC_TIMEOUT_SECS
 # embed-doc-timeout-secs = 300

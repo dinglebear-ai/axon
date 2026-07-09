@@ -12,7 +12,9 @@ async fn task_mode_rejects_removed_crawl_action() {
         ..CrawlRequest::default()
     });
 
-    let err = enqueue_supported_start(&server, request).await.unwrap_err();
+    let err = enqueue_supported_start(&server, request, None)
+        .await
+        .unwrap_err();
     assert!(
         err.message.contains("extract.start"),
         "removed crawl action should route to the unsupported-task error naming extract.start: {}",

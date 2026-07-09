@@ -1,6 +1,4 @@
 use super::*;
-use crate::backend::JobPayload;
-use crate::ops::enqueue_job;
 use crate::store::open_sqlite_pool;
 use crate::watch::url_state::{UrlState, upsert_url_state};
 use crate::watch::{WatchDefCreate, create_watch_def_with_pool};
@@ -48,17 +46,12 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
     let watch_id = make_watch(&pool).await;
     let url = "https://example.com/docs/page";
 
-    // Enqueue a crawl job; pending counts as active for the in-flight guard.
-    let active_job = enqueue_job(
-        &pool,
-        &JobPayload::Crawl {
-            url: "https://example.com/docs/".into(),
-            config_json: "{}".into(),
-        },
-        &cfg,
-    )
-    .await
-    .unwrap();
+    // Enqueue a crawl job via the unified store; queued/pending counts as
+    // active for the in-flight guard (crawl_job_active checks the unified
+    // store's LifecycleStatus, not the legacy axon_crawl_jobs table).
+    let active_job = enqueue_change_crawl(&pool, &cfg, "https://example.com/docs/", 2)
+        .await
+        .unwrap();
 
     // Seed the URL's snapshot row pointing at that active crawl.
     let state = UrlState {
@@ -69,7 +62,7 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
         .await
         .unwrap();
 
-    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -78,7 +71,7 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
     let (clusters, dispatched, errors) =
         dispatch_clusters(&pool, &cfg, watch_id, &changed, 2).await;
 
-    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -117,7 +110,7 @@ async fn idle_cluster_enqueues_one_crawl() {
         .await
         .unwrap();
 
-    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -126,7 +119,7 @@ async fn idle_cluster_enqueues_one_crawl() {
     let (clusters, dispatched, errors) =
         dispatch_clusters(&pool, &cfg, watch_id, &changed, 2).await;
 
-    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
         .fetch_one(&pool)
         .await
         .unwrap();

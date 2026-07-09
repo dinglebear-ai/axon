@@ -1,3 +1,4 @@
+use axon_api::source::{AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_core::config::Config;
 use axon_jobs::backend::JobKind;
 use axon_services as services;
@@ -5,12 +6,13 @@ use axon_services::client_contract::{RestExtractMode, RestExtractRequest as Extr
 use axon_services::context::ServiceContext;
 use axon_services::transport::{ExtractTransportOverrides, apply_extract_overrides};
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::State,
     http::{StatusCode, header},
     response::IntoResponse,
     routing::post,
 };
+use lab_auth::AuthContext;
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -59,6 +61,7 @@ fn validate_ssrf_urls(urls: &[String]) -> Result<(), HttpError> {
 )]
 pub(crate) async fn start_extract(
     State((state, cfg)): State<(AppState, Arc<Config>)>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<ExtractStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
     if req.urls.is_empty() {
@@ -86,12 +89,28 @@ pub(crate) async fn start_extract(
         },
     );
     super::rag::validate_collection_name(&cfg.collection)?;
+    // Real caller identity, when present (mirrors sources.rs's
+    // caller_context_from_auth): absent only in LoopbackDev mode, where the
+    // loopback bind itself is the trust boundary.
+    let caller_snapshot = auth.map(|Extension(auth)| {
+        AuthSnapshot::from_caller(
+            &CallerContext {
+                actor: Some(auth.sub.clone()),
+                transport: TransportKind::Rest,
+                scopes: auth.scopes.clone(),
+                visibility_ceiling: Visibility::Internal,
+            },
+            Visibility::Internal,
+            "runtime",
+        )
+    });
     let outcome = services::extract::extract_start_with_context(
         &cfg,
         &req.urls,
         req.prompt,
         &state.service_context,
         None,
+        caller_snapshot.as_ref(),
     )
     .await
     .map_err(HttpError::from_box)?;

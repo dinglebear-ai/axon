@@ -247,7 +247,9 @@ pub(crate) async fn dispatch_freshness(
             {
                 return Ok(skipped_active_job(def));
             }
-            let outcome = embed_start_with_context(&cfg, &input, service_context, None, None)
+            // The freshness scheduler is a system-triggered background loop —
+            // no real caller identity is available here.
+            let outcome = embed_start_with_context(&cfg, &input, service_context, None, None, None)
                 .await
                 .map_err(|err| -> FreshnessError { err.to_string().into() })?;
             let job_id = Uuid::parse_str(&outcome.result.job_id).ok();
@@ -270,7 +272,9 @@ pub(crate) async fn dispatch_freshness(
             {
                 return Ok(skipped_active_job(def));
             }
-            let outcome = ingest_start_with_context(&cfg, source, service_context)
+            // The freshness scheduler is a system-triggered background loop —
+            // no real caller identity is available here.
+            let outcome = ingest_start_with_context(&cfg, source, service_context, None)
                 .await
                 .map_err(|err| -> FreshnessError { err.to_string().into() })?;
             let job_id = Uuid::parse_str(&outcome.result.job_id).ok();
@@ -288,7 +292,9 @@ async fn crawl_start_for_freshness(
     urls: &[String],
     service_context: &ServiceContext,
 ) -> Result<Value, FreshnessError> {
-    let outcome = crate::crawl::crawl_start_with_context(cfg, urls, service_context, None)
+    // The freshness scheduler is a system-triggered background loop — no real
+    // caller identity is available here.
+    let outcome = crate::crawl::crawl_start_with_context(cfg, urls, service_context, None, None)
         .await
         .map_err(|err| -> FreshnessError { err.to_string().into() })?;
     Ok(serde_json::to_value(outcome.result)?)

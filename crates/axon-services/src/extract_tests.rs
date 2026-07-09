@@ -32,10 +32,16 @@ async fn extract_job_runs_end_to_end_on_the_unified_store() {
     // in URL parsing/fetch) while still proving the unified worker really
     // dispatches to `axon_extract::sync::extract_sync`, not the
     // `job_runner.unsupported_stage` catch-all.
-    let outcome =
-        extract_start_with_context(ctx.cfg(), &["not-a-real-url".to_string()], None, &ctx, None)
-            .await
-            .expect("enqueue");
+    let outcome = extract_start_with_context(
+        ctx.cfg(),
+        &["not-a-real-url".to_string()],
+        None,
+        &ctx,
+        None,
+        None,
+    )
+    .await
+    .expect("enqueue");
     let job_id = uuid::Uuid::parse_str(&outcome.result.job_id).expect("job id");
 
     let mut status = None;
@@ -78,7 +84,7 @@ async fn extract_job_status_and_list_expose_the_original_urls() {
     let ctx = test_ctx_with_workers().await;
     let urls = vec!["not-a-real-url".to_string()];
 
-    let outcome = extract_start_with_context(ctx.cfg(), &urls, None, &ctx, None)
+    let outcome = extract_start_with_context(ctx.cfg(), &urls, None, &ctx, None, None)
         .await
         .expect("enqueue");
     let job_id = uuid::Uuid::parse_str(&outcome.result.job_id).expect("job id");

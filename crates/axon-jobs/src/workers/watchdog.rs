@@ -1,12 +1,15 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axon_api::source::{JobRecoveryRequest, Timestamp};
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
 use super::{WatchdogNotifies, starvation};
 use crate::backend::JobKind;
+use crate::boundary::JobStore;
 use crate::cancel::CancelStore;
+use crate::unified::SqliteUnifiedJobStore;
 use axon_core::config::Config;
 
 /// Periodic watchdog: sweeps all job tables on a config-driven interval
@@ -31,6 +34,7 @@ pub(super) async fn watchdog_loop(
     let max_attempts = cfg.max_job_attempts;
     let starvation_threshold_ms = cfg.worker_starvation_secs.max(0) * 1_000i64;
     let sweep_interval = Duration::from_secs(cfg.watchdog_sweep_secs.max(1) as u64);
+    let unified_store = SqliteUnifiedJobStore::new((*pool).clone());
     let mut ticker = tokio::time::interval(sweep_interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // Skip immediate tick — startup-time reclaim already ran in SqliteJobBackend::init.
@@ -74,6 +78,48 @@ pub(super) async fn watchdog_loop(
                     starvation_threshold_ms,
                 )
                 .await;
+
+                // Reclaim stale `running` rows in the *unified* jobs table.
+                // Before the panic guard in `workers/unified.rs`, a crashed
+                // process or an uncaught panic could leave a unified job
+                // wedged in `running` forever with nothing to reclaim it
+                // (the sweep above only understands the legacy per-family
+                // tables). This mirrors the on-demand `crawl recover`/`embed
+                // recover`/etc. CLI/MCP paths (see
+                // `axon-services/src/runtime/sqlite/*_bridge.rs::recover`)
+                // but runs automatically on the same watchdog cadence so a
+                // panic-guard bypass or hard process crash still self-heals.
+                let stale_before = Timestamp::from(
+                    chrono::Utc::now() - chrono::Duration::milliseconds(stale_threshold_ms.max(0)),
+                );
+                match unified_store
+                    .recover(JobRecoveryRequest {
+                        kind: None,
+                        stale_before: Some(stale_before),
+                        limit: None,
+                        older_than_seconds: None,
+                        dry_run: false,
+                        allow_without_cutoff: false,
+                    })
+                    .await
+                {
+                    Ok(result) if result.jobs_requeued > 0 => {
+                        tracing::info!(
+                            requeued = result.jobs_requeued,
+                            scanned = result.jobs_scanned,
+                            "watchdog: reclaimed stale unified jobs"
+                        );
+                        notifies.unified.notify_waiters();
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            error = %error.message,
+                            code = %error.code,
+                            "watchdog: unified job reclaim sweep failed"
+                        );
+                    }
+                }
             }
         }
     }

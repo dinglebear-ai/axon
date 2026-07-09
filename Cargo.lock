@@ -685,6 +685,7 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-crawl",
+ "axon-error",
  "axon-graph",
  "axon-ingest",
  "axon-ledger",
