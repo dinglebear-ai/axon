@@ -22,10 +22,15 @@ import type { PaletteAction } from "@/lib/actions";
 // `history` are full-screen overlays — mutually exclusive with each other and
 // with the launcher, which is exactly what makes "settings + history" or
 // "browse while in settings" unrepresentable.
+// `browser` is a third full-screen overlay, alongside `settings`/`history`:
+// mutually exclusive with them and with the launcher. It carries the initial
+// URL/query argument the user typed before invoking the `browser` action (or
+// `null` for a bare invocation, which opens to the browser's home page).
 export type View =
   | { kind: "launcher"; mode: PaletteAction | null; browse: boolean }
   | { kind: "settings" }
-  | { kind: "history" };
+  | { kind: "history" }
+  | { kind: "browser"; initialTarget: string | null };
 
 export const INITIAL_VIEW: View = { kind: "launcher", mode: null, browse: false };
 
@@ -53,6 +58,8 @@ export type ViewIntent =
   | { type: "closeHistoryToBrowse" } //             Escape out of history → browse list
   | { type: "toggleHistory" }
   | { type: "openHistoryItem"; action: PaletteAction } // run a stored item → launcher in that mode
+  | { type: "openBrowser"; initialTarget: string | null } // invoke the Browser action
+  | { type: "closeBrowser" } //                     close the browser window/overlay → browse list
   // Action-runner driven
   | { type: "enterModeForRun"; action: PaletteAction } // submit() locks in the running action's mode
   | { type: "showHelp"; action: PaletteAction } //       local-help run shows under the launcher
@@ -103,6 +110,10 @@ export function viewReducer(view: View, intent: ViewIntent): View {
       return view.kind === "history"
         ? { kind: "launcher", mode: null, browse: false }
         : { kind: "history" };
+    case "openBrowser":
+      return { kind: "browser", initialTarget: intent.initialTarget };
+    case "closeBrowser":
+      return { kind: "launcher", mode: null, browse: true };
     case "expandJob":
       return { kind: "launcher", mode: view.kind === "launcher" ? view.mode : null, browse: false };
   }
@@ -126,4 +137,14 @@ export function isHistoryOpen(view: View): boolean {
 
 export function isBrowseOpen(view: View): boolean {
   return view.kind === "launcher" && view.browse;
+}
+
+/** True when the Browser overlay (a real in-app web browser window) is open. */
+export function isBrowserOpen(view: View): boolean {
+  return view.kind === "browser";
+}
+
+/** Initial URL/query argument for the Browser overlay, or `null` when absent. */
+export function browserInitialTarget(view: View): string | null {
+  return view.kind === "browser" ? view.initialTarget : null;
 }
