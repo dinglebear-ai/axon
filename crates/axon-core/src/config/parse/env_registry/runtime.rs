@@ -14,6 +14,14 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_EXTERNAL_QDRANT_URL",
+        ComposeEnv,
+        ComposeInterpolation,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
         "QDRANT_HTTP_PORT",
         ComposeEnv,
         ComposeInterpolation,

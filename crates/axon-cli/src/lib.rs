@@ -1,6 +1,7 @@
 #![recursion_limit = "512"]
 
 pub mod commands;
+pub mod json;
 pub mod schema_registry;
 
 use axon_core::config::{CommandKind, Config, parse_args};

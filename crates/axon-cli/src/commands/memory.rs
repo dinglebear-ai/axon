@@ -4,16 +4,52 @@ use axon_services::context::ServiceContext;
 use axon_services::memory as memory_svc;
 use std::error::Error;
 
+mod import_export;
+
 pub async fn run_memory(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
+    let subaction = cfg.positional.first().map(String::as_str).unwrap_or("");
+    if subaction == "import" {
+        return import_export::run_import(&cfg.positional, service_context).await;
+    }
+    if subaction == "export" {
+        return import_export::run_export(&cfg.positional, service_context).await;
+    }
     let req = request_from_positionals(&cfg.positional)?;
-    let value = memory_svc::dispatch(service_context, req)
+    // CLI is a local-trust transport (matching `axon prune`'s
+    // `PruneAuthz::admin()` rationale in `axon-cli/src/commands/prune.rs`) —
+    // there is no bearer/OAuth caller identity to derive scopes from.
+    let value = memory_svc::dispatch(service_context, req, &memory_svc::MemoryAuthz::admin())
         .await
         .map_err(|err| format!("memory failed: {}", err.message))?;
-    println!("{}", serde_json::to_string_pretty(&value)?);
+    crate::json::print_json_gated(&value)?;
     Ok(())
+}
+
+/// Every `axon memory <subaction>` name, including `import`/`export` (which
+/// dispatch through [`import_export`] rather than [`request_from_positionals`]
+/// because they carry a `records` bundle no other subaction needs).
+pub(crate) fn memory_subcommand_names() -> &'static [&'static str] {
+    &[
+        "remember",
+        "list",
+        "search",
+        "show",
+        "link",
+        "context",
+        "supersede",
+        "reinforce",
+        "contradict",
+        "pin",
+        "archive",
+        "forget",
+        "review",
+        "compact",
+        "import",
+        "export",
+    ]
 }
 
 fn request_from_positionals(args: &[String]) -> Result<MemoryRequest, Box<dyn Error>> {

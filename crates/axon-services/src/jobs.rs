@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::fmt;
-use std::future::Future;
 
 use uuid::Uuid;
 
@@ -8,14 +7,19 @@ use crate::context::ServiceContext;
 pub use crate::runtime::WorkerMode;
 use crate::types::ServiceJob;
 use axon_api::source::{
-    AuthSnapshot, ConfigSnapshotId, JobCancelRequest, JobCancelResult, JobCleanupRequest,
-    JobCleanupResult, JobClearRequest, JobClearResult, JobCreateRequest, JobDescriptor,
-    JobEventListRequest, JobEventPage, JobExecutionMode, JobIntent, JobListRequest, JobPolicy,
-    JobPriority, JobRecoveryRequest, JobRecoveryResult, JobRetryRequest, JobRetryResult,
-    JobStagePlan, JobStatusUpdate, LifecycleStatus, MetadataMap, OperationKind, Page,
-    PipelinePhase, Severity, SourceError, SourceWarning, job_policy_for_operation,
+    AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobDescriptor, JobExecutionMode, JobIntent,
+    JobPolicy, JobPriority, JobStagePlan, JobStatusUpdate, LifecycleStatus, MetadataMap,
+    OperationKind, PipelinePhase, Severity, SourceError, job_policy_for_operation,
 };
 use axon_jobs::backend::JobKind;
+
+mod unified_ops;
+use unified_ops::box_send_sync;
+pub use unified_ops::{
+    cancel_unified_job, cleanup_unified_jobs, clear_unified_jobs, list_unified_jobs,
+    recover_unified_jobs, retry_unified_job, unified_job_artifacts, unified_job_events,
+    unified_job_status,
+};
 
 // Helper: downgrade Send+Sync error to plain Box<dyn Error> for callers that don't need Send+Sync.
 // Wraps the original error to preserve the Display output and source chain without stringifying.
@@ -198,6 +202,15 @@ pub async fn enqueue_operation(
                 .map(str::to_string),
             stage_plan: stage_plan_for_operation(operation),
             request: Some(request),
+            // No caller identity is available at this call site — every real
+            // caller (search/system/memory job-tracking helpers, see
+            // `crate::search::job_tracking`, `crate::system::job_tracking`,
+            // `crate::memory::job_tracking`) invokes `enqueue_operation`
+            // through a generic signature carrying only an `OperationKind` +
+            // JSON payload, with no `AuthSnapshot`/`CallerContext` threaded
+            // through. This is a genuinely internal/system-triggered
+            // bookkeeping path, not an oversight — see
+            // docs/pipeline-unification/runtime/auth-contract.md.
             auth_snapshot: AuthSnapshot::trusted_system("runtime"),
             config_snapshot_id: Some(ConfigSnapshotId::new("runtime")),
             requirements: MetadataMap::new(),
@@ -287,153 +300,6 @@ pub async fn complete_operation_job(
         .await
         .map_err(|error| box_send_sync(error.message))?;
     Ok(())
-}
-
-pub async fn list_unified_jobs(
-    service_context: &ServiceContext,
-    request: JobListRequest,
-) -> Result<Page<axon_api::source::JobSummary>, Box<dyn Error + Send + Sync>> {
-    call_job_store(
-        service_context,
-        |store| async move { store.list(request).await },
-    )
-    .await
-}
-
-pub async fn unified_job_status(
-    service_context: &ServiceContext,
-    job_id: axon_api::source::JobId,
-) -> Result<Option<axon_api::source::JobSummary>, Box<dyn Error + Send + Sync>> {
-    call_job_store(
-        service_context,
-        |store| async move { store.get(job_id).await },
-    )
-    .await
-}
-
-pub async fn unified_job_events(
-    service_context: &ServiceContext,
-    request: JobEventListRequest,
-) -> Result<JobEventPage, Box<dyn Error + Send + Sync>> {
-    call_job_store(service_context, |store| async move {
-        store.events(request).await
-    })
-    .await
-}
-
-pub async fn unified_job_artifacts(
-    service_context: &ServiceContext,
-    request: axon_api::source::JobArtifactListRequest,
-) -> Result<axon_api::source::JobArtifactListResult, Box<dyn Error + Send + Sync>> {
-    call_job_store(service_context, |store| async move {
-        store.artifacts(request).await
-    })
-    .await
-}
-
-pub async fn cancel_unified_job(
-    service_context: &ServiceContext,
-    job_id: axon_api::source::JobId,
-    request: JobCancelRequest,
-) -> Result<JobCancelResult, Box<dyn Error + Send + Sync>> {
-    call_job_store(service_context, |store| async move {
-        store.cancel(job_id, request).await
-    })
-    .await
-}
-
-pub async fn retry_unified_job(
-    service_context: &ServiceContext,
-    job_id: axon_api::source::JobId,
-    request: JobRetryRequest,
-) -> Result<JobRetryResult, Box<dyn Error + Send + Sync>> {
-    call_job_store(service_context, |store| async move {
-        store.retry(job_id, request).await
-    })
-    .await
-}
-
-pub async fn recover_unified_jobs(
-    service_context: &ServiceContext,
-    request: JobRecoveryRequest,
-) -> Result<JobRecoveryResult, Box<dyn Error + Send + Sync>> {
-    call_job_store(service_context, |store| async move {
-        store.recover(request).await
-    })
-    .await
-}
-
-pub async fn cleanup_unified_jobs(
-    service_context: &ServiceContext,
-    request: JobCleanupRequest,
-) -> Result<JobCleanupResult, Box<dyn Error + Send + Sync>> {
-    call_job_store(service_context, |store| async move {
-        store.cleanup(request).await
-    })
-    .await
-}
-
-pub async fn clear_unified_jobs(
-    service_context: &ServiceContext,
-    request: JobClearRequest,
-) -> Result<JobClearResult, Box<dyn Error + Send + Sync>> {
-    if !request.confirm {
-        return Err(box_send_sync(
-            "job clear requires confirm=true and admin authorization",
-        ));
-    }
-    let store = service_context
-        .job_store()
-        .ok_or_else(|| box_send_sync("unified job store is not available"))?;
-    let mut deleted = 0_u64;
-    loop {
-        let result = store
-            .cleanup(JobCleanupRequest {
-                dry_run: false,
-                kind: request.kind,
-                older_than: request.older_than.clone(),
-                status: request.status,
-                limit: Some(500),
-                older_than_seconds: None,
-                confirm_all_terminal: true,
-            })
-            .await
-            .map_err(|error| box_send_sync(error.message))?;
-        deleted += result.deleted;
-        if result.deleted == 0 || result.deleted < 500 {
-            break;
-        }
-    }
-    Ok(JobClearResult {
-        deleted,
-        status: request.status,
-        warnings: vec![SourceWarning {
-            code: "jobs.clear_terminal_only".to_string(),
-            severity: Severity::Info,
-            message: "clear pruned terminal jobs only; active jobs require cancel/recover first"
-                .to_string(),
-            source_item_key: None,
-            retryable: false,
-        }],
-    })
-}
-
-fn box_send_sync(message: impl Into<String>) -> Box<dyn Error + Send + Sync> {
-    std::io::Error::other(message.into()).into()
-}
-
-async fn call_job_store<T, F, Fut>(
-    service_context: &ServiceContext,
-    f: F,
-) -> Result<T, Box<dyn Error + Send + Sync>>
-where
-    F: FnOnce(std::sync::Arc<dyn axon_jobs::boundary::JobStore>) -> Fut,
-    Fut: Future<Output = axon_jobs::boundary::Result<T>>,
-{
-    let store = service_context
-        .job_store()
-        .ok_or_else(|| box_send_sync("unified job store is not available"))?;
-    f(store).await.map_err(|error| box_send_sync(error.message))
 }
 
 fn job_kind_for_operation(operation: OperationKind) -> axon_api::source::JobKind {

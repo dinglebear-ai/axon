@@ -1,7 +1,7 @@
 use super::config::{AdaptiveConcurrencyConfig, Config};
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
-    RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, ConfigValueSource, EvaluateResponsesMode, MapFallback, McpTransport,
+    PerformanceProfile, RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
 use super::{
@@ -83,6 +83,8 @@ impl Default for Config {
             prune_generation: None,
             prune_confirm: false,
             reset_plan_id: None,
+            reset_confirm_legacy_wipe: false,
+            reset_confirm_legacy_wipe_source: ConfigValueSource::Unset,
             color_choice: super::enums::ColorChoice::Auto,
             watch_mode: false,
             performance_profile: PerformanceProfile::HighStable,
@@ -195,6 +197,8 @@ impl Default for Config {
             openai_embed_pool_max_inputs: 1024,
             ingest_lanes: 2,
             embed_lanes: 2,
+            unified_worker_concurrency: 8,
+            crawl_job_concurrency_limit: 1,
             embed_doc_timeout_secs: 300,
             queue_summary_secs: 30,
             freshness_tick_secs: 60,

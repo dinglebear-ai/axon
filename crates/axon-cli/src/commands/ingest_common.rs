@@ -215,7 +215,11 @@ pub async fn enqueue_ingest_job(
     source: IngestSource,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let result = ingest_service::ingest_start_with_context(cfg, source, service_context).await?;
+    // No per-caller auth identity is threaded through the CLI ingest command
+    // today — this is a genuinely internal call site, made explicit by
+    // passing `None`.
+    let result =
+        ingest_service::ingest_start_with_context(cfg, source, service_context, None).await?;
     let job_id = result.result.job_id;
     if cfg.json_output {
         println!(

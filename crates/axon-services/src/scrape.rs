@@ -87,13 +87,6 @@ pub async fn validate_and_normalize_scrape_url(
 
 pub const MAX_SCRAPE_BATCH_URLS: usize = 50;
 
-#[derive(Debug, Clone)]
-pub struct FollowCrawlQueueResult {
-    pub url: String,
-    pub job_id: Option<String>,
-    pub error: Option<String>,
-}
-
 #[derive(Debug)]
 enum ScrapeBatchError {
     Validation(String),
@@ -234,39 +227,6 @@ pub async fn embed_scrape_results(
         .require_success(label)
         .map_err(|err| anyhow::anyhow!(err))?;
     Ok(())
-}
-
-pub async fn enqueue_follow_crawl_jobs(
-    cfg: &Config,
-    source_url: &str,
-    follow_crawl_urls: &[String],
-    limit: usize,
-) -> Vec<FollowCrawlQueueResult> {
-    let mut unique: Vec<&String> = follow_crawl_urls
-        .iter()
-        .filter(|url| url.as_str() != source_url)
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .take(limit)
-        .collect();
-    unique.sort();
-
-    let mut results = Vec::with_capacity(unique.len());
-    for follow_url in unique {
-        match axon_jobs::crawl::start_crawl_job(cfg, follow_url).await {
-            Ok(job_id) => results.push(FollowCrawlQueueResult {
-                url: follow_url.clone(),
-                job_id: Some(job_id.to_string()),
-                error: None,
-            }),
-            Err(error) => results.push(FollowCrawlQueueResult {
-                url: follow_url.clone(),
-                job_id: None,
-                error: Some(error.to_string()),
-            }),
-        }
-    }
-    results
 }
 
 pub async fn scrape_result_to_prepared_doc(

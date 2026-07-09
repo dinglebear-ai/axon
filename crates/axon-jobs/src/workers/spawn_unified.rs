@@ -18,6 +18,8 @@ pub(super) fn spawn_unified_worker(
     unified_notify: Arc<Notify>,
     shutdown: CancellationToken,
     job_runner_registry: Option<Arc<JobRunnerRegistry>>,
+    concurrency: usize,
+    crawl_concurrency: usize,
 ) -> tokio::task::JoinHandle<()> {
     let registered_kinds = job_runner_registry
         .as_deref()
@@ -35,14 +37,17 @@ pub(super) fn spawn_unified_worker(
         .unwrap_or(0);
     tracing::info!(
         worker = "unified",
-        lanes = 1,
+        concurrency,
+        crawl_concurrency,
         registered_kinds,
         "jobs: spawning unified worker"
     );
-    tokio::spawn(unified::unified_worker_loop(
+    tokio::spawn(unified::unified_worker_loop_with_concurrency_limits(
         pool,
         unified_notify,
         shutdown,
         job_runner_registry,
+        concurrency,
+        crawl_concurrency,
     ))
 }

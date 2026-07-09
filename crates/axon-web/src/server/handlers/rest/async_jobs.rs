@@ -66,7 +66,11 @@ pub(crate) async fn v1_extract_submit(
             .into_iter()
             .map(|(key, value)| format!("{key}: {value}")),
     );
-    match extract_svc::extract_start_with_context(&cfg, &req.urls, req.prompt, &ctx, None).await {
+    // Test-only scaffolding router (see module doc in rest.rs) — not mounted
+    // in production, so there is no real per-request auth context to pass.
+    match extract_svc::extract_start_with_context(&cfg, &req.urls, req.prompt, &ctx, None, None)
+        .await
+    {
         Ok(outcome) => (StatusCode::ACCEPTED, Json(outcome)).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

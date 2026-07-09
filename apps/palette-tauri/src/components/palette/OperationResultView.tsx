@@ -2,6 +2,8 @@ import { memo, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, FileImage, FileText, ServerCog } from "lucide-react";
 
 import { AuthenticatedArtifactImage } from "@/components/palette/AuthenticatedArtifactImage";
+import { FilesView } from "@/components/palette/FilesView";
+import { GitHubView } from "@/components/palette/GitHubView";
 import { HelpResultView } from "@/components/palette/HelpResultView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ResultRows } from "@/components/palette/OperationResultRows";
@@ -25,6 +27,7 @@ import {
   toneForStatus,
 } from "@/components/palette/OperationResultViewShared";
 import { actionBehavior, maybeActionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
+import type { Client, PaletteConfig } from "@/lib/axonClient";
 import {
   arrField,
   boolField,
@@ -43,6 +46,10 @@ interface OperationResultViewProps {
   payload: unknown;
   subcommand: string;
   fallbackText?: string;
+  /** Live Axon client + config — only consumed by the `files` view (ingest
+   * needs a real request), every other structured view is payload-only. */
+  client?: Client | null;
+  config?: PaletteConfig | null;
 }
 
 // Renderer dispatch (A-H1): keyed by the registry's `StructuredViewKey` union, so
@@ -52,18 +59,22 @@ interface OperationResultViewProps {
 // (`ActionBehavior.structuredView`); `hasStructuredOperationView` derives from it.
 // Each entry renders the unwrapped `data`; raw `payload`/`fallbackText` are passed
 // through for views that need them (help). Job-lifecycle subcommands all share the
-// single `"job-lifecycle"` key.
+// single `"job-lifecycle"` key. `client`/`config` are only populated for `files`
+// (a stateful local browser, not a payload render) — every other view ignores them.
 type ViewContext = {
   data: Record<string, unknown>;
   payload: unknown;
   fallbackText: string;
   subcommand: string;
+  client?: Client | null;
+  config?: PaletteConfig | null;
 };
 
 const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNode> = {
   help: ({ payload, fallbackText }) => (
     <HelpResultView payload={payload} fallbackText={fallbackText} />
   ),
+  files: ({ client, config }) => <FilesView client={client ?? null} config={config ?? null} />,
   scrape: ({ data }) => <ReadingView payload={data} mode="scrape" />,
   query: ({ data }) => (
     <RankedResultView title="Knowledge matches" payload={data} rowsKey="results" />
@@ -83,6 +94,10 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   extract: ({ data }) => <JobStartView payload={data} family="extract" />,
   ingest: ({ data }) => <JobStartView payload={data} family="ingest" />,
   "ingest-sessions-prepared": ({ data }) => <JobStartView payload={data} family="ingest" />,
+  // GitHubView needs the WHOLE GitHubBrowseResult (ok/kind/owner/repo/branch/
+  // path/rateLimit*), not the inner GitHub JSON `unwrapPayload` would leave
+  // after stripping `.payload` — pass the raw payload through instead of `data`.
+  github: ({ payload }) => <GitHubView payload={isRecord(payload) ? payload : {}} />,
   endpoints: ({ data }) => <EndpointView payload={data} />,
   brand: ({ data }) => <BrandView payload={data} />,
   diff: ({ data }) => <DiffView payload={data} />,
@@ -104,6 +119,8 @@ export const OperationResultView = memo(function OperationResultView({
   payload,
   subcommand,
   fallbackText = "",
+  client,
+  config,
 }: OperationResultViewProps) {
   const data = unwrapPayload(payload);
   const behavior = maybeActionBehavior(subcommand);
@@ -117,7 +134,7 @@ export const OperationResultView = memo(function OperationResultView({
   }
   const viewKey = behavior.structuredView;
   const render = viewKey ? STRUCTURED_VIEWS[viewKey] : undefined;
-  if (render) return render({ data, payload, fallbackText, subcommand });
+  if (render) return render({ data, payload, fallbackText, subcommand, client, config });
   return <GenericResultView payload={data} />;
 });
 

@@ -1,5 +1,14 @@
 use super::*;
 
+/// `docs/pipeline-unification/plans/2026-07-08-rest-memory-surface.md` Task 3:
+/// `import`/`export` must be listed alongside every other memory subaction.
+#[test]
+fn cli_memory_has_import_and_export_subcommands() {
+    let subcommands = memory_subcommand_names();
+    assert!(subcommands.contains(&"import"));
+    assert!(subcommands.contains(&"export"));
+}
+
 #[test]
 fn parses_minimal_remember_request() {
     let req = request_from_positionals(&[

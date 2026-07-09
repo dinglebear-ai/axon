@@ -85,6 +85,7 @@ pub async fn extract_start_with_context(
     prompt: Option<String>,
     service_context: &ServiceContext,
     _tx: Option<mpsc::Sender<ServiceEvent>>,
+    caller: Option<&AuthSnapshot>,
 ) -> Result<JobStartOutcome<ExtractStartResult>, Box<dyn Error>> {
     if urls.is_empty() {
         return Err("extract_start requires at least one URL".into());
@@ -121,7 +122,9 @@ pub async fn extract_start_with_context(
                 "urls": urls,
                 "config_json": config_json,
             })),
-            auth_snapshot: AuthSnapshot::trusted_system("runtime"),
+            auth_snapshot: caller
+                .cloned()
+                .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
             config_snapshot_id: None,
             requirements: MetadataMap::new(),
             result_schema: Some("extract_result".to_string()),
@@ -131,6 +134,7 @@ pub async fn extract_start_with_context(
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
+    service_context.notify_unified();
     Ok(JobStartOutcome {
         disposition: StartDisposition::Enqueued,
         execution_mode: ExecutionMode::InProcess,

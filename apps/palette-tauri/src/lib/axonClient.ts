@@ -9,7 +9,12 @@ import { invoke } from "./invoke";
 
 import type { PaletteAction, PaletteSubcommand, RemotePaletteAction } from "./actions";
 import { ACTION_REGISTRY } from "./actionRegistry";
-import { buildRequestContext, type ActionRouteTemplate, type HttpMethod } from "./actionRequest";
+import {
+  buildRequestContext,
+  type ActionRouteTemplate,
+  type GitHubBrowseResult,
+  type HttpMethod,
+} from "./actionRequest";
 
 export interface PaletteConfig {
   serverUrl: string;
@@ -24,6 +29,7 @@ export interface PaletteConfig {
   showFooterHints?: boolean;
   envValues?: Record<string, string | number | boolean | string[]>;
   configValues?: Record<string, string | number | boolean | string[]>;
+  sftpConnections?: import("./sftpModel").SftpConnectionProfile[];
 }
 
 export interface PaletteResult {
@@ -93,6 +99,13 @@ export async function executeAction(
   arg: string,
   config: PaletteConfig,
 ): Promise<PaletteResult> {
+  // `github` never talks to the user's configured Axon server — it proxies
+  // GitHub's own REST API through the dedicated `github_browse` Tauri
+  // command (see src-tauri/src/github_bridge.rs). Route it separately so it
+  // works even when no Axon server/token is configured.
+  if (action.subcommand === "github") {
+    return executeGitHubBrowse(action, arg, config);
+  }
   const request = buildActionRequest(client, action, arg, config);
   try {
     // Both runtimes route through the shared invoke wrapper: the Tauri bridge in
@@ -101,6 +114,29 @@ export async function executeAction(
     return await invoke<PaletteResult>("axon_http_request", { request });
   } catch (error) {
     return failedResult(request.method, request.path, error);
+  }
+}
+
+async function executeGitHubBrowse(
+  action: RemotePaletteAction,
+  arg: string,
+  config: PaletteConfig,
+): Promise<PaletteResult> {
+  const ctx = buildRequestContext(action.argMode, arg, config);
+  const behavior = ACTION_REGISTRY[action.subcommand];
+  const path = behavior.route.path;
+  try {
+    const request = behavior.buildBody(ctx);
+    const result = await invoke<GitHubBrowseResult>("github_browse", { request });
+    return {
+      ok: result.ok,
+      status: result.status,
+      path,
+      method: "GET",
+      payload: result,
+    };
+  } catch (error) {
+    return failedResult("GET", path, error);
   }
 }
 

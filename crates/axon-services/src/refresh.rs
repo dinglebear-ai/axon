@@ -200,10 +200,14 @@ pub async fn execute_refresh(
                     None => None,
                 };
                 let job_cfg = origin_config(&enqueue_cfg, snapshot.as_deref());
+                // `refresh` re-enqueues previously indexed origins as a
+                // system-triggered maintenance operation — no per-caller auth
+                // identity is available here.
                 match crate::crawl::crawl_start_with_context(
                     &job_cfg,
                     std::slice::from_ref(&origin.seed_url),
                     service_context,
+                    None,
                     None,
                 )
                 .await
@@ -231,10 +235,14 @@ pub async fn execute_refresh(
                     job_cfg.github_include_source,
                 ) {
                     Ok(source) => {
+                        // `refresh` re-enqueues previously indexed origins as
+                        // a system-triggered maintenance operation — no
+                        // per-caller auth identity is available here.
                         match crate::ingest::ingest_start_with_context(
                             &job_cfg,
                             source,
                             service_context,
+                            None,
                         )
                         .await
                         {

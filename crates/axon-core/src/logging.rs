@@ -1,5 +1,8 @@
 mod aurora;
+mod json_format;
 mod size_rotating;
+
+use json_format::JsonFormat;
 
 use chrono::Local;
 use size_rotating::SizeRotatingFile;
@@ -55,13 +58,16 @@ fn read_trimmed_env(var: &str) -> Option<String> {
 //   key=      — dim
 //   value     — plain (inherits terminal default)
 //
-// The JSON file layer uses tracing-subscriber's built-in JSON formatter with
-// `with_ansi(false)`, so it never receives ANSI escape codes.
+// The JSON file layer uses the custom `JsonFormat` below (not
+// tracing-subscriber's built-in JSON formatter) with `with_ansi(false)`, so it
+// never receives ANSI escape codes. `JsonFormat` exists specifically to route
+// file-log events through the same `redact_event_fields` scrub as the console
+// layer — the built-in JSON formatter has no redaction hook.
 
 #[derive(Default)]
-struct EventVisitor {
-    message: String,
-    extra: Vec<(String, String)>,
+pub(crate) struct EventVisitor {
+    pub(crate) message: String,
+    pub(crate) extra: Vec<(String, String)>,
 }
 
 impl Visit for EventVisitor {
@@ -83,17 +89,41 @@ impl Visit for EventVisitor {
     }
 }
 
+/// Upper bound on a single message/field value scanned by the logging
+/// redaction path. Mirrors `redact::boundary::MAX_REDACTABLE_TEXT_BYTES` —
+/// the durable-write boundary fails closed above this size because
+/// unbounded regex scanning over attacker-controlled text is itself a DoS
+/// surface. The logging path can't fail closed the same way (a log call
+/// can't block or error out the caller), so instead it replaces oversized
+/// values with a placeholder before scanning, capping the work per log
+/// call regardless of how large a caller's field value is.
+const MAX_LOGGED_FIELD_BYTES: usize = super::redact::MAX_REDACTABLE_TEXT_BYTES;
+
+const OVERSIZED_FIELD_PLACEHOLDER: &str = "<oversized field omitted>";
+
+/// Redact `value` for the logging path, capping the scan cost: values over
+/// [`MAX_LOGGED_FIELD_BYTES`] are replaced with a placeholder instead of
+/// being scanned at all.
+fn redact_logged_text(redactor: &impl super::redact::Redactor, value: &str) -> String {
+    let context = super::redact::RedactionContext::transport_response();
+    if value.len() > MAX_LOGGED_FIELD_BYTES {
+        return OVERSIZED_FIELD_PLACEHOLDER.to_string();
+    }
+    redactor.redact_text(value, &context)
+}
+
 /// Fail-closed redaction boundary: scrub every console log line's message and
 /// structured fields before they're written to stderr. Every `tracing::*!`
 /// call site in the codebase funnels through here — this is the one place
 /// that can catch a secret an individual call site forgot to scrub.
-fn redact_event_fields(v: &mut EventVisitor) {
-    use super::redact::Redactor;
+///
+/// Shared by both `CliFormat` (console) and `json_format::JsonFormat` (file
+/// log sink) so a secret is scrubbed identically on every log destination.
+pub(crate) fn redact_event_fields(v: &mut EventVisitor) {
     let redactor = super::redact::DefaultRedactor::new();
-    let context = super::redact::RedactionContext::transport_response();
-    v.message = redactor.redact_text(&v.message, &context);
+    v.message = redact_logged_text(&redactor, &v.message);
     for (_, value) in v.extra.iter_mut() {
-        *value = redactor.redact_text(value, &context);
+        *value = redact_logged_text(&redactor, value);
     }
 }
 
@@ -141,11 +171,21 @@ fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> fm
 ///
 /// clone() on fields.fields is required — extensions() returns a temporary guard that
 /// drops at the end of each loop iteration, so we cannot borrow &str across iterations.
-fn collect_span_fields<S, N>(ctx: &FmtContext<'_, S, N>) -> Vec<String>
+///
+/// Each collected field string is routed through the same fail-closed
+/// redaction boundary as event-level fields (see `redact_event_fields`)
+/// before being returned — span fields (e.g. a future
+/// `#[tracing::instrument(fields(url = %url, header = %h))]`) are just as
+/// capable of carrying a secret as an event field, and both `CliFormat`
+/// (console) and `json_format::JsonFormat` (file log sink) write this
+/// output directly, so scrubbing it here covers both sinks for free.
+pub(crate) fn collect_span_fields<S, N>(ctx: &FmtContext<'_, S, N>) -> Vec<String>
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
     N: for<'a> FormatFields<'a> + 'static,
 {
+    use super::redact::DefaultRedactor;
+
     let mut fields: Vec<String> = Vec::new();
     let mut current = ctx.lookup_current();
     while let Some(span) = current {
@@ -157,7 +197,12 @@ where
         current = span.parent();
     }
     fields.reverse();
+
+    let redactor = DefaultRedactor::new();
     fields
+        .iter()
+        .map(|f| redact_logged_text(&redactor, f))
+        .collect()
 }
 
 /// Determine whether to emit ANSI escape codes. Explicit `--color` choices win
@@ -369,7 +414,7 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);
 
     let json_layer = tracing_subscriber::fmt::layer()
-        .json()
+        .event_format(JsonFormat)
         .with_ansi(false)
         .with_writer(non_blocking_file)
         .with_filter(file_filter);
@@ -409,42 +454,5 @@ pub fn log_debug(msg: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::should_use_ansi_for_writer;
-    use crate::config::ColorChoice;
-    use crate::ui::{COLOR_OVERRIDE, COLOR_TEST_GUARD, install_color_choice};
-
-    #[test]
-    fn color_override_controls_logging_ansi() {
-        let _g = COLOR_TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
-        let prev = COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
-
-        install_color_choice(ColorChoice::Never);
-        assert!(!should_use_ansi_for_writer(true));
-
-        install_color_choice(ColorChoice::Always);
-        assert!(should_use_ansi_for_writer(false));
-
-        install_color_choice(ColorChoice::Auto);
-        assert!(
-            !crate::ui::color_forced_always(),
-            "auto must clear the forced-always override"
-        );
-
-        COLOR_OVERRIDE.store(prev, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    #[test]
-    fn redact_event_fields_scrubs_message_and_extra() {
-        let mut v = super::EventVisitor {
-            message: "auth failed: Authorization: Bearer abcdef0123456789abcdef".to_string(),
-            extra: vec![(
-                "cause".to_string(),
-                "token=deadbeefdeadbeefdeadbeefdeadbeef".to_string(),
-            )],
-        };
-        super::redact_event_fields(&mut v);
-        assert!(!v.message.contains("abcdef0123456789abcdef"));
-        assert!(!v.extra[0].1.contains("deadbeefdeadbeefdeadbeef"));
-    }
-}
+#[path = "logging_tests.rs"]
+mod tests;

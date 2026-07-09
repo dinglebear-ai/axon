@@ -43,10 +43,13 @@ pub(super) async fn first_run_crawl(
         render_mode: Some(RenderMode::AutoSwitch),
         ..ConfigOverrides::default()
     });
+    // First-run bootstrap panel: no per-caller auth identity is threaded
+    // through this loopback-dev flow.
     match axon_services::crawl::crawl_start_with_context(
         &cfg,
         &[url.to_string()],
         &state.service_context,
+        None,
         None,
     )
     .await

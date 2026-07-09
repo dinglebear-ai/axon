@@ -20,7 +20,7 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
 | `crates/axon-api/src/source/common.rs` | `sha256:46f8c247ec7d77b72d37b08913526403eac035156733e4d779308700edcd6fb5` |
 | `crates/axon-api/src/source/document.rs` | `sha256:0395b09638d4265bc795fa64409dfaee4df517883d6e62b909889e3537a78f1c` |
-| `crates/axon-api/src/source/enums.rs` | `sha256:25eb7a8639f402b68c07b73f0463e0c9ee1b48f057a512037f76af20e2f0538a` |
+| `crates/axon-api/src/source/enums.rs` | `sha256:6a0ebcea59dc81c31a30069cadafe39f0e60dbdc914d4aad55334e5e5b8265a2` |
 | `crates/axon-api/src/source/graph.rs` | `sha256:d96090e8b5089f0d19f68e755eeee577e86961a46269ad98c7de1548ba0558f0` |
 | `crates/axon-api/src/source/ids.rs` | `sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17` |
 | `crates/axon-api/src/source/job.rs` | `sha256:819cc30c3ef16d34581c838b775ac5eab8cc5e3aa622df40bdd1989662c7236d` |
