@@ -55,48 +55,6 @@
     }
   ],
   "packages": {
-    ".": {
-      "component": "axon",
-      "release-type": "rust",
-      "include-component-in-tag": false,
-      "changelog-path": "CHANGELOG.md",
-      "exclude-paths": [
-        "apps/palette-tauri",
-        "apps/android",
-        "apps/chrome-extension"
-      ],
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.package.version"
-        },
-        {
-          "type": "generic",
-          "path": "README.md"
-        },
-        {
-          "type": "json",
-          "path": "apps/web/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "apps/web/openapi/axon.json",
-          "jsonpath": "$.info.version"
-        },
-        {
-          "type": "json",
-          "path": "apps/web/package-lock.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "apps/web/package-lock.json",
-          "jsonpath": "$.packages[''].version"
-        }
-      ]
-    },
     "apps/palette-tauri": {
       "component": "palette",
       "release-type": "simple",
