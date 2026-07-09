@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock3, FileImage, FileText, ServerCog } f
 
 import { AuthenticatedArtifactImage } from "@/components/palette/AuthenticatedArtifactImage";
 import { FilesView } from "@/components/palette/FilesView";
+import { GitHubView } from "@/components/palette/GitHubView";
 import { HelpResultView } from "@/components/palette/HelpResultView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ResultRows } from "@/components/palette/OperationResultRows";
@@ -93,6 +94,10 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   extract: ({ data }) => <JobStartView payload={data} family="extract" />,
   ingest: ({ data }) => <JobStartView payload={data} family="ingest" />,
   "ingest-sessions-prepared": ({ data }) => <JobStartView payload={data} family="ingest" />,
+  // GitHubView needs the WHOLE GitHubBrowseResult (ok/kind/owner/repo/branch/
+  // path/rateLimit*), not the inner GitHub JSON `unwrapPayload` would leave
+  // after stripping `.payload` — pass the raw payload through instead of `data`.
+  github: ({ payload }) => <GitHubView payload={isRecord(payload) ? payload : {}} />,
   endpoints: ({ data }) => <EndpointView payload={data} />,
   brand: ({ data }) => <BrandView payload={data} />,
   diff: ({ data }) => <DiffView payload={data} />,
