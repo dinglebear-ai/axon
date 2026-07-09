@@ -130,3 +130,128 @@ async fn repeated_run_is_noop() {
         .expect("count after");
     assert_eq!(before, after, "no duplicate applied-migration rows");
 }
+
+/// Migration 0021 rebuilds `jobs` to widen its `kind` CHECK constraint
+/// (adding `embed`/`crawl`/`ingest`). Prove the rebuild — run for real,
+/// in isolation, on a pool seeded with data that pre-dates it — preserves
+/// existing rows in `jobs` AND in a child table that FKs
+/// `jobs(job_id) ON DELETE CASCADE`. This is the exact failure mode a plain
+/// `DROP TABLE jobs` under `foreign_keys = ON` would produce: the child row
+/// would be silently CASCADE-deleted the moment the old table is dropped,
+/// which is why `run_jobs_table_rebuild_migration` disables enforcement for
+/// the rebuild instead of using the generic `pool.begin()` transaction path.
+#[tokio::test]
+async fn jobs_table_rebuild_preserves_existing_rows_and_child_fk_rows() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("migrate.db");
+    // Bypass `open_sqlite_pool` (which would run every migration, including
+    // 0021) so this test can apply only migrations 1..=20, seed data on that
+    // pre-rebuild schema, and then run migration 21 in isolation.
+    let pool = axon_core::sqlite::open_pool_unlocked(path.to_str().unwrap())
+        .await
+        .expect("open raw pool");
+
+    // `jobs.source_id` FKs `sources(source_id)`, owned by the ledger set —
+    // apply it first, matching the composed runner's dependency order.
+    let ledger_set = axon_ledger::migration::migration_set();
+    for migration in ledger_set.migrations {
+        run_migration(&pool, ledger_set.namespace, migration)
+            .await
+            .unwrap_or_else(|e| panic!("ledger migration {} failed: {e}", migration.name));
+    }
+
+    let (through_20, migration_21) = JOBS_MIGRATIONS.split_at(20);
+    assert_eq!(migration_21.len(), 1, "expected exactly one 0021 migration");
+    assert_eq!(migration_21[0].version, 21);
+
+    for migration in through_20 {
+        run_migration(&pool, JOBS_NAMESPACE, migration)
+            .await
+            .unwrap_or_else(|e| panic!("pre-0021 migration {} failed: {e}", migration.name));
+    }
+
+    // Seed a `jobs` row and a `job_events` row that FKs it, using a kind that
+    // was already valid pre-migration-21 (so the seed itself doesn't depend
+    // on the fix under test).
+    sqlx::query(
+        "INSERT INTO jobs (job_id, kind, status, phase, priority, created_at, updated_at) \
+         VALUES ('job-preserve-1', 'extract', 'queued', 'queued', 'normal', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed jobs row");
+
+    sqlx::query(
+        "INSERT INTO job_events (event_id, job_id, attempt, sequence, phase, status, severity, visibility, message, timestamp) \
+         VALUES ('evt-preserve-1', 'job-preserve-1', 1, 1, 'queued', 'queued', 'info', 'public', 'seeded', '2026-01-01T00:00:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed child job_events row referencing job-preserve-1");
+
+    // Now run the rebuild migration for real, on the seeded pre-0021 schema.
+    run_migration(&pool, JOBS_NAMESPACE, &migration_21[0])
+        .await
+        .expect("migration 0021 (jobs table rebuild) should succeed");
+
+    let job_kind: String =
+        sqlx::query_scalar("SELECT kind FROM jobs WHERE job_id = 'job-preserve-1'")
+            .fetch_one(&pool)
+            .await
+            .expect("seeded jobs row must survive the rebuild");
+    assert_eq!(job_kind, "extract");
+
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM job_events WHERE job_id = 'job-preserve-1'")
+            .fetch_one(&pool)
+            .await
+            .expect("seeded job_events row must survive the rebuild");
+    assert_eq!(
+        event_count, 1,
+        "child row referencing jobs(job_id) must not be cascade-deleted by the rebuild"
+    );
+
+    // The widened CHECK constraint accepts the new family kinds.
+    for kind in ["embed", "crawl", "ingest"] {
+        let job_id = format!("job-widened-{kind}");
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, created_at, updated_at) \
+             VALUES (?, ?, 'queued', 'queued', 'normal', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        )
+        .bind(&job_id)
+        .bind(kind)
+        .execute(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("widened kind '{kind}' should now be accepted: {e}"));
+    }
+
+    // Foreign-key integrity holds across the whole database after the rebuild,
+    // and enforcement is genuinely restored (not left disabled).
+    let violations = sqlx::query("PRAGMA foreign_key_check;")
+        .fetch_all(&pool)
+        .await
+        .expect("foreign_key_check");
+    assert!(
+        violations.is_empty(),
+        "no foreign-key violations should remain after the jobs table rebuild"
+    );
+    let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys;")
+        .fetch_one(&pool)
+        .await
+        .expect("read foreign_keys pragma");
+    assert_eq!(
+        fk_enabled, 1,
+        "foreign_keys enforcement must be restored after the rebuild, not left disabled"
+    );
+
+    let orphan_insert = sqlx::query(
+        "INSERT INTO job_events (event_id, job_id, attempt, sequence, phase, status, severity, visibility, message, timestamp) \
+         VALUES ('evt-orphan', 'no-such-job', 1, 1, 'queued', 'queued', 'info', 'public', 'orphan', '2026-01-01T00:00:00Z')",
+    )
+    .execute(&pool)
+    .await;
+    assert!(
+        orphan_insert.is_err(),
+        "foreign_keys enforcement must actually reject an orphaned child row post-rebuild"
+    );
+}

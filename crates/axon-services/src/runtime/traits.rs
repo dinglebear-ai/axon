@@ -58,6 +58,14 @@ pub trait ServiceJobRuntime: Send + Sync {
         None
     }
 
+    /// Wake the unified durable-job worker (if this runtime has in-process
+    /// workers) so a freshly enqueued job is claimed on its next wakeup
+    /// instead of waiting for the worker's poll interval. A no-op for
+    /// enqueue-only runtimes (no workers spawned) — mirrors `notify_worker`'s
+    /// "best-effort, false if unsupported" contract but is infallible since
+    /// callers treat a missed wakeup as a (slower, still-correct) poll fallback.
+    fn notify_unified(&self) {}
+
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid>;
     async fn enqueue_with_sidecar(
         &self,

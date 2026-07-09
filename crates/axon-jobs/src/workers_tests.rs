@@ -2,7 +2,7 @@ use super::*;
 use crate::backend::JobPayload;
 use crate::boundary::JobStore;
 use crate::cancel::CancelStore;
-use crate::ops::enqueue_job;
+use crate::ops::{claim_next_pending_for_attempt, enqueue_job};
 use crate::store::open_sqlite_pool;
 use crate::unified::SqliteUnifiedJobStore;
 use axon_api::source::{
@@ -11,6 +11,7 @@ use axon_api::source::{
     SourceId,
 };
 use sqlx::SqlitePool;
+use std::time::Duration;
 
 #[tokio::test]
 async fn worker_picks_up_job_via_notify() {

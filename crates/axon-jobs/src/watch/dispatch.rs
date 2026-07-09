@@ -1,13 +1,34 @@
 //! Enqueue change-triggered crawls; guard against piling up.
+//!
+//! Crawl jobs are claimed exclusively from the **unified** job store (the
+//! legacy `axon_crawl_jobs` per-family worker lane was retired in
+//! `ca7ea71d1`), so watch-triggered re-crawls must enqueue there too — not
+//! into `axon_crawl_jobs`, which nothing claims anymore.
 
-use crate::backend::{JobKind, JobPayload};
+use crate::boundary::JobStore;
 use crate::config_snapshot::config_snapshot_json;
-use crate::ops::enqueue_job;
-use crate::query::job_status_row;
+use crate::unified::SqliteUnifiedJobStore;
+use axon_api::source::{
+    AuthSnapshot, JobCreateRequest, JobId, JobIntent, JobKind as UnifiedJobKind, JobPriority,
+    JobStagePlan, LifecycleStatus, MetadataMap, PipelinePhase,
+};
 use axon_core::config::Config;
 use sqlx::SqlitePool;
 use std::error::Error;
 use uuid::Uuid;
+
+/// Statuses that mean a unified job is still in flight (not yet terminal).
+fn lifecycle_status_active(status: LifecycleStatus) -> bool {
+    matches!(
+        status,
+        LifecycleStatus::Queued
+            | LifecycleStatus::Pending
+            | LifecycleStatus::Running
+            | LifecycleStatus::Waiting
+            | LifecycleStatus::Blocked
+            | LifecycleStatus::Canceling
+    )
+}
 
 /// Whether a previously-dispatched crawl is still active. Used by the in-flight
 /// guard to skip re-enqueuing a crawl for a cluster whose prior crawl hasn't
@@ -18,8 +39,9 @@ use uuid::Uuid;
 /// through. Only a successful query that finds a terminal or absent status
 /// returns `false`.
 pub async fn crawl_job_active(pool: &SqlitePool, job_id: Uuid) -> bool {
-    match job_status_row(pool, JobKind::Crawl, job_id).await {
-        Ok(Some(r)) => r.status.is_active(),
+    let store = SqliteUnifiedJobStore::new(pool.clone());
+    match store.get(JobId(job_id)).await {
+        Ok(Some(summary)) => lifecycle_status_active(summary.status),
         Ok(None) => false,
         Err(e) => {
             tracing::warn!(%job_id, error = %e, "watch: crawl_job_active query failed; treating as active to avoid duplicate crawl");
@@ -42,16 +64,45 @@ pub async fn enqueue_change_crawl(
     let mut crawl_cfg = cfg.clone();
     crawl_cfg.max_depth = max_depth;
     let config_json = config_snapshot_json(&crawl_cfg)?;
-    let id = enqueue_job(
-        pool,
-        &JobPayload::Crawl {
-            url: seed_url.to_string(),
-            config_json,
-        },
-        &crawl_cfg,
-    )
-    .await?;
-    Ok(id)
+
+    let store = SqliteUnifiedJobStore::new(pool.clone());
+    let descriptor = store
+        .create(JobCreateRequest {
+            request_id: None,
+            job_kind: UnifiedJobKind::Crawl,
+            job_intent: JobIntent::Run,
+            source_id: None,
+            watch_id: None,
+            parent_job_id: None,
+            root_job_id: None,
+            attempt: 1,
+            priority: JobPriority::Normal,
+            idempotency_key: None,
+            stage_plan: vec![JobStagePlan {
+                phase: PipelinePhase::Fetching,
+                required: true,
+                provider_requirements: Vec::new(),
+                estimated_items: None,
+            }],
+            request: Some(serde_json::json!({
+                "urls": [seed_url],
+                "config_json": config_json,
+            })),
+            // Watch-triggered re-crawls are system-triggered — no per-caller
+            // auth identity is available at this call site (mirrors the
+            // system-triggered search/research auto-crawl path).
+            auth_snapshot: AuthSnapshot::trusted_system("watch-scheduler"),
+            config_snapshot_id: None,
+            requirements: MetadataMap::new(),
+            result_schema: Some("crawl_result".to_string()),
+            warnings: Vec::new(),
+            error: None,
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
+
+    Ok(descriptor.job_id.0)
 }
 
 #[cfg(test)]

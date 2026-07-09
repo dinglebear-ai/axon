@@ -10,7 +10,6 @@
 //! in isolation (see `workers::auth_enforcement_tests`).
 
 use axon_api::source::*;
-use axon_core::config::Config;
 use tokio_util::sync::CancellationToken;
 
 use super::unified;

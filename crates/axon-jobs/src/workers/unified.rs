@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use axon_api::source::{
-    ApiError, AuthSnapshot, ErrorStage, JobHeartbeat, JobId, JobKind as UnifiedJobKind,
-    LifecycleStatus, PipelinePhase, Severity, SourceError, SourceProgressEvent, StageCounts,
-    Timestamp, Visibility,
+    ApiError, AuthSnapshot, ErrorStage, JobId, JobKind as UnifiedJobKind, LifecycleStatus,
+    PipelinePhase, Timestamp,
 };
+use futures::FutureExt;
 use sqlx::{Row, SqlitePool};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use crate::boundary::JobStore;
 use crate::store_inventory::detect_incompatible_legacy_jobs;
 use crate::unified::SqliteUnifiedJobStore;
 
@@ -17,12 +16,12 @@ use super::auth_enforcement::{require_job_scope, required_scope_for_kind};
 use super::{POLL_INTERVAL, WORKER_BATCH_LIMIT};
 
 mod helpers;
-use helpers::{
-    empty_counts, enum_name, json_error, parse_enum, parse_uuid, source_error_from_api, sql_error,
-};
+use helpers::{json_error, parse_enum, parse_uuid, sql_error};
 
 mod runner_registry;
 pub use runner_registry::{JobRunnerRegistry, UnifiedJobRunner};
+
+mod terminal;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnifiedClaimedJob {
@@ -37,11 +36,73 @@ pub struct UnifiedClaimedJob {
     pub auth_snapshot: AuthSnapshot,
 }
 
+/// Convenience entry point using the default concurrency. Production callers
+/// go through [`crate::workers::spawn_unified::spawn_unified_worker`], which
+/// always calls [`unified_worker_loop_with_concurrency`] directly with
+/// `cfg.unified_worker_concurrency`; this wrapper exists for tests and any
+/// future direct caller that doesn't need a configured value.
+#[allow(dead_code)]
 pub(crate) async fn unified_worker_loop(
     pool: Arc<SqlitePool>,
     notify: Arc<Notify>,
     shutdown: CancellationToken,
     registry: Option<Arc<JobRunnerRegistry>>,
+) {
+    unified_worker_loop_with_concurrency(pool, notify, shutdown, registry, DEFAULT_CONCURRENCY)
+        .await;
+}
+
+/// Default concurrency used by [`unified_worker_loop`]'s convenience wrapper.
+#[allow(dead_code)]
+const DEFAULT_CONCURRENCY: usize = 8;
+
+/// Claim-and-run loop for the unified durable job worker.
+///
+/// Claimed jobs are run concurrently, bounded by a semaphore sized to
+/// `concurrency`, so one slow job (e.g. a long crawl) does not stall every
+/// other queued job behind it the way a fully serial claim loop would.
+///
+/// `crawl_concurrency` is a *second*, independent semaphore that additionally
+/// bounds how many `JobKind::Crawl` jobs may run at once, regardless of how
+/// high `concurrency` is. Crawl jobs share exactly one Chrome instance, so
+/// letting them freely consume up to `concurrency` general worker slots (as
+/// every other job kind does) risks CDP session contention and Chrome
+/// resource exhaustion — see `Config::crawl_job_concurrency_limit`'s doc
+/// comment. The crawl-specific permit is acquired *inside* the spawned task
+/// (not in this claim loop) so a crawl job waiting for its slot never blocks
+/// the claim loop from picking up other, non-crawl work.
+pub(crate) async fn unified_worker_loop_with_concurrency(
+    pool: Arc<SqlitePool>,
+    notify: Arc<Notify>,
+    shutdown: CancellationToken,
+    registry: Option<Arc<JobRunnerRegistry>>,
+    concurrency: usize,
+) {
+    unified_worker_loop_with_concurrency_limits(
+        pool,
+        notify,
+        shutdown,
+        registry,
+        concurrency,
+        DEFAULT_CRAWL_CONCURRENCY,
+    )
+    .await;
+}
+
+/// Default crawl-job concurrency used by callers that don't thread a
+/// configured value (matches `Config::crawl_job_concurrency_limit`'s
+/// default). Production callers go through
+/// [`crate::workers::spawn_unified::spawn_unified_worker`], which always
+/// passes `cfg.crawl_job_concurrency_limit` explicitly.
+const DEFAULT_CRAWL_CONCURRENCY: usize = 1;
+
+pub(crate) async fn unified_worker_loop_with_concurrency_limits(
+    pool: Arc<SqlitePool>,
+    notify: Arc<Notify>,
+    shutdown: CancellationToken,
+    registry: Option<Arc<JobRunnerRegistry>>,
+    concurrency: usize,
+    crawl_concurrency: usize,
 ) {
     if let Err(error) = ensure_no_incompatible_legacy_jobs(&pool).await {
         tracing::error!(
@@ -51,6 +112,9 @@ pub(crate) async fn unified_worker_loop(
         );
         return;
     }
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
+    let crawl_semaphore = Arc::new(tokio::sync::Semaphore::new(crawl_concurrency.max(1)));
+    let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut wake_count: u64 = 0;
     loop {
         tokio::select! {
@@ -59,6 +123,7 @@ pub(crate) async fn unified_worker_loop(
             _ = shutdown.cancelled() => break,
         }
         wake_count = wake_count.wrapping_add(1);
+        in_flight.retain(|handle| !handle.is_finished());
 
         let mut claimed_this_wake = 0usize;
         loop {
@@ -66,7 +131,35 @@ pub(crate) async fn unified_worker_loop(
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
                 match claim_next_unified_job_unchecked(&pool).await {
                     Ok(Some(claimed)) => {
-                        run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref()).await;
+                        let permit = match Arc::clone(&semaphore).acquire_owned().await {
+                            Ok(permit) => permit,
+                            Err(_) => break, // semaphore closed — shutting down
+                        };
+                        let pool = Arc::clone(&pool);
+                        let shutdown = shutdown.clone();
+                        let registry = registry.clone();
+                        let crawl_semaphore = (claimed.kind == UnifiedJobKind::Crawl)
+                            .then(|| Arc::clone(&crawl_semaphore));
+                        in_flight.push(tokio::spawn(async move {
+                            // Acquire the crawl-specific slot only for crawl
+                            // jobs, and only inside the spawned task — this
+                            // blocks that task, not the claim loop above, so
+                            // other job kinds keep being claimed and run
+                            // while a crawl job queues for its Chrome slot.
+                            let _crawl_permit = match crawl_semaphore {
+                                Some(sem) => match sem.acquire_owned().await {
+                                    Ok(permit) => Some(permit),
+                                    Err(_) => {
+                                        drop(permit);
+                                        return; // crawl semaphore closed — shutting down
+                                    }
+                                },
+                                None => None,
+                            };
+                            run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref())
+                                .await;
+                            drop(permit);
+                        }));
                         processed += 1;
                     }
                     Ok(None) => break,
@@ -90,9 +183,16 @@ pub(crate) async fn unified_worker_loop(
             tracing::debug!(
                 claimed = claimed_this_wake,
                 wake_count,
+                in_flight = in_flight.len(),
                 "unified worker: poll batch complete"
             );
         }
+    }
+    // Graceful shutdown: let already-claimed jobs finish marking their
+    // terminal state (mark_canceled/mark_terminal) rather than abandoning
+    // them mid-write.
+    for handle in in_flight {
+        let _ = handle.await;
     }
 }
 
@@ -216,18 +316,18 @@ pub(crate) async fn run_unified_claimed(
 ) {
     let store = SqliteUnifiedJobStore::new(pool.clone());
     if shutdown.is_cancelled() {
-        mark_canceled(pool, &store, claimed).await;
+        terminal::mark_canceled(pool, &store, claimed).await;
         return;
     }
 
-    if let Err(error) = heartbeat(&store, claimed, PipelinePhase::Planning).await {
+    if let Err(error) = terminal::heartbeat(&store, claimed, PipelinePhase::Planning).await {
         tracing::warn!(job_id = %claimed.job_id.0, error = %error.message, "unified worker heartbeat failed");
     }
 
     if let Some(required) = required_scope_for_kind(claimed.kind)
         && let Err(error) = require_job_scope(&claimed.auth_snapshot, required)
     {
-        fail_unified_claimed(pool, &store, claimed, error).await;
+        terminal::fail_unified_claimed(pool, &store, claimed, error).await;
         return;
     }
 
@@ -245,13 +345,28 @@ pub(crate) async fn run_unified_claimed(
                 claimed.kind, claimed.job_id.0
             ),
         );
-        fail_unified_claimed(pool, &store, claimed, error).await;
+        terminal::fail_unified_claimed(pool, &store, claimed, error).await;
         return;
     };
 
-    match runner.run(claimed, &store, shutdown).await {
-        Ok(()) => {
-            if let Err(mark_error) = mark_terminal(
+    // Panic guard: before this cutover, `panic_guard::run_catching` wrapped
+    // legacy runner execution so a panic inside a runner got caught and the
+    // job marked `failed` immediately. `runner.run(...)` here has no such
+    // guard on its own — a panic would unwind straight past both terminal-
+    // state branches below, leaving the job stuck `running` forever (the
+    // enclosing `tokio::spawn` in `unified_worker_loop_with_concurrency`
+    // isolates the panic from crashing the process, but nothing writes the
+    // terminal state). `AssertUnwindSafe` is safe here because `runner`,
+    // `claimed`, `store`, and `shutdown` are only read, never mutated, across
+    // the unwind boundary — any partial state inside the runner's own future
+    // is discarded along with the future itself.
+    let run_result = std::panic::AssertUnwindSafe(runner.run(claimed, &store, shutdown))
+        .catch_unwind()
+        .await;
+
+    match run_result {
+        Ok(Ok(())) => {
+            if let Err(mark_error) = terminal::mark_terminal(
                 pool,
                 claimed,
                 LifecycleStatus::Completed,
@@ -267,230 +382,41 @@ pub(crate) async fn run_unified_claimed(
                 );
             }
         }
-        Err(error) => {
-            fail_unified_claimed(pool, &store, claimed, error).await;
+        Ok(Err(error)) => {
+            terminal::fail_unified_claimed(pool, &store, claimed, error).await;
+        }
+        Err(panic_payload) => {
+            let message = panic_message(&panic_payload);
+            tracing::error!(
+                job_id = %claimed.job_id.0,
+                kind = ?claimed.kind,
+                panic = %message,
+                "unified worker: runner panicked; marking job failed"
+            );
+            let error = ApiError::new(
+                "job_runner.panicked",
+                ErrorStage::Planning,
+                format!("job runner panicked: {message}"),
+            );
+            terminal::fail_unified_claimed(pool, &store, claimed, error).await;
         }
     }
 }
 
-/// Append a failure event and mark the claimed job terminal-failed with
-/// `error`. Shared by every rejection path (auth denial, unsupported stage,
-/// registered-runner failure) so each one only needs to construct its own
-/// `ApiError`.
-async fn fail_unified_claimed(
-    pool: &SqlitePool,
-    store: &SqliteUnifiedJobStore,
-    claimed: &UnifiedClaimedJob,
-    error: ApiError,
-) {
-    let _ = store
-        .append_event(SourceProgressEvent {
-            event_id: uuid::Uuid::new_v4().to_string(),
-            sequence: 0,
-            job_id: claimed.job_id,
-            attempt: claimed.attempt,
-            stage_id: None,
-            batch_id: None,
-            reservation_id: None,
-            checkpoint_id: None,
-            dedupe_key: Some(format!("job-failed:{}:{}", error.code, claimed.job_id.0)),
-            phase: PipelinePhase::Complete,
-            status: LifecycleStatus::Failed,
-            severity: Severity::Failed,
-            visibility: Visibility::Public,
-            message: error.message.clone(),
-            timestamp: Timestamp::from(chrono::Utc::now()),
-            source_id: None,
-            canonical_uri: None,
-            adapter: None,
-            scope: None,
-            generation: None,
-            counts: empty_counts(),
-            timing: None,
-            current: None,
-            throughput: None,
-            retry: None,
-            warning: None,
-            error: Some(error.clone()),
-        })
-        .await;
-
-    if let Err(mark_error) = mark_terminal(
-        pool,
-        claimed,
-        LifecycleStatus::Failed,
-        PipelinePhase::Complete,
-        Some(error),
-    )
-    .await
-    {
-        tracing::error!(
-            job_id = %claimed.job_id.0,
-            error = %mark_error.message,
-            "unified worker failed to mark claimed job terminal"
-        );
+/// Best-effort extraction of a human-readable message from a caught panic
+/// payload (`Box<dyn Any + Send>`). Panics via `panic!("...")` and
+/// `.unwrap()`/`.expect("...")` carry a `&'static str` or `String` payload;
+/// anything else falls back to a generic marker rather than failing to report.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
     }
 }
 
-async fn heartbeat(
-    store: &SqliteUnifiedJobStore,
-    claimed: &UnifiedClaimedJob,
-    phase: PipelinePhase,
-) -> Result<(), ApiError> {
-    store
-        .heartbeat(JobHeartbeat {
-            job_id: claimed.job_id,
-            attempt: claimed.attempt,
-            worker_id: Some("unified-local-worker".to_string()),
-            phase,
-            status: LifecycleStatus::Running,
-            stage_id: None,
-            heartbeat_at: Timestamp::from(chrono::Utc::now()),
-            last_event_sequence: None,
-            counts: Some(empty_counts()),
-            provider_reservations: Vec::new(),
-        })
-        .await
-}
-
-async fn mark_canceled(
-    pool: &SqlitePool,
-    store: &SqliteUnifiedJobStore,
-    claimed: &UnifiedClaimedJob,
-) {
-    if let Err(error) = store
-        .append_event(SourceProgressEvent {
-            event_id: uuid::Uuid::new_v4().to_string(),
-            sequence: 0,
-            job_id: claimed.job_id,
-            attempt: claimed.attempt,
-            stage_id: None,
-            batch_id: None,
-            reservation_id: None,
-            checkpoint_id: None,
-            dedupe_key: Some(format!("shutdown-canceled:{}", claimed.job_id.0)),
-            phase: PipelinePhase::Canceled,
-            status: LifecycleStatus::Canceled,
-            severity: Severity::Warning,
-            visibility: Visibility::Public,
-            message: "unified durable runner shut down before executing job".to_string(),
-            timestamp: Timestamp::from(chrono::Utc::now()),
-            source_id: None,
-            canonical_uri: None,
-            adapter: None,
-            scope: None,
-            generation: None,
-            counts: empty_counts(),
-            timing: None,
-            current: None,
-            throughput: None,
-            retry: None,
-            warning: None,
-            error: None,
-        })
-        .await
-    {
-        tracing::warn!(job_id = %claimed.job_id.0, error = %error.message, "unified worker cancel event failed");
-    }
-    if let Err(error) = mark_terminal(
-        pool,
-        claimed,
-        LifecycleStatus::Canceled,
-        PipelinePhase::Canceled,
-        None,
-    )
-    .await
-    {
-        tracing::warn!(job_id = %claimed.job_id.0, error = %error.message, "unified worker failed to mark shutdown claim canceled");
-    }
-}
-
-async fn mark_terminal(
-    pool: &SqlitePool,
-    claimed: &UnifiedClaimedJob,
-    status: LifecycleStatus,
-    phase: PipelinePhase,
-    error: Option<ApiError>,
-) -> Result<(), ApiError> {
-    let now = Timestamp::from(chrono::Utc::now());
-    let terminal_severity = match status {
-        LifecycleStatus::CompletedDegraded => Severity::Degraded,
-        LifecycleStatus::Canceled => Severity::Warning,
-        _ => Severity::Failed,
-    };
-    let status = enum_name(status)?;
-    let phase = enum_name(phase)?;
-    let source_error_json = error
-        .as_ref()
-        .map(|error| source_error_from_api(error, terminal_severity))
-        .as_ref()
-        .map(serde_json::to_string)
-        .transpose()
-        .map_err(json_error)?;
-    let api_error_json = error
-        .as_ref()
-        .map(serde_json::to_string)
-        .transpose()
-        .map_err(json_error)?;
-    let mut tx = pool.begin().await.map_err(sql_error)?;
-    let job_result = sqlx::query(
-        "UPDATE jobs SET
-            status = ?,
-            phase = ?,
-            updated_at = ?,
-            finished_at = COALESCE(finished_at, ?),
-            last_error_json = ?
-         WHERE job_id = ? AND attempt = ?",
-    )
-    .bind(status.as_str())
-    .bind(phase.as_str())
-    .bind(now.0.as_str())
-    .bind(now.0.as_str())
-    .bind(source_error_json.as_deref())
-    .bind(claimed.job_id.0.to_string())
-    .bind(claimed.attempt as i64)
-    .execute(&mut *tx)
-    .await
-    .map_err(sql_error)?;
-    if job_result.rows_affected() == 0 {
-        tx.commit().await.map_err(sql_error)?;
-        return Err(ApiError::new(
-            "job_terminal.stale_attempt",
-            ErrorStage::Publishing,
-            format!(
-                "job {} attempt {} is no longer current; terminal update skipped",
-                claimed.job_id.0, claimed.attempt
-            ),
-        ));
-    }
-    sqlx::query(
-        "UPDATE job_attempts SET
-            status = ?,
-            finished_at = COALESCE(finished_at, ?),
-            error_json = ?
-         WHERE job_id = ? AND attempt = ?",
-    )
-    .bind(status.as_str())
-    .bind(now.0.as_str())
-    .bind(api_error_json.as_deref())
-    .bind(claimed.job_id.0.to_string())
-    .bind(claimed.attempt as i64)
-    .execute(&mut *tx)
-    .await
-    .map_err(sql_error)?;
-    sqlx::query(
-        "UPDATE job_stages SET
-            status = ?,
-            completed_at = COALESCE(completed_at, ?),
-            error_json = ?
-         WHERE job_id = ? AND status IN ('queued', 'pending', 'running', 'waiting', 'blocked')",
-    )
-    .bind(status.as_str())
-    .bind(now.0.as_str())
-    .bind(source_error_json.as_deref())
-    .bind(claimed.job_id.0.to_string())
-    .execute(&mut *tx)
-    .await
-    .map_err(sql_error)?;
-    tx.commit().await.map_err(sql_error)
-}
+#[cfg(test)]
+#[path = "unified_tests.rs"]
+mod tests;

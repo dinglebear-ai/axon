@@ -1,7 +1,7 @@
 //! Small pure conversion/error-mapping helpers shared across the unified
 //! worker's claim/run/mark-terminal paths.
 
-use super::*;
+use axon_api::source::{ApiError, ErrorStage, Severity, SourceError, StageCounts};
 
 pub(super) fn parse_enum<T: serde::de::DeserializeOwned>(value: String) -> Result<T, ApiError> {
     serde_json::from_value(serde_json::Value::String(value)).map_err(json_error)
