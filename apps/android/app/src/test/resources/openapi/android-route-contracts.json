@@ -150,6 +150,86 @@
     "requiresAuth": true
   },
   {
+    "method": "POST",
+    "path": "/v1/memories",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/search",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/context",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/review",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/compact",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/memories/{memory_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/memories/{memory_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/link",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/supersede",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/reinforce",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/contradict",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/pin",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/archive",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/{memory_id}/compact",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/import",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/memories/export",
+    "requiresAuth": true
+  },
+  {
     "method": "GET",
     "path": "/v1/jobs",
     "requiresAuth": true

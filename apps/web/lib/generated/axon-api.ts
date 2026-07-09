@@ -190,6 +190,18 @@ export type components = {
             "wait_timeout_secs"?: number | null;
         };
         "GraphEdgeId": string;
+        "GraphEvidence": {
+            "chunk_id"?: null | components['schemas']['ChunkId'];
+            "confidence": number;
+            "document_id"?: null | components['schemas']['DocumentId'];
+            "evidence_id": string;
+            "evidence_kind": string;
+            "metadata": components['schemas']['MetadataMap'];
+            "quote"?: string | null;
+            "range"?: null | components['schemas']['SourceRange'];
+            "source_id": components['schemas']['SourceId'];
+            "source_item_key": components['schemas']['SourceItemKey'];
+        };
         "GraphNodeId": string;
         "GraphWriteSummary": {
             "degraded": boolean;
@@ -280,7 +292,7 @@ export type components = {
         };
         "JobFamily": "embed" | "extract" | "ingest";
         "JobId": string;
-        "JobKind": "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset";
+        "JobKind": "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset" | "embed" | "crawl" | "ingest";
         "JobMetric": {
             "label": string;
             "value": string;
@@ -357,7 +369,71 @@ export type components = {
         };
         "McpHostKind": "same_host" | "apex_subdomain";
         "McpProbeOutcome": "confirmed" | "unconfirmed" | "blocked";
+        "MemoryDecayPolicy": {
+            "expires_at"?: null | components['schemas']['Timestamp'];
+            "half_life_days"?: number | null;
+            "last_reinforced_at"?: null | components['schemas']['Timestamp'];
+            "pinned"?: boolean;
+            "profile": string;
+            "reinforcement_count"?: number;
+            "review_after"?: null | components['schemas']['Timestamp'];
+        };
+        "MemoryExportRequest": {
+            "include_archived"?: boolean;
+            "scope"?: null | components['schemas']['MemoryScope'];
+        };
+        "MemoryExportResult": {
+            "count": number;
+            "records": components['schemas']['MemoryRecord'][];
+        };
+        "MemoryHistoryEvent": {
+            "message": string;
+            "status": components['schemas']['MemoryStatus'];
+            "timestamp": components['schemas']['Timestamp'];
+        };
         "MemoryId": string;
+        "MemoryImportMode": "merge" | "replace_scope";
+        "MemoryImportRequest": {
+            "dry_run"?: boolean;
+            "mode": components['schemas']['MemoryImportMode'];
+            "records": components['schemas']['MemoryRecord'][];
+        };
+        "MemoryImportResult": {
+            "created": number;
+            "created_ids"?: components['schemas']['MemoryId'][];
+            "dry_run": boolean;
+            "skipped": number;
+            "updated": number;
+            "warnings"?: components['schemas']['SourceWarning'][];
+        };
+        "MemoryLink": {
+            "confidence": number;
+            "evidence": components['schemas']['GraphEvidence'][];
+            "link_type": string;
+            "target": string;
+        };
+        "MemoryRecord": {
+            "body": string;
+            "confidence": number;
+            "contradicts"?: null | components['schemas']['MemoryId'];
+            "decay"?: null | components['schemas']['MemoryDecayPolicy'];
+            "embedding_refs"?: components['schemas']['VectorPointId'][];
+            "history": components['schemas']['MemoryHistoryEvent'][];
+            "links"?: components['schemas']['MemoryLink'][];
+            "memory_id": components['schemas']['MemoryId'];
+            "memory_type": components['schemas']['MemoryType'];
+            "salience": number;
+            "scope": components['schemas']['MemoryScope'];
+            "status": components['schemas']['MemoryStatus'];
+            "superseded_by"?: null | components['schemas']['MemoryId'];
+            "title"?: string | null;
+        };
+        "MemoryScope": {
+            "kind": string;
+            "value": string;
+        };
+        "MemoryStatus": "active" | "review" | "superseded" | "contradicted" | "archived" | "forgotten" | "working";
+        "MemoryType": "decision" | "fact" | "preference" | "task" | "bug" | "procedure" | "incident" | "entity" | "episode" | "working";
         "MetadataChange": {
             "field": string;
             "new"?: string | null;
@@ -773,6 +849,24 @@ export type components = {
             "visibility": components['schemas']['Visibility'];
             "warning"?: null | components['schemas']['SourceWarning'];
         };
+        "SourceRange": {
+            "byte_end"?: number | null;
+            "byte_start"?: number | null;
+            "char_end"?: number | null;
+            "char_start"?: number | null;
+            "csv_row"?: number | null;
+            "dom_selector"?: string | null;
+            "json_pointer"?: string | null;
+            "line_end"?: number | null;
+            "line_start"?: number | null;
+            "session_turn_id"?: string | null;
+            "time_end_ms"?: number | null;
+            "time_start_ms"?: number | null;
+            "turn_end"?: string | null;
+            "turn_start"?: string | null;
+            "xml_xpath"?: string | null;
+            "yaml_path"?: string | null;
+        };
         "SourceRefreshPolicy": "if_stale" | "force" | "never";
         "SourceRequest": {
             "adapter"?: string | null;
@@ -956,6 +1050,21 @@ export type paths = {
     "/v1/jobs/{id}/retry": { post: operations["retry_unified_job"] };
     "/v1/jobs/{id}/stream": { get: operations["unified_job_stream"] };
     "/v1/map": { post: operations["map"] };
+    "/v1/memories": { post: operations["remember_memory"] };
+    "/v1/memories/compact": { post: operations["compact_memories"] };
+    "/v1/memories/context": { post: operations["memory_context"] };
+    "/v1/memories/export": { post: operations["export_memories"] };
+    "/v1/memories/import": { post: operations["import_memories"] };
+    "/v1/memories/review": { post: operations["review_memories"] };
+    "/v1/memories/search": { post: operations["search_memories"] };
+    "/v1/memories/{memory_id}": { get: operations["show_memory"]; delete: operations["forget_memory"] };
+    "/v1/memories/{memory_id}/archive": { post: operations["archive_memory"] };
+    "/v1/memories/{memory_id}/compact": { post: operations["compact_one_memory"] };
+    "/v1/memories/{memory_id}/contradict": { post: operations["contradict_memory"] };
+    "/v1/memories/{memory_id}/link": { post: operations["link_memory"] };
+    "/v1/memories/{memory_id}/pin": { post: operations["pin_memory"] };
+    "/v1/memories/{memory_id}/reinforce": { post: operations["reinforce_memory"] };
+    "/v1/memories/{memory_id}/supersede": { post: operations["supersede_memory"] };
     "/v1/memory": { post: operations["memory"] };
     "/v1/mobile/sessions": { get: operations["list_mobile_sessions"] };
     "/v1/mobile/sessions/{id}": { get: operations["get_mobile_session"]; put: operations["upsert_mobile_session"]; delete: operations["delete_mobile_session"] };
@@ -1013,6 +1122,22 @@ export type operations = {
     "retry_unified_job": { method: "post"; path: "/v1/jobs/{id}/retry"; operationId: "retry_unified_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: components['schemas']['JobRetryRequest']; responses: { "200": components['schemas']['JobRetryResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "unified_job_stream": { method: "get"; path: "/v1/jobs/{id}/stream"; operationId: "unified_job_stream"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['StreamEvent']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "map": { method: "post"; path: "/v1/map"; operationId: "map"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMapRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "remember_memory": { method: "post"; path: "/v1/memories"; operationId: "remember_memory"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "compact_memories": { method: "post"; path: "/v1/memories/compact"; operationId: "compact_memories"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "memory_context": { method: "post"; path: "/v1/memories/context"; operationId: "memory_context"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "export_memories": { method: "post"; path: "/v1/memories/export"; operationId: "export_memories"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['MemoryExportRequest']; responses: { "200": components['schemas']['MemoryExportResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "import_memories": { method: "post"; path: "/v1/memories/import"; operationId: "import_memories"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['MemoryImportRequest']; responses: { "200": components['schemas']['MemoryImportResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "review_memories": { method: "post"; path: "/v1/memories/review"; operationId: "review_memories"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "search_memories": { method: "post"; path: "/v1/memories/search"; operationId: "search_memories"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "show_memory": { method: "get"; path: "/v1/memories/{memory_id}"; operationId: "show_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: never; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "forget_memory": { method: "delete"; path: "/v1/memories/{memory_id}"; operationId: "forget_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: never; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "archive_memory": { method: "post"; path: "/v1/memories/{memory_id}/archive"; operationId: "archive_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "compact_one_memory": { method: "post"; path: "/v1/memories/{memory_id}/compact"; operationId: "compact_one_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "contradict_memory": { method: "post"; path: "/v1/memories/{memory_id}/contradict"; operationId: "contradict_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "link_memory": { method: "post"; path: "/v1/memories/{memory_id}/link"; operationId: "link_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "pin_memory": { method: "post"; path: "/v1/memories/{memory_id}/pin"; operationId: "pin_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "reinforce_memory": { method: "post"; path: "/v1/memories/{memory_id}/reinforce"; operationId: "reinforce_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "supersede_memory": { method: "post"; path: "/v1/memories/{memory_id}/supersede"; operationId: "supersede_memory"; parameters: { query: Record<string, never>; path: { "memory_id": string } }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "memory": { method: "post"; path: "/v1/memory"; operationId: "memory"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestMemoryRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_mobile_sessions": { method: "get"; path: "/v1/mobile/sessions"; operationId: "list_mobile_sessions"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['MobileSessionListResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_mobile_session": { method: "get"; path: "/v1/mobile/sessions/{id}"; operationId: "get_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['MobileSessionDetailResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
