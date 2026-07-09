@@ -3,13 +3,16 @@
 use crate::context::ServiceContext;
 use crate::events::{ServiceEvent, is_secret_like};
 use crate::jobs as job_service;
-use crate::runtime::ServiceJobRuntime;
 use crate::runtime::WorkerMode;
 use crate::types::{
     EmbedJobResult, EmbedStartResult, ExecutionMode, JobStartOutcome, StartDisposition,
 };
+use axon_api::source::{
+    AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
+    JobStagePlan, MetadataMap, PipelinePhase,
+};
 use axon_core::config::Config;
-use axon_jobs::backend::{JobKind, JobPayload};
+use axon_jobs::backend::JobKind;
 use axon_jobs::config_snapshot::config_snapshot_json;
 use axon_vector::ops::input::classify::path_extension;
 use axon_vector::ops::input::select;
@@ -99,31 +102,53 @@ pub async fn embed_start_with_context(
     service_context: &ServiceContext,
     tx: Option<mpsc::Sender<ServiceEvent>>,
     _source_type: Option<&str>,
+    caller: Option<&AuthSnapshot>,
 ) -> Result<JobStartOutcome<EmbedStartResult>, Box<dyn Error>> {
     // tx is accepted for API compatibility
     let _ = tx;
-    let job_id = service_context
-        .jobs
-        .enqueue(JobPayload::Embed {
-            input: input.to_string(),
-            config_json: config_snapshot_json(cfg)?,
+    let config_json = config_snapshot_json(cfg)?;
+    let store = service_context
+        .job_store()
+        .ok_or("unified job store is not available for this runtime")?;
+    let descriptor = store
+        .create(JobCreateRequest {
+            request_id: None,
+            job_kind: UnifiedJobKind::Embed,
+            job_intent: JobIntent::Run,
+            source_id: None,
+            watch_id: None,
+            parent_job_id: None,
+            root_job_id: None,
+            attempt: 1,
+            priority: JobPriority::Normal,
+            idempotency_key: None,
+            stage_plan: vec![JobStagePlan {
+                phase: PipelinePhase::Embedding,
+                required: true,
+                provider_requirements: Vec::new(),
+                estimated_items: None,
+            }],
+            request: Some(serde_json::json!({
+                "input": input,
+                "config_json": config_json,
+            })),
+            auth_snapshot: caller
+                .cloned()
+                .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
+            config_snapshot_id: None,
+            requirements: MetadataMap::new(),
+            result_schema: Some("embed_result".to_string()),
+            warnings: Vec::new(),
+            error: None,
+            metadata: MetadataMap::new(),
         })
         .await
-        .map_err(|e| -> Box<dyn Error> { e })?;
-
-    if !cfg.wait {
-        return Ok(JobStartOutcome {
-            disposition: StartDisposition::Enqueued,
-            execution_mode: ExecutionMode::InProcess,
-            result: map_embed_start_result(job_id.to_string()),
-        });
-    }
-
-    wait_for_embed_completion(service_context.jobs.as_ref(), job_id).await?;
+        .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
+    service_context.notify_unified();
     Ok(JobStartOutcome {
-        disposition: StartDisposition::Completed,
+        disposition: StartDisposition::Enqueued,
         execution_mode: ExecutionMode::InProcess,
-        result: map_embed_start_result(job_id.to_string()),
+        result: map_embed_start_result(descriptor.job_id.0.to_string()),
     })
 }
 
@@ -141,7 +166,7 @@ pub async fn embed_start(
             .to_string_lossy()
             .to_string()
     });
-    embed_start_with_context(cfg, &input, service_context, tx, None).await
+    embed_start_with_context(cfg, &input, service_context, tx, None, None).await
 }
 
 pub async fn embed_now(cfg: &Config, input: &str) -> Result<EmbedJobResult, Box<dyn Error>> {
@@ -411,23 +436,6 @@ fn validate_local_embed_relative_path(
                 "local embed path appears to contain secret material",
             ));
         }
-    }
-    Ok(())
-}
-
-async fn wait_for_embed_completion(
-    runtime: &dyn ServiceJobRuntime,
-    job_id: Uuid,
-) -> Result<(), Box<dyn Error>> {
-    let final_status = runtime
-        .wait_for_job(job_id, JobKind::Embed)
-        .await
-        .map_err(|e| -> Box<dyn Error> { e })?;
-    if final_status == "failed" {
-        if let Ok(Some(err)) = runtime.job_errors(job_id, JobKind::Embed).await {
-            return Err(format!("embed job {job_id} failed: {err}").into());
-        }
-        return Err(format!("embed job {job_id} failed").into());
     }
     Ok(())
 }

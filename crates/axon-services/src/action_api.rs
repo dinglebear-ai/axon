@@ -45,7 +45,18 @@ pub async fn dispatch_action(
         AxonRequest::Embed(req) => commands::dispatch_embed(service_context, req).await,
         AxonRequest::Ingest(req) => commands::dispatch_ingest(service_context, req).await,
         AxonRequest::Jobs(req) => commands::dispatch_jobs(service_context, req).await,
-        AxonRequest::Memory(req) => crate::memory::dispatch(service_context, req).await,
+        // `/v1/actions` (this dispatcher's only caller) is removed from the
+        // REST router (`v1_actions_removed`) — this arm has no live caller
+        // and no auth context to derive scopes from, so it fails closed
+        // rather than assuming admin.
+        AxonRequest::Memory(req) => {
+            crate::memory::dispatch(
+                service_context,
+                req,
+                &crate::memory::MemoryAuthz::anonymous(),
+            )
+            .await
+        }
         AxonRequest::Endpoints(req) => commands::dispatch_endpoints(service_context, req).await,
         AxonRequest::Scrape(req) => commands::dispatch_scrape(service_context, req).await,
         AxonRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
@@ -88,12 +99,14 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             | MemorySubaction::Pin
             | MemorySubaction::Archive
             | MemorySubaction::Forget
-            | MemorySubaction::Compact => Some("axon:write"),
+            | MemorySubaction::Compact
+            | MemorySubaction::Import => Some("axon:write"),
             MemorySubaction::List
             | MemorySubaction::Search
             | MemorySubaction::Show
             | MemorySubaction::Context
-            | MemorySubaction::Review => Some("axon:read"),
+            | MemorySubaction::Review
+            | MemorySubaction::Export => Some("axon:read"),
         },
         AxonRequest::Jobs(req) => match req.subaction.unwrap_or(JobsSubaction::List) {
             JobsSubaction::List

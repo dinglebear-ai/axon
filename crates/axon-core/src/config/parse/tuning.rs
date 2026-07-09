@@ -183,6 +183,8 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     );
     cfg.ingest_lanes = ingest_lanes(toml);
     cfg.embed_lanes = embed_lanes(toml);
+    cfg.unified_worker_concurrency = unified_worker_concurrency(toml);
+    cfg.crawl_job_concurrency_limit = crawl_job_concurrency_limit(toml);
     cfg.embed_doc_timeout_secs = embed_doc_timeout_secs(toml);
     cfg.queue_summary_secs = queue_summary_secs(toml);
     cfg.freshness_tick_secs = freshness_tick_secs(toml);
@@ -939,6 +941,26 @@ fn ingest_lanes(toml: &TomlConfig) -> usize {
 
 fn embed_lanes(toml: &TomlConfig) -> usize {
     resolve_clamped_usize("AXON_EMBED_LANES", toml.workers.embed_lanes, 2, 1, 32)
+}
+
+fn unified_worker_concurrency(toml: &TomlConfig) -> usize {
+    resolve_clamped_usize(
+        "AXON_UNIFIED_WORKER_CONCURRENCY",
+        toml.workers.unified_worker_concurrency,
+        8,
+        1,
+        64,
+    )
+}
+
+fn crawl_job_concurrency_limit(toml: &TomlConfig) -> usize {
+    resolve_clamped_usize(
+        "AXON_CRAWL_JOB_CONCURRENCY_LIMIT",
+        toml.workers.crawl_job_concurrency_limit,
+        1,
+        1,
+        64,
+    )
 }
 
 fn embed_doc_timeout_secs(toml: &TomlConfig) -> u64 {

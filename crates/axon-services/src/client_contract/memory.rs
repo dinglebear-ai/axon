@@ -133,6 +133,14 @@ impl From<RestMemoryRequest> for axon_api::mcp_schema::MemoryRequest {
             memory_ids: req.memory_ids,
             strategy: req.strategy,
             archive_sources: req.archive_sources,
+            // The legacy `/v1/memory` passthrough never carried import/export
+            // fields; those subactions are only reachable via the dedicated
+            // `/v1/memories/import` and `/v1/memories/export` routes.
+            records: None,
+            import_mode: None,
+            dry_run: None,
+            export_scope: None,
+            include_archived: None,
         }
     }
 }

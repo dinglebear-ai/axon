@@ -393,3 +393,96 @@ async fn prune_collection_target_rejects_generation() {
     let err = result.expect_err("collection target with generation must fail");
     assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `memory` `import` mode=replace_scope requires `axon:admin` (Fix 1). Mirrors
+// the `prune` authz tests above: `handle_memory` reads
+// `super::common::CURRENT_MEMORY_AUTHZ` (resolved by `call_tool`'s scope gate
+// in production; scoped directly here for a unit test).
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn memory_import_request(mode: &str) -> crate::schema::MemoryRequest {
+    crate::schema::MemoryRequest {
+        subaction: Some(crate::schema::MemorySubaction::Import),
+        records: Some(vec![axon_api::source::MemoryRecord {
+            memory_id: axon_api::source::MemoryId::new("mem_mcp_test"),
+            memory_type: axon_api::source::MemoryType::Fact,
+            status: axon_api::source::MemoryStatus::Active,
+            body: "mcp import test".to_string(),
+            confidence: 1.0,
+            salience: 0.5,
+            scope: axon_api::source::MemoryScope {
+                kind: "global".to_string(),
+                value: String::new(),
+            },
+            history: Vec::new(),
+            title: None,
+            links: Vec::new(),
+            decay: None,
+            embedding_refs: Vec::new(),
+            superseded_by: None,
+            contradicts: None,
+        }]),
+        import_mode: Some(match mode {
+            "replace_scope" => axon_api::source::MemoryImportMode::ReplaceScope,
+            _ => axon_api::source::MemoryImportMode::Merge,
+        }),
+        dry_run: Some(true),
+        ..Default::default()
+    }
+}
+
+fn memory_test_server() -> super::AxonMcpServer {
+    use axon_core::config::Config;
+
+    // Isolated sqlite path — same rationale as `prune_plan_dry_run_succeeds_
+    // without_live_store` above: must not point at a real pre-existing store.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = Config::default();
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    std::mem::forget(dir);
+    super::AxonMcpServer::new(cfg)
+}
+
+#[tokio::test]
+async fn mcp_memory_import_replace_scope_denied_without_admin_authz() {
+    let server = memory_test_server();
+    let req = memory_import_request("replace_scope");
+    let result = super::common::CURRENT_MEMORY_AUTHZ
+        .scope(axon_services::memory::MemoryAuthz::anonymous(), async {
+            server.handle_memory(req).await
+        })
+        .await;
+    let err = result.expect_err("replace_scope without axon:admin must be denied");
+    assert!(
+        err.message.to_lowercase().contains("admin"),
+        "expected an axon:admin denial, got: {}",
+        err.message
+    );
+}
+
+#[tokio::test]
+async fn mcp_memory_import_replace_scope_allowed_with_admin_authz() {
+    let server = memory_test_server();
+    let req = memory_import_request("replace_scope");
+    let result = super::common::CURRENT_MEMORY_AUTHZ
+        .scope(axon_services::memory::MemoryAuthz::admin(), async {
+            server.handle_memory(req).await
+        })
+        .await;
+    let response = result.expect("replace_scope with axon:admin must succeed");
+    assert!(response.ok);
+}
+
+#[tokio::test]
+async fn mcp_memory_import_merge_mode_does_not_require_admin_authz() {
+    let server = memory_test_server();
+    let req = memory_import_request("merge");
+    let result = super::common::CURRENT_MEMORY_AUTHZ
+        .scope(axon_services::memory::MemoryAuthz::anonymous(), async {
+            server.handle_memory(req).await
+        })
+        .await;
+    let response = result.expect("merge mode must succeed without admin authz");
+    assert!(response.ok);
+}

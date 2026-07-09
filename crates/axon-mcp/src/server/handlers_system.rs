@@ -364,7 +364,7 @@ fn help_payload() -> Value {
             "endpoints": ["endpoints"],
             "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
             "jobs": ["list", "get", "status", "events", "stream", "artifacts", "cancel", "retry", "recover", "cleanup", "clear"],
-            "memory": ["remember", "list", "search", "show", "link", "supersede", "context", "reinforce", "contradict", "pin", "archive", "forget", "review", "compact"],
+            "memory": ["remember", "list", "search", "show", "link", "supersede", "context", "reinforce", "contradict", "pin", "archive", "forget", "review", "compact", "import", "export"],
             "query": ["query"],
             "retrieve": ["retrieve"],
             "search": ["search"],

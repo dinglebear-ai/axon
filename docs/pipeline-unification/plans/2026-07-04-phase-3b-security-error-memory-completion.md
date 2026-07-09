@@ -356,9 +356,17 @@ pub struct ApiError {
 
 Add `SourceItemError` for item-level failures with source id, item key, generation, status, code, stage, retryable, attempt, and redacted details.
 
-- [ ] **Step 4: Wire provider cooling into jobs**
+- [x] **Step 4: Wire provider cooling into jobs**
 
 When a provider is cooling, transition the job to `waiting`, append a public event with the typed `ApiError`, and prevent hot loops by requiring a scheduler reservation after `cooldown_until`.
+
+**Evidence (closed out via `docs/pipeline-unification/plans/2026-07-08-provider-cooling.md`, branch `provider-cooling-impl`):**
+- `crates/axon-jobs/src/migrations/0022_add_job_cooldown_until.sql` — adds `jobs.cooldown_until` (TEXT/RFC3339) plus a covering partial index (`idx_axon_jobs_claim_cooldown`, `WHERE status IN ('queued', 'waiting', 'blocked')` — widened to match the claim query's exact status set after an initial `WHERE status = 'waiting'` version was found to defeat SQLite's partial-index containment matcher and fall back to a full table scan) in the same migration. Commit `2f2ce4c13` ("feat(jobs): add cooldown_until column with covering index").
+- `crates/axon-jobs/src/unified/control.rs::apply_provider_cooling` — persists a bounded cooldown (`min(cooldown_until, now + MAX_PROVIDER_COOLDOWN_WINDOW)`, fixed at 1 hour, `crates/axon-jobs/src/unified.rs::MAX_PROVIDER_COOLDOWN_WINDOW`) on a job currently in `Waiting`, inside a transaction with a `status = 'waiting'`-guarded UPDATE so a concurrent transition off `Waiting` between the check and the write can't leave a stale cooldown.
+- `crates/axon-jobs/src/workers/unified.rs::claim_next_unified_job_unchecked` — claim query now excludes rows whose `cooldown_until` is still in the future (`AND (cooldown_until IS NULL OR cooldown_until <= ?)`), index-covered by the migration above.
+- `cooldown_until` is cleared on every transition to a non-`Waiting` status: unconditionally in `SqliteUnifiedJobStore::update_job_status` (`crates/axon-jobs/src/unified/ops.rs`) via a `CASE WHEN ... = 'waiting' THEN cooldown_until ELSE NULL END`, and independently in the other raw-SQL `jobs` writers that bypass that function — `mark_terminal` and the claim-time `UPDATE ... SET status = 'running'` (both in `crates/axon-jobs/src/workers/unified.rs`), `cancel_job` (`crates/axon-jobs/src/unified/control.rs`), `record_heartbeat` (`crates/axon-jobs/src/unified/heartbeat.rs`), and `reset_job_for_retry`/`reset_stale_job_for_recovery` (`crates/axon-jobs/src/unified/control_helpers.rs`).
+- Commit `365d21a63` ("feat(jobs): bound and wire provider cooling into job claim eligibility") — full test coverage in `crates/axon-jobs/src/provider_cooling_tests.rs` (clamping, claim exclusion/eligibility, clear-on-completion, clear-on-terminal-failure, past-deadline round-trip, Waiting-only guard).
+- **Known gap, intentionally not closed here:** no live `UnifiedJobRunner` in the composition layer (`crates/axon-services/src/runtime/job_runners.rs`) currently calls a provider (TEI/LLM) and constructs `ApiError::with_provider_cooling(...)` — TEI's 429/5xx retry-exhaustion path (`crates/axon-vector/src/ops/tei/tei_client.rs::send_chunk_with_retries`) still returns a plain `Box<dyn Error>` and is only reachable through the legacy per-family embed job runner (`crates/axon-jobs/src/workers/runners/embed.rs`, `axon_embed_jobs` table), not the unified `jobs` table this work targets. The generic mechanism (bounded clamp, claim exclusion, clear-on-terminal) is real and tested end-to-end; wiring an actual TEI-calling `UnifiedJobRunner` to call `apply_provider_cooling` is follow-up work, not fabricated here to avoid inventing an unverified call site.
 
 - [ ] **Step 5: Run error and job tests**
 
@@ -383,6 +391,34 @@ git commit -m "feat: propagate structured pipeline errors"
 ---
 
 ### Task 4: Shared Redaction Boundary And Fail-Closed Public Writes
+
+> **PARTIALLY DONE** (2026-07-09) — file-log and artifact-metadata redaction
+> closed; CLI JSON gate covers 4/70 call sites, remainder tracked in bead
+> `axon_rust-l6amm`. The shared boundary already covered vector payloads,
+> job events, graph evidence, memory rows, and MCP/REST error responses. Of
+> the three remaining chokepoints — CLI JSON output, artifact metadata writes,
+> and trace/log fields — artifact metadata and trace/log fields are now fully
+> closed, and CLI JSON output has a shared gate (`crate::json::print_json_gated`
+> in `crates/axon-cli/src/json.rs`) wired into 4 call sites
+> (`common_jobs.rs`, `memory.rs`, and the `watch history`/`watch artifacts`
+> reads in `watch.rs`) out of roughly 70 `serde_json::to_string_pretty`/
+> `to_string` call sites across `crates/axon-cli/src/commands/*.rs`. See
+> [`docs/pipeline-unification/plans/2026-07-08-redaction-boundary-extension.md`](2026-07-08-redaction-boundary-extension.md):
+> `RedactionContext::cli_json()` gating the CLI `--json` render path
+> (`crates/axon-cli/src/json.rs`), `RedactionContext::artifact_metadata()`
+> gating the previously-ungated `watch` `url-change` artifact write
+> (`crates/axon-jobs/src/watch/report.rs`), and a new `JsonFormat` event
+> formatter (`crates/axon-core/src/logging/json_format.rs`) closing a gap
+> where the file JSON log sink bypassed the console layer's
+> `redact_event_fields` scrub — that scrub now also covers span-level fields,
+> not just event-level fields, and caps oversized field values instead of
+> scanning them unbounded. The actual gate API differs from this task's
+> illustrative sketch below — see the extension plan's Task 1 findings for the
+> real function names/signatures. **Caveat:** the extension plan's Task 4 was
+> an explicit best-effort manual-grep pass over trace/log call sites, not a
+> completeness guarantee; CI/lint enforcement and the remaining CLI JSON
+> call-site retrofit are tracked separately as bead
+> `axon_rust-l6amm` ("Add CI-enforced redaction call-site lint").
 
 **Files:**
 - Create: `crates/axon-core/src/redaction.rs` if absent
@@ -866,7 +902,25 @@ git commit -m "feat: bound memory batches and recovery"
 
 ---
 
-### Task 9: CLI, MCP, And REST Memory Contract
+### Task 9: CLI, MCP, And REST Memory Contract — DONE
+
+Completed via `docs/pipeline-unification/plans/2026-07-08-rest-memory-surface.md`
+(split out per engineering review as independent of the job cutover). The REST
+surface moved from the single opaque `POST /v1/memory` passthrough to per-verb
+`/v1/memories` routes matching `surfaces/rest-contract.md`, each with
+`AuthContext`/`CallerContext` extraction mirroring `sources.rs`'s pattern (the
+old handler had none — a security review finding that drove the split). CLI,
+MCP, and REST all now expose `import`/`export` end-to-end over the existing
+`axon-memory` `MemoryStore` trait (previously unwired despite the store already
+implementing both); the REST `import`/`export` routes carry an explicit 10 MiB
+body-size limit.
+
+**Deprecation, not removal:** the old `POST /v1/memory` route is kept
+functional (RFC 8594 `Deprecation` header + `Link` to `/v1/memories`) rather
+than deleted in the same change, since external clients (e.g. the desktop
+palette app) may still depend on the old shape. Follow-up filed to remove it
+once known clients have migrated: `axon_rust-69fq1` ("Remove deprecated
+POST /v1/memory passthrough route").
 
 **Files:**
 - Modify: `crates/axon-cli/src/commands/memory.rs`

@@ -6,6 +6,13 @@ name = "Axon CLI"
 tag_prefix = "v"
 release_please_path = "."
 release_workflow = "release.yml"
+# release-please can no longer manage this component: its candidate-PR build
+# crashes on any Cargo workspace member using `version.workspace = true`
+# (upstream bug, still open: googleapis/release-please#2478). "." was
+# removed from release-please-config.json / .release-please-manifest.json;
+# bump this component with `cargo xtask bump-version cli patch|minor|major`
+# instead. See CLAUDE.md's Release Pipeline section.
+release_please_managed = false
 shipping_paths = [
   "src",
   "crates",

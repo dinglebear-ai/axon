@@ -1,5 +1,5 @@
 use super::AxonMcpServer;
-use super::common::{internal_error, invalid_params};
+use super::common::{CURRENT_MEMORY_AUTHZ, internal_error, invalid_params};
 use crate::schema::{AxonToolResponse, MemoryRequest, MemorySubaction};
 use axon_services::memory as memory_svc;
 use axon_services::types::ClientActionError;
@@ -15,7 +15,13 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| internal_error(format!("initialize memory context: {e}")))?;
-        let data = memory_svc::dispatch(&ctx, req)
+        // Real caller-derived authz — resolved once in `call_tool`'s scope
+        // gate and threaded through via task-local (see
+        // `common::CURRENT_MEMORY_AUTHZ`). Never hardcoded here.
+        let authz: memory_svc::MemoryAuthz = CURRENT_MEMORY_AUTHZ
+            .try_with(Clone::clone)
+            .unwrap_or_default();
+        let data = memory_svc::dispatch(&ctx, req, &authz)
             .await
             .map_err(map_memory_error)?;
         Ok(AxonToolResponse::ok("memory", subaction, data))
@@ -38,6 +44,8 @@ fn memory_subaction_label(subaction: MemorySubaction) -> &'static str {
         MemorySubaction::Forget => "forget",
         MemorySubaction::Review => "review",
         MemorySubaction::Compact => "compact",
+        MemorySubaction::Import => "import",
+        MemorySubaction::Export => "export",
     }
 }
 
@@ -52,3 +60,7 @@ fn map_memory_error(err: ClientActionError) -> ErrorData {
         invalid_params(message)
     }
 }
+
+#[cfg(test)]
+#[path = "handlers_memory_tests.rs"]
+mod tests;

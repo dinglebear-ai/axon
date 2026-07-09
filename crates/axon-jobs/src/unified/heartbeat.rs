@@ -53,6 +53,14 @@ impl SqliteUnifiedJobStore {
         expected_status: LifecycleStatus,
         expected_attempt: u32,
     ) -> Result<()> {
+        // cooldown_until: a Waiting job legally transitions to Failed/Expired
+        // (and others) via a heartbeat update, and cooldown is only ever
+        // meaningful while a job is Waiting — clear it on every transition
+        // away from Waiting, same as update_job_status's CASE-based clear.
+        // Left untouched when the new status IS Waiting so a heartbeat that
+        // re-affirms Waiting does not wipe out a cooldown set separately via
+        // `apply_provider_cooling`.
+        let status_name = enum_name(heartbeat.status)?;
         let result = sqlx::query(
             "UPDATE jobs SET
                 status = ?,
@@ -62,10 +70,11 @@ impl SqliteUnifiedJobStore {
                 heartbeat_json = ?,
                 updated_at = ?,
                 started_at = COALESCE(started_at, ?),
-                finished_at = COALESCE(?, finished_at)
+                finished_at = COALESCE(?, finished_at),
+                cooldown_until = CASE WHEN ? = 'waiting' THEN cooldown_until ELSE NULL END
              WHERE job_id = ? AND status = ? AND attempt <= ?",
         )
-        .bind(enum_name(heartbeat.status)?)
+        .bind(status_name.as_str())
         .bind(enum_name(heartbeat.phase)?)
         .bind(heartbeat.attempt as i64)
         .bind(optional_to_json(&heartbeat.counts)?)
@@ -76,6 +85,7 @@ impl SqliteUnifiedJobStore {
                 .then_some(heartbeat.heartbeat_at.0.as_str()),
         )
         .bind(is_terminal(heartbeat.status).then_some(heartbeat.heartbeat_at.0.as_str()))
+        .bind(status_name.as_str())
         .bind(heartbeat.job_id.0.to_string())
         .bind(enum_name(expected_status)?)
         .bind(expected_attempt as i64)

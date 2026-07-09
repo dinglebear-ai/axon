@@ -59,12 +59,14 @@ Thumbs.db
 
 # ── Caches (ALL tool caches go here) ─────────────────────────────────────────
 .cache/
+.cache
 
 # ── Documentation artifacts (session/plan docs, not reference) ───────────────
 .docs/
 
 # ── Rust ─────────────────────────────────────────────────────────────────────
 /target/
+/target
 # Nested cargo target dirs from per-workspace builds (e.g. apps/palette-tauri).
 apps/*/target/
 apps/*/*/target/
@@ -123,6 +125,28 @@ container/.env.*
 !container/.env.example
 container/*.local.yml
 container/*.local.yaml
+
+# ── Worktree cache symlinks ──────────────────────────────────────────────────
+# The worktree-setup skill symlinks cache/build directories in a new worktree
+# back to the primary checkout for warm builds (e.g. `target -> /path/to/main
+# checkout/target`). Directory-only gitignore patterns (trailing `/`) do NOT
+# match a symlink of the same name, so every such symlink needs an explicit
+# bare (no-trailing-slash) entry here, or `git add -A` silently tracks it —
+# which then breaks CI on a fresh checkout (the tracked symlink resolves to a
+# path that doesn't exist there, or collides with the directory a build tool
+# expects to create). Keep this list in sync with what worktree-setup links.
+apps/android/.gradle
+apps/android/app/build
+apps/android/build
+apps/chrome-extension/dist
+apps/palette-tauri/dist
+apps/palette-tauri/node_modules
+apps/palette-tauri/src-tauri/target
+apps/web/.next
+apps/web/node_modules
+apps/web/out
+scripts/.ruff_cache
+src/vector/ops/commands/ask/context/build
 docker/mem0/config.json
 .superpowers/
 /data/

@@ -51,9 +51,27 @@ pub async fn dispatch_crawl(
                 ));
             }
             let cfg = apply_crawl_overrides(service_context.cfg.as_ref(), &req);
-            let outcome = crawl_svc::crawl_start_with_context(&cfg, &urls, service_context, None)
-                .await
-                .map_err(internal_error)?;
+            // KNOWN GAP (not "fine by design"): the web-panel/CLI generic
+            // client-action dispatch path (`action_api::dispatch_action`,
+            // reached from `axon-web/src/server/handlers/config.rs`'s panel
+            // command route) does not have a caller `AuthContext` threaded
+            // into it, so this `None` silently falls back to
+            // `AuthSnapshot::trusted_system` and the job's recorded
+            // `auth_snapshot` cannot reflect the real panel/CLI caller. The
+            // MCP-side equivalents (extract.start via `axon-mcp`) now thread
+            // a real caller-derived `AuthSnapshot` — see
+            // `crates/axon-mcp/src/server/common.rs::CURRENT_CALLER_AUTH_SNAPSHOT`.
+            // Wiring the same here needs the panel route handler to accept
+            // `Extension<AuthContext>` and for that identity to flow through
+            // `dispatch_action`'s call sites — tracked as a follow-up, not
+            // fixed in this pass. Does not grant extra privilege today
+            // (`require_job_scope` only enforces on Reset/Prune), but it
+            // corrupts audit attribution and is a trap for future
+            // finer-grained scoping work.
+            let outcome =
+                crawl_svc::crawl_start_with_context(&cfg, &urls, service_context, None, None)
+                    .await
+                    .map_err(internal_error)?;
             let result = outcome.result;
             Ok(serde_json::json!({
                 "job_ids": result.job_ids,
@@ -142,10 +160,33 @@ pub async fn dispatch_extract(
                 embed: req.embed,
                 ..ConfigOverrides::default()
             });
-            let outcome =
-                extract_svc::extract_start_with_context(&cfg, &urls, prompt, service_context, None)
-                    .await
-                    .map_err(internal_error)?;
+            // KNOWN GAP (not "fine by design"): the web-panel/CLI generic
+            // client-action dispatch path (`action_api::dispatch_action`,
+            // reached from `axon-web/src/server/handlers/config.rs`'s panel
+            // command route) does not have a caller `AuthContext` threaded
+            // into it, so this `None` silently falls back to
+            // `AuthSnapshot::trusted_system` and the job's recorded
+            // `auth_snapshot` cannot reflect the real panel/CLI caller. The
+            // MCP-side equivalents (extract.start via `axon-mcp`) now thread
+            // a real caller-derived `AuthSnapshot` — see
+            // `crates/axon-mcp/src/server/common.rs::CURRENT_CALLER_AUTH_SNAPSHOT`.
+            // Wiring the same here needs the panel route handler to accept
+            // `Extension<AuthContext>` and for that identity to flow through
+            // `dispatch_action`'s call sites — tracked as a follow-up, not
+            // fixed in this pass. Does not grant extra privilege today
+            // (`require_job_scope` only enforces on Reset/Prune), but it
+            // corrupts audit attribution and is a trap for future
+            // finer-grained scoping work.
+            let outcome = extract_svc::extract_start_with_context(
+                &cfg,
+                &urls,
+                prompt,
+                service_context,
+                None,
+                None,
+            )
+            .await
+            .map_err(internal_error)?;
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
         ExtractSubaction::Status => {
@@ -213,12 +254,30 @@ pub async fn dispatch_embed(
                 collection: req.collection,
                 ..ConfigOverrides::default()
             });
+            // KNOWN GAP (not "fine by design"): the web-panel/CLI generic
+            // client-action dispatch path (`action_api::dispatch_action`,
+            // reached from `axon-web/src/server/handlers/config.rs`'s panel
+            // command route) does not have a caller `AuthContext` threaded
+            // into it, so this `None` silently falls back to
+            // `AuthSnapshot::trusted_system` and the job's recorded
+            // `auth_snapshot` cannot reflect the real panel/CLI caller. The
+            // MCP-side equivalents (extract.start via `axon-mcp`) now thread
+            // a real caller-derived `AuthSnapshot` — see
+            // `crates/axon-mcp/src/server/common.rs::CURRENT_CALLER_AUTH_SNAPSHOT`.
+            // Wiring the same here needs the panel route handler to accept
+            // `Extension<AuthContext>` and for that identity to flow through
+            // `dispatch_action`'s call sites — tracked as a follow-up, not
+            // fixed in this pass. Does not grant extra privilege today
+            // (`require_job_scope` only enforces on Reset/Prune), but it
+            // corrupts audit attribution and is a trap for future
+            // finer-grained scoping work.
             let outcome = embed_svc::embed_start_with_context(
                 &cfg,
                 &input,
                 service_context,
                 None,
                 req.source_type.as_deref(),
+                None,
             )
             .await
             .map_err(internal_error)?;
@@ -268,10 +327,28 @@ pub async fn dispatch_ingest(
     match req.subaction.unwrap_or(IngestSubaction::Start) {
         IngestSubaction::Start => {
             let source = parse_ingest_source(&req, service_context.cfg.as_ref())?;
+            // KNOWN GAP (not "fine by design"): the web-panel/CLI generic
+            // client-action dispatch path (`action_api::dispatch_action`,
+            // reached from `axon-web/src/server/handlers/config.rs`'s panel
+            // command route) does not have a caller `AuthContext` threaded
+            // into it, so this `None` silently falls back to
+            // `AuthSnapshot::trusted_system` and the job's recorded
+            // `auth_snapshot` cannot reflect the real panel/CLI caller. The
+            // MCP-side equivalents (extract.start via `axon-mcp`) now thread
+            // a real caller-derived `AuthSnapshot` — see
+            // `crates/axon-mcp/src/server/common.rs::CURRENT_CALLER_AUTH_SNAPSHOT`.
+            // Wiring the same here needs the panel route handler to accept
+            // `Extension<AuthContext>` and for that identity to flow through
+            // `dispatch_action`'s call sites — tracked as a follow-up, not
+            // fixed in this pass. Does not grant extra privilege today
+            // (`require_job_scope` only enforces on Reset/Prune), but it
+            // corrupts audit attribution and is a trap for future
+            // finer-grained scoping work.
             let outcome = ingest_svc::ingest_start_with_context(
                 service_context.cfg.as_ref(),
                 source,
                 service_context,
+                None,
             )
             .await
             .map_err(internal_error)?;

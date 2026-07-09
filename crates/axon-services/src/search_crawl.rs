@@ -2,9 +2,9 @@ use crate::context::ServiceContext;
 use crate::crawl as crawl_service;
 use crate::search::search_batch;
 use crate::types::{ResearchHit, SearchOptions};
+use axon_api::source::LifecycleStatus;
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url_with_dns};
-use axon_jobs::backend::JobKind;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -171,10 +171,13 @@ async fn enqueue_one(
     }
 
     let url_owned = url.to_string();
+    // Auto-queued research/search crawls are system-triggered — no per-caller
+    // auth identity is available at this call site.
     match crawl_service::crawl_start_with_context(
         crawl_cfg,
         std::slice::from_ref(&url_owned),
         service_context,
+        None,
         None,
     )
     .await
@@ -221,20 +224,21 @@ async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut C
             continue;
         };
 
-        match service_context
-            .jobs
-            .wait_for_job(job_id, JobKind::Crawl)
-            .await
-        {
-            Ok(status) if status == "failed" || status == "canceled" => {
-                let mut reason = format!("crawl job {job_id} {status}");
-                if let Ok(Some(err)) = service_context
-                    .jobs
-                    .job_errors(job_id, JobKind::Crawl)
-                    .await
+        match wait_for_unified_crawl_job(service_context, job_id).await {
+            Ok(status)
+                if status == LifecycleStatus::Failed || status == LifecycleStatus::Canceled =>
+            {
+                let mut reason = format!("crawl job {job_id} {status:?}");
+                if let Ok(Some(summary)) = crate::jobs::unified_job_status(
+                    service_context,
+                    axon_api::source::JobId(job_id),
+                )
+                .await
                 {
-                    reason.push_str(": ");
-                    reason.push_str(&err);
+                    if let Some(error) = summary.last_error {
+                        reason.push_str(": ");
+                        reason.push_str(&error.message);
+                    }
                 }
                 output.rejected.push(rejection(
                     Some(&job.url),
@@ -253,6 +257,42 @@ async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut C
                 e.to_string(),
             )),
         }
+    }
+}
+
+/// Poll the unified job store for `job_id`'s terminal `LifecycleStatus`,
+/// mirroring `ServiceJobRuntime::wait_for_job`'s timeout semantics
+/// (`cfg.job_wait_timeout_secs`) but reading the unified store instead of a
+/// legacy per-family table (crawl now enqueues onto the unified store — see
+/// `crawl_start_with_context`).
+async fn wait_for_unified_crawl_job(
+    service_context: &ServiceContext,
+    job_id: uuid::Uuid,
+) -> Result<LifecycleStatus, Box<dyn Error + Send + Sync>> {
+    let timeout_secs = service_context.cfg.job_wait_timeout_secs;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    loop {
+        let summary =
+            crate::jobs::unified_job_status(service_context, axon_api::source::JobId(job_id))
+                .await
+                .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+        if let Some(summary) = summary
+            && matches!(
+                summary.status,
+                LifecycleStatus::Completed
+                    | LifecycleStatus::CompletedDegraded
+                    | LifecycleStatus::Failed
+                    | LifecycleStatus::Canceled
+                    | LifecycleStatus::Expired
+                    | LifecycleStatus::Skipped
+            )
+        {
+            return Ok(summary.status);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!("crawl job {job_id} wait timed out after {timeout_secs}s").into());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
 }
 

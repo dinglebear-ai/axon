@@ -138,13 +138,21 @@ impl SqliteUnifiedJobStore {
         let stage_started_at = (status.status == LifecycleStatus::Running).then(|| now.0.clone());
         let finished_at = is_terminal(status.status).then(|| now.0.clone());
 
+        // cooldown_until: cleared on every transition to a non-Waiting status
+        // (a job that cooled once and later runs/completes/fails must not
+        // retain a stale cooldown that silently blocks its next legitimate
+        // claim). Left untouched when the new status IS Waiting so a
+        // heartbeat/update that re-affirms Waiting does not wipe out a
+        // cooldown set separately via `apply_provider_cooling`.
+        let status_name = enum_name(status.status)?;
         sqlx::query(
             "UPDATE jobs SET
                 source_id = COALESCE(?, source_id),
                 status = ?, phase = ?, counts_json = ?, current_json = ?,
                 last_error_json = ?, updated_at = ?,
                 started_at = COALESCE(started_at, ?),
-                finished_at = COALESCE(?, finished_at)
+                finished_at = COALESCE(?, finished_at),
+                cooldown_until = CASE WHEN ? = 'waiting' THEN cooldown_until ELSE NULL END
              WHERE job_id = ?",
         )
         .bind(
@@ -153,7 +161,7 @@ impl SqliteUnifiedJobStore {
                 .as_ref()
                 .map(|source_id| source_id.0.as_str()),
         )
-        .bind(enum_name(status.status)?)
+        .bind(status_name.as_str())
         .bind(enum_name(status.phase)?)
         .bind(optional_to_json(&status.counts)?)
         .bind(optional_to_json(&status.current)?)
@@ -161,6 +169,7 @@ impl SqliteUnifiedJobStore {
         .bind(now.0.as_str())
         .bind(job_started_at.as_deref())
         .bind(finished_at.as_deref())
+        .bind(status_name.as_str())
         .bind(status.job_id.0.to_string())
         .execute(&mut *tx)
         .await

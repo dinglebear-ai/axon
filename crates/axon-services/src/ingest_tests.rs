@@ -1,15 +1,17 @@
 use super::*;
 use crate::context::ServiceContext;
 use crate::runtime::ServiceJobRuntime;
-use crate::types::{ExecutionMode, StartDisposition};
+use crate::types::StartDisposition;
 use async_trait::async_trait;
 use axon_api::mcp_schema::{IngestRequest, IngestSourceType};
+use axon_api::source::{AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_core::config::Config;
 use axon_ingest as ingest;
-use axon_jobs::backend::{BackendResult, JobKind, JobPayload, JobSidecarPayload};
+use axon_jobs::backend::{BackendResult, JobKind as LegacyJobKind, JobPayload, JobSidecarPayload};
 use axon_jobs::config_snapshot::decode_ingest_job_config;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use uuid::Uuid;
 
 struct CaptureRuntime {
@@ -55,21 +57,21 @@ impl ServiceJobRuntime for CaptureRuntime {
         Ok(Uuid::new_v4())
     }
 
-    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+    async fn wait_for_job(&self, _id: Uuid, _kind: LegacyJobKind) -> BackendResult<String> {
         panic!("--wait false ingest start must enqueue without waiting")
     }
 
-    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+    async fn job_errors(&self, _id: Uuid, _kind: LegacyJobKind) -> BackendResult<Option<String>> {
         Ok(None)
     }
 
-    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+    async fn has_active_jobs(&self, _kind: LegacyJobKind) -> BackendResult<bool> {
         panic!("--wait false ingest start must not drain the queue")
     }
 
     async fn list_jobs(
         &self,
-        _kind: JobKind,
+        _kind: LegacyJobKind,
         _limit: i64,
         _offset: i64,
     ) -> Result<Vec<crate::types::ServiceJob>, Box<dyn Error + Send + Sync>> {
@@ -78,7 +80,7 @@ impl ServiceJobRuntime for CaptureRuntime {
 
     async fn job_status(
         &self,
-        _kind: JobKind,
+        _kind: LegacyJobKind,
         _id: Uuid,
     ) -> Result<Option<crate::types::ServiceJob>, Box<dyn Error + Send + Sync>> {
         Ok(None)
@@ -86,35 +88,38 @@ impl ServiceJobRuntime for CaptureRuntime {
 
     async fn cancel_job(
         &self,
-        _kind: JobKind,
+        _kind: LegacyJobKind,
         _id: Uuid,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
         Ok(false)
     }
 
-    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+    async fn cleanup_jobs(
+        &self,
+        _kind: LegacyJobKind,
+    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
         Ok(0)
     }
 
-    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+    async fn clear_jobs(&self, _kind: LegacyJobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
         Ok(0)
     }
 
     async fn recover_jobs(
         &self,
-        _kind: JobKind,
+        _kind: LegacyJobKind,
         _stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
         Ok(0)
     }
 
-    async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+    async fn count_jobs(&self, _kind: LegacyJobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
         Ok(0)
     }
 
     async fn count_jobs_by_status(
         &self,
-        _kind: JobKind,
+        _kind: LegacyJobKind,
     ) -> Result<
         std::collections::HashMap<axon_jobs::status::JobStatus, i64>,
         Box<dyn Error + Send + Sync>,
@@ -414,62 +419,139 @@ fn source_from_mcp_request_rejects_remote_sessions_scan() {
     assert!(err.contains("/v1/ingest/sessions/prepared"));
 }
 
+async fn test_ctx_with_workers() -> ServiceContext {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg = Config {
+        sqlite_path: dir.path().join("jobs.db"),
+        ..Config::test_default()
+    };
+    std::mem::forget(dir);
+    ServiceContext::new_with_workers(Arc::new(cfg))
+        .await
+        .expect("service context")
+}
+
 #[tokio::test]
-async fn ingest_start_with_context_enqueues_sessions_jobs_with_sqlite_backend() {
-    let mut cfg = Config::test_default();
+async fn ingest_start_with_context_enqueues_sessions_source_on_unified_job_store_with_caller_auth()
+{
+    let ctx = test_ctx_with_workers().await;
+    let mut cfg = ctx.cfg().clone();
     cfg.sessions_claude = true;
     cfg.sessions_codex = false;
     cfg.sessions_gemini = true;
     cfg.sessions_project = Some("axon-rust".to_string());
-
-    let runtime = Arc::new(CaptureRuntime {
-        payloads: Mutex::new(Vec::new()),
-        sidecars: Mutex::new(Vec::new()),
-    });
-    let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
     let source = IngestSource::Sessions {
         sessions_claude: true,
         sessions_codex: false,
         sessions_gemini: true,
         sessions_project: Some("axon-rust".to_string()),
     };
+    let caller = AuthSnapshot::from_caller(
+        &CallerContext {
+            actor: Some("user_1".to_string()),
+            transport: TransportKind::Cli,
+            scopes: vec!["axon:read".to_string(), "axon:write".to_string()],
+            visibility_ceiling: Visibility::Internal,
+        },
+        Visibility::Internal,
+        "test",
+    );
 
-    let outcome = ingest_start_with_context(&cfg, source.clone(), &service_context)
+    let outcome = ingest_start_with_context(&cfg, source, &ctx, Some(&caller))
         .await
-        .expect("enqueue sessions");
+        .expect("ingest_start_with_context should enqueue");
 
-    assert_eq!(outcome.disposition, StartDisposition::Enqueued);
-    assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
+    let store = ctx.job_store().expect("unified job store must be attached");
+    let job = store
+        .get(axon_api::source::JobId(
+            uuid::Uuid::parse_str(&outcome.result.job_id).unwrap(),
+        ))
+        .await
+        .unwrap()
+        .expect("job row must exist");
+    assert_eq!(job.kind, axon_api::source::JobKind::Ingest);
+}
 
-    let payloads = runtime.payloads.lock().expect("lock");
-    assert_eq!(payloads.len(), 1);
-    let JobPayload::Ingest {
-        target,
-        source_type,
-        config_json,
-    } = &payloads[0]
-    else {
-        panic!("expected ingest payload");
+/// Ingest now enqueues onto the unified `JobStore` and runs on the real
+/// unified worker (see `IngestRunner` in `runtime/job_runners/
+/// ingest_runner.rs`), while `job_service::job_status`/`list_jobs`/
+/// `cancel_job`/etc. for `JobKind::Ingest` bridge onto the same store (see
+/// `runtime/sqlite/ingest_bridge.rs`) so existing CLI/MCP/REST callers keep
+/// working unchanged. Session-export scanning always reads real `~/...`
+/// paths (`expand_home` in `axon-ingest`), and — importantly — passing
+/// `sessions_claude`/`codex`/`gemini` all `false` does NOT mean "scan
+/// nothing": `axon-ingest`'s `all_platforms = !claude && !codex && !gemini`
+/// treats that as "no filter" and scans every platform's real home
+/// directory, which is slow and non-deterministic in CI. `HOME` is
+/// redirected to an empty tempdir for the duration of this test (guarded by
+/// `#[serial_test::serial]` + a scope guard restoring the original value on
+/// drop, matching `crates/axon-core/src/paths_tests.rs`'s established
+/// pattern) so the scan is real but instant and filesystem-light — this
+/// still exercises the full unified enqueue → claim → run → terminal-status
+/// path.
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[tokio::test]
+async fn ingest_job_runs_end_to_end_and_is_claimed_promptly() {
+    struct HomeGuard(Option<String>);
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(v) => unsafe { std::env::set_var("HOME", v) },
+                None => unsafe { std::env::remove_var("HOME") },
+            }
+        }
+    }
+    let empty_home = tempfile::tempdir().expect("tempdir");
+    let saved_home = std::env::var("HOME").ok();
+    unsafe { std::env::set_var("HOME", empty_home.path()) };
+    let _home_guard = HomeGuard(saved_home);
+
+    let ctx = test_ctx_with_workers().await;
+    let cfg = ctx.cfg().clone();
+    let source = IngestSource::Sessions {
+        sessions_claude: false,
+        sessions_codex: false,
+        sessions_gemini: false,
+        sessions_project: None,
     };
+    let started = std::time::Instant::now();
+    let outcome = ingest_start_with_context(&cfg, source, &ctx, None)
+        .await
+        .expect("enqueue");
+    let job_id = uuid::Uuid::parse_str(&outcome.result.job_id).expect("job id");
 
-    assert_eq!(source_type, "sessions");
-    assert_eq!(target, "claude,gemini:axon-rust");
-    let (decoded, effective_cfg) =
-        decode_ingest_job_config(&cfg, config_json).expect("decode source config");
-    assert!(matches!(
-        decoded,
-        IngestSource::Sessions {
-            sessions_claude: true,
-            sessions_codex: false,
-            sessions_gemini: true,
-            sessions_project: Some(ref project),
-        } if project == "axon-rust"
-    ));
-    assert_eq!(effective_cfg.collection, cfg.collection);
-    assert!(effective_cfg.sessions_claude);
-    assert!(!effective_cfg.sessions_codex);
-    assert!(effective_cfg.sessions_gemini);
-    assert_eq!(effective_cfg.sessions_project.as_deref(), Some("axon-rust"));
+    let mut status = None;
+    for _ in 0..100 {
+        let job = crate::jobs::job_status(&ctx, LegacyJobKind::Ingest, job_id)
+            .await
+            .expect("job_status")
+            .expect("job exists");
+        if job.status != "pending" && job.status != "running" {
+            status = Some(job);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let job = status.expect("ingest job should reach a terminal status within timeout");
+    let unsupported_stage = job
+        .error_text
+        .as_deref()
+        .is_some_and(|text| text.contains("not wired yet"));
+    assert!(
+        !unsupported_stage,
+        "ingest must dispatch to the real runner, not the catch-all: {:?}",
+        job.error_text
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "ingest job took longer than a poll-interval-free path should — notify_unified() regression?"
+    );
+
+    let jobs = crate::jobs::list_jobs(&ctx, LegacyJobKind::Ingest, 10, 0)
+        .await
+        .expect("list_jobs");
+    assert!(jobs.iter().any(|j| j.id == job_id));
 }
 
 #[tokio::test]

@@ -25,7 +25,7 @@ use axon_api::reset::{
     RESET_STORE_WATCH, ResetChunkReceipt, ResetCreated, ResetDeleted, ResetEstimate,
     ResetExecutionState, ResetPlan, ResetReceipt, ResetResult, ResetStorePlan,
 };
-use axon_core::config::Config;
+use axon_core::config::{Config, ConfigValueSource};
 use axon_core::logging::{log_info, log_warn};
 use execution::{execute, write_receipt};
 use sha2::{Digest, Sha256};
@@ -105,6 +105,13 @@ struct PreparedReset {
     confirmation_text: String,
     plan_expires_at_utc: String,
     receipt_preview_path: Option<String>,
+    /// Human-readable blocker messages surfaced on `ResetPlan`/`ResetResult`
+    /// (currently: the legacy-store message, if `prepare_reset`'s legacy
+    /// audit found a non-empty legacy job table). `execute_prepared_reset`
+    /// re-runs its own legacy audit rather than trusting this snapshot (see
+    /// the comment there), so only the message text is retained here — not
+    /// the audit result itself.
+    blockers: Vec<String>,
 }
 
 /// Run `axon reset`. In dry-run (default) it inventories every selected store
@@ -151,6 +158,22 @@ async fn prepare_reset(
         None
     };
 
+    // Detected here (not only at execution time) so a dry-run plan can show
+    // the blocker before anything is destroyed — previously `ResetPlan.
+    // blockers`/`ResetResult.blockers` were hardcoded empty, so a caller
+    // inspecting the dry-run plan had no visibility into legacy rows before
+    // a real `--yes` reset would go on to wipe them.
+    let legacy_audit = if wants_any_sqlite(&stores) {
+        sqlite::detect_legacy_jobs(&cfg.sqlite_path).await
+    } else {
+        None
+    };
+    let blockers: Vec<String> = legacy_audit
+        .as_ref()
+        .map(|blocker| blocker.message.clone())
+        .into_iter()
+        .collect();
+
     let plan = build_plan(
         cfg,
         &stores,
@@ -190,7 +213,7 @@ async fn prepare_reset(
         confirmation_text: confirmation_text.clone(),
         receipt_path: receipt_preview_path.clone(),
         expires_at_utc: plan_expires_at_utc.clone(),
-        blockers: Vec::new(),
+        blockers: blockers.clone(),
     };
 
     Ok(PreparedReset {
@@ -211,6 +234,7 @@ async fn prepare_reset(
         confirmation_text,
         plan_expires_at_utc,
         receipt_preview_path,
+        blockers,
     })
 }
 
@@ -229,7 +253,7 @@ fn planned_reset_result(prepared: PreparedReset) -> ResetResult {
         auth_snapshot_id: prepared.auth_snapshot_id,
         confirmation_text: prepared.confirmation_text,
         plan_expires_at_utc: prepared.plan_expires_at_utc,
-        blockers: Vec::new(),
+        blockers: prepared.blockers,
         chunks: Vec::new(),
         audit_events: vec!["reset.plan".to_string()],
         deleted: ResetDeleted::default(),
@@ -269,11 +293,41 @@ async fn execute_prepared_reset(
         .into());
     }
 
+    // Re-detect rather than trust `prepared.legacy_audit` blindly: the
+    // inventory-checksum guard above only covers `build_plan`'s row/point
+    // counts, not specifically whether legacy rows appeared between
+    // `prepare_reset` and here. Cheap (bounded COUNT queries) and consistent
+    // with the inventory re-check pattern already used above.
     let legacy_audit = if wants_any_sqlite(&prepared.stores) {
         sqlite::detect_legacy_jobs(&cfg.sqlite_path).await
     } else {
         None
     };
+
+    if let Some(blocker) = &legacy_audit {
+        let confirmed_via_cli_flag = cfg.reset_confirm_legacy_wipe
+            && cfg.reset_confirm_legacy_wipe_source == ConfigValueSource::CliFlag;
+        if !confirmed_via_cli_flag {
+            if cfg.reset_confirm_legacy_wipe {
+                // The flag is `true` but not sourced from a CLI flag — this
+                // should be structurally unreachable (see
+                // `Config::reset_confirm_legacy_wipe`'s doc comment: it is
+                // never wired from config.toml/env), but fail loudly rather
+                // than silently trusting an unexpected source.
+                return Err(
+                    "reset.legacy_wipe_confirmation_invalid_source: --confirm-legacy-wipe must be passed as a CLI flag"
+                        .into(),
+                );
+            }
+            return Err(format!(
+                "reset.legacy_store_confirmation_required: {} Pass --confirm-legacy-wipe alongside --yes to proceed.",
+                blocker.message
+            )
+            .into());
+        }
+    }
+
+    let legacy_wipe_confirmed = legacy_audit.is_some();
 
     let (deleted, created) = execute(
         cfg,
@@ -286,6 +340,13 @@ async fn execute_prepared_reset(
     )
     .await?;
     let chunks = reset_chunks(&prepared.stores, &deleted, &created);
+    if legacy_wipe_confirmed {
+        // Distinct from `execution::execute`'s `record_legacy_reset_receipt`
+        // call (which writes an in-DB cutover receipt after the wipe) — this
+        // is the in-memory `ResetResult.audit_events`/`ResetReceipt.
+        // audit_events` trail surfaced to the caller for this invocation.
+        audit_events.push("reset.legacy_store_wiped".to_string());
+    }
     audit_events.push("reset.complete".to_string());
 
     let receipt = ResetReceipt {
@@ -330,7 +391,7 @@ async fn execute_prepared_reset(
         auth_snapshot_id: prepared.auth_snapshot_id,
         confirmation_text: prepared.confirmation_text,
         plan_expires_at_utc: prepared.plan_expires_at_utc,
-        blockers: Vec::new(),
+        blockers: prepared.blockers,
         chunks,
         audit_events,
         deleted,
