@@ -87,6 +87,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Manually bump one component's version-bearing files. Only `cli` is
+    /// expected to need this — see the doc comment on
+    /// `checks::release_versions::bump_component_version`.
+    BumpVersion {
+        #[arg(long, default_value = "cli")]
+        component: String,
+        #[arg(value_enum)]
+        level: checks::release_versions::BumpLevel,
+    },
     /// Apply release-please postprocessing for files it cannot update directly.
     ReleasePleaseFixups {
         #[arg(long)]
@@ -185,6 +194,9 @@ fn main() -> Result<()> {
             checks::release_versions::print_plans(&plans, json)?;
             Ok(())
         }
+        Command::BumpVersion { component, level } => Ok(
+            checks::release_versions::bump_component_version(&root, &component, level)?,
+        ),
         Command::ReleasePleaseFixups { component, version } => Ok(
             checks::release_versions::release_please_fixups(&root, &component, &version)?,
         ),
