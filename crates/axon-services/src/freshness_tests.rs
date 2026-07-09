@@ -220,10 +220,14 @@ async fn active_embed_job_with_different_config_does_not_skip() {
     cfg.collection = "fresh".to_string();
     let replay = safe_replay_snapshot(&cfg).expect("snapshot");
     let other_config = serde_json::json!({"config":{"collection":"other"},"version":2});
-    let runtime = Arc::new(ActiveRuntime::with_active_target_and_config(
-        "fresh text",
-        other_config,
-    ));
+    // Embed now enqueues onto the unified job store, not the legacy
+    // `ServiceJobRuntime::enqueue` path `runtime.enqueued_count()` observes —
+    // attach a real in-memory unified store so the "must actually enqueue,
+    // not skip" assertion below has something real to check.
+    let runtime = Arc::new(
+        ActiveRuntime::with_active_target_config_and_unified_store("fresh text", other_config)
+            .await,
+    );
     let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
     let payload = FreshnessRequestPayload::V1(FreshnessRequestV1::Embed {
         input: "fresh text".to_string(),
@@ -247,13 +251,21 @@ async fn active_embed_job_with_different_config_does_not_skip() {
 
     let outcome = dispatch_freshness(&ctx, &def).await.expect("dispatch");
     assert_eq!(outcome.status, "enqueued");
-    assert_eq!(runtime.enqueued_count(), 1);
+    assert!(
+        outcome.dispatched_job_id.is_some(),
+        "a real unified job row should have been created, not skipped"
+    );
 }
 
 struct ActiveRuntime {
     active_target: Option<String>,
     active_config_json: Option<serde_json::Value>,
     payloads: Mutex<Vec<JobPayload>>,
+    // Real unified `JobStore` over an in-memory pool, so the fake can back
+    // `embed_start_with_context`'s unified enqueue path (like every other
+    // "no skip, must actually enqueue" scenario this fake supports). `None`
+    // for tests that only exercise the legacy `enqueue`/`list_jobs` surface.
+    unified_store: Option<Arc<dyn axon_jobs::boundary::JobStore>>,
 }
 
 impl ActiveRuntime {
@@ -262,6 +274,28 @@ impl ActiveRuntime {
             active_target: Some(target.to_string()),
             active_config_json: Some(config_json),
             payloads: Mutex::new(Vec::new()),
+            unified_store: None,
+        }
+    }
+
+    /// Like [`Self::with_active_target_and_config`], but also attaches a real
+    /// in-memory unified `JobStore` so callers that reach the unified enqueue
+    /// path (e.g. `embed_start_with_context`) succeed instead of hitting
+    /// "unified job store is not available for this runtime".
+    async fn with_active_target_config_and_unified_store(
+        target: &str,
+        config_json: serde_json::Value,
+    ) -> Self {
+        let pool = axon_jobs::store::open_sqlite_pool(":memory:")
+            .await
+            .expect("open in-memory unified store pool");
+        Self {
+            active_target: Some(target.to_string()),
+            active_config_json: Some(config_json),
+            payloads: Mutex::new(Vec::new()),
+            unified_store: Some(Arc::new(axon_jobs::unified::SqliteUnifiedJobStore::new(
+                pool,
+            ))),
         }
     }
 
@@ -274,6 +308,10 @@ impl ActiveRuntime {
 impl crate::runtime::ServiceJobRuntime for ActiveRuntime {
     fn mode_name(&self) -> &'static str {
         "test"
+    }
+
+    fn unified_job_store(&self) -> Option<Arc<dyn axon_jobs::boundary::JobStore>> {
+        self.unified_store.clone()
     }
 
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {

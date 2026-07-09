@@ -139,6 +139,18 @@ impl RedactionContext {
             allow_internal_paths: false,
         }
     }
+
+    /// Default context for a CLI `--json` render — the last-mile stdout
+    /// boundary where a command's result payload crosses into machine-
+    /// readable output a caller may script against or paste elsewhere.
+    pub fn cli_json() -> Self {
+        Self {
+            visibility_ceiling: Visibility::Public,
+            surface: RedactionSurface::CliJson,
+            source_kind: None,
+            allow_internal_paths: false,
+        }
+    }
 }
 
 /// Outcome of a redaction pass over a JSON value.

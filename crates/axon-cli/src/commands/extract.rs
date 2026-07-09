@@ -210,8 +210,11 @@ async fn enqueue_extract_job(
     } else {
         Some(prompt)
     };
+    // The CLI is a trusted local process — no per-caller identity is
+    // threaded through argv/env today, so this is the "genuinely no real
+    // caller available" case, made explicit by passing `None`.
     let outcome =
-        extract_service::extract_start_with_context(cfg, urls, prompt, service_context, None)
+        extract_service::extract_start_with_context(cfg, urls, prompt, service_context, None, None)
             .await?;
     let job_id = outcome.result.job_id;
     let status = if outcome.disposition == StartDisposition::Completed {

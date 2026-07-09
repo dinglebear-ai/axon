@@ -43,8 +43,10 @@ pub(super) async fn enqueue_task(
         .ok_or_else(|| invalid_params("arguments are required for task execution"))?;
     let axon_request =
         parse_axon_request(raw).map_err(|e| invalid_params(format!("invalid request: {e}")))?;
-    authorize_task_tool_call(server, &request, &context)?;
-    let (kind, job_id) = enqueue_supported_start(server, axon_request).await?;
+    let auth = authorize_task_tool_call(server, &request, &context)?;
+    let caller_auth_snapshot = auth.map(caller_auth_snapshot_from_auth_context);
+    let (kind, job_id) =
+        enqueue_supported_start(server, axon_request, caller_auth_snapshot.as_ref()).await?;
     task_progress::start_progress_notifier(
         server,
         kind,
@@ -164,11 +166,15 @@ pub(super) async fn cancel_task(
     })
 }
 
-fn authorize_task_tool_call(
+/// Enforces scope for the in-flight task tool call and returns the resolved
+/// caller [`lab_auth::AuthContext`] (`None` in LoopbackDev mode) so callers
+/// can build a real [`axon_api::source::AuthSnapshot`] for job submission
+/// instead of falling back to `trusted_system`.
+fn authorize_task_tool_call<'a>(
     server: &AxonMcpServer,
     request: &CallToolRequestParams,
-    context: &RequestContext<RoleServer>,
-) -> Result<(), ErrorData> {
+    context: &'a RequestContext<RoleServer>,
+) -> Result<Option<&'a lab_auth::AuthContext>, ErrorData> {
     let auth = server_authz::require_auth_context(&server.auth_policy, context)?;
     let (action, subaction) = action_pair_from_arguments(request.arguments.as_ref());
     match (
@@ -179,12 +185,33 @@ fn authorize_task_tool_call(
             format!("forbidden: unknown action `{action}`"),
             None,
         )),
-        (Some(_), None) => Ok(()),
+        (Some(auth_ctx), None) => Ok(Some(auth_ctx)),
         (Some(auth_ctx), Some(required_scope)) => {
-            server_authz::check_scope(auth_ctx, required_scope, &action)
+            server_authz::check_scope(auth_ctx, required_scope, &action)?;
+            Ok(Some(auth_ctx))
         }
-        (None, _) => Ok(()),
+        (None, _) => Ok(None),
     }
+}
+
+/// Build an [`axon_api::source::AuthSnapshot`] from a resolved MCP
+/// [`lab_auth::AuthContext`] — mirrors `server.rs::call_tool`'s
+/// `caller_auth_snapshot` construction for the `enqueue_task` (rmcp Tasks)
+/// path, which receives its own `RequestContext` directly instead of going
+/// through the `CURRENT_CALLER_AUTH_SNAPSHOT` task-local.
+fn caller_auth_snapshot_from_auth_context(
+    auth_ctx: &lab_auth::AuthContext,
+) -> axon_api::source::AuthSnapshot {
+    axon_api::source::AuthSnapshot::from_caller(
+        &axon_api::source::CallerContext {
+            actor: Some(auth_ctx.sub.clone()),
+            transport: axon_api::source::TransportKind::Mcp,
+            scopes: auth_ctx.scopes.clone(),
+            visibility_ceiling: axon_api::source::Visibility::Internal,
+        },
+        axon_api::source::Visibility::Internal,
+        "runtime",
+    )
 }
 
 fn authorize_task_lifecycle(
@@ -216,6 +243,7 @@ fn action_pair_from_arguments(arguments: Option<&Map<String, Value>>) -> (String
 async fn enqueue_supported_start(
     server: &AxonMcpServer,
     request: AxonRequest,
+    caller_auth_snapshot: Option<&axon_api::source::AuthSnapshot>,
 ) -> Result<(JobKind, Uuid), ErrorData> {
     match request {
         AxonRequest::Extract(req)
@@ -238,12 +266,18 @@ async fn enqueue_supported_start(
                 .base_service_context()
                 .await
                 .map_err(|e| logged_internal_error("tasks.extract.start.context", e.as_ref()))?;
+            // Real caller-derived AuthSnapshot from `enqueue_task`'s own
+            // `RequestContext` (see `authorize_task_tool_call` /
+            // `caller_auth_snapshot_from_auth_context` above). `None` only in
+            // LoopbackDev mode, where `extract_start_with_context` falls back
+            // to `trusted_system`, same as before.
             let outcome = extract_svc::extract_start_with_context(
                 &cfg,
                 &urls,
                 cfg.query.clone(),
                 &service_context,
                 None,
+                caller_auth_snapshot,
             )
             .await
             .map_err(|e| logged_internal_error("tasks.extract.start", e.as_ref()))?;

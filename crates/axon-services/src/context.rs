@@ -216,6 +216,13 @@ impl ServiceContext {
         self.jobs.unified_job_store()
     }
 
+    /// Wake the unified durable-job worker so a freshly enqueued job is
+    /// claimed on its next wakeup instead of waiting out the poll interval.
+    /// No-op for enqueue-only runtimes (no in-process workers).
+    pub fn notify_unified(&self) {
+        self.jobs.notify_unified();
+    }
+
     /// Convenience accessor for the resolved config (A-H1).
     ///
     /// Read/RAG service functions (`query`, `ask`, `retrieve`, …) take `&Config`

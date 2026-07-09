@@ -146,7 +146,31 @@ pub(crate) fn write_settings(
     app: &AppHandle,
     settings: &PaletteSettings,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = settings_path(app)?;
+    write_settings_to_path(&settings_path(app)?, settings)
+}
+
+/// Path-parameterized core of `write_settings`, split out so it is
+/// unit-testable against a plain temp-dir path without needing a live
+/// `AppHandle`.
+///
+/// # Blast-radius note (SFTP connection profiles)
+///
+/// `settings.json` carrying SFTP connection profiles (host/username/
+/// private_key_path triples) is a machine-readable "SSH access targeting
+/// map" — higher-value reconnaissance than a bare `~/.ssh/config`, since it
+/// centralizes every remote host this palette can reach plus which local key
+/// unlocks each one. No extra permission step is needed here, though:
+/// `atomic_write` below already creates every settings write (SFTP data or
+/// not) at mode `0o600` unconditionally — the same owner-only tightening
+/// this note originally proposed adding conditionally already exists as the
+/// file's baseline behavior. See `write_settings_is_owner_only_when_sftp_
+/// connections_present`/`..._even_with_no_sftp_connections` in
+/// `persistence_tests.rs`, which assert this is 0600 in both cases (not
+/// conditionally).
+fn write_settings_to_path(
+    path: &Path,
+    settings: &PaletteSettings,
+) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -154,7 +178,7 @@ pub(crate) fn write_settings(
     palette_only.env_values.clear();
     palette_only.config_values.clear();
     atomic_write(
-        &path,
+        path,
         serde_json::to_string_pretty(&palette_only)?.as_bytes(),
     )?;
     Ok(())

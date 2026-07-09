@@ -27,6 +27,32 @@ tokio::task_local! {
     /// trait methods). Task-locals are per-async-task, so concurrent MCP
     /// calls on the shared `AxonMcpServer` never observe each other's value.
     pub(super) static CURRENT_PRUNE_AUTHZ: axon_services::prune::PruneAuthz;
+
+    /// The [`axon_services::memory::MemoryAuthz`] resolved for the in-flight
+    /// `axon` tool call, when the action is `memory`.
+    ///
+    /// Mirrors [`CURRENT_PRUNE_AUTHZ`]'s rationale: `memory`'s router-level
+    /// scope gate only requires `axon:write` (see `MCP_ACTION_SPECS`), but
+    /// `MemorySubaction::Import` with `mode: replace_scope` additionally
+    /// requires `axon:admin` per the documented import-mode contract
+    /// (`axon_api::source::MemoryImportMode::ReplaceScope`). `call_tool`
+    /// resolves the caller's real `AuthContext` scopes and scopes this
+    /// task-local around the `tool_router` call so `handle_memory` can read
+    /// the honest, per-request authorization.
+    pub(super) static CURRENT_MEMORY_AUTHZ: axon_services::memory::MemoryAuthz;
+
+    /// The [`axon_api::source::AuthSnapshot`] built from the in-flight `axon`
+    /// tool call's real caller identity, when one is available (Mounted HTTP
+    /// mode with a resolved `AuthContext`). `None` in `LoopbackDev` mode,
+    /// where the loopback bind itself is the trust boundary and there is no
+    /// per-caller identity to snapshot.
+    ///
+    /// Same task-local seam as `CURRENT_PRUNE_AUTHZ` above: resolved once in
+    /// `call_tool`'s scope gate, then read by job-submission handlers
+    /// (`extract.start`, and any future MCP-side crawl/embed/ingest starts)
+    /// so the `auth_snapshot` recorded on the unified job row reflects the
+    /// real MCP caller instead of an unconditional `trusted_system` fallback.
+    pub(super) static CURRENT_CALLER_AUTH_SNAPSHOT: Option<axon_api::source::AuthSnapshot>;
 }
 
 // --- Error constructors ---

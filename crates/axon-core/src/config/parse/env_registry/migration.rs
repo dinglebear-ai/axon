@@ -77,6 +77,14 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_UNIFIED_WORKER_CONCURRENCY",
+        MoveToml,
+        NotRuntime,
+        Some("workers.unified-worker-concurrency"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_QUEUE_SUMMARY_SECS",
         MoveToml,
         NotRuntime,

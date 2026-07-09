@@ -16,13 +16,20 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod date_math;
 mod diag;
+mod files_bridge;
+mod github_bridge;
+mod github_feed;
 mod oauth;
 mod persistence;
+mod sftp_bridge;
+mod sftp_known_hosts;
 mod stream;
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
+use github_bridge::GitHubClient;
 use persistence::*;
 use stream::axon_http_stream_request;
 
@@ -41,6 +48,29 @@ struct PaletteSettings {
     show_footer_hints: bool,
     env_values: HashMap<String, serde_json::Value>,
     config_values: HashMap<String, serde_json::Value>,
+    /// Persisted SFTP connection profiles (host/username/local-key-path
+    /// triples — never a password or key material). See
+    /// `persistence::write_settings`'s blast-radius note: settings.json is
+    /// tightened to 0600 whenever this is non-empty, since it centralizes
+    /// every remote host this palette can reach plus which local key unlocks
+    /// each one.
+    #[serde(default)]
+    sftp_connections: Vec<SftpConnectionProfile>,
+}
+
+/// A persisted SFTP connection profile. Deliberately excludes any password
+/// or key *material* — `private_key_path` is a reference to a key file
+/// already on disk (see `sftp_bridge::validate_private_key_path`), not the
+/// key itself.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SftpConnectionProfile {
+    pub id: String,
+    pub label: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub private_key_path: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -199,6 +229,7 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
         show_footer_hints: persisted.show_footer_hints.unwrap_or(false),
         env_values: defaults.env_values,
         config_values: defaults.config_values,
+        sftp_connections: persisted.sftp_connections.unwrap_or_default(),
     })
 }
 
@@ -231,6 +262,7 @@ fn default_settings(env_entries: &[(String, String)]) -> PaletteSettings {
             .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
             .collect(),
         config_values: read_default_config_values(),
+        sftp_connections: Vec::new(),
     }
 }
 
@@ -247,6 +279,7 @@ struct PartialPaletteSettings {
     open_results_inline: Option<bool>,
     agent_bubbles: Option<bool>,
     show_footer_hints: Option<bool>,
+    sftp_connections: Option<Vec<SftpConnectionProfile>>,
 }
 
 fn normalize_settings(mut settings: PaletteSettings) -> PaletteSettings {
@@ -457,6 +490,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|err| format!("failed to build HTTP client for Axon bridge: {err}"))?;
     let stream_client = StreamClient::new()
         .map_err(|err| format!("failed to build HTTP client for streaming: {err}"))?;
+    let github_client = GitHubClient::new()
+        .map_err(|err| format!("failed to build HTTP client for GitHub bridge: {err}"))?;
 
     tauri::Builder::default()
         .plugin(
@@ -480,15 +515,28 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
             axon_http_stream_request,
+            github_bridge::github_browse,
             oauth::axon_oauth_login,
             oauth::axon_oauth_logout,
-            oauth::axon_oauth_status
+            oauth::axon_oauth_status,
+            files_bridge::files_list_dir,
+            files_bridge::files_read_file,
+            files_bridge::files_write_file,
+            files_bridge::files_get_root,
+            sftp_bridge::commands::sftp_connect,
+            sftp_bridge::commands::sftp_list_dir,
+            sftp_bridge::commands::sftp_read_file,
+            sftp_bridge::commands::sftp_disconnect,
+            sftp_bridge::commands::sftp_list_known_hosts,
+            sftp_bridge::commands::sftp_revoke_known_host
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
         .manage(ActiveShortcut(Mutex::new(None)))
         .manage(bridge_client)
         .manage(stream_client)
+        .manage(github_client)
         .manage(oauth::OauthState::new())
+        .manage(sftp_bridge::SftpConnections::new())
         .setup(|app| {
             if let Err(err) = install_tray(app) {
                 log_palette_warning("failed to install tray icon", err);
@@ -510,6 +558,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         })
         .on_window_event(window_events::handle_window_event)
-        .run(tauri::generate_context!())
-        .map_err(|err| format!("error while running Axon Palette: {err}").into())
+        .build(tauri::generate_context!())
+        .map_err(|err| format!("error while building Axon Palette: {err}"))?
+        .run(|app_handle, event| {
+            // Close any still-open SFTP sessions on app exit rather than
+            // leaking them (and their underlying SSH channels/sockets) —
+            // there is otherwise no cleanup path once the process exits, and
+            // relying on OS socket teardown alone skips the SFTP subsystem's
+            // own close handshake.
+            if let tauri::RunEvent::Exit = event {
+                let connections = app_handle.state::<sftp_bridge::SftpConnections>();
+                tauri::async_runtime::block_on(connections.close_all());
+            }
+        });
+    Ok(())
 }

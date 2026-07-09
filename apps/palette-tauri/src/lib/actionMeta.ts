@@ -14,6 +14,7 @@ type ActionDisplayDetails = Omit<ActionDisplayMeta, "endpoint" | "method">;
 
 const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   help: { category: "System", input: "action", output: "help", label: "Help" },
+  files: { category: "System", input: "none", output: "local", label: "Files" },
   scrape: { category: "Fetch & read", input: "one URL", output: "content", label: "Scrape" },
   map: { category: "Fetch & read", input: "one URL", output: "links", label: "Map" },
   retrieve: { category: "Fetch & read", input: "URL", output: "chunks", label: "Retrieve" },
@@ -24,6 +25,7 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   embed: { category: "Crawl & ingest", input: "input", output: "vectors", label: "Embed" },
   extract: { category: "Crawl & ingest", input: "URLs", output: "data", label: "Extract" },
   "ingest-sessions-prepared": { category: "Crawl & ingest", input: "JSON", output: "job", label: "Prepared sessions" },
+  github: { category: "Fetch & read", input: "owner/repo/path", output: "repos, tree, or file", label: "GitHub" },
   search: { category: "Search & discover", input: "query", output: "results", label: "Search" },
   research: { category: "Search & discover", input: "query", output: "brief", label: "Research" },
   query: { category: "Search & discover", input: "query", output: "chunks", label: "Query" },

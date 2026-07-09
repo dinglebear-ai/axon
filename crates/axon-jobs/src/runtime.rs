@@ -176,6 +176,19 @@ impl SqliteJobBackend {
             None => false,
         }
     }
+
+    /// Wake the unified durable-job worker if workers are running. Returns
+    /// false if this backend is enqueue-only (no workers spawned) — matching
+    /// `notify_worker`'s contract for the legacy per-family workers.
+    pub fn notify_unified(&self) -> bool {
+        match &self.workers {
+            Some(w) => {
+                w.notify_unified();
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 #[async_trait]

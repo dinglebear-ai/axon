@@ -435,7 +435,7 @@ async fn watch_first_run_seeds_crawl_and_writes_artifact() -> Result<(), Box<dyn
     assert_eq!(run.status, WATCH_RUN_STATUS_COMPLETED);
 
     let pool = crate::store::open_sqlite_pool(&temp.path().to_string_lossy()).await?;
-    let crawls: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+    let crawls: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
         .fetch_one(&pool)
         .await?;
     assert_eq!(crawls, 1, "first run seeds one crawl");
@@ -609,9 +609,10 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
 
     let first =
         run_watch_now_on_large_stack(cfg.clone(), temp.path().to_path_buf(), watch.clone())?;
-    let crawl_count_after_seed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
-        .fetch_one(&pool)
-        .await?;
+    let crawl_count_after_seed: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
+            .fetch_one(&pool)
+            .await?;
     assert_eq!(crawl_count_after_seed, 1, "first run seeds one crawl");
     assert_eq!(
         first
@@ -625,7 +626,7 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
     let second =
         run_watch_now_on_large_stack(cfg.clone(), temp.path().to_path_buf(), watch.clone())?;
     let crawl_count_after_unchanged: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+        sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
             .fetch_one(&pool)
             .await?;
     assert_eq!(
@@ -641,10 +642,10 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
         Some(0)
     );
 
-    sqlx::query("UPDATE axon_crawl_jobs SET status = ?, finished_at = ?, updated_at = ?")
-        .bind(crate::status::JobStatus::Completed.as_str())
-        .bind(now_ms())
-        .bind(now_ms())
+    let completed_at = chrono::Utc::now().to_rfc3339();
+    sqlx::query("UPDATE jobs SET status = 'completed', finished_at = ?, updated_at = ? WHERE kind = 'crawl'")
+        .bind(&completed_at)
+        .bind(&completed_at)
         .execute(&pool)
         .await?;
 
@@ -652,9 +653,10 @@ async fn live_watch_only_recrawls_when_page_changes() -> Result<(), Box<dyn Erro
         "Welcome to the docs.\nVersion two content with a new release note.".to_string();
     let third =
         run_watch_now_on_large_stack(cfg.clone(), temp.path().to_path_buf(), watch.clone())?;
-    let crawl_count_after_change: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
-        .fetch_one(&pool)
-        .await?;
+    let crawl_count_after_change: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
+            .fetch_one(&pool)
+            .await?;
     assert_eq!(
         crawl_count_after_change,
         crawl_count_after_seed + 1,

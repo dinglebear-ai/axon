@@ -18,6 +18,7 @@ fn test_notifies() -> WatchdogNotifies {
         embed: Arc::new(Notify::new()),
         extract: Arc::new(Notify::new()),
         ingest: Arc::new(Notify::new()),
+        unified: Arc::new(Notify::new()),
     }
 }
 

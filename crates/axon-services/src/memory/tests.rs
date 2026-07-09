@@ -28,6 +28,11 @@ fn remember_req(body: &str) -> MemoryRequest {
         memory_ids: None,
         strategy: None,
         archive_sources: None,
+        records: None,
+        import_mode: None,
+        dry_run: None,
+        export_scope: None,
+        include_archived: None,
     }
 }
 
@@ -412,4 +417,118 @@ async fn dispatch_covers_full_lifecycle_surface() {
     .expect("forget");
     assert_eq!(forgotten.status, "forgotten");
     assert_eq!(forgotten.body.as_deref(), Some(""));
+}
+
+// ── memory import authorization (`MemoryImportMode::ReplaceScope` requires
+// `axon:admin`) and the record-count cap ────────────────────────────────────
+
+fn import_record(body: &str) -> axon_api::source::MemoryRecord {
+    axon_api::source::MemoryRecord {
+        memory_id: axon_api::source::MemoryId::new(format!("mem_{}", Uuid::new_v4())),
+        memory_type: axon_api::source::MemoryType::Fact,
+        status: axon_api::source::MemoryStatus::Active,
+        body: body.to_string(),
+        confidence: 1.0,
+        salience: 0.5,
+        scope: axon_api::source::MemoryScope {
+            kind: "global".to_string(),
+            value: String::new(),
+        },
+        history: Vec::new(),
+        title: None,
+        links: Vec::new(),
+        decay: None,
+        embedding_refs: Vec::new(),
+        superseded_by: None,
+        contradicts: None,
+    }
+}
+
+#[tokio::test]
+async fn import_replace_scope_without_admin_authz_is_denied() {
+    let ctx = test_ctx().await;
+    let req = axon_api::source::MemoryImportRequest {
+        records: vec![import_record("only merge mode should be reachable")],
+        mode: axon_api::source::MemoryImportMode::ReplaceScope,
+        dry_run: true,
+    };
+
+    let err = import(&ctx, req, &MemoryAuthz::anonymous())
+        .await
+        .expect_err("replace_scope without axon:admin must be denied");
+
+    assert!(
+        err.to_string().contains("axon:admin"),
+        "expected an axon:admin denial, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn import_replace_scope_with_admin_authz_is_allowed() {
+    let ctx = test_ctx().await;
+    let req = axon_api::source::MemoryImportRequest {
+        records: vec![import_record("admin caller may replace_scope")],
+        mode: axon_api::source::MemoryImportMode::ReplaceScope,
+        dry_run: true,
+    };
+
+    import(&ctx, req, &MemoryAuthz::admin())
+        .await
+        .expect("replace_scope with axon:admin must succeed");
+}
+
+#[tokio::test]
+async fn import_merge_mode_does_not_require_admin_authz() {
+    let ctx = test_ctx().await;
+    let req = axon_api::source::MemoryImportRequest {
+        records: vec![import_record("merge mode needs no elevated scope")],
+        mode: axon_api::source::MemoryImportMode::Merge,
+        dry_run: true,
+    };
+
+    import(&ctx, req, &MemoryAuthz::anonymous())
+        .await
+        .expect("merge mode must succeed without admin authz");
+}
+
+#[tokio::test]
+async fn import_rejects_record_count_over_the_cap() {
+    let ctx = test_ctx().await;
+    let records = (0..=MAX_MEMORY_IMPORT_RECORDS)
+        .map(|i| import_record(&format!("record {i}")))
+        .collect();
+    let req = axon_api::source::MemoryImportRequest {
+        records,
+        mode: axon_api::source::MemoryImportMode::Merge,
+        dry_run: true,
+    };
+
+    let err = import(&ctx, req, &MemoryAuthz::admin())
+        .await
+        .expect_err("over-cap record count must be rejected");
+
+    assert!(
+        err.to_string()
+            .contains(&MAX_MEMORY_IMPORT_RECORDS.to_string()),
+        "expected the cap value in the error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn import_accepts_record_count_at_the_cap() {
+    let ctx = test_ctx().await;
+    let records = (0..MAX_MEMORY_IMPORT_RECORDS)
+        .map(|i| import_record(&format!("record {i}")))
+        .collect();
+    let req = axon_api::source::MemoryImportRequest {
+        records,
+        mode: axon_api::source::MemoryImportMode::Merge,
+        // dry_run to avoid a slow real import of 5,000 records through the
+        // in-memory-store path; the cap check runs before any store access.
+        dry_run: true,
+    };
+
+    import(&ctx, req, &MemoryAuthz::admin())
+        .await
+        .expect("record count exactly at the cap must be accepted");
 }

@@ -84,7 +84,7 @@ Crawl has one apparent wrinkle Extract didn't — `crates/axon-jobs/src/workers.
 
 This task exists because an engineering review found these two gaps in the *already-shipped* Extract cutover, and every subsequent task in this plan would otherwise silently inherit and triple them.
 
-- [ ] **Step 1: Write a failing prompt-wakeup latency test**
+- [x] **Step 1: Write a failing prompt-wakeup latency test**
 
 Add to `crates/axon-jobs/src/unified_tests.rs`:
 
@@ -116,7 +116,7 @@ async fn enqueued_job_is_claimed_within_one_wakeup_not_a_full_poll_interval() {
 
 Add `unified_test_harness()` and `wait_for_status_change()` helpers next to whatever this file's existing unified-store test fixtures already use (reuse, don't duplicate — `unified_tests.rs` already has fixtures like `job_request_fixture` per the Task 3A cutover).
 
-- [ ] **Step 2: Write a failing concurrency test**
+- [x] **Step 2: Write a failing concurrency test**
 
 Add:
 
@@ -148,17 +148,17 @@ async fn unified_worker_claims_and_runs_multiple_jobs_concurrently() {
 
 Add `registry_with_slow_concurrent_runner`/`wait_for_concurrent_marker` as small local test helpers — a fake `UnifiedJobRunner` whose `run()` increments a shared counter, awaits a short sleep, decrements, and returns `Ok(())`.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run: `cargo test -p axon-jobs enqueued_job_is_claimed_within_one_wakeup unified_worker_claims_and_runs_multiple_jobs_concurrently --no-fail-fast`
 
 Expected: both FAIL — the first because nothing calls `notify.notify_one()` from the production enqueue path (only the test does, proving the mechanism works when invoked, but nothing in `extract_start_with_context` invokes it), the second because `unified_worker_loop` awaits each claimed job inline.
 
-- [ ] **Step 4: Add `unified_worker_concurrency` config**
+- [x] **Step 4: Add `unified_worker_concurrency` config**
 
 Add `unified_worker_concurrency: usize` to `Config` (default `8` — a conservative middle ground between Extract's implicit `1` and legacy `embed_lanes`' ceiling of `32`; document in the field's doc comment that this is deliberately not auto-derived from `embed_lanes`/`ingest_lanes` because after Task 4 those fields stop being consumed for job execution and become dead config, which a later cleanup pass should remove). Wire it into `Config::default()`/`test_default()` and `~/.axon/config.toml` parsing per this repo's "Adding fields to `Config`" convention.
 
-- [ ] **Step 5: Bound the claim loop with a semaphore**
+- [x] **Step 5: Bound the claim loop with a semaphore**
 
 In `crates/axon-jobs/src/workers/unified.rs::unified_worker_loop`, replace the inline `run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref()).await;` with a semaphore-permitted spawn:
 
@@ -184,11 +184,11 @@ match claim_next_unified_job_unchecked(&pool).await {
 
 Thread `unified_worker_concurrency: usize` as a new parameter into `unified_worker_loop` and `spawn_unified_worker` (`crates/axon-jobs/src/workers/spawn_unified.rs`), sourced from `cfg.unified_worker_concurrency` at the `spawn_workers` call site. Update the `spawn_unified_worker` log line's hardcoded `lanes = 1` to log the real configured concurrency instead — it is actively misleading once this fix lands.
 
-- [ ] **Step 6: Wire `notify_unified()` into the enqueue path**
+- [x] **Step 6: Wire `notify_unified()` into the enqueue path**
 
 `notify_unified()` (`crates/axon-jobs/src/workers.rs`) needs to be reachable from `axon-services`. Check whether `ServiceContext`/`WorkerHandles` already exposes a callable path (search for how `crawl_notify`/`embed_notify` are reached from `axon-services` today, since the legacy family enqueue functions already call their own family notify successfully — mirror that exact wiring for the unified notify handle instead of inventing a new plumbing path). Add `service_context.notify_unified()` (or the equivalent real method name found) as the last line of `extract_start_with_context`, right after `store.create(...)` succeeds.
 
-- [ ] **Step 7: Fix `extract_start_with_context`'s unconditional `trusted_system`**
+- [x] **Step 7: Fix `extract_start_with_context`'s unconditional `trusted_system`**
 
 Change `extract_start_with_context`'s signature to accept `caller: Option<&AuthSnapshot>` (or thread through however `web_source_job.rs`'s `input.auth_snapshot: Option<AuthSnapshot>` field is populated — read that file's full struct definition first to match the established shape exactly, do not invent a divergent parameter shape). Replace:
 
@@ -206,11 +206,11 @@ auth_snapshot: caller
 
 Update `extract_start_with_context`'s three real callers (CLI `crates/axon-cli/src/commands/extract.rs`, MCP `crates/axon-mcp/src/server/handlers_extract.rs`, REST `crates/axon-web/src/server/handlers/{rest/,}async_jobs.rs` or wherever the real extract-start REST handler lives) to construct a real `CallerContext`/`AuthSnapshot` the same way `crates/axon-web/src/server/handlers/sources.rs::caller_context_from_auth` already does for the newer source pipeline, and pass it through. Where a transport genuinely has no authenticated caller available (e.g. an internal scheduler trigger), pass `None` explicitly rather than silently defaulting — the call site should make the "no real caller" case visible in the diff, not implicit.
 
-- [ ] **Step 8: Fix the second unconditional `trusted_system` site**
+- [x] **Step 8: Fix the second unconditional `trusted_system` site**
 
 `crates/axon-services/src/jobs.rs` (line ~201 per the review) has a second unconditional `AuthSnapshot::trusted_system("runtime")` construction in a job-tracking helper. Read its surrounding function to determine whether it has caller context available; apply the same `Option<AuthSnapshot>` fix if it does, or leave it as `trusted_system` with a `// no caller identity available at this call site — see docs/pipeline-unification/runtime/auth-contract.md` comment explaining why if it is genuinely an internal-only path (e.g. system-triggered watch/reclaim), so a future reader doesn't mistake it for an oversight.
 
-- [ ] **Step 9: Run tests**
+- [x] **Step 9: Run tests**
 
 ```bash
 cargo test -p axon-jobs unified --no-fail-fast
@@ -219,7 +219,7 @@ cargo test -p axon-services extract --no-fail-fast
 
 Expected: PASS, including both new tests from Steps 1-2.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add crates/axon-jobs/src crates/axon-core/src/config crates/axon-services/src/extract.rs crates/axon-services/src/jobs.rs crates/axon-cli/src crates/axon-mcp/src crates/axon-web/src
@@ -240,11 +240,11 @@ git commit -m "fix(jobs): bound unified worker concurrency, wire enqueue notify,
 - Consumes: `axon_jobs::boundary::JobStore::create`, `axon_api::source::{JobCreateRequest, JobKind as UnifiedJobKind, JobIntent, JobPriority, JobStagePlan, PipelinePhase, AuthSnapshot, MetadataMap}`, `crate::runtime::job_runners::{UnifiedJobRunner, UnifiedClaimedJob, SqliteUnifiedJobStore}`, Task 0's fixed `notify_unified()` wiring and real-caller-auth pattern.
 - Produces: `embed_start_with_context` enqueueing via the unified store with real caller auth and immediate wakeup; `EmbedRunner` executing embed jobs. Tasks 2-3 reuse this exact pattern.
 
-- [ ] **Step 1: Read the exact current embed enqueue/execute code**
+- [x] **Step 1: Read the exact current embed enqueue/execute code**
 
 Read `crates/axon-services/src/embed.rs` in full, and whichever function `crates/axon-jobs/src/workers/runners/embed.rs`'s `embed_worker` calls to run a real embed job — that function's name/signature is what `EmbedRunner::run` must call.
 
-- [ ] **Step 2: Write failing test for unified enqueue with real auth and wakeup**
+- [x] **Step 2: Write failing test for unified enqueue with real auth and wakeup**
 
 Add to `crates/axon-services/src/embed_tests.rs`:
 
@@ -282,13 +282,13 @@ async fn embed_start_with_context_enqueues_on_unified_job_store_with_caller_auth
 
 If `crate::testing::service_context_with_unified_jobs` does not exist yet, reuse whatever helper `extract_tests.rs`'s own unified-store fixture already uses — do not write a second one.
 
-- [ ] **Step 3: Run test and confirm failure**
+- [x] **Step 3: Run test and confirm failure**
 
 Run: `cargo test -p axon-services embed_start_with_context_enqueues_on_unified_job_store_with_caller_auth --no-fail-fast`
 
 Expected: FAIL — `outcome` still comes from `JobPayload::Embed` on the legacy backend.
 
-- [ ] **Step 4: Implement `embed_start_with_context` unified enqueue**
+- [x] **Step 4: Implement `embed_start_with_context` unified enqueue**
 
 Add a `caller: Option<&AuthSnapshot>` parameter (matching Task 0 Step 7's `extract_start_with_context` shape exactly) and replace the legacy enqueue body:
 
@@ -351,7 +351,7 @@ pub async fn embed_start_with_context(
 
 Update every existing caller of `embed_start_with_context` (CLI/MCP/REST) to pass a real `Some(&caller_snapshot)` constructed the same way Task 0 Step 7 wired Extract's callers — do not leave them passing `None` out of laziness when a real caller identity is available at that call site.
 
-- [ ] **Step 5: Implement `EmbedRunner`**
+- [x] **Step 5: Implement `EmbedRunner`**
 
 In `crates/axon-services/src/runtime/job_runners.rs`, mirror `ExtractRunner`'s heartbeat/cancellation/error-wrapping shape:
 
@@ -411,21 +411,21 @@ fn embed_error(message: impl Into<String>) -> ApiError {
 
 Replace `crate::embed::embed_sync` with the real function name found in Step 1 if it differs. Register it in `build_registry`.
 
-- [ ] **Step 6: Add the embed bridge**
+- [x] **Step 6: Add the embed bridge**
 
 Create `crates/axon-services/src/runtime/sqlite/embed_bridge.rs` by copying `extract_bridge.rs`, adapting the request-payload field extraction to Embed's `{"input": "...", "config_json": "..."}` shape.
 
-- [ ] **Step 7: Wire the bridge dispatch**
+- [x] **Step 7: Wire the bridge dispatch**
 
 In `crates/axon-services/src/runtime/sqlite.rs`, add `mod embed_bridge;` and `if kind == JobKind::Embed { ... }` branches mirroring the existing `JobKind::Extract` branches.
 
-- [ ] **Step 8: Run the enqueue test and confirm pass**
+- [x] **Step 8: Run the enqueue test and confirm pass**
 
 Run: `cargo test -p axon-services embed_start_with_context_enqueues_on_unified_job_store_with_caller_auth --no-fail-fast`
 
 Expected: PASS.
 
-- [ ] **Step 9: Add and run an end-to-end embed execution test with a wakeup-latency assertion**
+- [x] **Step 9: Add and run an end-to-end embed execution test with a wakeup-latency assertion**
 
 Add to `crates/axon-services/src/embed_tests.rs`:
 
@@ -464,7 +464,7 @@ cargo test -p axon-services embed --no-fail-fast
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add crates/axon-services/src/embed.rs crates/axon-services/src/embed_tests.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-services/src/runtime/job_runners_tests.rs crates/axon-services/src/runtime/sqlite.rs crates/axon-services/src/runtime/sqlite/embed_bridge.rs crates/axon-cli/src crates/axon-mcp/src crates/axon-web/src
@@ -486,7 +486,7 @@ git commit -m "feat(jobs): cut embed over to the unified job store"
 
 The `!Send` claim behind crawl's dedicated single-lane legacy worker is very likely stale: `run_crawl_job` already executes inside a plain `tokio::spawn` today (which requires `Send`), and neither `axon-crawl/src/engine.rs` nor the crawl job runner contains `Rc`/`RefCell`/`LocalSet`/`spawn_local` — the fingerprints of genuine `!Send` state held across an `.await`. **Default to the plain `ExtractRunner`-shaped implementation (Step 2 below). Only fall back to the thread-isolation design (Step 3) if Step 1's compile check fails with a concrete named `Send` violation** — do not write or use the thread-isolation code preemptively.
 
-- [ ] **Step 1: Prove or disprove `!Send` with a real compile check**
+- [x] **Step 1: Prove or disprove `!Send` with a real compile check**
 
 Write the plain-shaped `CrawlRunner` from Step 2 below and run:
 
@@ -496,7 +496,7 @@ cargo check -p axon-services
 
 If it compiles cleanly, the `!Send` claim is false — proceed with Step 2 as written and skip Step 3 entirely. If it fails with a `Send` bound error, read the error to identify the exact type that isn't `Send`, then use Step 3, scoping the thread-isolation boundary as tightly as possible around only that type's usage (not the whole crawl engine) if feasible.
 
-- [ ] **Step 2: Default path — plain `CrawlRunner` (use unless Step 1 proves otherwise)**
+- [x] **Step 2: Default path — plain `CrawlRunner` (use unless Step 1 proves otherwise)**
 
 ```rust
 struct CrawlRunner {
@@ -553,7 +553,7 @@ fn crawl_error(message: impl Into<String>) -> ApiError {
 
 Implement `crate::crawl::run_crawl_for_unified_job(cfg, urls) -> Result<Summary, Box<dyn Error>>` as a thin wrapper around whatever function the legacy `crawl_worker` (in `crates/axon-jobs/src/workers/runners/crawl.rs`) actually calls to execute a crawl — found by reading that file in Step 1.
 
-- [ ] **Step 3: Fallback path — dedicated-thread isolation (ONLY if Step 1's compile check genuinely fails)**
+- [x] **Step 3: Fallback path — dedicated-thread isolation (ONLY if Step 1's compile check genuinely fails)**
 
 If and only if Step 1 fails with a real `Send` error, isolate just the offending type behind a dedicated OS thread with a single-threaded runtime, racing the result against `shutdown` (not the unconditional `rx.await` an earlier draft of this plan used — that version had no way to observe cancellation):
 
@@ -609,25 +609,25 @@ impl UnifiedJobRunner for CrawlRunner {
 
 `run_crawl_request(cfg, request_json, shutdown) -> Result<(), ApiError>` must poll `shutdown.is_cancelled()` between crawl page batches (not just once at the top) so the join in the `shutdown.cancelled()` branch above actually completes promptly instead of blocking for the full crawl duration.
 
-- [ ] **Step 4: Write failing enqueue test**
+- [x] **Step 4: Write failing enqueue test**
 
 Add to `crates/axon-services/src/crawl_tests.rs`, mirroring Task 1 Step 2's shape (real caller auth, `JobKind::Crawl`).
 
-- [ ] **Step 5: Run test and confirm failure**
+- [x] **Step 5: Run test and confirm failure**
 
 Run: `cargo test -p axon-services crawl_start_with_context_enqueues_on_unified_job_store_with_caller_auth --no-fail-fast`
 
 Expected: FAIL.
 
-- [ ] **Step 6: Implement `crawl_start_with_context` unified enqueue**
+- [x] **Step 6: Implement `crawl_start_with_context` unified enqueue**
 
 Same pattern as Task 1 Step 4: add `caller: Option<&AuthSnapshot>`, `job_kind: UnifiedJobKind::Crawl`, `PipelinePhase::Fetching`, request payload `{"urls": urls, "config_json": config_json}` (keep the existing `apply_crawl_defaults(cfg)` call), call `service_context.notify_unified()` after enqueue.
 
-- [ ] **Step 7: Register `CrawlRunner`, add bridge, wire dispatch**
+- [x] **Step 7: Register `CrawlRunner`, add bridge, wire dispatch**
 
 Same as Task 1 Steps 6-7, for `Crawl`.
 
-- [ ] **Step 8: Run enqueue and end-to-end tests**
+- [x] **Step 8: Run enqueue and end-to-end tests**
 
 ```bash
 cargo test -p axon-services crawl --no-fail-fast
@@ -635,7 +635,7 @@ cargo test -p axon-services crawl --no-fail-fast
 
 Expected: PASS, including an end-to-end test mirroring Task 1 Step 9.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add crates/axon-services/src/crawl.rs crates/axon-services/src/crawl_tests.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-services/src/runtime/sqlite.rs crates/axon-services/src/runtime/sqlite/crawl_bridge.rs
@@ -655,33 +655,33 @@ git commit -m "feat(jobs): cut crawl over to the unified job store"
 - Consumes: same unified-store primitives as Task 1.
 - Produces: `ingest_start_with_context` on the unified store; `IngestRunner` executing sessions/prepared-sessions ingest (the only `IngestSource` variants that still execute after the Phase 12 axon-ingest shrink — every other variant already returns a clean error at execution time per `crates/axon-jobs/src/workers/runners/ingest.rs::execute_ingest_source`).
 
-- [ ] **Step 1: Read the current ingest enqueue/execute code**
+- [x] **Step 1: Read the current ingest enqueue/execute code**
 
 Read `crates/axon-services/src/ingest.rs::ingest_start_with_context` and `crates/axon-jobs/src/workers/runners/ingest.rs::{run_ingest_job, execute_ingest_source, execute_prepared_sessions_ingest}` in full.
 
-- [ ] **Step 2: Write failing enqueue test**
+- [x] **Step 2: Write failing enqueue test**
 
 Add to `crates/axon-services/src/ingest_tests.rs`, mirroring Task 1 Step 2's shape, `job_kind: UnifiedJobKind::Ingest`, request payload `{"source": serde_json::to_value(&source)?}`.
 
-- [ ] **Step 3: Run test and confirm failure**
+- [x] **Step 3: Run test and confirm failure**
 
 Run: `cargo test -p axon-services ingest_start_with_context_enqueues_sessions_source_on_unified_job_store_with_caller_auth --no-fail-fast`
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement `ingest_start_with_context` unified enqueue**
+- [x] **Step 4: Implement `ingest_start_with_context` unified enqueue**
 
 Add `caller: Option<&AuthSnapshot>`, `job_kind: UnifiedJobKind::Ingest`, `PipelinePhase::Parsing`, keep the existing `preflight_ingest_source(cfg, &source).await?;` call, call `service_context.notify_unified()` after enqueue.
 
-- [ ] **Step 5: Implement `IngestRunner`**
+- [x] **Step 5: Implement `IngestRunner`**
 
 Mirror `ExtractRunner`, deserializing the full `IngestSource` from `claimed.request_json["source"]` and calling the same dispatch `execute_ingest_source`/`execute_prepared_sessions_ingest` already implement.
 
-- [ ] **Step 6: Register `IngestRunner`, add bridge, wire dispatch**
+- [x] **Step 6: Register `IngestRunner`, add bridge, wire dispatch**
 
 Same as Task 1 Steps 6-7, for `Ingest`.
 
-- [ ] **Step 7: Run enqueue and end-to-end tests**
+- [x] **Step 7: Run enqueue and end-to-end tests**
 
 ```bash
 cargo test -p axon-services ingest --no-fail-fast
@@ -689,7 +689,7 @@ cargo test -p axon-services ingest --no-fail-fast
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add crates/axon-services/src/ingest.rs crates/axon-services/src/ingest_tests.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-services/src/runtime/sqlite.rs crates/axon-services/src/runtime/sqlite/ingest_bridge.rs
@@ -709,7 +709,7 @@ git commit -m "feat(jobs): cut ingest over to the unified job store"
 - Consumes: Tasks 0-3.
 - Produces: no active-runtime reference to `axon_crawl_jobs`/`axon_embed_jobs`/`axon_ingest_jobs`.
 
-- [ ] **Step 1: Add the legacy-reference blocker test**
+- [x] **Step 1: Add the legacy-reference blocker test**
 
 ```rust
 #[test]
@@ -726,25 +726,25 @@ fn active_runtime_no_longer_names_legacy_family_tables() {
 }
 ```
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run: `cargo test -p axon-jobs active_runtime_no_longer_names_legacy_family_tables --no-fail-fast`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Remove the legacy worker spawns, resolving the reclaim question explicitly**
+- [x] **Step 3: Remove the legacy worker spawns, resolving the reclaim question explicitly**
 
 In `spawn_workers`, delete the `crawl_worker`/`embed_worker`/`ingest_worker` spawn blocks and their `Notify` construction. **Decision, not a footnote: keep the watchdog's reclaim sweep wired to a lightweight legacy-table scan** (matching how `extract_notify` was kept wired into the watchdog's generic reclaim sweep during the Extract cutover) so any in-flight legacy row that existed at the moment of this deploy still gets a terminal status eventually, rather than stranding permanently. Do not add new legacy-row execution — only reclaim-to-failed, consistent with the "no migration/backfill" global constraint.
 
-- [ ] **Step 4: Remove legacy family table mappings**
+- [x] **Step 4: Remove legacy family table mappings**
 
 In `crates/axon-jobs/src/backend.rs`, remove the `JobKind::{Crawl,Embed,Ingest}` → table-name mapping arms. In `crates/axon-jobs/src/query.rs`, remove the list/count/cleanup/clear query functions targeting those three tables.
 
-- [ ] **Step 5: Fix fallout**
+- [x] **Step 5: Fix fallout**
 
 Run `cargo check --workspace --all-targets` and fix every resulting compile error by routing through the unified bridges from Tasks 1-3.
 
-- [ ] **Step 6: Run the blocker test and full job-crate suite**
+- [x] **Step 6: Run the blocker test and full job-crate suite**
 
 ```bash
 cargo test -p axon-jobs active_runtime_no_longer_names_legacy_family_tables --no-fail-fast
@@ -754,7 +754,7 @@ cargo test -p axon-services --no-fail-fast
 
 Expected: PASS.
 
-- [ ] **Step 7: Verify with the durable-job-cutover plan's own final check**
+- [x] **Step 7: Verify with the durable-job-cutover plan's own final check**
 
 ```bash
 rg -n "axon_crawl_jobs|axon_embed_jobs|axon_extract_jobs|axon_ingest_jobs|JobKind::Crawl|JobKind::Embed|JobKind::Extract|JobKind::Ingest" crates/axon-jobs crates/axon-services crates/axon-cli crates/axon-mcp crates/axon-web
@@ -762,7 +762,7 @@ rg -n "axon_crawl_jobs|axon_embed_jobs|axon_extract_jobs|axon_ingest_jobs|JobKin
 
 Expected: matches only in migration modules and bridge modules (which legitimately still route on `JobKind::Crawl`/etc. to select which bridge to call).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add crates/axon-jobs/src crates/axon-services/src
@@ -784,7 +784,7 @@ git commit -m "refactor(jobs): remove legacy crawl/embed/ingest job runtime"
 
 Today's behavior (`crates/axon-services/src/reset/execution.rs`) is a deliberate design choice — treating `axon reset --yes` as the "explicit admin reset receipt" the security contract requires — with a real visibility gap: `ResetPlan.blockers`/`ResetResult.blockers` are hardcoded to `Vec::new()`, so a caller inspecting the dry-run plan can't see legacy rows exist before they wipe them. A security review of an earlier draft of this task found the originally-proposed fix — a `reset_confirm_legacy_wipe: bool` field on `Config`, settable via `config.toml` — could be set once and permanently defeat the "distinct explicit confirmation" the task is trying to add. **This must be a CLI-flag-only value, explicitly rejected if it arrives via config file or environment variable**, so it can never become a standing footgun.
 
-- [ ] **Step 1: Write failing dry-run visibility test**
+- [x] **Step 1: Write failing dry-run visibility test**
 
 ```rust
 #[tokio::test]
@@ -800,7 +800,7 @@ async fn dry_run_plan_surfaces_non_empty_legacy_job_tables_as_a_blocker() {
 }
 ```
 
-- [ ] **Step 2: Write failing config-source rejection test**
+- [x] **Step 2: Write failing config-source rejection test**
 
 ```rust
 #[tokio::test]
@@ -830,25 +830,25 @@ async fn legacy_wipe_confirmation_from_cli_flag_wipes_and_records_receipt() {
 
 Add `test_config_with_legacy_crawl_job_row` as a helper mirroring however other reset tests in this file already build a scratch DB.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run: `cargo test -p axon-services reset --no-fail-fast`
 
 Expected: FAIL.
 
-- [ ] **Step 4: Add the confirmation flag with a source-tracking field**
+- [x] **Step 4: Add the confirmation flag with a source-tracking field**
 
 Add `reset_confirm_legacy_wipe: bool` (default `false`) and `reset_confirm_legacy_wipe_source: ConfigValueSource` (an enum `{ CliFlag, TomlFile, EnvVar, Unset }`, default `Unset`) to `Config`. Wire the CLI flag `--confirm-legacy-wipe` to set both `reset_confirm_legacy_wipe = true` and `reset_confirm_legacy_wipe_source = ConfigValueSource::CliFlag`. If this repo's config-parsing layer would otherwise also accept it from `config.toml`/env (check `crates/axon-core/src/config/parse/`), explicitly exclude `reset_confirm_legacy_wipe` from that parsing path — it must only ever be settable by the CLI flag.
 
-- [ ] **Step 5: Populate `blockers` and gate execution on CLI-sourced confirmation**
+- [x] **Step 5: Populate `blockers` and gate execution on CLI-sourced confirmation**
 
 In `prepare_reset`, when `wants_any_sqlite(&stores)`, call `sqlite::detect_legacy_jobs(&cfg.sqlite_path).await` and push a human-readable string into `ResetPlan.blockers`/`ResetResult.blockers` if it returns `Some`. Before `execute_prepared_reset` mutates anything, if a legacy blocker was detected and `!(cfg.reset_confirm_legacy_wipe && cfg.reset_confirm_legacy_wipe_source == ConfigValueSource::CliFlag)`, return an error whose message says `"--confirm-legacy-wipe must be passed as a CLI flag"` when the source is wrong, or names the table and required flag when it's simply missing.
 
-- [ ] **Step 6: Record the legacy wipe explicitly in the audit trail**
+- [x] **Step 6: Record the legacy wipe explicitly in the audit trail**
 
 In `reset/execution.rs`, when a legacy blocker was present and confirmed, push a `"reset.legacy_store_wiped"` entry into `audit_events` alongside the existing `record_legacy_reset_receipt` call.
 
-- [ ] **Step 7: Run reset tests**
+- [x] **Step 7: Run reset tests**
 
 ```bash
 cargo test -p axon-services reset --no-fail-fast
@@ -856,7 +856,7 @@ cargo test -p axon-services reset --no-fail-fast
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add crates/axon-core/src/config crates/axon-services/src/reset.rs crates/axon-services/src/reset/execution.rs crates/axon-services/src/reset_tests.rs crates/axon-cli/src
@@ -873,7 +873,7 @@ git commit -m "fix(reset): require a CLI-flag-only confirmation before wiping no
 - Consumes: Tasks 0-5.
 - Produces: closeout evidence.
 
-- [ ] **Step 1: Run the durable-job-cutover plan's own Task 9 verification**
+- [x] **Step 1: Run the durable-job-cutover plan's own Task 9 verification**
 
 ```bash
 cargo test -p axon-api source_job --no-fail-fast
@@ -887,7 +887,7 @@ rg -n "axon_crawl_jobs|axon_embed_jobs|axon_extract_jobs|axon_ingest_jobs|JobKin
 
 Expected: PASS; `rg` matches only in migration/bridge modules.
 
-- [ ] **Step 2: Verify the concurrency and latency fixes hold under the full suite**
+- [x] **Step 2: Verify the concurrency and latency fixes hold under the full suite**
 
 ```bash
 cargo test -p axon-jobs enqueued_job_is_claimed_within_one_wakeup_not_a_full_poll_interval unified_worker_claims_and_runs_multiple_jobs_concurrently --no-fail-fast
@@ -896,7 +896,7 @@ cargo test -p axon-services embed_job_runs_end_to_end_and_is_claimed_promptly --
 
 Expected: PASS.
 
-- [ ] **Step 3: Full workspace gate**
+- [x] **Step 3: Full workspace gate**
 
 ```bash
 cargo fmt --all -- --check
@@ -908,16 +908,73 @@ cargo xtask check-repo-structure
 
 Expected: PASS.
 
-- [ ] **Step 4: Update the source plan doc**
+- [x] **Step 4: Update the source plan doc**
 
 In `2026-07-04-full-durable-job-cutover.md`, check off Task 6 and Task 8's step boxes and add an evidence note pointing at this plan's commits.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/pipeline-unification/plans
 git commit -m "docs(pipeline): close out full durable job cutover Tasks 6 and 8"
 ```
+
+## Closeout Evidence (2026-07-09)
+
+Commits on `finish-job-cutover-impl`, in order: `c353774cf` (Task 0),
+`97124ca14` (Task 1: embed), `46575ef6a` (Task 2: crawl), `4c2effea4`
+(Task 3: ingest), `ca7ea71d1` (Task 4: retire legacy workers — see scope
+adjustment below), `79384d0d9` (Task 5: reset legacy-store confirmation),
+`a500ae416` (env-matrix drift fix surfaced by Task 6 Step 3).
+
+**Task 4 scope adjustment (documented in `ca7ea71d1`'s commit message):**
+An audit run before touching `backend.rs`/`query.rs` found the plan's Step 4
+instruction ("remove the `JobKind::{Crawl,Embed,Ingest}` table-name mapping
+arms") would have broken live functionality the plan did not account for:
+- `crates/axon-jobs/src/watch/dispatch.rs::enqueue_change_crawl` (and its
+  in-flight guard `crawl_job_active`) still constructs the legacy
+  `JobPayload::Crawl` directly and writes to `axon_crawl_jobs` — reachable
+  from `axon watch exec`, `POST /v1/watch/{id}/run`, and the automatic watch
+  scheduler.
+- `crates/axon-services/src/refresh.rs`'s `latest_crawl_config_json`/
+  `latest_ingest_config_json` still read the legacy tables for `axon refresh`.
+- `SqliteServiceRuntime::count_jobs`/`count_jobs_by_status` in
+  `crates/axon-services/src/runtime/sqlite.rs` were never bridged to the
+  unified store for Extract/Embed/Crawl/Ingest (every other method was),
+  so `axon status`, the queue-summary logger, and the starvation watchdog
+  would have silently under-reported once legacy rows stopped accumulating.
+
+Task 4 was executed as: retire the legacy in-process worker lanes
+(`crawl_worker`/`embed_worker`/`ingest_worker` and their now-orphaned
+support modules), keep the legacy `backend.rs`/`query.rs`/table
+infrastructure in place for the still-live watch/refresh call sites above,
+and bridge `count_jobs`/`count_jobs_by_status` to close the metrics gap.
+This satisfies Task 4's actual intent (no in-process execution runs against
+legacy family tables anymore) without breaking `watch`/`refresh`, which are
+out of this plan's scope to re-port.
+
+**Step 1 `rg` verification:** 316 non-test matches remain across
+`crates/axon-jobs`/`crates/axon-services`/`crates/axon-cli`/`crates/axon-mcp`/
+`crates/axon-web`, composed entirely of: SQL migration files, bridge modules
+(`*_bridge.rs`, `*_runner.rs` — legitimately dispatch on `JobKind` to select
+the unified-store bridge), the legacy `backend.rs`/`query.rs`/`store.rs`/
+`ops/*` infrastructure retained per the scope adjustment above, and CLI/MCP/
+web surface code rendering the transport-neutral `ServiceJob` shape (agnostic
+of unified-vs-legacy backing by design).
+
+**Step 3 full-suite result:** `cargo test --workspace --no-fail-fast` — all
+crates green except 3 pre-existing failures confirmed unrelated to this
+plan (verified by reproducing identically with this branch's changes
+stashed out): `setup_split_help_snapshots_match`/
+`all_command_help_filters_inherited_global_noise` (CLI help snapshot drift
+from `preflight`, last touched in `697e7f2e4` before this branch existed),
+`services_up_starts_only_infrastructure_services` (Docker-compose-state-
+dependent test, unrelated to job cutover code), and
+`schemas::tests::rest_schema_registry_matches_current_openapi_route_inventory`
+(missing `/v1/prune/exec`/`/v1/prune/plan` OpenAPI routes — unrelated prune
+work, not touched by this plan). `env_config_boundary_matrix_is_current`
+initially failed (two undocumented env keys, one introduced by this branch's
+Task 0) and was fixed in `a500ae416`.
 
 ## Self-Review
 

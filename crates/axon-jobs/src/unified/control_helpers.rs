@@ -24,6 +24,12 @@ pub(super) async fn reset_job_for_retry(
         ));
     }
     let now = now_timestamp();
+    // cooldown_until: cooldown is only ever meaningful while a job sits in
+    // Waiting. The guard above already rejects Waiting, so a stale cooldown
+    // is not expected here (that case belongs to `reset_stale_job_for_recovery`,
+    // whose `WHERE status IN ('running', 'waiting')` genuinely handles it) —
+    // clear it unconditionally anyway, as a defensive guarantee that a
+    // retried job never carries a cooldown that silently blocks its next claim.
     let result = sqlx::query(
         "UPDATE jobs SET
             intent = 'retry',
@@ -36,7 +42,8 @@ pub(super) async fn reset_job_for_retry(
             updated_at = ?,
             started_at = NULL,
             finished_at = NULL,
-            last_error_json = NULL
+            last_error_json = NULL,
+            cooldown_until = NULL
          WHERE job_id = ?",
     )
     .bind(attempt as i64)
@@ -86,6 +93,9 @@ pub(super) async fn reset_stale_job_for_recovery(
 ) -> Result<bool> {
     let now = now_timestamp();
     let recovery_error = recovery_api_error();
+    // cooldown_until: recovery can reclaim a stale Waiting job back to
+    // queued — clear the cooldown here too, for the same reason as
+    // reset_job_for_retry above.
     let result = sqlx::query(
         "UPDATE jobs SET
             intent = 'retry',
@@ -98,7 +108,8 @@ pub(super) async fn reset_stale_job_for_recovery(
             started_at = NULL,
             finished_at = NULL,
             heartbeat_json = NULL,
-            last_error_json = NULL
+            last_error_json = NULL,
+            cooldown_until = NULL
          WHERE job_id = ?
            AND attempt = ?
            AND status IN ('running', 'waiting')",

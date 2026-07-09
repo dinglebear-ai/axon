@@ -43,6 +43,16 @@ pub struct SqliteUnifiedJobStore {
     observe: Option<Arc<SqliteObservabilitySink>>,
 }
 
+/// Maximum bounded provider-cooling window.
+///
+/// [`SqliteUnifiedJobStore::apply_provider_cooling`] clamps any incoming
+/// `ProviderCooling.cooldown_until` to `min(cooldown_until, now + this)`
+/// before persisting. A fixed conservative bound is the point: an unbounded
+/// or attacker/bug-supplied far-future timestamp must not be able to
+/// permanently blacklist a job kind from ever being claimed again (flagged as
+/// a DoS-shaped risk in engineering review). Not configurable by design.
+pub const MAX_PROVIDER_COOLDOWN_WINDOW: std::time::Duration = std::time::Duration::from_secs(3600);
+
 impl SqliteUnifiedJobStore {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
@@ -58,6 +68,11 @@ impl SqliteUnifiedJobStore {
             pool,
             observe: Some(observe),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pool_for_tests(&self) -> &SqlitePool {
+        &self.pool
     }
 }
 

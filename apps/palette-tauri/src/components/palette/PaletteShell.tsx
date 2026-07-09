@@ -12,7 +12,7 @@ import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import { Button } from "@/components/ui/aurora/button";
 import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
-import type { PaletteConfig } from "@/lib/axonClient";
+import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { MIN_PROGRESS_PCT } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke } from "@/lib/invoke";
@@ -29,6 +29,7 @@ interface PaletteShellProps {
   cancelAsyncJob: () => Promise<void>;
   cancelJob: () => Promise<void>;
   canceling: boolean;
+  client: Client | null;
   commandRunning: boolean;
   compact: boolean;
   config: PaletteConfig | null;
@@ -375,6 +376,8 @@ function OutputRegion(props: PaletteShellProps) {
         onSourcesFilterChange={props.setSourcesFilter}
         onSourcesSortChange={props.setSourcesSort}
         onSourcesGroupedChange={props.setSourcesGrouped}
+        client={props.client}
+        config={props.config}
       />
     </div>
   );

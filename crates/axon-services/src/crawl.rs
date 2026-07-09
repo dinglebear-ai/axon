@@ -6,6 +6,10 @@ use crate::types::{
     ArtifactHandle, CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode,
     JobStartOutcome, StartDisposition,
 };
+use axon_api::source::{
+    AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
+    JobStagePlan, MetadataMap, PipelinePhase,
+};
 use axon_core::config::Config;
 use axon_core::http::validate_url;
 use axon_crawl::engine::{SitemapDiscovery, discover_sitemap_urls};
@@ -285,6 +289,7 @@ pub async fn crawl_start_with_context(
     urls: &[String],
     service_context: &ServiceContext,
     tx: Option<mpsc::Sender<ServiceEvent>>,
+    caller: Option<&AuthSnapshot>,
 ) -> Result<JobStartOutcome<CrawlStartResult>, Box<dyn Error>> {
     // tx is accepted for API compatibility but not used in the SQLite-only path
     let _ = tx;
@@ -295,66 +300,57 @@ pub async fn crawl_start_with_context(
     // Resolve crawl page-cap policy HERE (services layer) so the enqueued job
     // snapshot carries the effective cap regardless of which transport called us.
     let effective = apply_crawl_defaults(cfg);
+    let config_json = config_snapshot_json(&effective)?;
 
+    let store = service_context
+        .job_store()
+        .ok_or("unified job store is not available for this runtime")?;
+
+    // One unified job per URL, matching the legacy per-URL job granularity.
     let mut jobs = Vec::with_capacity(urls.len());
     for url in urls {
         validate_url(url).map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
-        let job_id = service_context
-            .jobs
-            .enqueue(axon_jobs::backend::JobPayload::Crawl {
-                url: url.clone(),
-                config_json: config_snapshot_json(&effective)?,
+        let descriptor = store
+            .create(JobCreateRequest {
+                request_id: None,
+                job_kind: UnifiedJobKind::Crawl,
+                job_intent: JobIntent::Run,
+                source_id: None,
+                watch_id: None,
+                parent_job_id: None,
+                root_job_id: None,
+                attempt: 1,
+                priority: JobPriority::Normal,
+                idempotency_key: None,
+                stage_plan: vec![JobStagePlan {
+                    phase: PipelinePhase::Fetching,
+                    required: true,
+                    provider_requirements: Vec::new(),
+                    estimated_items: None,
+                }],
+                request: Some(serde_json::json!({
+                    "urls": [url],
+                    "config_json": config_json,
+                })),
+                auth_snapshot: caller
+                    .cloned()
+                    .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
+                config_snapshot_id: None,
+                requirements: MetadataMap::new(),
+                result_schema: Some("crawl_result".to_string()),
+                warnings: Vec::new(),
+                error: None,
+                metadata: MetadataMap::new(),
             })
             .await
-            .map_err(|e| -> Box<dyn Error> { e })?;
-        jobs.push((url.clone(), job_id.to_string()));
+            .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
+        jobs.push((url.clone(), descriptor.job_id.0.to_string()));
     }
+    service_context.notify_unified();
 
     let result = map_crawl_start_result(&cfg.output_dir, &jobs);
-
-    if !cfg.wait {
-        return Ok(JobStartOutcome {
-            disposition: StartDisposition::Enqueued,
-            execution_mode: ExecutionMode::InProcess,
-            result,
-        });
-    }
-
-    for job in &result.jobs {
-        let job_id = Uuid::parse_str(&job.job_id)?;
-        let final_status = service_context
-            .jobs
-            .wait_for_job(job_id, JobKind::Crawl)
-            .await
-            .map_err(|e| -> Box<dyn Error> { e })?;
-        match final_status.as_str() {
-            "failed" => {
-                if let Ok(Some(err)) = service_context
-                    .jobs
-                    .job_errors(job_id, JobKind::Crawl)
-                    .await
-                {
-                    return Err(format!("crawl job {job_id} failed: {err}").into());
-                }
-                return Err(format!("crawl job {job_id} failed").into());
-            }
-            "canceled" => {
-                if let Ok(Some(err)) = service_context
-                    .jobs
-                    .job_errors(job_id, JobKind::Crawl)
-                    .await
-                {
-                    return Err(format!("crawl job {job_id} canceled: {err}").into());
-                }
-                return Err(format!("crawl job {job_id} canceled").into());
-            }
-            _ => {}
-        }
-        wait_for_crawl_embed_dependency(service_context, job_id).await?;
-    }
-
     Ok(JobStartOutcome {
-        disposition: StartDisposition::Completed,
+        disposition: StartDisposition::Enqueued,
         execution_mode: ExecutionMode::InProcess,
         result,
     })
@@ -409,60 +405,6 @@ pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dy
     match job_service::start_worker(service_context, JobKind::Crawl).await? {
         WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
-    }
-}
-
-async fn wait_for_crawl_embed_dependency(
-    service_context: &ServiceContext,
-    crawl_job_id: Uuid,
-) -> Result<(), Box<dyn Error>> {
-    let Some(job) = service_context
-        .jobs
-        .job_status(JobKind::Crawl, crawl_job_id)
-        .await
-        .map_err(|e| -> Box<dyn Error> { e })?
-    else {
-        return Ok(());
-    };
-
-    let Some(embed_job_id) = job
-        .result_json
-        .as_ref()
-        .and_then(|result| result.get("embed_job_id"))
-        .and_then(|value| value.as_str())
-        .and_then(|value| Uuid::parse_str(value).ok())
-    else {
-        return Ok(());
-    };
-
-    let final_status = service_context
-        .jobs
-        .wait_for_job(embed_job_id, JobKind::Embed)
-        .await
-        .map_err(|e| -> Box<dyn Error> { e })?;
-
-    match final_status.as_str() {
-        "failed" => {
-            if let Ok(Some(err)) = service_context
-                .jobs
-                .job_errors(embed_job_id, JobKind::Embed)
-                .await
-            {
-                return Err(format!("crawl embed job {embed_job_id} failed: {err}").into());
-            }
-            Err(format!("crawl embed job {embed_job_id} failed").into())
-        }
-        "canceled" => {
-            if let Ok(Some(err)) = service_context
-                .jobs
-                .job_errors(embed_job_id, JobKind::Embed)
-                .await
-            {
-                return Err(format!("crawl embed job {embed_job_id} canceled: {err}").into());
-            }
-            Err(format!("crawl embed job {embed_job_id} canceled").into())
-        }
-        _ => Ok(()),
     }
 }
 

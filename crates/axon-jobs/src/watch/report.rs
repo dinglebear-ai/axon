@@ -4,6 +4,7 @@
 use crate::store::now_ms;
 use axon_api::diff::DiffResult;
 use axon_core::config::Config;
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_llm::{self as llm, CompletionRequest};
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -78,6 +79,13 @@ pub async fn write_change_artifact(
         "links_removed": diff.links_removed,
         "word_count_delta": diff.word_count_delta,
     });
+    // Fail-closed redaction boundary: this is an artifact-metadata write (a
+    // browsable change-history row), not the scraped body content itself —
+    // same precedent as the extract-summary and reset-receipt artifact
+    // writes in `axon-services`. A leaked secret surfaced by the diff or the
+    // LLM's summary must not persist unscrubbed.
+    let (payload, _redaction_report) =
+        DefaultRedactor::new().redact_json(payload, &RedactionContext::artifact_metadata());
     sqlx::query(
         "INSERT INTO axon_watch_run_artifacts (watch_run_id, kind, path, payload, created_at) \
          VALUES (?, 'url-change', NULL, ?, ?)",

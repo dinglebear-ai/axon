@@ -1,4 +1,6 @@
 use axon_api::source::*;
+use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
@@ -1071,14 +1073,13 @@ async fn write_reset_receipt(pool: &sqlx::SqlitePool, message: &str) {
 /// tables are created by `apply_all_migrations` in `open_sqlite_pool`).
 async fn store_with_observe() -> (
     SqliteUnifiedJobStore,
-    std::sync::Arc<axon_observe::sink::SqliteObservabilitySink>,
+    Arc<axon_observe::sink::SqliteObservabilitySink>,
 ) {
     let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
     seed_source(&pool).await;
-    let sink = std::sync::Arc::new(
-        axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone()),
-    );
-    let store = SqliteUnifiedJobStore::with_observe_sink(pool, std::sync::Arc::clone(&sink));
+    let sink =
+        Arc::new(axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone()));
+    let store = SqliteUnifiedJobStore::with_observe_sink(pool, Arc::clone(&sink));
     (store, sink)
 }
 
@@ -1146,9 +1147,8 @@ async fn observe_sink_absent_leaves_status_updates_working() {
     // still succeed and nothing is persisted to the observe tables.
     let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
     seed_source(&pool).await;
-    let sink = std::sync::Arc::new(
-        axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone()),
-    );
+    let sink =
+        Arc::new(axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone()));
     let store = SqliteUnifiedJobStore::new(pool);
     let job = store.create(create_request()).await.expect("create job");
 
@@ -1172,4 +1172,152 @@ async fn observe_sink_absent_leaves_status_updates_working() {
         .await
         .expect("read observe events");
     assert!(events.is_empty(), "no observe events without a wired sink");
+}
+
+// ── unified worker loop: wakeup latency + bounded concurrency ──────────────
+//
+// These exercise `crate::workers::unified::unified_worker_loop*` directly
+// (not just the store), proving Task 0's two infra fixes: enqueue wakes the
+// worker immediately instead of waiting a full poll interval, and multiple
+// claimed jobs run concurrently instead of serially.
+
+async fn unified_test_harness() -> (
+    Arc<sqlx::SqlitePool>,
+    Arc<tokio::sync::Notify>,
+    CancellationToken,
+) {
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    seed_source(&pool).await;
+    (
+        Arc::new(pool),
+        Arc::new(tokio::sync::Notify::new()),
+        CancellationToken::new(),
+    )
+}
+
+/// Poll `store.get(job_id)` until its status is no longer `Queued`, or the
+/// timeout elapses.
+async fn wait_for_status_change(
+    store: &SqliteUnifiedJobStore,
+    job_id: JobId,
+    timeout: std::time::Duration,
+) -> Option<std::time::Duration> {
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        if let Ok(Some(summary)) = store.get(job_id).await
+            && summary.status != LifecycleStatus::Queued
+        {
+            return Some(started.elapsed());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    None
+}
+
+#[tokio::test]
+async fn enqueued_job_is_claimed_within_one_wakeup_not_a_full_poll_interval() {
+    let (pool, notify, shutdown) = unified_test_harness().await;
+    let handle = tokio::spawn(crate::workers::unified::unified_worker_loop(
+        Arc::clone(&pool),
+        Arc::clone(&notify),
+        shutdown.clone(),
+        None,
+    ));
+    let store = SqliteUnifiedJobStore::new((*pool).clone());
+    let job = store.create(create_request()).await.unwrap();
+    notify.notify_one();
+    let claimed_after =
+        wait_for_status_change(&store, job.job_id, std::time::Duration::from_millis(500))
+            .await
+            .expect("job should leave Queued well before a full poll interval");
+    assert!(
+        claimed_after < std::time::Duration::from_secs(1),
+        "job took a full poll interval to be claimed — notify_unified() is not being called"
+    );
+    shutdown.cancel();
+    let _ = handle.await;
+}
+
+/// A fake [`UnifiedJobRunner`] that holds a permit from a shared semaphore
+/// for the duration of its (simulated) work, so the test can observe how
+/// many jobs are in-flight at once via `Semaphore::available_permits()`.
+struct SlowConcurrentRunner {
+    marker: Arc<tokio::sync::Semaphore>,
+}
+
+#[async_trait::async_trait]
+impl crate::workers::UnifiedJobRunner for SlowConcurrentRunner {
+    async fn run(
+        &self,
+        _claimed: &crate::workers::unified::UnifiedClaimedJob,
+        _store: &SqliteUnifiedJobStore,
+        _shutdown: &CancellationToken,
+    ) -> Result<(), ApiError> {
+        let _permit = self.marker.acquire().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        Ok(())
+    }
+}
+
+fn registry_with_slow_concurrent_runner(
+    concurrency_marker: Arc<tokio::sync::Semaphore>,
+) -> Arc<crate::workers::JobRunnerRegistry> {
+    let mut registry = crate::workers::JobRunnerRegistry::new();
+    registry.register(
+        JobKind::Source,
+        Arc::new(SlowConcurrentRunner {
+            marker: concurrency_marker,
+        }),
+    );
+    Arc::new(registry)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unified_worker_claims_and_runs_multiple_jobs_concurrently() {
+    let (pool, notify, shutdown) = unified_test_harness().await;
+    // A semaphore with 4 permits: the runner acquires one per in-flight job
+    // and holds it for the sleep duration, so `available_permits()` dropping
+    // below the starting count proves overlap.
+    let concurrency_marker = Arc::new(tokio::sync::Semaphore::new(4));
+    let registry = registry_with_slow_concurrent_runner(Arc::clone(&concurrency_marker));
+    let handle = tokio::spawn(
+        crate::workers::unified::unified_worker_loop_with_concurrency(
+            Arc::clone(&pool),
+            Arc::clone(&notify),
+            shutdown.clone(),
+            Some(registry),
+            4,
+        ),
+    );
+    let store = SqliteUnifiedJobStore::new((*pool).clone());
+    for i in 0..4 {
+        store
+            .create(JobCreateRequest {
+                idempotency_key: Some(format!("idem-local-{i}")),
+                ..create_request()
+            })
+            .await
+            .unwrap();
+    }
+    notify.notify_one();
+
+    // Poll (bounded) until at least 2 jobs are observed running concurrently,
+    // proving the claim loop did not serialize them.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut max_in_use = 0usize;
+    while std::time::Instant::now() < deadline {
+        let in_use = 4usize.saturating_sub(concurrency_marker.available_permits());
+        max_in_use = max_in_use.max(in_use);
+        if max_in_use >= 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        max_in_use >= 2,
+        "expected at least 2 jobs running concurrently, saw {max_in_use} in flight"
+    );
+
+    shutdown.cancel();
+    let _ = handle.await;
 }

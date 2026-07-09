@@ -174,6 +174,12 @@ pub enum JobKind {
     Prune,
     ProviderProbe,
     Reset,
+    /// Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`
+    /// enqueue paths in `axon-services`. Requires the `jobs.kind` CHECK
+    /// widened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.
+    Embed,
+    Crawl,
+    Ingest,
 }
 
 #[derive(

@@ -313,6 +313,12 @@ describe("executeAction", () => {
       "ingest-recover",
       // Dynamic watch routes
       "watch-run",
+      // NOT an Axon REST route: `github` is special-cased in `executeAction`
+      // (axonClient.ts) to call the dedicated `github_browse` Tauri command
+      // (src-tauri/src/github_bridge.rs) instead of `axon_http_request`, so it
+      // has no entry in axon_bridge.rs's `is_allowed_route`. Listed here so
+      // this cross-layer contract test doesn't flag it as unwired.
+      "github",
     ]);
 
     const actionSubcommands = ACTIONS.filter((a) => a.kind !== "local").map((a) => a.subcommand);

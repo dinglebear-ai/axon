@@ -113,6 +113,59 @@ export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({
 });
 export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
 export const ingestSessionsPreparedBody: BodyBuilder = (ctx) => jsonBody(ctx.arg, "prepared sessions request");
+// `github` takes a bare owner[/repo[/path...]] target (NOT a URL — see
+// `BARE_TARGET_SUBCOMMANDS`-style handling in actions.ts, though github is
+// simply absent from `acceptsDirectUrl` so no coercion ever applies). This
+// body is consumed directly by `executeAction`'s github special-case (see
+// axonClient.ts), not by `axon_http_request` — the route is a `palette://`
+// marker, never a real Axon REST call.
+export const githubBrowseBody: BodyBuilder<GitHubBrowseRequestBody> = (ctx) =>
+  parseGitHubTarget(first(ctx.words, "owner or owner/repo[/path]"));
+
+export type GitHubBrowseRequestBody = {
+  kind: "repos" | "tree" | "file" | "feed";
+  owner: string;
+  repo?: string;
+  path?: string;
+} & Record<string, unknown>;
+
+/** Wire shape returned by the `github_browse` Tauri command
+ * (`src-tauri/src/github_bridge.rs::GitHubBrowseResult`). Field names are
+ * `camelCase` because the Rust struct is `#[serde(rename_all = "camelCase")]`.
+ * Lives in the lib layer (not the component) so both `axonClient.ts` and
+ * `GitHubView.tsx` share one definition without a component → lib inversion. */
+export interface GitHubBrowseResult {
+  ok: boolean;
+  status: number;
+  kind: string;
+  owner: string;
+  repo: string | null;
+  branch: string | null;
+  path: string | null;
+  payload: unknown;
+  error: string | null;
+  rateLimitRemaining: number | null;
+  rateLimitReset: number | null;
+  authenticated: boolean;
+}
+
+/**
+ * Parse a `github` action argument into a browse request.
+ *
+ * - `owner` → list the owner's repos (`kind: "repos"`).
+ * - `owner/repo` → the repo's full file tree (`kind: "tree"`).
+ * - `owner/repo/some/path.ext` → preview that file's contents (`kind: "file"`).
+ */
+export function parseGitHubTarget(target: string): GitHubBrowseRequestBody {
+  const trimmed = target.trim().replace(/^\/+|\/+$/g, "");
+  if (!trimmed) throw new Error("owner or owner/repo[/path] is required");
+  const segments = trimmed.split("/").filter(Boolean);
+  const [owner, repo, ...rest] = segments;
+  if (!owner) throw new Error("owner is required");
+  if (!repo) return { kind: "repos", owner };
+  if (rest.length === 0) return { kind: "tree", owner, repo };
+  return { kind: "file", owner, repo, path: rest.join("/") };
+}
 
 // ---- Shared shaping helpers ---------------------------------------------
 

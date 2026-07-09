@@ -23,6 +23,18 @@ compatibility = "canonical"
 reason = "Compose-only Qdrant endpoint override used to point the container at a remote or explicitly local Qdrant."
 
 [[env]]
+key = "AXON_EXTERNAL_QDRANT_URL"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose-env-file", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only override consumed by docker-compose.external-qdrant.yaml to point QDRANT_URL at a remote Qdrant instead of the bundled axon-qdrant service."
+
+[[env]]
 key = "QDRANT_HTTP_PORT"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"
@@ -909,6 +921,18 @@ container_allowed = false
 toml_destination = "workers.embed-doc-timeout-secs"
 compatibility = "warn-env-override"
 reason = "Per-document embed timeout tuning."
+
+[[env]]
+key = "AXON_UNIFIED_WORKER_CONCURRENCY"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.unified-worker-concurrency"
+compatibility = "warn-env-override"
+reason = "Bounds how many unified job-store jobs the in-process worker runs concurrently (clamped 1-64)."
 
 [[env]]
 key = "AXON_QUEUE_SUMMARY_SECS"

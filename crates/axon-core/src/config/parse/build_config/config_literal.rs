@@ -7,8 +7,8 @@
 
 use super::super::super::cli::GlobalArgs;
 use super::super::super::types::{
-    CommandKind, Config, DEFAULT_CRAWL_BROADCAST_BUFFER_MAX, DEFAULT_CRAWL_BROADCAST_BUFFER_MIN,
-    DEFAULT_CRAWL_MEMORY_ABORT_PERCENT, DEFAULT_MAX_PAGE_BYTES,
+    CommandKind, Config, ConfigValueSource, DEFAULT_CRAWL_BROADCAST_BUFFER_MAX,
+    DEFAULT_CRAWL_BROADCAST_BUFFER_MIN, DEFAULT_CRAWL_MEMORY_ABORT_PERCENT, DEFAULT_MAX_PAGE_BYTES,
 };
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
@@ -84,6 +84,17 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.prune_generation = inputs.dispatched.prune_generation.clone();
     cfg.prune_confirm = inputs.dispatched.prune_confirm;
     cfg.reset_plan_id = inputs.dispatched.reset_plan_id.clone();
+    // CLI-flag-only by construction: `DispatchOutput::reset_confirm_legacy_wipe`
+    // is populated exclusively from `ResetArgs::confirm_legacy_wipe` in
+    // `apply_reset` (command_dispatch.rs) — this field never appears in
+    // `TomlConfig` or any env-var read, so `ConfigValueSource::CliFlag` is
+    // always the accurate source whenever this path sets the flag `true`.
+    cfg.reset_confirm_legacy_wipe = inputs.dispatched.reset_confirm_legacy_wipe;
+    cfg.reset_confirm_legacy_wipe_source = if inputs.dispatched.reset_confirm_legacy_wipe {
+        ConfigValueSource::CliFlag
+    } else {
+        ConfigValueSource::Unset
+    };
     cfg.doctor_diagnose = inputs.dispatched.doctor_diagnose;
     // `extract` defaults to the exact single-page path when omitted. The crawl
     // page-cap default + ceiling are NOT resolved here — that policy lives in the
