@@ -242,6 +242,28 @@ export function formatJobLifecycle(value: Record<string, unknown>): string {
   return jobLifecycle(value);
 }
 
+/** Fallback text for the `github` browse result — the structured view
+ * (`GitHubView`) is the primary UI; this is the copy/plaintext fallback. */
+export function formatGitHub(value: Record<string, unknown>): string {
+  if (booleanField(value, "ok") === false) {
+    return stringField(value, "error") ?? "GitHub request failed.";
+  }
+  const kind = stringField(value, "kind") ?? "repos";
+  const payload = value.payload;
+  if (kind === "repos" && Array.isArray(payload)) {
+    return (
+      payload
+        .map((repo) => (isRecord(repo) ? stringField(repo, "full_name") ?? stringField(repo, "name") : null))
+        .filter((name): name is string => Boolean(name))
+        .join("\n") || "No repositories found."
+    );
+  }
+  if (kind === "file" && isRecord(payload)) {
+    return stringField(payload, "path") ?? "File preview.";
+  }
+  return compact(payload);
+}
+
 /** Fallback formatter for actions with no structured text shape (status, etc.). */
 export function formatCompact(payload: unknown): string {
   if (typeof payload === "string") return payload;

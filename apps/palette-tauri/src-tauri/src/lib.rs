@@ -16,8 +16,11 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod date_math;
 mod diag;
 mod files_bridge;
+mod github_bridge;
+mod github_feed;
 mod oauth;
 mod persistence;
 mod sftp_bridge;
@@ -26,6 +29,7 @@ mod stream;
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
+use github_bridge::GitHubClient;
 use persistence::*;
 use stream::axon_http_stream_request;
 
@@ -486,6 +490,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|err| format!("failed to build HTTP client for Axon bridge: {err}"))?;
     let stream_client = StreamClient::new()
         .map_err(|err| format!("failed to build HTTP client for streaming: {err}"))?;
+    let github_client = GitHubClient::new()
+        .map_err(|err| format!("failed to build HTTP client for GitHub bridge: {err}"))?;
 
     tauri::Builder::default()
         .plugin(
@@ -509,6 +515,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
             axon_http_stream_request,
+            github_bridge::github_browse,
             oauth::axon_oauth_login,
             oauth::axon_oauth_logout,
             oauth::axon_oauth_status,
@@ -527,6 +534,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(ActiveShortcut(Mutex::new(None)))
         .manage(bridge_client)
         .manage(stream_client)
+        .manage(github_client)
         .manage(oauth::OauthState::new())
         .manage(sftp_bridge::SftpConnections::new())
         .setup(|app| {

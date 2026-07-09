@@ -27,6 +27,7 @@ import {
   Camera,
   Database,
   FileDown,
+  FolderGit2,
   FolderOpen,
   GitBranch,
   GitCompare,
@@ -65,6 +66,7 @@ import {
   extractBody,
   first,
   getRoute,
+  githubBrowseBody,
   ingestBody,
   ingestSessionsPreparedBody,
   mapBody,
@@ -92,6 +94,7 @@ import {
   formatDomains,
   formatEndpoints,
   formatEvaluate,
+  formatGitHub,
   formatJobLifecycle,
   formatMap,
   formatQuery,
@@ -136,6 +139,7 @@ export type StructuredViewKey =
   | "extract"
   | "ingest"
   | "ingest-sessions-prepared"
+  | "github"
   | "endpoints"
   | "brand"
   | "diff"
@@ -326,6 +330,20 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: jobStartFormatter("ingest"),
     actionIcon: PackageOpen,
     structuredView: "ingest",
+  }),
+  // `github` is NOT an Axon REST call — the route is a `palette://` marker so
+  // it's inert if it were ever accidentally sent to `axon_http_request`
+  // (rejected: doesn't start with `/v1/`). `executeAction` special-cases this
+  // subcommand to call the `github_browse` Tauri command instead (see
+  // axonClient.ts), which proxies `api.github.com` from the Rust side per the
+  // desktop CSP (`connect-src` has no api.github.com origin for the renderer).
+  github: entry({
+    route: getRoute("palette://github"),
+    buildBody: githubBrowseBody,
+    outputKind: code,
+    formatText: formatGitHub,
+    actionIcon: FolderGit2,
+    structuredView: "github",
   }),
   status: behavior({
     route: getRoute("/v1/status"),
