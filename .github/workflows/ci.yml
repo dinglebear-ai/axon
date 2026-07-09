@@ -323,6 +323,8 @@ jobs:
         run: cargo xtask check-doc-contracts
       - name: Check crate dependency-graph snapshot is in sync and acyclic
         run: cargo xtask check-dep-graph
+      - name: Check sensitive log call sites use redaction
+        run: cargo xtask check-redaction-logs
 
   sqlite-migrations:
     name: sqlite-migrations

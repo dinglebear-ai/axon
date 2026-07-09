@@ -46,6 +46,8 @@ enum Command {
     GenDepGraph,
     /// Verify the per-crate public-API surface snapshot is in sync.
     CheckPublicApi,
+    /// Fail when sensitive-looking log call sites bypass redaction.
+    CheckRedactionLogs,
     /// Regenerate docs/reference/public-api-surface.md.
     GenPublicApi,
     /// Verify SQLite job migrations are append-only and checksum-pinned.
@@ -154,6 +156,7 @@ fn main() -> Result<()> {
         Command::CheckDepGraph => checks::dep_graph::check(&root),
         Command::GenDepGraph => checks::dep_graph::write(&root),
         Command::CheckPublicApi => checks::public_api::check(&root),
+        Command::CheckRedactionLogs => checks::redaction_logs::check(&root),
         Command::GenPublicApi => checks::public_api::write(&root),
         Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
         Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
