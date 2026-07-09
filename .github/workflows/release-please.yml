@@ -27,7 +27,6 @@ jobs:
       paths_released: ${{ steps.release.outputs.paths_released }}
       prs_created: ${{ steps.release.outputs.prs_created }}
       prs: ${{ steps.release.outputs.prs }}
-      cli_tag: ${{ steps.release.outputs.tag_name }}
       palette_tag: ${{ steps.release.outputs['apps/palette-tauri--tag_name'] }}
       android_tag: ${{ steps.release.outputs['apps/android--tag_name'] }}
       chrome_tag: ${{ steps.release.outputs['apps/chrome-extension--tag_name'] }}

@@ -3,12 +3,9 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 
-use super::{
-    Component, ReleaseContext, ReleaseResult, VersionKind, read_version,
-    replace_gradle_version_name,
-};
+use super::{Component, ReleaseContext, ReleaseResult, VersionKind, read_version};
 use crate::checks::release_versions::files::{
-    increment_gradle_version_code, read_gradle_version_name,
+    increment_gradle_version_code, read_gradle_version_name, replace_gradle_version_name,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -72,6 +69,9 @@ pub(super) fn check_manifest_versions(
     let mut errors = Vec::new();
 
     for component in components {
+        if !component.release_please_managed {
+            continue;
+        }
         let Some(manifest_version) = versions.get(&component.release_please_path) else {
             errors.push(format!(
                 "{}: .release-please-manifest.json is missing path {}",
@@ -125,6 +125,9 @@ pub(super) fn fixup_items(
     let mut items = Vec::new();
 
     for component in components {
+        if !component.release_please_managed {
+            continue;
+        }
         let release_please_touched_component = component.version_files.iter().any(|file| {
             !matches!(
                 file.kind,
@@ -234,7 +237,7 @@ fn stamp_version_code_marker(content: &str, version: &str) -> ReleaseResult<Stri
         .into_owned())
 }
 
-fn run_cargo_update(root: &Path, package: &str, version: &str) -> ReleaseResult<()> {
+pub(super) fn run_cargo_update(root: &Path, package: &str, version: &str) -> ReleaseResult<()> {
     let status = Command::new("cargo")
         .arg("update")
         .arg("-p")
