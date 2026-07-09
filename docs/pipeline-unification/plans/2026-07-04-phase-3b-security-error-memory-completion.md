@@ -894,7 +894,25 @@ git commit -m "feat: bound memory batches and recovery"
 
 ---
 
-### Task 9: CLI, MCP, And REST Memory Contract
+### Task 9: CLI, MCP, And REST Memory Contract — DONE
+
+Completed via `docs/pipeline-unification/plans/2026-07-08-rest-memory-surface.md`
+(split out per engineering review as independent of the job cutover). The REST
+surface moved from the single opaque `POST /v1/memory` passthrough to per-verb
+`/v1/memories` routes matching `surfaces/rest-contract.md`, each with
+`AuthContext`/`CallerContext` extraction mirroring `sources.rs`'s pattern (the
+old handler had none — a security review finding that drove the split). CLI,
+MCP, and REST all now expose `import`/`export` end-to-end over the existing
+`axon-memory` `MemoryStore` trait (previously unwired despite the store already
+implementing both); the REST `import`/`export` routes carry an explicit 10 MiB
+body-size limit.
+
+**Deprecation, not removal:** the old `POST /v1/memory` route is kept
+functional (RFC 8594 `Deprecation` header + `Link` to `/v1/memories`) rather
+than deleted in the same change, since external clients (e.g. the desktop
+palette app) may still depend on the old shape. Follow-up filed to remove it
+once known clients have migrated: `axon_rust-69fq1` ("Remove deprecated
+POST /v1/memory passthrough route").
 
 **Files:**
 - Modify: `crates/axon-cli/src/commands/memory.rs`
