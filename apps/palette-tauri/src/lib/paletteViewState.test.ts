@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import {
+  browserInitialTarget,
   INITIAL_VIEW,
   isBrowseOpen,
+  isBrowserOpen,
   isHistoryOpen,
   isSettingsOpen,
   modeOf,
@@ -64,6 +66,25 @@ describe("viewReducer — single transitions", () => {
       "closeSettings → browse",
       { kind: "settings" },
       { type: "closeSettings" },
+      launcher(null, true),
+    ],
+    // Browser overlay
+    [
+      "openBrowser with a target",
+      launcher(scrape, true),
+      { type: "openBrowser", initialTarget: "docs.rs/serde" },
+      { kind: "browser", initialTarget: "docs.rs/serde" },
+    ],
+    [
+      "openBrowser with no target",
+      launcher(null, true),
+      { type: "openBrowser", initialTarget: null },
+      { kind: "browser", initialTarget: null },
+    ],
+    [
+      "closeBrowser → browse",
+      { kind: "browser", initialTarget: "example.com" },
+      { type: "closeBrowser" },
       launcher(null, true),
     ],
     // History overlay
@@ -186,5 +207,25 @@ describe("view accessors", () => {
     expect(isBrowseOpen(launcher(null, false))).toBe(false);
     expect(isSettingsOpen({ kind: "settings" })).toBe(true);
     expect(isHistoryOpen({ kind: "history" })).toBe(true);
+  });
+
+  it("isBrowserOpen/browserInitialTarget reflect the browser overlay only", () => {
+    const browser: View = { kind: "browser", initialTarget: "example.com" };
+    expect(isBrowserOpen(browser)).toBe(true);
+    expect(browserInitialTarget(browser)).toBe("example.com");
+    expect(isBrowserOpen(launcher())).toBe(false);
+    expect(browserInitialTarget(launcher())).toBeNull();
+    expect(isBrowserOpen({ kind: "settings" })).toBe(false);
+  });
+});
+
+describe("viewReducer — browser overlay illegal combinations", () => {
+  it("opening the browser never leaves another overlay/mode open", () => {
+    const history: View = { kind: "history" };
+    const browser = viewReducer(history, { type: "openBrowser", initialTarget: null });
+    expect(browser.kind).toBe("browser");
+    expect(isHistoryOpen(browser)).toBe(false);
+    expect(isSettingsOpen(browser)).toBe(false);
+    expect(modeOf(browser)).toBeNull();
   });
 });

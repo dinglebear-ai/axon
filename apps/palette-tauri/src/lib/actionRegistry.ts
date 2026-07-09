@@ -1,21 +1,6 @@
-// Single source of truth for per-action behavior (finding A-H1).
-//
-// Before this registry, adding a palette action meant editing ~9 parallel
-// dispatch sites (request body, route, output kind, fallback text formatter, two
-// icon maps, the structured-view allowlist) with no compile-time guarantee they
-// stayed in sync — a forgotten site silently degraded to raw `<pre>` JSON.
-//
-// `ACTION_REGISTRY` is a `Record<PaletteSubcommand, ActionBehavior>`: because it
-// is keyed by the full union (including the 24 `${JobFamily}-${JobOperation}`
-// members, generated below), a new subcommand fails to type-check until it has a
-// complete behavior entry. The scattered functions (`bodyFor`, `actionRouteTemplate`,
-// `outputKindFor`, `formatPayload`, `outputIcon`, `actionIcon`,
-// `hasStructuredOperationView`) all derive from this map.
-//
-// Structured-view rendering (JSX) cannot live in this `.ts` file, so each entry
-// carries a `structuredView` *key* (or `null`); the `STRUCTURED_VIEWS` renderer
-// map in `OperationResultView.tsx` is keyed by the same `StructuredViewKey`
-// union, and a test asserts the two stay in lockstep.
+// Single source of truth for per-action behavior. `ACTION_REGISTRY` is keyed by
+// the full subcommand union so every new action must define route/body/output/
+// icon/structured-view behavior before TypeScript accepts it.
 
 import {
   Activity,
@@ -32,22 +17,21 @@ import {
   GitBranch,
   GitCompare,
   Globe,
+  Compass,
   HelpCircle,
   Layers,
   Map as MapIcon,
   PackageOpen,
-  RotateCw,
   SearchCheck,
   Sparkles,
   Stethoscope,
+  TerminalSquare,
   Trash2,
   Workflow,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
 import type { PaletteSubcommand, JobFamily, JobOperation } from "./actions";
-import { JOB_FAMILIES, JOB_OPERATIONS } from "./actions";
 import {
   type ActionRouteTemplate,
   type BodyBuilder,
@@ -58,7 +42,6 @@ import {
   crawlBody,
   dedupeBody,
   purgeBody,
-  deleteRoute,
   diffBody,
   embedBody,
   endpointsBody,
@@ -95,7 +78,6 @@ import {
   formatEndpoints,
   formatEvaluate,
   formatGitHub,
-  formatJobLifecycle,
   formatMap,
   formatQuery,
   formatRetrieve,
@@ -111,6 +93,7 @@ import {
   jobStartFormatter,
   recordFormatter,
 } from "./actionFormat";
+import { buildLifecycleRegistry } from "./actionLifecycle";
 
 export type OutputKind = "markdown" | "code";
 
@@ -200,6 +183,16 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: formatCompact,
     actionIcon: HelpCircle,
     structuredView: "help",
+  }),
+  // Browser is a local, window-driven action (Tauri webview creation +
+  // navigation commands), so it uses a palette marker route for metadata only.
+  browser: behavior({
+    route: getRoute("palette://browser"),
+    buildBody: noBody,
+    outputKind: code,
+    formatText: formatCompact,
+    actionIcon: Compass,
+    structuredView: null,
   }),
   files: behavior({
     route: getRoute("palette://files"),
@@ -466,82 +459,16 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     actionIcon: HelpCircle,
     structuredView: "ingest-sessions-prepared",
   }),
-};
-
-const JOB_LIFECYCLE_ICONS: Record<JobFamily, LucideIcon> = {
-  crawl: GitBranch,
-  embed: Layers,
-  extract: Braces,
-  ingest: PackageOpen,
-};
-
-function lifecycleBehavior(family: JobFamily, operation: JobOperation): ActionBehavior {
-  const icon = JOB_LIFECYCLE_ICONS[family];
-  return {
-    route: lifecycleRoute(family, operation),
+  // Local Tauri shell action; the marker route is metadata-only.
+  terminal: behavior({
+    route: getRoute("palette://terminal"),
     buildBody: noBody,
-    routeFor: lifecycleRouteFor(family, operation),
     outputKind: code,
-    formatText: recordFormatter(formatJobLifecycle),
-    actionIcon: icon,
-    outputIcon: lifecycleOutputIcon(family, operation),
-    structuredView: "job-lifecycle",
-  };
-}
-
-function lifecycleRoute(family: JobFamily, operation: JobOperation): ActionRouteTemplate {
-  switch (operation) {
-    case "list":
-      return getRoute(`/v1/${family}`);
-    case "status":
-      return getRoute(`/v1/${family}/{id}`);
-    case "cancel":
-      return postRoute(`/v1/${family}/{id}/cancel`);
-    case "cleanup":
-      return postRoute(`/v1/${family}/cleanup`);
-    case "clear":
-      return deleteRoute(`/v1/${family}`);
-    case "recover":
-      return postRoute(`/v1/${family}/recover`);
-  }
-}
-
-function lifecycleRouteFor(family: JobFamily, operation: JobOperation): ActionBehavior["routeFor"] {
-  switch (operation) {
-    case "status":
-      return (ctx) => getRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}`);
-    case "cancel":
-      return (ctx) => postRoute(`/v1/${family}/${uuid(first(ctx.words, "job id"))}/cancel`);
-    default:
-      return undefined;
-  }
-}
-
-function lifecycleOutputIcon(family: JobFamily, operation: JobOperation): LucideIcon {
-  switch (operation) {
-    case "cancel":
-      return X;
-    case "cleanup":
-    case "clear":
-    case "recover":
-      return RotateCw;
-    case "list":
-    case "status":
-      return Activity;
-    default:
-      return JOB_LIFECYCLE_ICONS[family];
-  }
-}
-
-function buildLifecycleRegistry(): Record<`${JobFamily}-${JobOperation}`, ActionBehavior> {
-  const out = {} as Record<`${JobFamily}-${JobOperation}`, ActionBehavior>;
-  for (const family of JOB_FAMILIES) {
-    for (const operation of JOB_OPERATIONS) {
-      out[`${family}-${operation}`] = lifecycleBehavior(family, operation);
-    }
-  }
-  return out;
-}
+    formatText: formatCompact,
+    actionIcon: TerminalSquare,
+    structuredView: null,
+  }),
+};
 
 /** Exhaustive per-action behavior table. Keyed by the full subcommand union. */
 export const ACTION_REGISTRY: Record<PaletteSubcommand, ActionBehavior> = {

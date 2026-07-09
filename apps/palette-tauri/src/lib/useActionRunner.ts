@@ -389,6 +389,26 @@ export function useActionRunner({
     enterModeForRun(action, "");
   }
 
+  // ── Local terminal branch ────────────────────────────────────────────────
+  // `terminal` is a local, non-HTTP action (see `src-tauri/src/terminal.rs`):
+  // it never calls `axonClient`. This just needs `run` to leave `idle` so
+  // `App`'s `showOutput` flips on; `OutputPanel` special-cases
+  // `active?.subcommand === "terminal"` and renders `TerminalView` directly
+  // instead of reading `run.result`/`run.text`. No history entry is pushed —
+  // an interactive shell session isn't a single request/response result like
+  // the other actions.
+  function submitTerminal(terminalAction: PaletteAction) {
+    enterModeForRun(terminalAction, "");
+    setRun({
+      kind: "success",
+      title: "Terminal",
+      subtitle: "local shell session",
+      text: "",
+      outputKind: "code",
+      result: { ok: true, status: 200, path: "palette://terminal", method: "GET", payload: null },
+    });
+  }
+
   // Latest in-flight guard for the imperative (crawl/stream) paths. One-shots are
   // serialized by useActionState's `oneShotPending`; crawl/stream guard on `run`.
   const runRef = useRef(run);
@@ -415,6 +435,10 @@ export function useActionRunner({
     }
     if (action.subcommand === "files") {
       submitFiles(action);
+      return;
+    }
+    if (action.subcommand === "terminal") {
+      submitTerminal(action);
       return;
     }
     if (action.kind === "local") return;
