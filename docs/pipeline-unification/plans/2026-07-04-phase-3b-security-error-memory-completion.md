@@ -384,6 +384,34 @@ git commit -m "feat: propagate structured pipeline errors"
 
 ### Task 4: Shared Redaction Boundary And Fail-Closed Public Writes
 
+> **PARTIALLY DONE** (2026-07-09) — file-log and artifact-metadata redaction
+> closed; CLI JSON gate covers 4/70 call sites, remainder tracked in bead
+> `axon_rust-l6amm`. The shared boundary already covered vector payloads,
+> job events, graph evidence, memory rows, and MCP/REST error responses. Of
+> the three remaining chokepoints — CLI JSON output, artifact metadata writes,
+> and trace/log fields — artifact metadata and trace/log fields are now fully
+> closed, and CLI JSON output has a shared gate (`crate::json::print_json_gated`
+> in `crates/axon-cli/src/json.rs`) wired into 4 call sites
+> (`common_jobs.rs`, `memory.rs`, and the `watch history`/`watch artifacts`
+> reads in `watch.rs`) out of roughly 70 `serde_json::to_string_pretty`/
+> `to_string` call sites across `crates/axon-cli/src/commands/*.rs`. See
+> [`docs/pipeline-unification/plans/2026-07-08-redaction-boundary-extension.md`](2026-07-08-redaction-boundary-extension.md):
+> `RedactionContext::cli_json()` gating the CLI `--json` render path
+> (`crates/axon-cli/src/json.rs`), `RedactionContext::artifact_metadata()`
+> gating the previously-ungated `watch` `url-change` artifact write
+> (`crates/axon-jobs/src/watch/report.rs`), and a new `JsonFormat` event
+> formatter (`crates/axon-core/src/logging/json_format.rs`) closing a gap
+> where the file JSON log sink bypassed the console layer's
+> `redact_event_fields` scrub — that scrub now also covers span-level fields,
+> not just event-level fields, and caps oversized field values instead of
+> scanning them unbounded. The actual gate API differs from this task's
+> illustrative sketch below — see the extension plan's Task 1 findings for the
+> real function names/signatures. **Caveat:** the extension plan's Task 4 was
+> an explicit best-effort manual-grep pass over trace/log call sites, not a
+> completeness guarantee; CI/lint enforcement and the remaining CLI JSON
+> call-site retrofit are tracked separately as bead
+> `axon_rust-l6amm` ("Add CI-enforced redaction call-site lint").
+
 **Files:**
 - Create: `crates/axon-core/src/redaction.rs` if absent
 - Modify: `crates/axon-core/src/lib.rs`

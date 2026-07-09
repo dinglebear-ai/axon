@@ -122,7 +122,7 @@ pub async fn run_watch(
                 Some(pool) => watch_svc::list_watch_runs_with_pool(pool, watch_id, limit).await?,
                 None => watch_svc::list_watch_runs(cfg, watch_id, limit).await?,
             };
-            println!("{}", serde_json::to_string_pretty(&runs)?);
+            crate::json::print_json_gated(&runs)?;
         }
         WatchRuntimeSubcommand::Get { .. } => {
             return Err(
@@ -163,7 +163,7 @@ pub async fn run_watch(
                 None => watch_svc::list_watch_run_artifacts(cfg, run_id, limit).await?,
             };
             if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&artifacts)?);
+                crate::json::print_json_gated(&artifacts)?;
             } else {
                 println!("{}", primary("Watch Artifacts"));
                 if artifacts.is_empty() {
