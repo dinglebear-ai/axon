@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.0](https://github.com/jmagar/axon/compare/palette-v5.12.4...palette-v5.13.0) (2026-07-09)
+
+
+### Added
+
+* **palette:** Files view split-pane, bulk ingest, AI-edit diff, SFTP browsing ([#393](https://github.com/jmagar/axon/issues/393)) ([f88914f](https://github.com/jmagar/axon/commit/f88914f2f349f1a33cb50a27005d874f96681a8d))
+* **palette:** GitHub view Feed tab + two-pane split ([#394](https://github.com/jmagar/axon/issues/394)) ([b4ae3d9](https://github.com/jmagar/axon/commit/b4ae3d9004a41cdb74ced7998f77bf8daea888b1))
+
 ## [5.12.4] - 2026-07-05
 
 ### Changed
