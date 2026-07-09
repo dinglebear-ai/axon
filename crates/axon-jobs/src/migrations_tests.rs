@@ -160,8 +160,11 @@ async fn jobs_table_rebuild_preserves_existing_rows_and_child_fk_rows() {
             .unwrap_or_else(|e| panic!("ledger migration {} failed: {e}", migration.name));
     }
 
-    let (through_20, migration_21) = JOBS_MIGRATIONS.split_at(20);
-    assert_eq!(migration_21.len(), 1, "expected exactly one 0021 migration");
+    let (through_20, rest) = JOBS_MIGRATIONS.split_at(20);
+    // Only migration 21 (the jobs-table rebuild) is under test here; slice
+    // off any migrations after it (e.g. 0022's additive `ALTER TABLE`) so
+    // this test stays valid regardless of how many migrations follow.
+    let migration_21 = &rest[..1];
     assert_eq!(migration_21[0].version, 21);
 
     for migration in through_20 {

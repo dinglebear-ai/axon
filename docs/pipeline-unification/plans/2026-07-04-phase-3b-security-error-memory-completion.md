@@ -356,9 +356,17 @@ pub struct ApiError {
 
 Add `SourceItemError` for item-level failures with source id, item key, generation, status, code, stage, retryable, attempt, and redacted details.
 
-- [ ] **Step 4: Wire provider cooling into jobs**
+- [x] **Step 4: Wire provider cooling into jobs**
 
 When a provider is cooling, transition the job to `waiting`, append a public event with the typed `ApiError`, and prevent hot loops by requiring a scheduler reservation after `cooldown_until`.
+
+**Evidence (closed out via `docs/pipeline-unification/plans/2026-07-08-provider-cooling.md`, branch `provider-cooling-impl`):**
+- `crates/axon-jobs/src/migrations/0022_add_job_cooldown_until.sql` — adds `jobs.cooldown_until` (TEXT/RFC3339) plus a covering partial index (`idx_axon_jobs_claim_cooldown`, `WHERE status IN ('queued', 'waiting', 'blocked')` — widened to match the claim query's exact status set after an initial `WHERE status = 'waiting'` version was found to defeat SQLite's partial-index containment matcher and fall back to a full table scan) in the same migration. Commit `2f2ce4c13` ("feat(jobs): add cooldown_until column with covering index").
+- `crates/axon-jobs/src/unified/control.rs::apply_provider_cooling` — persists a bounded cooldown (`min(cooldown_until, now + MAX_PROVIDER_COOLDOWN_WINDOW)`, fixed at 1 hour, `crates/axon-jobs/src/unified.rs::MAX_PROVIDER_COOLDOWN_WINDOW`) on a job currently in `Waiting`, inside a transaction with a `status = 'waiting'`-guarded UPDATE so a concurrent transition off `Waiting` between the check and the write can't leave a stale cooldown.
+- `crates/axon-jobs/src/workers/unified.rs::claim_next_unified_job_unchecked` — claim query now excludes rows whose `cooldown_until` is still in the future (`AND (cooldown_until IS NULL OR cooldown_until <= ?)`), index-covered by the migration above.
+- `cooldown_until` is cleared on every transition to a non-`Waiting` status: unconditionally in `SqliteUnifiedJobStore::update_job_status` (`crates/axon-jobs/src/unified/ops.rs`) via a `CASE WHEN ... = 'waiting' THEN cooldown_until ELSE NULL END`, and independently in the other raw-SQL `jobs` writers that bypass that function — `mark_terminal` and the claim-time `UPDATE ... SET status = 'running'` (both in `crates/axon-jobs/src/workers/unified.rs`), `cancel_job` (`crates/axon-jobs/src/unified/control.rs`), `record_heartbeat` (`crates/axon-jobs/src/unified/heartbeat.rs`), and `reset_job_for_retry`/`reset_stale_job_for_recovery` (`crates/axon-jobs/src/unified/control_helpers.rs`).
+- Commit `365d21a63` ("feat(jobs): bound and wire provider cooling into job claim eligibility") — full test coverage in `crates/axon-jobs/src/provider_cooling_tests.rs` (clamping, claim exclusion/eligibility, clear-on-completion, clear-on-terminal-failure, past-deadline round-trip, Waiting-only guard).
+- **Known gap, intentionally not closed here:** no live `UnifiedJobRunner` in the composition layer (`crates/axon-services/src/runtime/job_runners.rs`) currently calls a provider (TEI/LLM) and constructs `ApiError::with_provider_cooling(...)` — TEI's 429/5xx retry-exhaustion path (`crates/axon-vector/src/ops/tei/tei_client.rs::send_chunk_with_retries`) still returns a plain `Box<dyn Error>` and is only reachable through the legacy per-family embed job runner (`crates/axon-jobs/src/workers/runners/embed.rs`, `axon_embed_jobs` table), not the unified `jobs` table this work targets. The generic mechanism (bounded clamp, claim exclusion, clear-on-terminal) is real and tested end-to-end; wiring an actual TEI-calling `UnifiedJobRunner` to call `apply_provider_cooling` is follow-up work, not fabricated here to avoid inventing an unverified call site.
 
 - [ ] **Step 5: Run error and job tests**
 

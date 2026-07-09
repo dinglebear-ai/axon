@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_error::cooling::ProviderCooling;
 use sqlx::Row;
 
 use super::SqliteUnifiedJobStore;
@@ -6,9 +7,83 @@ use super::control_helpers::*;
 use crate::boundary::Result;
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
+use crate::unified::MAX_PROVIDER_COOLDOWN_WINDOW;
 use crate::unified_codec::*;
 
 impl SqliteUnifiedJobStore {
+    /// Persist a bounded provider-cooling window on a job that is currently
+    /// `Waiting`.
+    ///
+    /// `cooling.cooldown_until` is clamped to `min(cooldown_until, now +
+    /// MAX_PROVIDER_COOLDOWN_WINDOW)` before persisting — a fixed ceiling, not
+    /// a floor, so a deadline already in the past round-trips unchanged
+    /// rather than being pulled forward. The claim query
+    /// (`claim_next_unified_job_unchecked` in
+    /// `crates/axon-jobs/src/workers/unified.rs`) excludes rows whose
+    /// `cooldown_until` is still in the future via the `idx_axon_jobs_claim_cooldown`
+    /// partial index added alongside this column.
+    ///
+    /// Only applies to a job currently in `Waiting` status — cooling only
+    /// makes sense while a job is parked waiting on a provider; applying it
+    /// to any other status would be silently meaningless once the claim query
+    /// only special-cases `waiting`.
+    pub(crate) async fn apply_provider_cooling(
+        &self,
+        job_id: JobId,
+        cooling: ProviderCooling,
+    ) -> Result<()> {
+        // The status check and the cooldown write must be atomic: without a
+        // shared transaction and a status-scoped UPDATE, a concurrent writer
+        // (claim, update_job_status, heartbeat, cancel_job — all of which
+        // clear cooldown_until on leaving Waiting) could move the job off
+        // Waiting between the check and the write, and this function would
+        // still unconditionally re-write cooldown_until afterward, leaving a
+        // non-Waiting job (e.g. Running) with a stale cooldown that later
+        // paths weren't designed to clear on entry.
+        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let row = sqlx::query("SELECT status FROM jobs WHERE job_id = ?")
+            .bind(job_id.0.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sql_error)?
+            .ok_or_else(|| missing_job(job_id))?;
+        let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+        if current != LifecycleStatus::Waiting {
+            return Err(ApiError::new(
+                "job_cooling.not_waiting",
+                ErrorStage::Publishing,
+                format!(
+                    "job {} is {:?}, not Waiting; provider cooling only applies to a job parked in Waiting",
+                    job_id.0, current
+                ),
+            ));
+        }
+        let max_deadline = chrono::Utc::now()
+            + chrono::Duration::from_std(MAX_PROVIDER_COOLDOWN_WINDOW)
+                .unwrap_or(chrono::Duration::hours(1));
+        let clamped = cooling.cooldown_until.min(max_deadline);
+        let result = sqlx::query(
+            "UPDATE jobs SET cooldown_until = ? WHERE job_id = ? AND status = 'waiting'",
+        )
+        .bind(clamped.to_rfc3339())
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+        if result.rows_affected() == 0 {
+            return Err(ApiError::new(
+                "job_cooling.not_waiting",
+                ErrorStage::Publishing,
+                format!(
+                    "job {} left Waiting before cooling could be applied",
+                    job_id.0
+                ),
+            ));
+        }
+        tx.commit().await.map_err(sql_error)?;
+        Ok(())
+    }
+
     pub(crate) async fn cancel_job(
         &self,
         job_id: JobId,
@@ -32,12 +107,17 @@ impl SqliteUnifiedJobStore {
             LifecycleStatus::Canceling
         };
         let canceled_at = (target == LifecycleStatus::Canceled).then(|| now.clone());
+        // cooldown_until: a Waiting job legally transitions to Canceling/
+        // Canceled here, and cooldown is only ever meaningful while a job is
+        // Waiting — clear it unconditionally so a canceled/canceling job
+        // never carries a stale cooldown into its next lifecycle.
         sqlx::query(
             "UPDATE jobs SET
                 status = ?,
                 phase = ?,
                 updated_at = ?,
-                finished_at = COALESCE(?, finished_at)
+                finished_at = COALESCE(?, finished_at),
+                cooldown_until = NULL
              WHERE job_id = ?",
         )
         .bind(enum_name(target)?)
