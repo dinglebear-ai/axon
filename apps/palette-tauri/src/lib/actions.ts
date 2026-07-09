@@ -8,6 +8,7 @@ export type JobOperation = (typeof JOB_OPERATIONS)[number];
 
 export type PaletteSubcommand =
   | "help"
+  | "browser"
   | "files"
   | "scrape"
   | "crawl"
@@ -40,6 +41,7 @@ export type PaletteSubcommand =
   | "watch-run"
   | "ingest-sessions-prepared"
   | "github"
+  | "terminal"
   | `${JobFamily}-${JobOperation}`;
 
 interface PaletteActionBase {
@@ -72,6 +74,16 @@ const STATIC_ACTIONS = [
     aliases: ["help", "?", "--help", "-h"],
     description: "Show command help, usage, current request params, and available options.",
     example: "help scrape",
+    tone: "info",
+  },
+  {
+    label: "Browser",
+    subcommand: "browser",
+    kind: "local",
+    argMode: "optionalSingle",
+    aliases: ["browser", "web", "browse-url"],
+    description: "Open a real in-app browser window — navigate to a URL or search the web.",
+    example: "browser docs.rs/serde",
     tone: "info",
   },
   {
@@ -400,6 +412,7 @@ const STATIC_ACTIONS = [
     example: "ingest-sessions-prepared {\"sessions\":[]}",
     tone: "orange",
   },
+  { label: "Terminal", subcommand: "terminal", kind: "local", argMode: "none", aliases: ["terminal", "shell", "sh", "console", "cmd"], description: "Run real shell commands in a persistent session with your actual working directory. Desktop app only.", example: "terminal", tone: "neutral", autoRunOnSwitch: true },
 ] as const satisfies readonly PaletteAction[];
 
 type StaticSubcommand = Exclude<PaletteSubcommand, `${JobFamily}-${JobOperation}`>;

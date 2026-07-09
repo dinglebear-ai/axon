@@ -16,6 +16,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod browser;
 mod date_math;
 mod diag;
 mod files_bridge;
@@ -26,12 +27,14 @@ mod persistence;
 mod sftp_bridge;
 mod sftp_known_hosts;
 mod stream;
+mod terminal;
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
 use github_bridge::GitHubClient;
 use persistence::*;
 use stream::axon_http_stream_request;
+use terminal::TerminalState;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -515,6 +518,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
             axon_http_stream_request,
+            browser::browser_open,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_close,
             github_bridge::github_browse,
             oauth::axon_oauth_login,
             oauth::axon_oauth_logout,
@@ -528,7 +537,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             sftp_bridge::commands::sftp_read_file,
             sftp_bridge::commands::sftp_disconnect,
             sftp_bridge::commands::sftp_list_known_hosts,
-            sftp_bridge::commands::sftp_revoke_known_host
+            sftp_bridge::commands::sftp_revoke_known_host,
+            terminal::terminal_run,
+            terminal::terminal_cwd
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
         .manage(ActiveShortcut(Mutex::new(None)))
@@ -537,6 +548,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(github_client)
         .manage(oauth::OauthState::new())
         .manage(sftp_bridge::SftpConnections::new())
+        .manage(TerminalState::new())
         .setup(|app| {
             if let Err(err) = install_tray(app) {
                 log_palette_warning("failed to install tray icon", err);

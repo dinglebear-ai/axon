@@ -15,6 +15,7 @@ type ActionDisplayDetails = Omit<ActionDisplayMeta, "endpoint" | "method">;
 const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   help: { category: "System", input: "action", output: "help", label: "Help" },
   files: { category: "System", input: "none", output: "local", label: "Files" },
+  browser: { category: "Fetch & read", input: "URL or query", output: "live page", label: "Browser" },
   scrape: { category: "Fetch & read", input: "one URL", output: "content", label: "Scrape" },
   map: { category: "Fetch & read", input: "one URL", output: "links", label: "Map" },
   retrieve: { category: "Fetch & read", input: "URL", output: "chunks", label: "Retrieve" },
@@ -46,6 +47,7 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   "watch-list": { category: "System", input: "none", output: "watches", label: "Watch list" },
   "watch-create": { category: "System", input: "URL", output: "watch", label: "Watch create" },
   "watch-run": { category: "System", input: "watch id", output: "run", label: "Watch run" },
+  terminal: { category: "System", input: "commands", output: "shell output", label: "Terminal" },
 };
 
 export function actionDisplayMeta(action: PaletteAction): ActionDisplayMeta {
