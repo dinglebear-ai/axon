@@ -1,111 +1,105 @@
 use super::*;
 use crate::context::ServiceContext;
-use async_trait::async_trait;
-use axon_core::config::Config;
-use axon_jobs::backend::BackendResult;
-use std::sync::{Arc, Mutex};
+use axon_api::source::{AuthSnapshot, CallerContext, TransportKind, Visibility};
+use axon_jobs::backend::JobKind as LegacyJobKind;
+use std::sync::Arc;
+use std::time::Duration;
 
-struct CaptureRuntime {
-    payloads: Mutex<Vec<JobPayload>>,
-}
-
-#[async_trait]
-impl ServiceJobRuntime for CaptureRuntime {
-    fn mode_name(&self) -> &'static str {
-        "test"
-    }
-
-    async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
-        self.payloads.lock().expect("lock").push(payload);
-        Ok(Uuid::new_v4())
-    }
-
-    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
-        panic!("--wait false embed start must enqueue without waiting")
-    }
-
-    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
-        Ok(None)
-    }
-
-    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
-        panic!("--wait false embed start must not drain the queue")
-    }
-
-    async fn list_jobs(
-        &self,
-        _kind: JobKind,
-        _limit: i64,
-        _offset: i64,
-    ) -> Result<Vec<crate::types::ServiceJob>, Box<dyn Error + Send + Sync>> {
-        Ok(vec![])
-    }
-
-    async fn job_status(
-        &self,
-        _kind: JobKind,
-        _id: Uuid,
-    ) -> Result<Option<crate::types::ServiceJob>, Box<dyn Error + Send + Sync>> {
-        Ok(None)
-    }
-
-    async fn cancel_job(
-        &self,
-        _kind: JobKind,
-        _id: Uuid,
-    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        Ok(false)
-    }
-
-    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-
-    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-
-    async fn recover_jobs(
-        &self,
-        _kind: JobKind,
-        _stale_threshold_ms: i64,
-    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-
-    async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
-        Ok(0)
-    }
-
-    async fn count_jobs_by_status(
-        &self,
-        _kind: JobKind,
-    ) -> Result<
-        std::collections::HashMap<axon_jobs::status::JobStatus, i64>,
-        Box<dyn Error + Send + Sync>,
-    > {
-        Ok(std::collections::HashMap::new())
-    }
+async fn test_ctx_with_workers() -> ServiceContext {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg = axon_core::config::Config {
+        sqlite_path: dir.path().join("jobs.db"),
+        ..axon_core::config::Config::test_default()
+    };
+    std::mem::forget(dir);
+    ServiceContext::new_with_workers(Arc::new(cfg))
+        .await
+        .expect("service context")
 }
 
 #[tokio::test]
-async fn embed_start_with_context_enqueues_without_blocking_when_wait_false()
--> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut cfg = Config::test_default();
-    cfg.wait = false;
-    let runtime = Arc::new(CaptureRuntime {
-        payloads: Mutex::new(Vec::new()),
-    });
-    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
-
-    let outcome = embed_start_with_context(&cfg, "./README.md", &ctx, None, None)
+async fn embed_start_with_context_enqueues_on_unified_job_store_with_caller_auth() {
+    let ctx = test_ctx_with_workers().await;
+    let caller = AuthSnapshot::from_caller(
+        &CallerContext {
+            actor: Some("user_1".to_string()),
+            transport: TransportKind::Cli,
+            scopes: vec!["axon:read".to_string(), "axon:write".to_string()],
+            visibility_ceiling: Visibility::Internal,
+        },
+        Visibility::Internal,
+        "test",
+    );
+    let outcome = embed_start_with_context(
+        ctx.cfg(),
+        "not-a-real-embed-target",
+        &ctx,
+        None,
+        None,
+        Some(&caller),
+    )
+    .await
+    .expect("embed_start_with_context should enqueue");
+    let store = ctx.job_store().expect("unified job store must be attached");
+    let job = store
+        .get(axon_api::source::JobId(
+            uuid::Uuid::parse_str(&outcome.result.job_id).unwrap(),
+        ))
         .await
-        .map_err(|e| e.to_string())?;
+        .unwrap()
+        .expect("job row must exist");
+    assert_eq!(job.kind, axon_api::source::JobKind::Embed);
+}
 
-    assert_eq!(outcome.disposition, StartDisposition::Enqueued);
-    assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
-    assert_eq!(runtime.payloads.lock().expect("lock").len(), 1);
-    Ok(())
+/// Embed now enqueues onto the unified `JobStore` and runs on the real
+/// unified worker (see `EmbedRunner` in `runtime/job_runners.rs`), while
+/// `job_service::job_status`/`list_jobs`/`cancel_job`/etc. for
+/// `JobKind::Embed` bridge onto the same store (see
+/// `runtime/sqlite/embed_bridge.rs`) so existing CLI/MCP/REST callers keep
+/// working unchanged. A deliberately-invalid input keeps this test
+/// deterministic and network-free — the embed pipeline fails fast in input
+/// validation rather than reaching TEI/Qdrant.
+#[tokio::test]
+async fn embed_job_runs_end_to_end_and_is_claimed_promptly() {
+    let ctx = test_ctx_with_workers().await;
+    let started = std::time::Instant::now();
+    let outcome =
+        embed_start_with_context(ctx.cfg(), "not-a-real-embed-target", &ctx, None, None, None)
+            .await
+            .expect("enqueue");
+    let job_id = uuid::Uuid::parse_str(&outcome.result.job_id).expect("job id");
+
+    let mut status = None;
+    for _ in 0..100 {
+        let job = crate::jobs::job_status(&ctx, LegacyJobKind::Embed, job_id)
+            .await
+            .expect("job_status")
+            .expect("job exists");
+        if job.status != "pending" && job.status != "running" {
+            status = Some(job);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let job = status.expect("embed job should reach a terminal status within timeout");
+    let unsupported_stage = job
+        .error_text
+        .as_deref()
+        .is_some_and(|text| text.contains("not wired yet"));
+    assert!(
+        !unsupported_stage,
+        "embed must dispatch to the real runner, not the catch-all: {:?}",
+        job.error_text
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "embed job took longer than a poll-interval-free path should — notify_unified() regression?"
+    );
+
+    let jobs = crate::jobs::list_jobs(&ctx, LegacyJobKind::Embed, 10, 0)
+        .await
+        .expect("list_jobs");
+    assert!(jobs.iter().any(|j| j.id == job_id));
 }
 
 #[test]

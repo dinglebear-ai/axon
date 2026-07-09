@@ -3,7 +3,7 @@ use axon_api::reset::{
     ResetCreated, ResetDeleted, ResetEstimate, ResetExecutionState, ResetPlan, ResetReceipt,
     ResetStorePlan,
 };
-use axon_core::config::Config;
+use axon_core::config::{Config, ConfigValueSource};
 use serial_test::serial;
 
 fn cfg_with(stores: Vec<&str>, dry_run: bool, yes: bool) -> Config {
@@ -11,6 +11,34 @@ fn cfg_with(stores: Vec<&str>, dry_run: bool, yes: bool) -> Config {
     cfg.reset_stores = stores.into_iter().map(str::to_string).collect();
     cfg.reset_dry_run = dry_run;
     cfg.yes = yes;
+    cfg
+}
+
+/// Seed a legacy `axon_crawl_jobs` row directly (via the migrated unified
+/// SQLite DB), mirroring `real_reset_records_legacy_cutover_receipt`'s own
+/// seeding approach. Returns the config pointed at the seeded DB.
+async fn test_config_with_legacy_crawl_job_row() -> Config {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_path = dir.path().join("jobs.db");
+    let version = sqlite::wipe_and_remigrate(&db_path)
+        .await
+        .expect("initial migrate");
+    assert!(version > 0);
+    {
+        let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
+            .await
+            .expect("open pool");
+        sqlx::query(
+            "INSERT INTO axon_crawl_jobs (id, created_at, updated_at) VALUES ('legacy-1', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .expect("seed legacy row");
+        pool.close().await;
+    }
+    std::mem::forget(dir);
+    let mut cfg = cfg_with(vec!["jobs"], false, false);
+    cfg.sqlite_path = db_path;
     cfg
 }
 
@@ -143,6 +171,12 @@ async fn real_reset_records_legacy_cutover_receipt() {
 
     let mut cfg = cfg_with(vec!["jobs"], false, true);
     cfg.sqlite_path = db_path.clone();
+    // A non-empty legacy job table now requires distinct, CLI-flag-sourced
+    // confirmation before `reset()` will mutate anything — see
+    // `legacy_wipe_confirmation_from_cli_flag_wipes_and_records_receipt`
+    // below for the confirmation-gate-specific assertions.
+    cfg.reset_confirm_legacy_wipe = true;
+    cfg.reset_confirm_legacy_wipe_source = ConfigValueSource::CliFlag;
 
     let result = reset(&cfg).await.expect("real reset");
     assert!(!result.dry_run);
@@ -160,6 +194,67 @@ async fn real_reset_records_legacy_cutover_receipt() {
 
     assert_eq!(row.0, "legacy_reset");
     assert!(row.1.contains("axon_crawl_jobs"));
+}
+
+#[tokio::test]
+async fn dry_run_plan_surfaces_non_empty_legacy_job_tables_as_a_blocker() {
+    let cfg = test_config_with_legacy_crawl_job_row().await;
+    let result = reset(&cfg).await.expect("dry-run reset");
+    assert!(result.dry_run);
+    assert!(
+        result
+            .blockers
+            .iter()
+            .any(|b| b.contains("axon_crawl_jobs")),
+        "expected a legacy-store blocker naming axon_crawl_jobs, got {:?}",
+        result.blockers
+    );
+}
+
+#[tokio::test]
+async fn legacy_wipe_confirmation_sourced_from_config_file_is_rejected() {
+    let mut cfg = test_config_with_legacy_crawl_job_row().await;
+    cfg.yes = true;
+    cfg.reset_confirm_legacy_wipe = true;
+    cfg.reset_confirm_legacy_wipe_source = ConfigValueSource::TomlFile;
+    let err = reset(&cfg)
+        .await
+        .expect_err("config-sourced confirmation must be rejected");
+    assert!(
+        err.to_string()
+            .contains("--confirm-legacy-wipe must be passed as a CLI flag"),
+        "config-sourced confirmation must be rejected, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn legacy_wipe_confirmation_missing_is_rejected_even_with_yes() {
+    let mut cfg = test_config_with_legacy_crawl_job_row().await;
+    cfg.yes = true;
+    // reset_confirm_legacy_wipe left at its default `false`/`Unset`.
+    let err = reset(&cfg)
+        .await
+        .expect_err("--yes alone must not be enough to wipe a non-empty legacy store");
+    assert!(
+        err.to_string()
+            .contains("reset.legacy_store_confirmation_required"),
+        "expected the legacy-store confirmation-required error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn legacy_wipe_confirmation_from_cli_flag_wipes_and_records_receipt() {
+    let mut cfg = test_config_with_legacy_crawl_job_row().await;
+    cfg.yes = true;
+    cfg.reset_confirm_legacy_wipe = true;
+    cfg.reset_confirm_legacy_wipe_source = ConfigValueSource::CliFlag;
+    let result = reset(&cfg).await.expect("cli-flag-confirmed reset");
+    assert!(!result.dry_run);
+    assert!(
+        result.audit_events.iter().any(|e| e.contains("legacy")),
+        "expected a legacy-wipe audit event, got {:?}",
+        result.audit_events
+    );
 }
 
 #[tokio::test]

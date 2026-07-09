@@ -128,6 +128,7 @@ VALID_TOML_DESTINATIONS = {
     "workers.ingest-lanes",
     "workers.embed-lanes",
     "workers.embed-doc-timeout-secs",
+    "workers.unified-worker-concurrency",
     "workers.queue-summary-secs",
     "workers.qdrant-point-buffer",
     "workers.max-pending-crawl-jobs",

@@ -1185,6 +1185,58 @@ git add crates/axon-jobs/src crates/axon-services/src/jobs.rs
 git commit -m "refactor(jobs): remove legacy family job runtime"
 ```
 
+## Evidence Note (2026-07-09): Tasks 6 and 8 partially closed by the follow-up plan
+
+`docs/pipeline-unification/plans/2026-07-08-finish-job-cutover-and-security-completion.md`
+(branch `finish-job-cutover-impl`) closed the **Crawl/Embed/Ingest/Extract**
+slice of Task 6 and Task 8's scope — not the full Task 6 operation set
+(`Source`/`Watch`/`Research`/`Memory`/`Graph`/`Prune`/`ProviderProbe`), which
+remains open. Do not check the boxes above as fully done; this note exists so
+a future reader does not have to re-derive what happened from commit history.
+
+**Task 6 (this plan) → done for Crawl/Embed/Ingest, Extract already done
+before this plan:**
+- Extract was already cut over to the unified `JobStore` before the
+  2026-07-08 plan started (`ExtractRunner`/`extract_bridge.rs` — the proven
+  template the follow-up plan copied).
+- Embed: `97124ca14` — `EmbedRunner` + `embed_bridge.rs`.
+- Crawl: `46575ef6a` — `CrawlRunner` + `crawl_bridge.rs` (the disputed `!Send`
+  claim was empirically disproven; the plain runner shape was used, not the
+  thread-isolation fallback).
+- Ingest: `4c2effea4` — `IngestRunner` + `ingest_bridge.rs` (only
+  `IngestSource::Sessions` executes; every other variant already returns a
+  clean "no longer supported" error post-Phase-12).
+- `Source`/`Watch`/`Research`/`Memory`/`Graph`/`Prune`/`ProviderProbe` are
+  **not** part of this closure — those operations' job-backed cutover (if
+  not already unified elsewhere) remains open work outside the 2026-07-08
+  plan's scope.
+
+**Task 8 (this plan) → partially done, with two live blockers documented
+instead of silently worked around:**
+`ca7ea71d1` retired the legacy in-process worker lanes
+(`crawl_worker`/`embed_worker`/`ingest_worker` and their now-orphaned support
+modules `heartbeat.rs`/`panic_guard.rs`/`progress.rs`/`workers/runners/*`) —
+no in-process execution runs against `axon_crawl_jobs`/`axon_embed_jobs`/
+`axon_ingest_jobs` anymore. However, `crates/axon-jobs/src/backend.rs` and
+`crates/axon-jobs/src/query.rs`'s table mappings/query functions for
+`JobKind::{Crawl,Embed,Ingest}` were **deliberately kept**, because an audit
+found two still-live call sites this plan's Task 8 did not account for:
+- `crates/axon-jobs/src/watch/dispatch.rs::enqueue_change_crawl`/
+  `crawl_job_active` still write/read `axon_crawl_jobs` directly for watch's
+  clustered re-crawl dispatch (`axon watch exec`, `POST /v1/watch/{id}/run`,
+  the automatic watch scheduler).
+- `crates/axon-services/src/refresh.rs`'s `latest_crawl_config_json`/
+  `latest_ingest_config_json` still read the legacy tables for `axon refresh`'s
+  config-snapshot replay.
+
+Porting those two call sites to the unified store is required before Task
+8's `rg` verification in Task 9 Step 4 can show zero non-migration/bridge
+matches for Crawl/Embed/Ingest. Tracked as follow-up work, not done here.
+`SqliteServiceRuntime::count_jobs`/`count_jobs_by_status` were bridged for
+all four kinds (`a500ae416`'s parent commit `ca7ea71d1`) so `axon status`,
+the queue-summary logger, and the starvation watchdog read accurate counts
+in the interim.
+
 ## Task 9: Full Cutover Verification
 
 **Files:**
