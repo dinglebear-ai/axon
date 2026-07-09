@@ -70,3 +70,54 @@ async fn writes_one_change_artifact() {
     .unwrap();
     assert_eq!(count, 1);
 }
+
+#[tokio::test]
+async fn secret_in_summary_is_redacted_before_persisting() {
+    // Fail-closed: a change summary carrying a leaked secret (e.g. the LLM
+    // summarizer echoing an auth header found in a page diff) must not reach
+    // the `axon_watch_run_artifacts` row unredacted.
+    let temp = NamedTempFile::new().unwrap();
+    let pool = open_sqlite_pool(&temp.path().to_string_lossy())
+        .await
+        .unwrap();
+    let watch = create_watch_def_with_pool(
+        &pool,
+        &WatchDefCreate {
+            name: "w".into(),
+            task_type: "watch".into(),
+            task_payload: serde_json::json!({"urls":["https://e/a"]}),
+            every_seconds: 60,
+            enabled: true,
+            next_run_at: Utc::now(),
+        },
+    )
+    .await
+    .unwrap();
+    let run = create_watch_run_with_pool(&pool, watch.id, None)
+        .await
+        .unwrap();
+
+    let secret_summary = "rotated authorization: bearer abcdef0123456789abcdef";
+    write_change_artifact(
+        &pool,
+        run.id,
+        "https://e/a",
+        &sample_diff(),
+        Some(secret_summary.to_string()),
+    )
+    .await
+    .unwrap();
+
+    let payload: String = sqlx::query_scalar(
+        "SELECT payload FROM axon_watch_run_artifacts WHERE watch_run_id = ? AND kind = 'url-change'",
+    )
+    .bind(run.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        !payload.contains("abcdef0123456789abcdef"),
+        "secret leaked into persisted artifact payload: {payload}"
+    );
+    assert!(payload.contains(axon_core::redact::REDACTION_PLACEHOLDER));
+}

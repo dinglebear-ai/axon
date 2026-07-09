@@ -12,7 +12,7 @@ pub async fn run_memory(
     let value = memory_svc::dispatch(service_context, req)
         .await
         .map_err(|err| format!("memory failed: {}", err.message))?;
-    println!("{}", serde_json::to_string_pretty(&value)?);
+    crate::json::print_json_gated(&value)?;
     Ok(())
 }
 

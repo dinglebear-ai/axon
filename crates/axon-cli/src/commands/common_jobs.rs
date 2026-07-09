@@ -104,8 +104,7 @@ impl_job_status!(
 );
 
 fn print_pretty_json(value: &Value) -> Result<(), Box<dyn Error>> {
-    println!("{}", serde_json::to_string_pretty(value)?);
-    Ok(())
+    crate::json::print_json_gated(value)
 }
 
 pub fn handle_job_status<T: JobStatus>(

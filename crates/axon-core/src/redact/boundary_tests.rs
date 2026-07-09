@@ -156,6 +156,44 @@ fn redact_text_scrubs_secrets_and_local_paths() {
 }
 
 #[test]
+fn cli_json_output_secret_fixture_fails_before_render() {
+    // Fail-closed contract for the CLI JSON surface: a secret-bearing result
+    // payload must be scrubbed (never passed through unmodified) before it
+    // reaches stdout via `--json`. This mirrors the vector-payload fixture
+    // shape/assertion style above, adapted to this crate's real gate API
+    // (`Redactor::redact_json` returning `(Value, RedactionReport)`, not a
+    // `Result<_, ApiError>` — there is no `redact_public_write` function in
+    // this codebase).
+    let payload = json!({
+        "job_id": "abc-123",
+        "detail": "authorization: bearer abcdef0123456789abcdef",
+    });
+    let context = RedactionContext::cli_json();
+    assert_eq!(context.surface, RedactionSurface::CliJson);
+    let (out, report) = DefaultRedactor::new().redact_json(payload, &context);
+    assert_eq!(out["detail"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(report.status(), RedactionStatus::Redacted);
+}
+
+#[test]
+fn artifact_metadata_secret_fixture_fails_before_write() {
+    // Fail-closed contract for the artifact-metadata surface: a secret-bearing
+    // artifact payload (e.g. a watch `url-change` summary embedding a leaked
+    // token) must be scrubbed before the row is persisted. Real gate API is
+    // `Redactor::redact_json` returning `(Value, RedactionReport)`; there is
+    // no `redact_public_write`/`ApiError`-shaped function in this codebase.
+    let metadata = json!({
+        "url": "https://example.com/a",
+        "summary": "rotated authorization: bearer abcdef0123456789abcdef",
+    });
+    let context = RedactionContext::artifact_metadata();
+    assert_eq!(context.surface, RedactionSurface::Artifacts);
+    let (out, report) = DefaultRedactor::new().redact_json(metadata, &context);
+    assert_eq!(out["summary"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(report.status(), RedactionStatus::Redacted);
+}
+
+#[test]
 fn redact_metadata_roundtrips_map() {
     let mut map = MetadataMap::default();
     map.insert("web_title".to_string(), json!("keep"));
