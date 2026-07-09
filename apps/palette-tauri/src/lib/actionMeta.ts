@@ -14,6 +14,7 @@ type ActionDisplayDetails = Omit<ActionDisplayMeta, "endpoint" | "method">;
 
 const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   help: { category: "System", input: "action", output: "help", label: "Help" },
+  files: { category: "System", input: "none", output: "local", label: "Files" },
   scrape: { category: "Fetch & read", input: "one URL", output: "content", label: "Scrape" },
   map: { category: "Fetch & read", input: "one URL", output: "links", label: "Map" },
   retrieve: { category: "Fetch & read", input: "URL", output: "chunks", label: "Retrieve" },

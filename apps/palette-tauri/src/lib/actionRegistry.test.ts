@@ -42,6 +42,7 @@ describe("ACTION_REGISTRY exhaustiveness", () => {
   it("structuredView keys are a subset of the StructuredViewKey union", () => {
     const known: Record<StructuredViewKey, true> = {
       help: true,
+      files: true,
       scrape: true,
       query: true,
       retrieve: true,

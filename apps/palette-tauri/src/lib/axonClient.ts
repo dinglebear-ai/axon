@@ -24,6 +24,7 @@ export interface PaletteConfig {
   showFooterHints?: boolean;
   envValues?: Record<string, string | number | boolean | string[]>;
   configValues?: Record<string, string | number | boolean | string[]>;
+  sftpConnections?: import("./sftpModel").SftpConnectionProfile[];
 }
 
 export interface PaletteResult {

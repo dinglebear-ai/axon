@@ -8,6 +8,7 @@ export type JobOperation = (typeof JOB_OPERATIONS)[number];
 
 export type PaletteSubcommand =
   | "help"
+  | "files"
   | "scrape"
   | "crawl"
   | "map"
@@ -71,6 +72,16 @@ const STATIC_ACTIONS = [
     description: "Show command help, usage, current request params, and available options.",
     example: "help scrape",
     tone: "info",
+  },
+  {
+    label: "Files",
+    subcommand: "files",
+    kind: "local",
+    argMode: "none",
+    aliases: ["files", "browse-files", "filesystem", "explorer"],
+    description: "Browse the local filesystem, preview or edit a file, and ingest it into the collection.",
+    example: "files",
+    tone: "orange",
   },
   {
     label: "Scrape URL",

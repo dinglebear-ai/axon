@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
 import { actionBehavior } from "@/lib/actionRegistry";
 import type { PaletteAction } from "@/lib/actions";
+import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
 import type { ChatSuggestion, RunState } from "@/lib/runState";
 import { buildSourcesModel, type SourceSortMode } from "@/lib/sourcesModel";
@@ -63,6 +64,10 @@ interface OutputPanelProps {
   onSourcesFilterChange?: (filter: string) => void;
   onSourcesSortChange?: (sort: SourceSortMode) => void;
   onSourcesGroupedChange?: (grouped: boolean) => void;
+  /** Live Axon client + config, forwarded to `OperationResultView` for the
+   * `files` structured view's real ingest call. Every other view ignores them. */
+  client?: Client | null;
+  config?: PaletteConfig | null;
 }
 
 export const OutputPanel = memo(function OutputPanel({
@@ -90,6 +95,8 @@ export const OutputPanel = memo(function OutputPanel({
   onSourcesFilterChange = () => {},
   onSourcesSortChange = () => {},
   onSourcesGroupedChange = () => {},
+  client = null,
+  config = null,
 }: OutputPanelProps) {
   const runText = "text" in run ? run.text : "";
   // P-M1: the URL regex scans the whole growing buffer; without memoization it ran
@@ -364,6 +371,8 @@ export const OutputPanel = memo(function OutputPanel({
             payload={run.result.payload}
             subcommand={active.subcommand}
             fallbackText={"text" in run ? run.text : ""}
+            client={client}
+            config={config}
           />
         ) : run.kind === "error" ? (
           <ErrorResultView result={run.result} text={run.text} />
