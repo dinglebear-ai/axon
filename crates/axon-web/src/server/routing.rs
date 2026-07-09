@@ -1,7 +1,7 @@
 use super::error::HttpError;
 use super::handlers;
 use super::state::AppState;
-use super::types::ASK_BODY_LIMIT;
+use super::types::{ASK_BODY_LIMIT, MEMORY_IMPORT_EXPORT_BODY_LIMIT};
 use axon_authz::http::{
     AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
     oauth_resource_url,
@@ -14,13 +14,17 @@ use axum::{
     Extension, Json, Router,
     body::Body,
     extract::DefaultBodyLimit,
-    http::{HeaderValue, Method, Request, StatusCode, header},
+    http::{HeaderValue, Request, StatusCode, header},
     middleware,
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
 };
 use lab_auth::AuthContext;
 use std::sync::Arc;
+
+#[path = "routing_loopback_guard.rs"]
+mod loopback_guard;
+use loopback_guard::block_loopback_destructive_request;
 
 /// The state type every `/v1` REST subrouter is built over.
 type ServeState = (AppState, Arc<Config>);
@@ -47,6 +51,11 @@ pub(super) fn router(
     ))
     .merge(protect_routes(
         large_write_routes(&service_context),
+        &auth_policy,
+        ScopeRequirement::Write,
+    ))
+    .merge(protect_routes(
+        memory_bulk_routes(),
         &auth_policy,
         ScopeRequirement::Write,
     ))
@@ -94,6 +103,10 @@ fn read_routes(service_context: Arc<ServiceContext>) -> Router<ServeState> {
             "/v1/mobile/sessions/{id}",
             get(handlers::mobile_sessions::get_mobile_session),
         )
+        .route(
+            "/v1/memories/{memory_id}",
+            get(handlers::memory::show_memory),
+        )
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))
@@ -133,6 +146,55 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
         .route("/v1/memory", post(handlers::memory::memory))
+        .route("/v1/memories", post(handlers::memory::remember_memory))
+        .route(
+            "/v1/memories/search",
+            post(handlers::memory::search_memories),
+        )
+        .route(
+            "/v1/memories/context",
+            post(handlers::memory::memory_context),
+        )
+        .route(
+            "/v1/memories/review",
+            post(handlers::memory::review_memories),
+        )
+        .route(
+            "/v1/memories/compact",
+            post(handlers::memory::compact_memories),
+        )
+        .route(
+            "/v1/memories/{memory_id}/link",
+            post(handlers::memory::link_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}/supersede",
+            post(handlers::memory::supersede_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}/reinforce",
+            post(handlers::memory::reinforce_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}/contradict",
+            post(handlers::memory::contradict_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}/pin",
+            post(handlers::memory::pin_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}/archive",
+            post(handlers::memory::archive_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}/compact",
+            post(handlers::memory::compact_one_memory),
+        )
+        .route(
+            "/v1/memories/{memory_id}",
+            delete(handlers::memory::forget_memory),
+        )
         .nest(
             "/v1/jobs",
             handlers::jobs::unified_jobs_write_router(Arc::clone(service_context)),
@@ -177,6 +239,24 @@ fn large_write_routes(_service_context: &Arc<ServiceContext>) -> Router<ServeSta
                 .delete(handlers::mobile_sessions::delete_mobile_session),
         )
         .layer(DefaultBodyLimit::max(96 * 1024 * 1024))
+}
+
+/// Bulk memory transfer routes with their own explicit body size limit,
+/// distinct from `write_routes`'s 128 KiB cap (too small for a real import
+/// bundle) and `large_write_routes`'s 96 MiB cap (too generous for memory
+/// records — a prior security review flagged the originating draft for
+/// shipping import/export with no size control at all).
+fn memory_bulk_routes() -> Router<ServeState> {
+    Router::new()
+        .route(
+            "/v1/memories/import",
+            post(handlers::memory::import_memories),
+        )
+        .route(
+            "/v1/memories/export",
+            post(handlers::memory::export_memories),
+        )
+        .layer(DefaultBodyLimit::max(MEMORY_IMPORT_EXPORT_BODY_LIMIT))
 }
 
 /// Panel-scoped routes — all protected by the panel password session cookie.
@@ -338,68 +418,6 @@ async fn jsonize_auth_error(request: Request<Body>, next: middleware::Next) -> R
         "forbidden"
     };
     HttpError::new(status, kind, kind).into_response()
-}
-
-async fn block_loopback_destructive_request(
-    request: Request<Body>,
-    next: middleware::Next,
-) -> Response {
-    if is_loopback_destructive_request(request.method(), request.uri().path()) {
-        return HttpError::new(
-            StatusCode::UNAUTHORIZED,
-            "unauthorized",
-            "destructive REST route requires configured auth",
-        )
-        .into_response();
-    }
-    next.run(request).await
-}
-
-fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
-    if *method == Method::POST
-        && (path == "/v1/dedupe"
-            || path == "/v1/purge"
-            || path == "/v1/sources"
-            || path == "/v1/watch"
-            || path == "/v1/jobs/recover"
-            || path == "/v1/jobs/cleanup"
-            || path == "/v1/prune/plan"
-            || path == "/v1/prune/exec"
-            || path.starts_with("/v1/watch/")
-            || path.starts_with("/v1/jobs/"))
-    {
-        return true;
-    }
-    if *method == Method::DELETE && path == "/v1/jobs" {
-        return true;
-    }
-    if *method == Method::POST && path == "/v1/memory" {
-        return true;
-    }
-    if is_mobile_session_write(method, path) {
-        return true;
-    }
-
-    let prefix = "/v1/extract";
-    if path == prefix {
-        return *method == Method::POST || *method == Method::DELETE;
-    }
-    if let Some(remainder) = path
-        .strip_prefix(prefix)
-        .and_then(|rest| rest.strip_prefix('/'))
-        && *method == Method::POST
-        && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
-    {
-        return true;
-    }
-    false
-}
-
-fn is_mobile_session_write(method: &Method, path: &str) -> bool {
-    (*method == Method::PUT || *method == Method::DELETE)
-        && path
-            .strip_prefix("/v1/mobile/sessions/")
-            .is_some_and(|id| !id.is_empty())
 }
 
 async fn require_read_scope(

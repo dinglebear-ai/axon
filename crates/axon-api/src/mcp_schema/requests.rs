@@ -223,6 +223,16 @@ pub struct MemoryRequest {
     pub strategy: Option<String>,
     /// `compact` — archive the source memories once merged.
     pub archive_sources: Option<bool>,
+    /// `import` — records to bulk-import.
+    pub records: Option<Vec<crate::source::MemoryRecord>>,
+    /// `import` — how to reconcile with existing memories.
+    pub import_mode: Option<crate::source::MemoryImportMode>,
+    /// `import` — preview the plan without writing.
+    pub dry_run: Option<bool>,
+    /// `export` — scope to export (all scopes when unset).
+    pub export_scope: Option<crate::source::MemoryScope>,
+    /// `export` — include archived memories in the export.
+    pub include_archived: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -242,6 +252,8 @@ pub enum MemorySubaction {
     Forget,
     Review,
     Compact,
+    Import,
+    Export,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]

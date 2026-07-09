@@ -141,6 +141,7 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 
 fn route_to_test_path(path: &str) -> String {
     path.replace("{id}", &Uuid::nil().to_string())
+        .replace("{memory_id}", "mem_test")
         .replace("{path}", "missing.txt")
 }
 
@@ -343,6 +344,10 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/watch",
         "/v1/watch/{id}/run",
         "/v1/memory",
+        "/v1/memories",
+        "/v1/memories/{memory_id}",
+        "/v1/memories/import",
+        "/v1/memories/export",
         "/v1/mobile/sessions",
         "/v1/mobile/sessions/{id}",
     ] {
@@ -490,6 +495,14 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let watch_run = format!("/v1/watch/{job_id}/run");
     let extract_cancel = format!("/v1/extract/{job_id}/cancel");
     let mobile_session = "/v1/mobile/sessions/test_session";
+    let memory_link = "/v1/memories/mem_test/link";
+    let memory_supersede = "/v1/memories/mem_test/supersede";
+    let memory_reinforce = "/v1/memories/mem_test/reinforce";
+    let memory_contradict = "/v1/memories/mem_test/contradict";
+    let memory_pin = "/v1/memories/mem_test/pin";
+    let memory_archive = "/v1/memories/mem_test/archive";
+    let memory_compact_one = "/v1/memories/mem_test/compact";
+    let memory_forget = "/v1/memories/mem_test";
     let routes = [
         ("POST", "/v1/dedupe"),
         ("POST", "/v1/purge"),
@@ -504,6 +517,21 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("DELETE", "/v1/extract"),
         ("POST", "/v1/extract/recover"),
         ("POST", "/v1/memory"),
+        ("POST", "/v1/memories"),
+        ("POST", "/v1/memories/search"),
+        ("POST", "/v1/memories/context"),
+        ("POST", "/v1/memories/review"),
+        ("POST", "/v1/memories/compact"),
+        ("POST", memory_link),
+        ("POST", memory_supersede),
+        ("POST", memory_reinforce),
+        ("POST", memory_contradict),
+        ("POST", memory_pin),
+        ("POST", memory_archive),
+        ("POST", memory_compact_one),
+        ("DELETE", memory_forget),
+        ("POST", "/v1/memories/import"),
+        ("POST", "/v1/memories/export"),
         ("PUT", mobile_session),
         ("DELETE", mobile_session),
     ];
