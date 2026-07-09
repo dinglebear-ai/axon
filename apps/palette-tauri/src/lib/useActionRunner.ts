@@ -371,6 +371,24 @@ export function useActionRunner({
     });
   }
 
+  // ── Local files branch ───────────────────────────────────────────────────
+  // "Files" has no request/response shape — it's a stateful local browser
+  // rendered entirely by FilesView (own useState for cwd/selection/edits,
+  // calling `invoke()` directly for fs ops). This just parks a `success`
+  // RunState so OutputPanel renders the structured view immediately, the same
+  // way `submitHelp` does for the other local action.
+  function submitFiles(action: PaletteAction) {
+    setRun({
+      kind: "success",
+      title: "Files",
+      subtitle: "local filesystem",
+      text: "",
+      outputKind: "code",
+      result: { ok: true, status: 200, path: "palette://files", method: "GET", payload: {} },
+    });
+    enterModeForRun(action, "");
+  }
+
   // Latest in-flight guard for the imperative (crawl/stream) paths. One-shots are
   // serialized by useActionState's `oneShotPending`; crawl/stream guard on `run`.
   const runRef = useRef(run);
@@ -393,6 +411,10 @@ export function useActionRunner({
 
     if (action.subcommand === "help") {
       submitHelp(rawArgument);
+      return;
+    }
+    if (action.subcommand === "files") {
+      submitFiles(action);
       return;
     }
     if (action.kind === "local") return;

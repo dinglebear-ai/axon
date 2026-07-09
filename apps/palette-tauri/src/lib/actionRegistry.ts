@@ -27,6 +27,7 @@ import {
   Camera,
   Database,
   FileDown,
+  FolderOpen,
   GitBranch,
   GitCompare,
   Globe,
@@ -119,6 +120,7 @@ export type OutputKind = "markdown" | "code";
  */
 export type StructuredViewKey =
   | "help"
+  | "files"
   | "scrape"
   | "query"
   | "retrieve"
@@ -194,6 +196,14 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: formatCompact,
     actionIcon: HelpCircle,
     structuredView: "help",
+  }),
+  files: behavior({
+    route: getRoute("palette://files"),
+    buildBody: noBody,
+    outputKind: code,
+    formatText: formatCompact,
+    actionIcon: FolderOpen,
+    structuredView: "files",
   }),
   scrape: entry({
     route: postRoute("/v1/scrape"),
