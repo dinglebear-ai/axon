@@ -20,14 +20,14 @@ use error::{ReleaseContext, ReleaseVersionError};
 use manifest::validate_manifest;
 use release_please::{
     ReleasePleaseDispatchItem, ReleasePleaseFixupItem, release_please_dispatch_items,
+    run_cargo_update,
 };
 
 #[cfg(test)]
 use manifest::same_version_file;
 
 use files::{
-    check_component_parity, read_version, read_workspace_package_version,
-    replace_gradle_version_name,
+    check_component_parity, read_version, read_workspace_package_version, write_version_file,
 };
 use git::{
     check_gradle_version_code_increased, compare_ref_for_component, component_changed_since_ref,
@@ -45,6 +45,13 @@ use files::{
 pub enum GateMode {
     Pr,
     Main,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum BumpLevel {
+    Patch,
+    Minor,
+    Major,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -75,6 +82,23 @@ struct Component {
     shipping_paths: Vec<String>,
     version_source: VersionFile,
     version_files: Vec<VersionFile>,
+    /// Whether release-please still opens release PRs for this component.
+    /// Defaults to `true`. `cli` sets this to `false`: release-please's
+    /// candidate-PR build crashes on any Cargo workspace member using
+    /// `version.workspace = true` (upstream bug, still open:
+    /// googleapis/release-please#2478), which made it impossible to release
+    /// the root Cargo workspace package through release-please at all — see
+    /// CLAUDE.md's Release Pipeline section. `cli` is bumped manually via
+    /// `cargo xtask bump-version cli`; a component with this set to `false`
+    /// is exempt from `check_manifest_versions`'s
+    /// `.release-please-manifest.json` consistency check, since it has no
+    /// entry there to be consistent with.
+    #[serde(default = "default_release_please_managed")]
+    release_please_managed: bool,
+}
+
+fn default_release_please_managed() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -298,6 +322,58 @@ pub fn check_cli_parity_only(root: &Path) -> ReleaseResult<()> {
         release_bail!("version sync check failed ({} error(s))", errors.len());
     }
     println!("OK: all CLI version-bearing files are in sync at {version}.");
+    Ok(())
+}
+
+/// Manually bump one component's version-bearing files. The only supported
+/// use today is `cli`: release-please can no longer manage it because its
+/// candidate-PR build crashes on any Cargo workspace member using
+/// `version.workspace = true` (upstream bug, still open:
+/// googleapis/release-please#2478) — see `release/components.toml`'s comment
+/// and CLAUDE.md's Release Pipeline section. `palette`/`android`/`chrome`
+/// remain entirely release-please-managed and are not expected to need this.
+pub fn bump_component_version(
+    root: &Path,
+    component_id: &str,
+    level: BumpLevel,
+) -> ReleaseResult<()> {
+    let manifest = load_manifest(root)?;
+    let component = manifest
+        .components
+        .iter()
+        .find(|component| component.id == component_id)
+        .with_release_context(|| format!("unknown release component {component_id}"))?;
+
+    let current = read_version(root, &component.version_source)?;
+    let current = Version::parse(&current).with_release_context(|| {
+        format!("{} version is not valid semver: {current}", component.id)
+    })?;
+    let next = match level {
+        BumpLevel::Patch => Version::new(current.major, current.minor, current.patch + 1),
+        BumpLevel::Minor => Version::new(current.major, current.minor + 1, 0),
+        BumpLevel::Major => Version::new(current.major + 1, 0, 0),
+    }
+    .to_string();
+
+    for file in &component.version_files {
+        if file.kind != VersionKind::CargoLockPackage {
+            write_version_file(root, file, &next)?;
+        }
+    }
+    // Cargo.lock entries are regenerated (not hand-written) after the owning
+    // Cargo.toml is already bumped, mirroring the release-please fixup path's
+    // `run_cargo_update`.
+    for file in &component.version_files {
+        if file.kind == VersionKind::CargoLockPackage {
+            let package = file
+                .package
+                .as_deref()
+                .release_context("cargo_lock_package requires package")?;
+            run_cargo_update(root, package, &next)?;
+        }
+    }
+
+    println!("Bumped {} {current} -> {next}", component.id);
     Ok(())
 }
 

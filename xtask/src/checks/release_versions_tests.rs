@@ -835,11 +835,15 @@ fn release_manifest_requires_release_please_path() {
 #[test]
 fn release_please_manifest_matches_component_versions() {
     let fixture = Fixture::new();
+    // "." (cli) is deliberately left wrong here too (9.9.9), to prove the
+    // next test's "cli is exempt" behavior isn't just "any mismatch is
+    // ignored" — palette is release-please-managed and must still be
+    // checked, so mismatching it must still produce an error.
     fs::write(
         fixture.path(".release-please-manifest.json"),
         r#"{
   ".": "9.9.9",
-  "apps/palette-tauri": "5.10.2",
+  "apps/palette-tauri": "9.9.9",
   "apps/android": "1.3.2",
   "apps/chrome-extension": "0.2.0"
 }"#,
@@ -852,7 +856,35 @@ fn release_please_manifest_matches_component_versions() {
     assert!(
         errors
             .iter()
-            .any(|error| error.contains(".release-please-manifest.json"))
+            .any(|error| error.contains("apps/palette-tauri")
+                && error.contains(".release-please-manifest.json"))
+    );
+}
+
+#[test]
+fn release_please_manifest_check_skips_unmanaged_cli_component() {
+    // cli's release/components.toml entry sets release_please_managed =
+    // false (release-please can no longer open PRs for it — see the comment
+    // there and CLAUDE.md's Release Pipeline section). A "." entry that's
+    // missing entirely, or present but wrong, must NOT produce an error:
+    // release-please no longer owns that path at all.
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let errors =
+        release_please::check_manifest_versions(fixture.root(), &manifest.components).unwrap();
+    assert!(
+        errors.is_empty(),
+        "expected no errors with cli's manifest entry absent, got: {errors:?}"
     );
 }
 
