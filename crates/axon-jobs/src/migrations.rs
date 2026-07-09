@@ -141,6 +141,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0021_job_kind_family_cutover",
         sql: include_str!("migrations/0021_job_kind_family_cutover.sql"),
     },
+    SqlMigration {
+        version: 22,
+        name: "0022_add_job_cooldown_until",
+        sql: include_str!("migrations/0022_add_job_cooldown_until.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and

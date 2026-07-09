@@ -175,13 +175,22 @@ pub(super) async fn mark_terminal(
         .transpose()
         .map_err(json_error)?;
     let mut tx = pool.begin().await.map_err(sql_error)?;
+    // mark_terminal is only ever called with a terminal LifecycleStatus
+    // (Completed/CompletedDegraded/Failed/Canceled — see call sites in
+    // run_unified_claimed/fail_unified_claimed/mark_canceled), never Waiting,
+    // so cooldown_until is unconditionally cleared here: a job that cooled
+    // once and then reaches a terminal state must not retain a stale
+    // cooldown. This writes directly to `jobs` via raw SQL rather than going
+    // through `update_job_status`, so it needs its own clear rather than
+    // inheriting the CASE-based clear added there.
     let job_result = sqlx::query(
         "UPDATE jobs SET
             status = ?,
             phase = ?,
             updated_at = ?,
             finished_at = COALESCE(finished_at, ?),
-            last_error_json = ?
+            last_error_json = ?,
+            cooldown_until = NULL
          WHERE job_id = ? AND attempt = ?",
     )
     .bind(status.as_str())

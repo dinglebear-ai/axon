@@ -206,6 +206,41 @@ pub(crate) async fn claim_next_unified_job(
     claim_next_unified_job_unchecked(pool).await
 }
 
+/// Test-only entry point: exercises the same terminal-failure write path as
+/// `fail_unified_claimed`/`mark_terminal` (including their unconditional
+/// `cooldown_until = NULL` clear) without requiring a full claim + registered
+/// runner round-trip.
+#[cfg(test)]
+pub(crate) async fn mark_job_failed_for_tests(
+    pool: &SqlitePool,
+    job_id: JobId,
+) -> Result<(), ApiError> {
+    let attempt: i64 = sqlx::query_scalar("SELECT attempt FROM jobs WHERE job_id = ?")
+        .bind(job_id.0.to_string())
+        .fetch_one(pool)
+        .await
+        .map_err(sql_error)?;
+    let error = ApiError::new(
+        "job_runner.test_failure",
+        ErrorStage::Publishing,
+        "synthetic test failure",
+    );
+    terminal::mark_terminal(
+        pool,
+        &UnifiedClaimedJob {
+            job_id,
+            kind: UnifiedJobKind::Source,
+            attempt: attempt.max(1) as u32,
+            request_json: None,
+            auth_snapshot: AuthSnapshot::default(),
+        },
+        LifecycleStatus::Failed,
+        PipelinePhase::Complete,
+        Some(error),
+    )
+    .await
+}
+
 async fn ensure_no_incompatible_legacy_jobs(pool: &SqlitePool) -> Result<(), ApiError> {
     if let Some(blocker) = detect_incompatible_legacy_jobs(pool).await? {
         return Err(ApiError::new(
@@ -221,10 +256,12 @@ async fn claim_next_unified_job_unchecked(
     pool: &SqlitePool,
 ) -> Result<Option<UnifiedClaimedJob>, ApiError> {
     let mut tx = pool.begin().await.map_err(sql_error)?;
+    let now = chrono::Utc::now().to_rfc3339();
     let row = sqlx::query(
         "SELECT job_id, kind, attempt, request_json, auth_snapshot_json
          FROM jobs
          WHERE status IN ('queued', 'waiting', 'blocked')
+           AND (cooldown_until IS NULL OR cooldown_until <= ?)
          ORDER BY
            CASE priority
              WHEN 'interactive' THEN 0
@@ -238,6 +275,7 @@ async fn claim_next_unified_job_unchecked(
            job_id ASC
          LIMIT 1",
     )
+    .bind(now.as_str())
     .fetch_optional(&mut *tx)
     .await
     .map_err(sql_error)?;
@@ -258,13 +296,18 @@ async fn claim_next_unified_job_unchecked(
         serde_json::from_str(&row.get::<String, _>("auth_snapshot_json")).map_err(json_error)?;
     let now = Timestamp::from(chrono::Utc::now());
 
+    // Claiming a job always moves it to Running, so cooldown_until (only ever
+    // meaningful while a job sits in Waiting) is cleared here too — this is a
+    // direct SQL write, not routed through update_job_status's CASE-based
+    // clear, so it needs its own.
     let result = sqlx::query(
         "UPDATE jobs SET
             status = 'running',
             phase = 'planning',
             attempt = ?,
             started_at = COALESCE(started_at, ?),
-            updated_at = ?
+            updated_at = ?,
+            cooldown_until = NULL
          WHERE job_id = ? AND status IN ('queued', 'waiting', 'blocked')",
     )
     .bind(attempt as i64)

@@ -34,3 +34,7 @@ mod state_machine_tests;
 #[cfg(test)]
 #[path = "freshness_tests.rs"]
 mod freshness_tests;
+
+#[cfg(test)]
+#[path = "provider_cooling_tests.rs"]
+mod provider_cooling_tests;
