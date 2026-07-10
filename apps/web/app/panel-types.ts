@@ -125,7 +125,7 @@ export type CheckSummary = {
 };
 
 export type ConfigFile = 'toml' | 'env';
-export type PanelTab = 'dashboard' | 'jobs' | 'sources' | 'watches' | 'configurator';
+export type PanelTab = 'dashboard' | 'jobs' | 'sources' | 'watches' | 'memory' | 'configurator';
 
 export const TOKEN_KEY = 'axon-panel-token';
 
@@ -234,3 +234,51 @@ export type WatchUpdateRequest = {
   embed?: boolean;
   collection?: string;
 };
+
+// ---------------------------------------------------------------------------
+// Memory (POST /v1/memories, /v1/memories/search, /v1/memories/context,
+// GET/DELETE /v1/memories/{id})
+// ---------------------------------------------------------------------------
+//
+// Mirrors crates/axon-services/src/memory/mapping.rs (MemoryItem) — the wire
+// shape every /v1/memories* route returns/wraps. There is no GET list route;
+// `search` (with an empty query the store returns the full recall-visible
+// set) is the listing surface. Hand-typed rather than generated because the
+// REST handlers return `serde_json::Value` (untyped in the OpenAPI schema);
+// `RestMemoryRequest`/`RestMemoryNodeType` are the one part that is generated
+// (see lib/axon-client.ts).
+export type MemoryNodeType = 'decision' | 'fact' | 'preference' | 'task' | 'bug';
+
+export const MEMORY_TYPE_OPTIONS: Array<{ value: MemoryNodeType; label: string }> = [
+  { value: 'fact', label: 'Fact' },
+  { value: 'decision', label: 'Decision' },
+  { value: 'preference', label: 'Preference' },
+  { value: 'task', label: 'Task' },
+  { value: 'bug', label: 'Bug' }
+];
+
+export type MemoryItem = {
+  id: string;
+  memory_type: string;
+  title: string;
+  body?: string | null;
+  project?: string | null;
+  repo?: string | null;
+  file?: string | null;
+  workspace?: string | null;
+  git_branch?: string | null;
+  git_commit?: string | null;
+  git_dirty?: boolean | null;
+  cwd?: string | null;
+  confidence: number;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  last_seen_at: number;
+  access_count: number;
+  score?: number;
+};
+
+export type MemorySearchResponse = { memories: MemoryItem[] };
+export type MemoryShowResponse = { memory: MemoryItem | null };
+export type MemoryRememberResponse = { memory: MemoryItem };

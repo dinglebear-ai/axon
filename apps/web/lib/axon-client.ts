@@ -1,5 +1,10 @@
 import type { components, operations, paths } from './generated/axon-api';
-import type { WatchUpdateRequest } from '../app/panel-types';
+import type {
+  MemoryRememberResponse,
+  MemorySearchResponse,
+  MemoryShowResponse,
+  WatchUpdateRequest
+} from '../app/panel-types';
 
 type FetchLike = typeof fetch;
 
@@ -37,6 +42,7 @@ type RestResearchRequestSchema = Schemas['RestResearchRequest'];
 type RestExtractRequestSchema = Schemas['RestExtractRequest'];
 type AcceptedJobSchema = Schemas['AcceptedJob'];
 type WatchCreateRequestSchema = Schemas['WatchDefCreateRequest'];
+type RestMemoryRequestSchema = Schemas['RestMemoryRequest'];
 
 export interface ErrorBody extends ErrorBodySchema {}
 
@@ -72,6 +78,7 @@ export interface ResearchRequest extends RestResearchRequestSchema {}
 export interface ExtractStartRequest extends RestExtractRequestSchema {}
 export interface AcceptedJob extends AcceptedJobSchema {}
 export interface WatchCreateRequest extends WatchCreateRequestSchema {}
+export interface MemoryRequestBody extends RestMemoryRequestSchema {}
 
 // Only the extract family retains dedicated async-job routes; crawl/embed/ingest
 // verb-jobs were removed in favor of the unified POST /v1/sources lifecycle.
@@ -224,6 +231,28 @@ export class AxonClient {
 
   deleteWatch(watchId: string): Promise<unknown> {
     return this.delete(`/v1/watches/${encodeURIComponent(watchId)}`);
+  }
+
+  // -------------------------------------------------------------------------
+  // /v1/memories — durable agent memory (remember/search/show/forget). No
+  // GET list route exists; `searchMemories` with an empty query is the
+  // listing surface (see panel-types.ts).
+  // -------------------------------------------------------------------------
+
+  rememberMemory(body: MemoryRequestBody): Promise<MemoryRememberResponse> {
+    return this.post('/v1/memories', body);
+  }
+
+  searchMemories(body: MemoryRequestBody): Promise<MemorySearchResponse> {
+    return this.post('/v1/memories/search', body);
+  }
+
+  showMemory(memoryId: string): Promise<MemoryShowResponse> {
+    return this.get(`/v1/memories/${encodeURIComponent(memoryId)}`);
+  }
+
+  deleteMemory(memoryId: string): Promise<MemoryShowResponse> {
+    return this.delete(`/v1/memories/${encodeURIComponent(memoryId)}`);
   }
 
   artifactUrl(path: ArtifactRouteQuery['path']): string {
