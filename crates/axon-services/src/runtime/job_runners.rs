@@ -36,8 +36,10 @@ use tokio_util::sync::CancellationToken;
 
 mod crawl_runner;
 mod ingest_runner;
+mod source_runner;
 use crawl_runner::CrawlRunner;
 use ingest_runner::IngestRunner;
+use source_runner::SourceRunner;
 
 /// Build the [`JobRunnerRegistry`] handed to the unified worker at
 /// composition time. Additive by design — any kind not registered here keeps
@@ -78,6 +80,10 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
         Arc::new(IngestRunner {
             cfg: Arc::clone(cfg),
         }),
+    );
+    registry.register(
+        JobKind::Source,
+        Arc::new(SourceRunner::new(Arc::clone(cfg))),
     );
 
     // Open once and reuse: `SqliteMemoryStore::open` runs a schema migration
