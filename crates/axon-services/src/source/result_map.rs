@@ -9,8 +9,10 @@
 
 use axon_api::source::{
     AdapterRef, GraphWriteSummary, JobId, LedgerSummary, LifecycleStatus, SourceCounts,
-    SourceGenerationId, SourceId, SourceKind, SourceResult, SourceScope,
+    SourceGenerationId, SourceId, SourceKind, SourceResult, SourceScope, SourceWarning,
 };
+use axon_error::ApiError;
+use uuid::Uuid;
 
 /// The normalized numeric shape shared by every `*SourceIndexOutput`.
 ///
@@ -84,5 +86,109 @@ pub fn adapter_ref(name: &str) -> AdapterRef {
     AdapterRef {
         name: name.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
+/// Build a degraded [`SourceResult`] when the data plane is not configured.
+///
+/// Mirrors the CLI's `require_data_plane` guard, but as a `Failed`
+/// `SourceResult` with an explanatory warning instead of an `Err`, so the
+/// transport contract (`Ok(SourceResult)`) is preserved.
+pub fn degraded_no_data_plane(
+    input: &str,
+    kind: SourceKind,
+    adapter: AdapterRef,
+    scope: SourceScope,
+) -> SourceResult {
+    failed_result(
+        input,
+        kind,
+        adapter,
+        scope,
+        "data_plane_unconfigured",
+        "source indexing requires a running data plane (set qdrant_url + tei_url; \
+         available under serve/mcp/--wait)",
+    )
+}
+
+/// Build a failed [`SourceResult`] for an unsupported / empty input.
+pub fn unsupported_result(input: &str, message: &str) -> SourceResult {
+    failed_result(
+        input,
+        SourceKind::Web,
+        adapter_ref("unsupported"),
+        SourceScope::Site,
+        "unsupported_source",
+        message,
+    )
+}
+
+/// Build a failed [`SourceResult`] from a resolving/routing/authorizing-stage
+/// [`ApiError`], carrying the error's code/message as the single warning.
+pub fn route_error_result(input: &str, err: ApiError) -> SourceResult {
+    let mut result = unsupported_result(input, &err.message);
+    result.warnings.clear();
+    result.warnings.push(SourceWarning {
+        code: err.code.0,
+        severity: axon_api::source::Severity::Failed,
+        message: err.message,
+        source_item_key: None,
+        retryable: false,
+    });
+    result
+}
+
+/// Shared constructor for a `Failed` [`SourceResult`] carrying a single warning.
+fn failed_result(
+    input: &str,
+    kind: SourceKind,
+    adapter: AdapterRef,
+    scope: SourceScope,
+    code: &str,
+    message: &str,
+) -> SourceResult {
+    let zero = SourceCounts {
+        items_total: 0,
+        items_changed: 0,
+        documents_total: 0,
+        chunks_total: 0,
+        vector_points_total: 0,
+        bytes_total: 0,
+    };
+    let source_id = SourceId::new(input);
+    SourceResult {
+        job_id: JobId::new(Uuid::nil()),
+        source_id: source_id.clone(),
+        canonical_uri: input.to_string(),
+        source_kind: kind,
+        adapter,
+        scope,
+        status: LifecycleStatus::Failed,
+        ledger: LedgerSummary {
+            source_id,
+            generation: SourceGenerationId::new(""),
+            committed_generation: None,
+            status: LifecycleStatus::Failed,
+            counts: zero.clone(),
+        },
+        graph: GraphWriteSummary {
+            nodes_upserted: 0,
+            edges_upserted: 0,
+            evidence_records: 0,
+            degraded: true,
+        },
+        counts: zero,
+        warnings: vec![SourceWarning {
+            code: code.to_string(),
+            severity: axon_api::source::Severity::Failed,
+            message: message.to_string(),
+            source_item_key: None,
+            retryable: false,
+        }],
+        inline: None,
+        job: None,
+        watch: None,
+        artifacts: Vec::new(),
+        errors: Vec::new(),
     }
 }
