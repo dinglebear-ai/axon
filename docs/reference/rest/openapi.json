@@ -1509,6 +1509,124 @@
       ],
       "result_dto": "WatchRunResponse",
       "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "watches_list",
+      "path": "/v1/watches",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "Page<WatchSummary>",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "watches_get",
+      "path": "/v1/watches/{watch_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
+      "method": "PATCH",
+      "mutates": true,
+      "operation_id": "watches_update",
+      "path": "/v1/watches/{watch_id}",
+      "request_dto": "WatchUpdateRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
+      "method": "DELETE",
+      "mutates": true,
+      "operation_id": "watches_delete",
+      "path": "/v1/watches/{watch_id}",
+      "request_dto": null,
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchDeleteResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "watches_pause",
+      "path": "/v1/watches/{watch_id}/pause",
+      "request_dto": null,
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "watches_resume",
+      "path": "/v1/watches/{watch_id}/resume",
+      "request_dto": null,
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchResult",
+      "streaming": false
     }
   ],
   "title": "AxonOpenApiSchema",

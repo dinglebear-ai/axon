@@ -16,6 +16,8 @@ pub(crate) mod adapters;
 pub(crate) mod api_defs;
 #[path = "families/bundles.rs"]
 mod bundles;
+#[path = "cli_registry.rs"]
+mod cli_registry;
 #[path = "families/config.rs"]
 mod config;
 #[path = "config_schema_registry.rs"]
@@ -262,18 +264,7 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
 fn cli_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let spec = family_specs::spec_for(SchemaFamily::Cli);
     let inputs = source_inputs(root, spec.source_paths)?;
-    let commands = axon_cli::schema_registry::command_registry()
-        .iter()
-        .map(|command| {
-            json!({
-                "name": command.name,
-                "maps_to_dto": command.maps_to_dto,
-                "mutates": command.mutates,
-                "async": command.async_job,
-                "requires_auth_scope": command.required_scope
-            })
-        })
-        .collect::<Vec<_>>();
+    let commands = cli_registry::command_records();
     let schema = registry_schema_bundle(
         schema_id(SchemaFamily::Cli),
         spec.title,

@@ -5,108 +5,1302 @@
   "commands": [
     {
       "async": false,
-      "maps_to_dto": "AskRequest",
-      "mutates": false,
-      "name": "ask",
-      "requires_auth_scope": "read"
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "watch create",
+      "path": [
+        "watch",
+        "create"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Create a recurring watch definition"
     },
     {
       "async": false,
-      "maps_to_dto": "VectorSearchRequest",
+      "group": "watch",
+      "maps_to_dto": null,
       "mutates": false,
-      "name": "query",
-      "requires_auth_scope": "read"
+      "name": "watch list",
+      "path": [
+        "watch",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List watch definitions"
     },
     {
       "async": false,
-      "maps_to_dto": "RetrieveRequest",
+      "group": "watch",
+      "maps_to_dto": null,
       "mutates": false,
-      "name": "retrieve",
-      "requires_auth_scope": "read"
+      "name": "watch get",
+      "path": [
+        "watch",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one watch definition"
     },
     {
       "async": false,
-      "maps_to_dto": "SearchRequest",
-      "mutates": false,
-      "name": "search",
-      "requires_auth_scope": "read"
-    },
-    {
-      "async": false,
-      "maps_to_dto": "ResearchRequest",
-      "mutates": false,
-      "name": "research",
-      "requires_auth_scope": "read"
-    },
-    {
-      "async": false,
-      "maps_to_dto": "SummarizeRequest",
-      "mutates": false,
-      "name": "summarize",
-      "requires_auth_scope": "read"
-    },
-    {
-      "async": false,
-      "maps_to_dto": "EvaluateRequest",
-      "mutates": false,
-      "name": "evaluate",
-      "requires_auth_scope": "read"
-    },
-    {
-      "async": false,
-      "maps_to_dto": "SuggestRequest",
-      "mutates": false,
-      "name": "suggest",
-      "requires_auth_scope": "read"
-    },
-    {
-      "async": false,
-      "maps_to_dto": "MapRequest",
-      "mutates": false,
-      "name": "map",
-      "requires_auth_scope": "read"
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "watch update",
+      "path": [
+        "watch",
+        "update"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Update a watch definition's schedule"
     },
     {
       "async": true,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "watch exec",
+      "path": [
+        "watch",
+        "exec"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Run a watch definition immediately"
+    },
+    {
+      "async": false,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "watch pause",
+      "path": [
+        "watch",
+        "pause"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Pause a watch definition"
+    },
+    {
+      "async": false,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "watch resume",
+      "path": [
+        "watch",
+        "resume"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Resume a paused watch definition"
+    },
+    {
+      "async": false,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "watch delete",
+      "path": [
+        "watch",
+        "delete"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Delete a watch definition"
+    },
+    {
+      "async": false,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "watch history",
+      "path": [
+        "watch",
+        "history"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show watch run history"
+    },
+    {
+      "async": false,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "watch artifacts",
+      "path": [
+        "watch",
+        "artifacts"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show artifacts produced by a watch run"
+    },
+    {
+      "async": false,
+      "group": "monitor",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "monitor jobs",
+      "path": [
+        "monitor",
+        "jobs"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Stream crawl/extract/embed/ingest lifecycle events"
+    },
+    {
+      "async": false,
+      "group": "map",
+      "maps_to_dto": "MapRequest",
+      "mutates": false,
+      "name": "map",
+      "path": [
+        "map"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Discover all URLs on a site without scraping"
+    },
+    {
+      "async": false,
+      "group": "endpoints",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "endpoints",
+      "path": [
+        "endpoints"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Discover API endpoints from page HTML/JS bundles"
+    },
+    {
+      "async": true,
+      "group": "extract",
       "maps_to_dto": "ExtractRequest",
       "mutates": true,
       "name": "extract",
-      "requires_auth_scope": "write"
+      "path": [
+        "extract"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "LLM-powered structured data extraction from URLs"
     },
     {
       "async": false,
-      "maps_to_dto": "SourcesRequest",
+      "group": "extract",
+      "maps_to_dto": null,
       "mutates": false,
-      "name": "sources",
-      "requires_auth_scope": "read"
+      "name": "extract status",
+      "path": [
+        "extract",
+        "status"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show an extract job's status"
     },
     {
       "async": false,
-      "maps_to_dto": "DomainsRequest",
+      "group": "extract",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "extract cancel",
+      "path": [
+        "extract",
+        "cancel"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Cancel a running extract job"
+    },
+    {
+      "async": false,
+      "group": "extract",
+      "maps_to_dto": null,
       "mutates": false,
-      "name": "domains",
-      "requires_auth_scope": "read"
+      "name": "extract errors",
+      "path": [
+        "extract",
+        "errors"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show an extract job's errors"
     },
     {
       "async": false,
-      "maps_to_dto": "StatsRequest",
+      "group": "extract",
+      "maps_to_dto": null,
       "mutates": false,
-      "name": "stats",
-      "requires_auth_scope": "read"
+      "name": "extract list",
+      "path": [
+        "extract",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List extract jobs"
     },
     {
       "async": false,
+      "group": "extract",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "extract cleanup",
+      "path": [
+        "extract",
+        "cleanup"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Remove old terminal extract jobs"
+    },
+    {
+      "async": false,
+      "group": "extract",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "extract clear",
+      "path": [
+        "extract",
+        "clear"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Clear all extract job rows"
+    },
+    {
+      "async": true,
+      "group": "extract",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "extract worker",
+      "path": [
+        "extract",
+        "worker"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Run an extract worker inline"
+    },
+    {
+      "async": false,
+      "group": "extract",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "extract recover",
+      "path": [
+        "extract",
+        "recover"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Reclaim stale/interrupted extract jobs"
+    },
+    {
+      "async": false,
+      "group": "search",
+      "maps_to_dto": "SearchRequest",
+      "mutates": true,
+      "name": "search",
+      "path": [
+        "search"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Web search via SearXNG/Tavily, auto-queues crawl jobs for results"
+    },
+    {
+      "async": false,
+      "group": "research",
+      "maps_to_dto": "ResearchRequest",
+      "mutates": true,
+      "name": "research",
+      "path": [
+        "research"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Web research via SearXNG/Tavily with LLM synthesis and auto-indexing"
+    },
+    {
+      "async": false,
+      "group": "brand",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "brand",
+      "path": [
+        "brand"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Analyze a URL's brand identity: colors, fonts, logos, favicon"
+    },
+    {
+      "async": false,
+      "group": "debug",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "debug",
+      "path": [
+        "debug"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Run doctor diagnostics plus LLM-assisted troubleshooting"
+    },
+    {
+      "async": false,
+      "group": "diff",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "diff",
+      "path": [
+        "diff"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Diff two URLs — show what changed between them"
+    },
+    {
+      "async": false,
+      "group": "doctor",
       "maps_to_dto": "DoctorRequest",
       "mutates": false,
       "name": "doctor",
-      "requires_auth_scope": "admin"
+      "path": [
+        "doctor"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Check connectivity to all required services"
     },
     {
       "async": false,
+      "group": "doctor",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "doctor diagnose",
+      "path": [
+        "doctor",
+        "diagnose"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Print doctor output plus LLM diagnosis when configured"
+    },
+    {
+      "async": false,
+      "group": "query",
+      "maps_to_dto": "VectorSearchRequest",
+      "mutates": false,
+      "name": "query",
+      "path": [
+        "query"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Semantic vector search over the Qdrant index"
+    },
+    {
+      "async": false,
+      "group": "retrieve",
+      "maps_to_dto": "RetrieveRequest",
+      "mutates": false,
+      "name": "retrieve",
+      "path": [
+        "retrieve"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Fetch stored document chunks from Qdrant by URL"
+    },
+    {
+      "async": false,
+      "group": "ask",
+      "maps_to_dto": "AskRequest",
+      "mutates": false,
+      "name": "ask",
+      "path": [
+        "ask"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "RAG: retrieve relevant context, then answer with LLM"
+    },
+    {
+      "async": false,
+      "group": "summarize",
+      "maps_to_dto": "SummarizeRequest",
+      "mutates": false,
+      "name": "summarize",
+      "path": [
+        "summarize"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Scrape one or more URLs and summarize them with the configured LLM"
+    },
+    {
+      "async": false,
+      "group": "evaluate",
+      "maps_to_dto": "EvaluateRequest",
+      "mutates": false,
+      "name": "evaluate",
+      "path": [
+        "evaluate"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "RAG vs baseline with independent LLM judge scoring"
+    },
+    {
+      "async": false,
+      "group": "train",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "train",
+      "path": [
+        "train"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Collect human preference votes for retrieved RAG candidates"
+    },
+    {
+      "async": false,
+      "group": "suggest",
+      "maps_to_dto": "SuggestRequest",
+      "mutates": false,
+      "name": "suggest",
+      "path": [
+        "suggest"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Suggest new documentation URLs to crawl"
+    },
+    {
+      "async": false,
+      "group": "sources",
+      "maps_to_dto": "SourcesRequest",
+      "mutates": false,
+      "name": "sources",
+      "path": [
+        "sources"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List all indexed source URLs with chunk counts"
+    },
+    {
+      "async": false,
+      "group": "domains",
+      "maps_to_dto": "DomainsRequest",
+      "mutates": false,
+      "name": "domains",
+      "path": [
+        "domains"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List indexed domains with document statistics"
+    },
+    {
+      "async": false,
+      "group": "stats",
+      "maps_to_dto": "StatsRequest",
+      "mutates": false,
+      "name": "stats",
+      "path": [
+        "stats"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show Qdrant collection and SQLite job statistics"
+    },
+    {
+      "async": false,
+      "group": "status",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "status",
+      "path": [
+        "status"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show async job queue status and recent activity"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "jobs list",
+      "path": [
+        "jobs",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List unified durable jobs"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "jobs get",
+      "path": [
+        "jobs",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one unified durable job"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "jobs events",
+      "path": [
+        "jobs",
+        "events"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one job's event page"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "jobs stream",
+      "path": [
+        "jobs",
+        "stream"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Fetch an event page for stream consumers"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "jobs cancel",
+      "path": [
+        "jobs",
+        "cancel"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Request cancellation for a unified durable job"
+    },
+    {
+      "async": true,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "jobs retry",
+      "path": [
+        "jobs",
+        "retry"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Retry a unified durable job"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "jobs recover",
+      "path": [
+        "jobs",
+        "recover"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Recover stale unified durable jobs"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "jobs cleanup",
+      "path": [
+        "jobs",
+        "cleanup"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Remove old terminal unified durable jobs"
+    },
+    {
+      "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "jobs clear",
+      "path": [
+        "jobs",
+        "clear"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Clear all unified durable job rows"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "memory remember",
+      "path": [
+        "memory",
+        "remember"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Store a memory in the dedicated memory collection"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "memory list",
+      "path": [
+        "memory",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List memory metadata without semantic search"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "memory search",
+      "path": [
+        "memory",
+        "search"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Search active memories"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "memory show",
+      "path": [
+        "memory",
+        "show"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one memory by id"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "memory link",
+      "path": [
+        "memory",
+        "link"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Link two memories in the SQLite graph"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "memory supersede",
+      "path": [
+        "memory",
+        "supersede"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Mark an old memory as superseded by a replacement memory"
+    },
+    {
+      "async": false,
+      "group": "memory",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "memory context",
+      "path": [
+        "memory",
+        "context"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Build an inline, defanged context block from memories"
+    },
+    {
+      "async": true,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions",
+      "path": [
+        "sessions"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Index AI session exports (Claude, Codex, Gemini) into Qdrant"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "sessions status",
+      "path": [
+        "sessions",
+        "status"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show a sessions ingest job's status"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions cancel",
+      "path": [
+        "sessions",
+        "cancel"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Cancel a running sessions ingest job"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "sessions errors",
+      "path": [
+        "sessions",
+        "errors"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show a sessions ingest job's errors"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "sessions list",
+      "path": [
+        "sessions",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List sessions ingest jobs"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions cleanup",
+      "path": [
+        "sessions",
+        "cleanup"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Remove old terminal sessions ingest jobs"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions clear",
+      "path": [
+        "sessions",
+        "clear"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Clear all sessions ingest job rows"
+    },
+    {
+      "async": true,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions worker",
+      "path": [
+        "sessions",
+        "worker"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Run a sessions ingest worker inline"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions recover",
+      "path": [
+        "sessions",
+        "recover"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Reclaim stale/interrupted sessions ingest jobs"
+    },
+    {
+      "async": true,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions watch",
+      "path": [
+        "sessions",
+        "watch"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Watch local AI session exports and ingest stable changes"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "sessions watch-status",
+      "path": [
+        "sessions",
+        "watch-status"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Summarize session watch checkpoints and recent errors"
+    },
+    {
+      "async": false,
+      "group": "sessions",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "sessions smoke-watch",
+      "path": [
+        "sessions",
+        "smoke-watch"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Write a probe transcript and wait for the watcher to ingest it"
+    },
+    {
+      "async": true,
+      "group": "source",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "source",
+      "path": [
+        "source"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Index a local source path through the unified pipeline"
+    },
+    {
+      "async": false,
+      "group": "screenshot",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "screenshot",
+      "path": [
+        "screenshot"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Capture a full-page screenshot of one or more URLs"
+    },
+    {
+      "async": false,
+      "group": "completions",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "completions",
+      "path": [
+        "completions"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Generate shell completions (bash, zsh, fish)"
+    },
+    {
+      "async": false,
+      "group": "serve",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "serve",
+      "path": [
+        "serve"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Start service runtimes"
+    },
+    {
+      "async": false,
+      "group": "serve",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "serve mcp",
+      "path": [
+        "serve",
+        "mcp"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Start unified web + MCP HTTP runtime"
+    },
+    {
+      "async": false,
+      "group": "reset",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "reset",
+      "path": [
+        "reset"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Destructive clean-slate reset of local stores (dry-run by default)"
+    },
+    {
+      "async": false,
+      "group": "prune",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "prune plan",
+      "path": [
+        "prune",
+        "plan"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Resolve a prune target into a reviewable dry-run plan"
+    },
+    {
+      "async": false,
+      "group": "prune",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "prune exec",
+      "path": [
+        "prune",
+        "exec"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Execute a prune target's plan (destructive; requires --confirm)"
+    },
+    {
+      "async": false,
+      "group": "preflight",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "preflight",
+      "path": [
+        "preflight"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Check host prerequisites and service readiness"
+    },
+    {
+      "async": false,
+      "group": "smoke",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "smoke",
+      "path": [
+        "smoke"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Run crawl/ask smoke checks against the running stack"
+    },
+    {
+      "async": false,
+      "group": "compose",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "compose up",
+      "path": [
+        "compose",
+        "up"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Pull and start the Docker service stack"
+    },
+    {
+      "async": false,
+      "group": "compose",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "compose down",
+      "path": [
+        "compose",
+        "down"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Stop the Docker service stack"
+    },
+    {
+      "async": false,
+      "group": "compose",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "compose restart",
+      "path": [
+        "compose",
+        "restart"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Restart running services"
+    },
+    {
+      "async": false,
+      "group": "compose",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "compose rebuild",
+      "path": [
+        "compose",
+        "rebuild"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Rebuild the Axon image and start the stack"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "setup plugin-hook",
+      "path": [
+        "setup",
+        "plugin-hook"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "setup init",
+      "path": [
+        "setup",
+        "init"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Initialize local Axon config, env, and compose assets"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "setup check",
+      "path": [
+        "setup",
+        "check"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Check local prerequisites without mutating files or services"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "setup targets",
+      "path": [
+        "setup",
+        "targets"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "List SSH host aliases discovered from ~/.ssh/config"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "setup install",
+      "path": [
+        "setup",
+        "install"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Copy the axon binary into ~/.local/bin for terminal use"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "setup config rewrite",
+      "path": [
+        "setup",
+        "config",
+        "rewrite"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Preview or apply clean-break config key rewrites"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "setup session-watch-service install",
+      "path": [
+        "setup",
+        "session-watch-service",
+        "install"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Write service files, run initial ingest, and enable the user service"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "setup session-watch-service check",
+      "path": [
+        "setup",
+        "session-watch-service",
+        "check"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Verify generated files and systemd state without mutating service files"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "setup session-watch-service remove",
+      "path": [
+        "setup",
+        "session-watch-service",
+        "remove"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Disable the user service and remove generated service files"
+    },
+    {
+      "async": false,
+      "group": "setup",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "setup session-watch-service status",
+      "path": [
+        "setup",
+        "session-watch-service",
+        "status"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Print current user systemd status for the service"
+    },
+    {
+      "async": false,
+      "group": "mcp",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "mcp",
+      "path": [
+        "mcp"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Start MCP stdio or unified HTTP runtime"
+    },
+    {
+      "async": false,
+      "group": "migrate",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "migrate",
+      "path": [
+        "migrate"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)"
+    },
+    {
+      "async": false,
+      "group": "config",
+      "maps_to_dto": "ConfigProjectionRequest",
+      "mutates": false,
+      "name": "config list",
+      "path": [
+        "config",
+        "list"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "List every entry from .env and config.toml (secrets redacted)"
+    },
+    {
+      "async": false,
+      "group": "config",
+      "maps_to_dto": "ConfigProjectionRequest",
+      "mutates": false,
+      "name": "config get",
+      "path": [
+        "config",
+        "get"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Print a single config value (auto-detects file by key shape)"
+    },
+    {
+      "async": false,
+      "group": "config",
       "maps_to_dto": "ConfigProjectionRequest",
       "mutates": true,
-      "name": "config",
-      "requires_auth_scope": "admin"
+      "name": "config set",
+      "path": [
+        "config",
+        "set"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Write a config value (auto-detects file by key shape)"
+    },
+    {
+      "async": false,
+      "group": "config",
+      "maps_to_dto": "ConfigProjectionRequest",
+      "mutates": true,
+      "name": "config unset",
+      "path": [
+        "config",
+        "unset"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Remove a config value from .env or config.toml"
+    },
+    {
+      "async": false,
+      "group": "config",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "config path",
+      "path": [
+        "config",
+        "path"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Print resolved paths to .env and config.toml"
+    },
+    {
+      "async": false,
+      "group": "sync",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "sync pending",
+      "path": [
+        "sync",
+        "pending"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show local artifacts waiting to be reconciled with the server"
+    },
+    {
+      "async": false,
+      "group": "update",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "update",
+      "path": [
+        "update"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Download and install the latest GitHub Release binary, then sync the local container"
+    },
+    {
+      "async": false,
+      "group": "palette",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "palette",
+      "path": [
+        "palette"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Resolve, launch, and optionally install the axon-palette desktop binary"
     }
   ],
   "properties": {
@@ -143,9 +1337,44 @@
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
+        "checksum": "sha256:d1a35a1faf46350686aaf11d8674c2b9955c15483bc2c10776cef2d526f06197",
+        "kind": "rust_module",
+        "path": "crates/axon-core/src/config/cli.rs"
+      },
+      {
+        "checksum": "sha256:ee3bae44b57a96696213245d225b14d09ac95415d4ca8da10403f7949fabd2e6",
+        "kind": "rust_module",
+        "path": "crates/axon-core/src/config/cli/config_args.rs"
+      },
+      {
+        "checksum": "sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7",
+        "kind": "rust_module",
+        "path": "crates/axon-core/src/config/cli/setup_args.rs"
+      },
+      {
         "checksum": "sha256:906aa128ffd9876e675b8ba3ce139777f50172726c26d8d55fbbe40894377065",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
+      },
+      {
+        "checksum": "sha256:9058776d7aeba4fff80334cbe2eba2f662ddedf94631ae50e4fce07bb8c9c0a6",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/cli_registry.rs"
+      },
+      {
+        "checksum": "sha256:cb15aac18b19f1a1bbbb2f19a7efc519647f3dc458d13f1b8906339a12a1dcac",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/cli_registry/part1.rs"
+      },
+      {
+        "checksum": "sha256:8a3dc8487ca77926709faa2eca92b599a61a7e80eaefe9fc8581226e5d3a3cf6",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/cli_registry/part2.rs"
+      },
+      {
+        "checksum": "sha256:12369c37652edf712d21113879a14cda9f0426e1b825f5a25ed19d0732a500f4",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/cli_registry/part3.rs"
       }
     ],
     "status": "RegistryBacked"
