@@ -426,25 +426,28 @@ class AxonClient(
         post(openApiRoute("POST", "/v1/memories/search"), req)
     }
 
-    /** GET /v1/memories — list memories, optionally filtered by facet/type/status. */
-    suspend fun listMemories(
-        project: String? = null,
-        repo: String? = null,
-        file: String? = null,
-        type: String? = null,
-        status: String? = null,
-        limit: Int? = null,
-    ): Result<JsonElement> = withContext(Dispatchers.IO) {
-        val params = buildList {
-            project?.let { add("project=${queryEncode(it)}") }
-            repo?.let { add("repo=${queryEncode(it)}") }
-            file?.let { add("file=${queryEncode(it)}") }
-            type?.let { add("type=${queryEncode(it)}") }
-            status?.let { add("status=${queryEncode(it)}") }
-            limit?.let { add("limit=$it") }
-        }.joinToString("&")
-        val resolved = if (params.isEmpty()) "/v1/memories" else "/v1/memories?$params"
-        get(openApiRoute("GET", "/v1/memories", resolved))
+    /**
+     * POST /v1/memories/context — assemble a memory context bundle for a
+     * project/repo/file scope (`memory.context`). Distinct route from
+     * [searchMemories]; both accept the same flat [MemoryRequestDto] body.
+     */
+    suspend fun memoryContext(req: MemoryRequestDto): Result<JsonElement> = withContext(Dispatchers.IO) {
+        post(openApiRoute("POST", "/v1/memories/context"), req)
+    }
+
+    /**
+     * GET /v1/memories/{memory_id} — fetch a single memory (`memory.show`).
+     * There is no server-side list route (`/v1/memories` only accepts POST
+     * for `remember`) — [searchMemories]/[memoryContext] are the read-many
+     * surfaces; this is read-one by id.
+     */
+    suspend fun getMemory(memoryId: String): Result<JsonElement> = withContext(Dispatchers.IO) {
+        get(openApiRoute("GET", "/v1/memories/{memory_id}", "/v1/memories/${encodePathSegment(memoryId)}"))
+    }
+
+    /** DELETE /v1/memories/{memory_id} — forget a memory (`memory.forget`). */
+    suspend fun deleteMemory(memoryId: String): Result<JsonElement> = withContext(Dispatchers.IO) {
+        delete(openApiRoute("DELETE", "/v1/memories/{memory_id}", "/v1/memories/${encodePathSegment(memoryId)}"))
     }
 
     // ── Job events stream ────────────────────────────────────────────────────
