@@ -116,12 +116,6 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "moderate",
     },
     McpActionSpec {
-        name: "purge",
-        scope: ActionScope::Write,
-        description: "Preview or delete indexed points by URL or seed URL prefix",
-        cost: "write",
-    },
-    McpActionSpec {
         name: "prune",
         scope: ActionScope::Admin,
         description: "Plan (dry-run) or execute (destructive) a prune of a source, generation, or collection",

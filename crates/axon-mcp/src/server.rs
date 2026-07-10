@@ -133,7 +133,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, source, extract, memory, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, research, ask, summarize, screenshot, elicit_demo, brand, diff, purge. The single `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target (replaces the former embed/ingest/scrape/crawl/code_search/vertical_scrape actions).",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, source, extract, memory, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, research, ask, summarize, screenshot, elicit_demo, brand, diff. The single `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target (replaces the former embed/ingest/scrape/crawl/code_search/vertical_scrape actions). Destructive cleanup lives under action=prune.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -185,7 +185,6 @@ impl AxonMcpServer {
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
             AxonRequest::Diff(req) => self.handle_diff(req).await?,
             AxonRequest::Brand(req) => self.handle_brand(req).await?,
-            AxonRequest::Purge(req) => self.handle_purge(req).await?,
             AxonRequest::Prune(req) => self.handle_prune(req).await?,
             // Removed indexing actions: `embed`, `ingest`, `scrape`, `crawl`,
             // `code_search`, and `vertical_scrape` are folded into `source`.
@@ -202,6 +201,15 @@ impl AxonMcpServer {
                 return Err(invalid_params(
                     "this action was removed from MCP; use action=source to index any local path, \
                      git/web/feed/youtube/reddit/session/registry target",
+                ));
+            }
+            // `purge` is removed from MCP; destructive cleanup lives under
+            // `action=prune`. The variant remains on the shared `AxonRequest`
+            // for the REST surface, but the MCP authz allow-list rejects it
+            // before dispatch; this arm keeps the match exhaustive.
+            AxonRequest::Purge(_) => {
+                return Err(invalid_params(
+                    "this action was removed from MCP; use action=prune for destructive cleanup",
                 ));
             }
             AxonRequest::Debug(_)
