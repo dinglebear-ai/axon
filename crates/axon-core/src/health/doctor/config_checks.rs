@@ -24,8 +24,12 @@ pub(crate) struct ConfigDiagnostic {
 
 /// Deprecated env keys that have a canonical replacement (as opposed to
 /// keys the registry marks `Delete`, which have none). Both halves flow
-/// through `.env`/env only — `[services]` TOML aliases are handled
-/// separately by `config_literal::warn_services_section_if_present`.
+/// through `.env`/env only. Deprecated pre-contract `config.toml` *section*
+/// names (old `[llm]`/`[tei]`/`[scrape]`/`[services]`/...) are a separate,
+/// stricter mechanism: `toml_config::parse_toml_config_str` hard-fails config
+/// construction before `axon doctor` can even run, naming every offending
+/// section and its 20-section-contract replacement in the error — so no
+/// runtime doctor check is needed for them.
 const DEPRECATED_ENV_REPLACEMENTS: &[(&str, &str)] = &[
     ("CHROME_URL", "AXON_CHROME_REMOTE_URL"),
     (

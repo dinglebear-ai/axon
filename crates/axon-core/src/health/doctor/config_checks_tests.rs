@@ -1,8 +1,12 @@
 use super::*;
-use std::sync::Mutex;
 
-/// Serializes env-mutating tests in this file — `std::env` is process-global.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+/// Reuse the crate-wide env-mutation lock instead of a local/private one.
+/// `std::env` is process-global — a separate same-named `Mutex` here would
+/// provide zero mutual exclusion against `config::parse::build_config::tests`
+/// (which also mutates `AXON_CONFIG_PATH`), letting the two modules race each
+/// other under the default multi-threaded test runner. See that module's
+/// `ENV_LOCK` doc comment for the full explanation.
+use crate::config::parse::build_config::tests::env_guard;
 
 struct EnvGuard {
     key: &'static str,
@@ -29,7 +33,7 @@ impl Drop for EnvGuard {
 
 #[test]
 fn tuning_env_var_present_is_flagged() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     let _guard = EnvGuard::set("AXON_HYBRID_CANDIDATES", "250");
     let findings = tuning_env_vars_present();
     let hit = findings
@@ -42,7 +46,7 @@ fn tuning_env_var_present_is_flagged() {
 
 #[test]
 fn tuning_env_var_absent_is_silent() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     unsafe { std::env::remove_var("AXON_HYBRID_CANDIDATES") };
     let findings = tuning_env_vars_present();
     assert!(!findings.iter().any(|f| f.key == "AXON_HYBRID_CANDIDATES"));
@@ -50,7 +54,7 @@ fn tuning_env_var_absent_is_silent() {
 
 #[test]
 fn compose_only_key_flagged_outside_container() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     unsafe { std::env::remove_var("AXON_IN_CONTAINER") };
     let _guard = EnvGuard::set("TEI_HTTP_PORT", "52000");
     let findings = compose_only_env_vars_outside_compose();
@@ -59,7 +63,7 @@ fn compose_only_key_flagged_outside_container() {
 
 #[test]
 fn compose_only_key_silent_inside_container() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     let _in_container = EnvGuard::set("AXON_IN_CONTAINER", "1");
     let _guard = EnvGuard::set("TEI_HTTP_PORT", "52000");
     let findings = compose_only_env_vars_outside_compose();
@@ -69,7 +73,7 @@ fn compose_only_key_silent_inside_container() {
 
 #[test]
 fn deprecated_key_with_replacement_is_flagged() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     let _guard = EnvGuard::set("CHROME_URL", "http://127.0.0.1:6000");
     let findings = deprecated_env_vars_present();
     let hit = findings
@@ -82,7 +86,7 @@ fn deprecated_key_with_replacement_is_flagged() {
 
 #[test]
 fn deprecated_stale_key_with_no_replacement_is_flagged() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     let _guard = EnvGuard::set("AXON_TEST_QDRANT_URL", "http://127.0.0.1:1");
     let findings = deprecated_env_vars_present();
     let hit = findings
@@ -94,7 +98,7 @@ fn deprecated_stale_key_with_no_replacement_is_flagged() {
 
 #[test]
 fn deprecated_checks_silent_when_absent() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     unsafe {
         std::env::remove_var("CHROME_URL");
         std::env::remove_var("AXON_TEST_QDRANT_URL");
@@ -106,7 +110,7 @@ fn deprecated_checks_silent_when_absent() {
 
 #[test]
 fn secrets_scan_absent_config_toml_is_silent() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     let _guard = EnvGuard::set("AXON_CONFIG_PATH", "/nonexistent/path/does-not-exist.toml");
     let findings = secrets_in_config_toml();
     assert!(findings.is_empty());
@@ -114,7 +118,7 @@ fn secrets_scan_absent_config_toml_is_silent() {
 
 #[test]
 fn secrets_scan_flags_secret_shaped_field() {
-    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = env_guard();
     let dir = std::env::temp_dir().join(format!(
         "axon-doctor-config-checks-test-{}",
         std::process::id()
