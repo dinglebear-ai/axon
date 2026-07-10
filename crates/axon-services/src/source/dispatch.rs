@@ -167,6 +167,8 @@ pub async fn dispatch_feed(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_feed_source_with_job(
         index_input,
@@ -219,6 +221,8 @@ pub async fn dispatch_reddit(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_reddit_source_with_job(
         index_input,
@@ -271,6 +275,8 @@ pub async fn dispatch_youtube(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_youtube_source_with_job(
         index_input,
@@ -325,6 +331,8 @@ pub async fn dispatch_registry(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_registry_source_with_job(
         index_input,
@@ -379,6 +387,8 @@ pub async fn dispatch_session(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_sessions_source_with_job(
         index_input,

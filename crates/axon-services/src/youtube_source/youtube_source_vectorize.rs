@@ -204,6 +204,24 @@ async fn vectorize_documents(
     if documents.is_empty() {
         return Ok(result);
     }
+    // `SourceRequest.embed = false` (source-pipeline.md Validation Checklist:
+    // "`embed=false` never writes vectors"): videos are still discovered,
+    // normalized, and prepared above this call, but neither the embedding
+    // provider nor the vector store may be invoked. Counts still reflect
+    // prepared documents/chunks; only `points_written` stays zero.
+    if !input.embed {
+        for document in documents {
+            result.stats.chunks_prepared += document.chunks.len() as u64;
+            result.stats.documents_prepared += 1;
+            result
+                .graph_candidates
+                .extend(document.graph_candidates.clone());
+            let status = document_status(&document, 0, DocumentLifecycleStatus::Prepared);
+            ledger.update_document_status(status.clone()).await?;
+            result.document_statuses.push(status);
+        }
+        return Ok(result);
+    }
     let batch = embedding_batch_for_documents(input, &documents)?;
     let embedding_reservation = reserve_embedding(input).await?;
     record_progress_with_reservations(
