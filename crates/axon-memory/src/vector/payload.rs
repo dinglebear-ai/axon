@@ -83,6 +83,13 @@ pub(super) fn memory_payload(
     payload.insert("committed_generation".to_string(), json!(0));
     payload.insert("document_id".to_string(), json!(record.memory_id.0));
     payload.insert("chunk_id".to_string(), json!(chunk_id));
+    // A memory record is a single atomic point, not a chunk of a larger
+    // document — index 0, atomic profile/method. Required by the vector
+    // payload shape since the chunking cluster made chunk_index/
+    // chunking_profile/chunking_method mandatory (audit S2-18/27).
+    payload.insert("chunk_index".to_string(), json!(0));
+    payload.insert("chunking_profile".to_string(), json!("atomic_metadata"));
+    payload.insert("chunking_method".to_string(), json!("atomic"));
     payload.insert("content_kind".to_string(), json!("plain_text"));
     payload.insert("content_hash".to_string(), json!(content_hash));
     payload.insert("chunk_hash".to_string(), json!(content_hash));

@@ -1,6 +1,12 @@
--- Add the `visibility` security classification column (contract "Security
--- and Redaction": "classify every memory by visibility"). Existing rows
--- (written before this column existed) default to `internal`, matching
--- `Visibility::default()` in axon-api.
-
-ALTER TABLE memory_records ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal';
+-- No-op. The `visibility` security classification column is now created
+-- directly in 0001_create_memory_tables.sql. This migration is retained as a
+-- stable numbered entry so the composed cross-crate runner's applied-set
+-- history does not shift.
+--
+-- It must NOT re-add the column: the memory store's own ensure_schema() path
+-- adds visibility via a guarded pragma_table_info check (idempotent), but the
+-- composed runner in axon-jobs applies this SQL unguarded, so a second
+-- `ALTER TABLE ... ADD COLUMN visibility` here duplicate-column-fails once the
+-- column already exists from 0001. Clean-break / empty-store assumption means
+-- there are no pre-visibility databases needing the ALTER.
+SELECT 1;
