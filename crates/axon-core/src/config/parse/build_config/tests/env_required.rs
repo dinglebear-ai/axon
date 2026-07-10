@@ -228,12 +228,16 @@ fn into_config_accepts_deprecated_ask_backend_toml() {
 
 #[allow(unsafe_code)]
 #[test]
-fn into_config_rejects_invalid_llm_runtime_env() {
+fn into_config_falls_back_to_default_on_unparseable_llm_runtime_env() {
+    // AXON_LLM_COMPLETION_CONCURRENCY is a MoveToml tuning knob (config.toml
+    // `llm.completion-concurrency`); like its sibling TEI/ask/search knobs, an
+    // unparseable env value warns and falls back to TOML/default rather than
+    // hard-failing config construction.
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "abc");
-        let err = into_config_via_args(&["status"]).unwrap_err();
-        assert!(err.contains("AXON_LLM_COMPLETION_CONCURRENCY"));
+        let cfg = into_config_via_args(&["status"]).expect("status config");
+        assert_eq!(cfg.llm_completion_concurrency, 4);
     });
 }
 
