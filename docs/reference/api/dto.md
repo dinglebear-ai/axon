@@ -18,9 +18,9 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source.rs` | `sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362` |
 | `crates/axon-api/src/source/boundary.rs` | `sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e` |
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
-| `crates/axon-api/src/source/common.rs` | `sha256:a3253862cbc0c49a223cbb94fe21fdacb0b9ac5c1557f635833093284e5996b1` |
+| `crates/axon-api/src/source/common.rs` | `sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab` |
 | `crates/axon-api/src/source/document.rs` | `sha256:0395b09638d4265bc795fa64409dfaee4df517883d6e62b909889e3537a78f1c` |
-| `crates/axon-api/src/source/enums.rs` | `sha256:6a0ebcea59dc81c31a30069cadafe39f0e60dbdc914d4aad55334e5e5b8265a2` |
+| `crates/axon-api/src/source/enums.rs` | `sha256:332eea1ef49efdc49c71d325796571d48a36e79739e99f1aec75d0e74d3396f9` |
 | `crates/axon-api/src/source/graph.rs` | `sha256:d96090e8b5089f0d19f68e755eeee577e86961a46269ad98c7de1548ba0558f0` |
 | `crates/axon-api/src/source/ids.rs` | `sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17` |
 | `crates/axon-api/src/source/job.rs` | `sha256:2961915f909b586de38a198accde542f386fb14745504bf7bde3e1d30223ee2e` |
@@ -30,7 +30,7 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/provider_io.rs` | `sha256:a5728db42e846a995b35eb01a2d6e34751ba825e630b324852c16e36d4d2ec91` |
 | `crates/axon-api/src/source/prune.rs` | `sha256:5f98e4a52fe7dd507955161917635f3c1bcaf7839737ea03c3c0378551e26233` |
 | `crates/axon-api/src/source/stage.rs` | `sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8` |
-| `crates/axon-api/src/source/state.rs` | `sha256:9c7d65b7d3a4e163d2f3e8c60806713466909fef2822b79566eda77575faf63b` |
+| `crates/axon-api/src/source/state.rs` | `sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb` |
 | `crates/axon-api/src/source/status.rs` | `sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea` |
 | `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |

@@ -1,35 +1,2482 @@
 {
+  "$defs": {
+    "GraphCandidate": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/GraphCandidate_GraphEdgeCandidate"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/GraphCandidate_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "item_canonical_uri": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/GraphCandidate_JobId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "merge_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/GraphCandidate_GraphNodeCandidate"
+          },
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/GraphCandidate_GraphCandidateProducer"
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphCandidate_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphCandidate_SourceItemKey"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "job_id",
+        "source_id",
+        "source_item_key",
+        "item_canonical_uri",
+        "kind",
+        "producer",
+        "nodes",
+        "edges",
+        "evidence",
+        "confidence",
+        "metadata"
+      ],
+      "title": "GraphCandidate",
+      "type": "object"
+    },
+    "GraphCandidate_ChunkId": {
+      "type": "string"
+    },
+    "GraphCandidate_DocumentId": {
+      "type": "string"
+    },
+    "GraphCandidate_GraphCandidateProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "parser": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "version"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_GraphEdgeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_kind": {
+          "type": "string"
+        },
+        "from_stable_key": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_kind",
+        "from_stable_key",
+        "to_stable_key",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphCandidate_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphCandidate_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphCandidate_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_GraphNodeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "node_kind": {
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "stable_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_kind",
+        "stable_key",
+        "label",
+        "properties"
+      ],
+      "type": "object"
+    },
+    "GraphCandidate_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "GraphCandidate_SourceId": {
+      "type": "string"
+    },
+    "GraphCandidate_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphCandidate_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GraphEdge": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "$ref": "#/$defs/GraphEdge_AuthorityLevel"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "edge_id": {
+          "$ref": "#/$defs/GraphEdge_GraphEdgeId"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/GraphEdge_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "from_node_id": {
+          "$ref": "#/$defs/GraphEdge_GraphNodeId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_node_id": {
+          "$ref": "#/$defs/GraphEdge_GraphNodeId"
+        }
+      },
+      "required": [
+        "edge_id",
+        "kind",
+        "from_node_id",
+        "to_node_id",
+        "authority",
+        "confidence",
+        "evidence",
+        "metadata"
+      ],
+      "title": "GraphEdge",
+      "type": "object"
+    },
+    "GraphEdgeKind": {
+      "enum": [
+        "alias_of",
+        "canonicalizes_to",
+        "official_for",
+        "derived_from",
+        "mirrors",
+        "package_has_repo",
+        "package_has_docs",
+        "package_has_version",
+        "package_owned_by",
+        "repo_declares_dependency",
+        "repo_locks_dependency_version",
+        "repo_uses_container_image",
+        "repo_uses_github_action",
+        "repo_uses_toolchain",
+        "repo_uses_system_package",
+        "repo_uses_terraform_provider",
+        "repo_uses_helm_chart",
+        "repo_declares_service",
+        "service_uses_image",
+        "service_exposes_endpoint",
+        "service_mounts_volume",
+        "service_requires_env",
+        "repo_declares_env_var",
+        "repo_declares_api",
+        "service_exposes_api",
+        "api_uses_protocol",
+        "api_has_operation",
+        "operation_uses_schema",
+        "schema_has_field",
+        "package_generates_api_client",
+        "repo_has_docs",
+        "repo_has_wiki",
+        "repo_owned_by",
+        "repo_has_branch",
+        "branch_points_to_commit",
+        "commit_contains_file",
+        "local_checkout_tracks_repo",
+        "local_checkout_at_commit",
+        "docs_site_contains_page",
+        "web_origin_has_docs",
+        "feed_contains_entry",
+        "youtube_channel_has_video",
+        "youtube_playlist_has_video",
+        "subreddit_has_thread",
+        "session_has_turn",
+        "session_about_repo",
+        "session_mentions_repo",
+        "session_mentions_source",
+        "session_mentions_issue",
+        "session_mentions_pr",
+        "session_mentions_package",
+        "session_produced_decision",
+        "session_invoked_agent",
+        "agent_invocation_uses_agent",
+        "agent_invocation_used_skill",
+        "agent_invocation_used_tool",
+        "agent_invocation_produced_artifact",
+        "agent_invocation_related_to_repo",
+        "agent_invocation_related_to_issue",
+        "session_invoked_skill",
+        "skill_invocation_uses_skill",
+        "skill_invocation_produced_artifact",
+        "skill_invocation_related_to_repo",
+        "skill_invocation_related_to_issue",
+        "turn_invoked_tool",
+        "turn_invoked_skill",
+        "tool_call_uses_tool",
+        "tool_call_touched_file",
+        "tool_call_produced_artifact",
+        "tool_call_read_resource",
+        "tool_call_mutated_resource",
+        "tool_call_related_to_repo",
+        "tool_call_related_to_issue",
+        "memory_relates_to",
+        "memory_supersedes",
+        "memory_contradicts",
+        "memory_compacts",
+        "memory_about_source",
+        "memory_about_file",
+        "memory_about_issue",
+        "memory_used_in_context",
+        "source_produced_artifact",
+        "source_indexed_as"
+      ],
+      "type": "string",
+      "x-axon": {
+        "owner_crate": "axon-graph",
+        "rust_enum": "GraphEdgeKind"
+      }
+    },
+    "GraphEdge_AuthorityLevel": {
+      "enum": [
+        "official",
+        "verified",
+        "user_pinned",
+        "inferred",
+        "community",
+        "mirror",
+        "conflicting",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "GraphEdge_ChunkId": {
+      "type": "string"
+    },
+    "GraphEdge_DocumentId": {
+      "type": "string"
+    },
+    "GraphEdge_GraphEdgeId": {
+      "type": "string"
+    },
+    "GraphEdge_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEdge_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEdge_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEdge_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphEdge_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphEdge_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphEdge_GraphNodeId": {
+      "type": "string"
+    },
+    "GraphEdge_SourceId": {
+      "type": "string"
+    },
+    "GraphEdge_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphEdge_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GraphEvidence": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEvidence_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEvidence_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphEvidence_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphEvidence_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphEvidence_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "title": "GraphEvidence",
+      "type": "object"
+    },
+    "GraphEvidence_ChunkId": {
+      "type": "string"
+    },
+    "GraphEvidence_DocumentId": {
+      "type": "string"
+    },
+    "GraphEvidence_SourceId": {
+      "type": "string"
+    },
+    "GraphEvidence_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphEvidence_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GraphKindRegistry": {
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "requires_evidence": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "node",
+            "edge"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "type",
+        "requires_evidence"
+      ],
+      "type": "object"
+    },
+    "GraphMergeRule": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence_floor": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "conflict_policy": {
+          "enum": [
+            "keep_highest_authority_with_evidence",
+            "keep_all_as_conflict",
+            "last_observed_wins",
+            "manual_review"
+          ],
+          "type": "string"
+        },
+        "strategy": {
+          "enum": [
+            "stable_key",
+            "edge_tuple",
+            "versioned",
+            "never_merge"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy",
+        "conflict_policy"
+      ],
+      "type": "object"
+    },
+    "GraphNode": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "$ref": "#/$defs/GraphNode_AuthorityLevel"
+        },
+        "canonical_uri": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "node_id": {
+          "$ref": "#/$defs/GraphNode_GraphNodeId"
+        },
+        "source_ids": {
+          "items": {
+            "$ref": "#/$defs/GraphNode_SourceId"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "node_id",
+        "kind",
+        "canonical_uri",
+        "display_name",
+        "authority",
+        "confidence",
+        "metadata"
+      ],
+      "title": "GraphNode",
+      "type": "object"
+    },
+    "GraphNodeKind": {
+      "enum": [
+        "source",
+        "web_origin",
+        "docs_site",
+        "web_page",
+        "repo",
+        "repo_branch",
+        "repo_commit",
+        "repo_file",
+        "local_checkout",
+        "package",
+        "package_version",
+        "registry_namespace",
+        "container_image",
+        "container_image_tag",
+        "github_action",
+        "github_action_ref",
+        "toolchain",
+        "toolchain_version",
+        "system_package",
+        "terraform_provider",
+        "helm_chart",
+        "runtime_service",
+        "network_endpoint",
+        "volume_mount",
+        "environment_variable",
+        "secret_reference",
+        "api_surface",
+        "api_operation",
+        "schema_type",
+        "schema_field",
+        "protocol",
+        "model",
+        "reddit_subreddit",
+        "reddit_thread",
+        "youtube_video",
+        "youtube_playlist",
+        "youtube_channel",
+        "feed",
+        "feed_entry",
+        "session",
+        "session_turn",
+        "agent",
+        "agent_invocation",
+        "tool",
+        "tool_call",
+        "external_resource",
+        "skill",
+        "skill_invocation",
+        "memory",
+        "decision",
+        "issue",
+        "pull_request",
+        "person_or_org",
+        "derived_source",
+        "artifact"
+      ],
+      "type": "string",
+      "x-axon": {
+        "owner_crate": "axon-graph",
+        "rust_enum": "GraphNodeKind"
+      }
+    },
+    "GraphNode_AuthorityLevel": {
+      "enum": [
+        "official",
+        "verified",
+        "user_pinned",
+        "inferred",
+        "community",
+        "mirror",
+        "conflicting",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "GraphNode_GraphNodeId": {
+      "type": "string"
+    },
+    "GraphNode_SourceId": {
+      "type": "string"
+    },
+    "GraphQueryRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "direction": {
+          "$ref": "#/$defs/GraphQueryRequest_GraphDirection"
+        },
+        "edges": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryRequest_GraphQueryFilters"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "$ref": "#/$defs/GraphQueryRequest_GraphIdentifier"
+        }
+      },
+      "required": [
+        "start",
+        "direction",
+        "depth",
+        "limit"
+      ],
+      "title": "GraphQueryRequest",
+      "type": "object"
+    },
+    "GraphQueryRequest_GraphDirection": {
+      "enum": [
+        "in",
+        "out",
+        "both"
+      ],
+      "type": "string"
+    },
+    "GraphQueryRequest_GraphIdentifier": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryRequest_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryRequest_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphQueryRequest_GraphNodeId": {
+      "type": "string"
+    },
+    "GraphQueryRequest_GraphQueryFilters": {
+      "additionalProperties": false,
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "min_confidence": {
+          "format": "float",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "node_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source_ids": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryRequest_SourceId"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphQueryRequest_SourceId": {
+      "type": "string"
+    },
+    "GraphQueryRequest_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphQueryResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryResult_GraphEdge"
+          },
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryResult_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryResult_GraphNode"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges",
+        "evidence",
+        "warnings"
+      ],
+      "title": "GraphQueryResult",
+      "type": "object"
+    },
+    "GraphQueryResult_AuthorityLevel": {
+      "enum": [
+        "official",
+        "verified",
+        "user_pinned",
+        "inferred",
+        "community",
+        "mirror",
+        "conflicting",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "GraphQueryResult_ChunkId": {
+      "type": "string"
+    },
+    "GraphQueryResult_DocumentId": {
+      "type": "string"
+    },
+    "GraphQueryResult_GraphEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "$ref": "#/$defs/GraphQueryResult_AuthorityLevel"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "edge_id": {
+          "$ref": "#/$defs/GraphQueryResult_GraphEdgeId"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryResult_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "from_node_id": {
+          "$ref": "#/$defs/GraphQueryResult_GraphNodeId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "to_node_id": {
+          "$ref": "#/$defs/GraphQueryResult_GraphNodeId"
+        }
+      },
+      "required": [
+        "edge_id",
+        "kind",
+        "from_node_id",
+        "to_node_id",
+        "authority",
+        "confidence",
+        "evidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphQueryResult_GraphEdgeId": {
+      "type": "string"
+    },
+    "GraphQueryResult_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryResult_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryResult_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryResult_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/GraphQueryResult_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/GraphQueryResult_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphQueryResult_GraphNode": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "$ref": "#/$defs/GraphQueryResult_AuthorityLevel"
+        },
+        "canonical_uri": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "node_id": {
+          "$ref": "#/$defs/GraphQueryResult_GraphNodeId"
+        },
+        "source_ids": {
+          "items": {
+            "$ref": "#/$defs/GraphQueryResult_SourceId"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "node_id",
+        "kind",
+        "canonical_uri",
+        "display_name",
+        "authority",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphQueryResult_GraphNodeId": {
+      "type": "string"
+    },
+    "GraphQueryResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "GraphQueryResult_SourceId": {
+      "type": "string"
+    },
+    "GraphQueryResult_SourceItemKey": {
+      "type": "string"
+    },
+    "GraphQueryResult_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GraphQueryResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/GraphQueryResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphQueryResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "GraphResolveRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "identifiers": {
+          "items": {
+            "$ref": "#/$defs/GraphResolveRequest_GraphIdentifier"
+          },
+          "type": "array"
+        },
+        "include_edges": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "identifiers"
+      ],
+      "title": "GraphResolveRequest",
+      "type": "object"
+    },
+    "GraphResolveRequest_GraphIdentifier": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphResolveRequest_GraphNodeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphResolveRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphResolveRequest_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "GraphResolveRequest_GraphNodeId": {
+      "type": "string"
+    },
+    "GraphResolveRequest_SourceId": {
+      "type": "string"
+    },
+    "GraphResolveRequest_SourceItemKey": {
+      "type": "string"
+    }
+  },
   "$id": "https://axon.local/schemas/sources/graph.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "graph_kinds": [
     {
-      "kind": "document",
+      "kind": "source",
       "requires_evidence": true,
       "type": "node"
     },
     {
-      "kind": "chunk",
+      "kind": "web_origin",
       "requires_evidence": true,
       "type": "node"
     },
     {
-      "kind": "entity",
+      "kind": "docs_site",
       "requires_evidence": true,
       "type": "node"
     },
     {
-      "kind": "contains",
+      "kind": "web_page",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "repo",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "repo_branch",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "repo_commit",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "repo_file",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "local_checkout",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "package",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "package_version",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "registry_namespace",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "container_image",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "container_image_tag",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "github_action",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "github_action_ref",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "toolchain",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "toolchain_version",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "system_package",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "terraform_provider",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "helm_chart",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "runtime_service",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "network_endpoint",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "volume_mount",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "environment_variable",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "secret_reference",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "api_surface",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "api_operation",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "schema_type",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "schema_field",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "protocol",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "model",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "reddit_subreddit",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "reddit_thread",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "youtube_video",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "youtube_playlist",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "youtube_channel",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "feed",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "feed_entry",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "session",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "session_turn",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "agent",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "agent_invocation",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "tool",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "tool_call",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "external_resource",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "skill",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "skill_invocation",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "memory",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "decision",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "issue",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "pull_request",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "person_or_org",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "derived_source",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "artifact",
+      "requires_evidence": true,
+      "type": "node"
+    },
+    {
+      "kind": "alias_of",
       "requires_evidence": true,
       "type": "edge"
     },
     {
-      "kind": "mentions",
+      "kind": "canonicalizes_to",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "official_for",
       "requires_evidence": true,
       "type": "edge"
     },
     {
       "kind": "derived_from",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "mirrors",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "package_has_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "package_has_docs",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "package_has_version",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "package_owned_by",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_declares_dependency",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_locks_dependency_version",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_uses_container_image",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_uses_github_action",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_uses_toolchain",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_uses_system_package",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_uses_terraform_provider",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_uses_helm_chart",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_declares_service",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "service_uses_image",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "service_exposes_endpoint",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "service_mounts_volume",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "service_requires_env",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_declares_env_var",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_declares_api",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "service_exposes_api",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "api_uses_protocol",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "api_has_operation",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "operation_uses_schema",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "schema_has_field",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "package_generates_api_client",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_has_docs",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_has_wiki",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_owned_by",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "repo_has_branch",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "branch_points_to_commit",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "commit_contains_file",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "local_checkout_tracks_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "local_checkout_at_commit",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "docs_site_contains_page",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "web_origin_has_docs",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "feed_contains_entry",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "youtube_channel_has_video",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "youtube_playlist_has_video",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "subreddit_has_thread",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_has_turn",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_about_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_mentions_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_mentions_source",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_mentions_issue",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_mentions_pr",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_mentions_package",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_produced_decision",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_invoked_agent",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "agent_invocation_uses_agent",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "agent_invocation_used_skill",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "agent_invocation_used_tool",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "agent_invocation_produced_artifact",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "agent_invocation_related_to_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "agent_invocation_related_to_issue",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "session_invoked_skill",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "skill_invocation_uses_skill",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "skill_invocation_produced_artifact",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "skill_invocation_related_to_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "skill_invocation_related_to_issue",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "turn_invoked_tool",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "turn_invoked_skill",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_uses_tool",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_touched_file",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_produced_artifact",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_read_resource",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_mutated_resource",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_related_to_repo",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "tool_call_related_to_issue",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_relates_to",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_supersedes",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_contradicts",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_compacts",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_about_source",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_about_file",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_about_issue",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "memory_used_in_context",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "source_produced_artifact",
+      "requires_evidence": true,
+      "type": "edge"
+    },
+    {
+      "kind": "source_indexed_as",
       "requires_evidence": true,
       "type": "edge"
     }
@@ -63,12 +2510,12 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:982b25baba615d61726f9850ef51976ec5bdb5108445574898be336ad59d5eb1",
+        "checksum": "sha256:b64fee3ac9b87d2c4e771e473b3c9cdec0e944a2b39702b129724f13c26b0740",
         "kind": "rust_module",
         "path": "crates/axon-graph/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:15612615aa0b8493246860c7b0e95de0ffd998cb45eb89a50fa04845fc510f59",
+        "checksum": "sha256:9e62401eb732eb673b9529bfe544c17afb7d7b387d449782eb77741286564a12",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/graph-schema.md"
       }

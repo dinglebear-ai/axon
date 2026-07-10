@@ -1,0 +1,65 @@
+{
+  "candidate_id": "gc_docker_compose_1",
+  "job_id": "00000000-0000-0000-0000-000000000004",
+  "source_id": "src_local_repo",
+  "source_item_key": "docker-compose.yaml",
+  "item_canonical_uri": "file:///repo/docker-compose.yaml",
+  "document_id": null,
+  "kind": "runtime_manifest",
+  "merge_key": null,
+  "producer": {
+    "adapter": "axon-parse",
+    "parser": "docker_compose",
+    "version": "1"
+  },
+  "nodes": [
+    {
+      "node_kind": "repo",
+      "stable_key": "repo:local/x",
+      "label": "x",
+      "properties": {}
+    },
+    {
+      "node_kind": "runtime_service",
+      "stable_key": "service:local/x:qdrant",
+      "label": "qdrant",
+      "properties": {}
+    },
+    {
+      "node_kind": "container_image_tag",
+      "stable_key": "docker:qdrant/qdrant:v1.13.1",
+      "label": "qdrant/qdrant:v1.13.1",
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "edge_kind": "repo_declares_service",
+      "from_stable_key": "repo:local/x",
+      "to_stable_key": "service:local/x:qdrant",
+      "properties": {}
+    },
+    {
+      "edge_kind": "service_uses_image",
+      "from_stable_key": "service:local/x:qdrant",
+      "to_stable_key": "docker:qdrant/qdrant:v1.13.1",
+      "properties": {}
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_1",
+      "evidence_kind": "runtime_manifest",
+      "source_id": "src_local_repo",
+      "source_item_key": "docker-compose.yaml",
+      "document_id": null,
+      "chunk_id": null,
+      "range": null,
+      "quote": "image: qdrant/qdrant:v1.13.1",
+      "confidence": 0.9,
+      "metadata": {}
+    }
+  ],
+  "confidence": 0.9,
+  "metadata": {}
+}

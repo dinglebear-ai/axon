@@ -240,7 +240,7 @@
       "operation_id": "ask",
       "path": "/v1/ask",
       "request_dto": "AskRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -278,7 +278,7 @@
       "operation_id": "chat",
       "path": "/v1/chat",
       "request_dto": "ChatRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -354,7 +354,7 @@
       "operation_id": "search",
       "path": "/v1/search",
       "request_dto": "SearchRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -374,7 +374,7 @@
       "operation_id": "research",
       "path": "/v1/research",
       "request_dto": "ResearchRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -493,7 +493,7 @@
       "operation_id": "evaluate",
       "path": "/v1/evaluate",
       "request_dto": "EvaluateRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -513,7 +513,7 @@
       "operation_id": "suggest",
       "path": "/v1/suggest",
       "request_dto": "SuggestRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -553,7 +553,7 @@
       "operation_id": "summarize",
       "path": "/v1/summarize",
       "request_dto": "SummarizeRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -651,7 +651,7 @@
       "operation_id": "search_memories",
       "path": "/v1/memories/search",
       "request_dto": "MemoryRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -671,7 +671,7 @@
       "operation_id": "memory_context",
       "path": "/v1/memories/context",
       "request_dto": "MemoryRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "read",
       "responses": [
         "200",
         "400",
@@ -1300,9 +1300,9 @@
       "method": "POST",
       "mutates": true,
       "operation_id": "dedupe",
-      "path": "/v1/dedupe",
+      "path": "/v1/prune/dedupe",
       "request_dto": "DedupeRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "admin",
       "responses": [
         "200",
         "400",
@@ -1320,9 +1320,9 @@
       "method": "POST",
       "mutates": true,
       "operation_id": "purge",
-      "path": "/v1/purge",
+      "path": "/v1/prune/purge",
       "request_dto": "PurgeRequest",
-      "requires_auth_scope": "write",
+      "requires_auth_scope": "admin",
       "responses": [
         "200",
         "400",
@@ -1447,7 +1447,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:f1dcd3723715023e7507385915a79d313318808e2cb1c4601fc849f1d05fa9dd",
+        "checksum": "sha256:44934021ebdb1fc7f2b4d7f665dc1f778f6c4123caa2efd7431e9718ddc67694",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

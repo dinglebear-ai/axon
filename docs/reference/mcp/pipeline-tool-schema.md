@@ -15,7 +15,7 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-mcp/src/schema_registry.rs` | `sha256:f41acd92c675cb7fb16f0615f7280f51a4c70242c9621570c0f15cc6a649593d` |
-| `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:a09160e89b2b6fbccbcfe477fb228b8822551ea6bf2249558b6665f8c78dbdab` |
+| `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc` |
 
 ## Root Shape
 
