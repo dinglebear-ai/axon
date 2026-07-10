@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use crate::adapter::Result;
 use crate::local_select::LocalOptions;
 
-pub(super) fn read_content_ref(path: &Path, options: &LocalOptions) -> Result<ContentRef> {
+pub(crate) fn read_content_ref(path: &Path, options: &LocalOptions) -> Result<ContentRef> {
     enforce_read_size(path, options)?;
     if options.includes_binary_body(path) {
         let bytes =
@@ -25,7 +25,7 @@ pub(super) fn read_content_ref(path: &Path, options: &LocalOptions) -> Result<Co
     Ok(ContentRef::InlineText { text })
 }
 
-pub(super) fn safe_item_path(root: &Path, item_key: &str) -> Result<PathBuf> {
+pub(crate) fn safe_item_path(root: &Path, item_key: &str) -> Result<PathBuf> {
     let key = Path::new(item_key);
     if key.is_absolute()
         || key
@@ -54,7 +54,7 @@ pub(super) fn safe_item_path(root: &Path, item_key: &str) -> Result<PathBuf> {
     }
 }
 
-pub(super) fn content_fingerprint(path: &Path) -> Result<String> {
+pub(crate) fn content_fingerprint(path: &Path) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut file =
         fs::File::open(path).map_err(|err| fs_error("adapter.local.read_failed", path, err))?;
@@ -89,12 +89,12 @@ fn enforce_read_size(path: &Path, options: &LocalOptions) -> Result<()> {
     .with_context("max_file_bytes", max_file_bytes.to_string()))
 }
 
-pub(super) fn fs_error(code: &'static str, path: &Path, err: std::io::Error) -> ApiError {
+pub(crate) fn fs_error(code: &'static str, path: &Path, err: std::io::Error) -> ApiError {
     ApiError::new(code, axon_error::ErrorStage::Discovering, err.to_string())
         .with_context("path_hint", public_path_hint(path))
 }
 
-pub(super) fn public_path_hint(path: &Path) -> String {
+pub(crate) fn public_path_hint(path: &Path) -> String {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(ToString::to_string)

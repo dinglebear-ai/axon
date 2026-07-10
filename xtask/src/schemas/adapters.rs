@@ -430,6 +430,8 @@ fn source_family_wire(family: SourceFamily) -> &'static str {
         SourceFamily::Registry => "registry",
         SourceFamily::CliTool => "cli_tool",
         SourceFamily::McpTool => "mcp_tool",
+        SourceFamily::Upload => "upload",
+        SourceFamily::Deepwiki => "deepwiki",
         SourceFamily::MemoryIntegration => "memory",
     }
 }

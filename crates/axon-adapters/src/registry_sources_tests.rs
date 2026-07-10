@@ -146,6 +146,60 @@ async fn registry_adapter_acquires_and_normalizes_source_documents() {
     );
 }
 
+/// The registry adapter is generic over `RegistryDump.registry` — this
+/// resolves a non-npm ecosystem (huggingface) end to end (discover →
+/// acquire → normalize) to prove the 13-ecosystem expansion actually
+/// resolves, not just that npm still works.
+#[tokio::test]
+async fn registry_adapter_resolves_a_newly_added_ecosystem_end_to_end() {
+    let adapter = RegistrySourceAdapter::new();
+    let dump_path = write_dump(huggingface_dump_json());
+    let plan = source_plan_for(
+        "pkg://huggingface/bert-base-uncased",
+        dump_path,
+        SourceScope::Package,
+    );
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    assert_eq!(manifest.items.len(), 1);
+    assert_eq!(
+        manifest.items[0].canonical_uri,
+        "pkg://huggingface/bert-base-uncased/versions/main"
+    );
+
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+    assert_eq!(acquisition.fetched_items.len(), 1);
+    let ContentRef::InlineText { text } = &acquisition.fetched_items[0].content_ref else {
+        panic!("expected inline text content for registry acquisition");
+    };
+    assert!(text.contains("bert-base-uncased@main"));
+    assert!(text.contains("BERT base model (uncased)"));
+
+    let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
+    let documents = normalized.data;
+    assert_eq!(documents.len(), 1);
+    let document = &documents[0];
+    assert_eq!(
+        document
+            .metadata
+            .get("pkg_registry")
+            .and_then(|v| v.as_str()),
+        Some("huggingface")
+    );
+    assert_eq!(
+        document.metadata.get("pkg_name").and_then(|v| v.as_str()),
+        Some("bert-base-uncased")
+    );
+    assert_eq!(
+        document
+            .metadata
+            .get("pkg_version")
+            .and_then(|v| v.as_str()),
+        Some("main")
+    );
+}
+
 #[tokio::test]
 async fn registry_adapter_reports_error_for_missing_dump_file() {
     let adapter = RegistrySourceAdapter::new();

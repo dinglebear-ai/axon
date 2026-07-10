@@ -1,6 +1,18 @@
-//! Local filesystem source adapter.
-
-pub(crate) mod local_io;
+//! Upload source adapter — staged content (single uploaded file, or an
+//! already-unpacked archive/repomix bundle) materialized on disk by the
+//! upload transport, converted into [`SourceDocument`]s.
+//!
+//! This mirrors the `local` adapter's filesystem walk (same select rules,
+//! same `local_io` helpers) but carries a distinct `SourceKind::Upload`
+//! identity so uploaded content is provenance-tracked separately from a
+//! caller-specified local path, per the "Prepared Uploads" table in
+//! `docs/pipeline-unification/sources/adapter-scopes.md`.
+//!
+//! Follow-up (transport workstream, not this crate): the staged-upload
+//! *store* — accepting bytes over HTTP/MCP, virus/size checking them, and
+//! writing them to a scratch root — does not exist yet. This adapter assumes
+//! `plan.request.source` already points at a materialized staging root
+//! written by that (future) store; it never accepts raw bytes itself.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,25 +27,25 @@ use uuid::Uuid;
 
 use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
+use crate::local::local_io::{content_fingerprint, fs_error, read_content_ref, safe_item_path};
 use crate::local_select::{LocalOptions, is_binary_path, validate_options};
 use crate::manifest::item_identity;
 
-use self::local_io::{content_fingerprint, fs_error, read_content_ref, safe_item_path};
+pub const MODULE_NAME: &str = "upload";
 
-pub const MODULE_NAME: &str = "local";
+const ADAPTER_NAME: &str = "upload";
 
-const ADAPTER_NAME: &str = "local";
 #[derive(Debug, Clone, Default)]
-pub struct LocalSourceAdapter;
+pub struct UploadSourceAdapter;
 
-impl LocalSourceAdapter {
+impl UploadSourceAdapter {
     pub fn new() -> Self {
         Self
     }
 }
 
 #[async_trait]
-impl SourceAdapter for LocalSourceAdapter {
+impl SourceAdapter for UploadSourceAdapter {
     fn name(&self) -> &'static str {
         ADAPTER_NAME
     }
@@ -43,7 +55,7 @@ impl SourceAdapter for LocalSourceAdapter {
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
-        Ok(local_capability(self.version()).into())
+        Ok(upload_capability(self.version()).into())
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
@@ -73,12 +85,12 @@ impl SourceAdapter for LocalSourceAdapter {
         let documents = acquisition
             .fetched_items
             .iter()
-            .map(|item| local_source_document(plan, &acquisition, item))
+            .map(|item| upload_source_document(plan, &acquisition, item))
             .collect::<Vec<_>>();
         Ok(StageExecutionResult {
             header: stage_header(
                 plan.job_id,
-                "local_normalize",
+                "upload_normalize",
                 PipelinePhase::Normalizing,
                 documents.len(),
             ),
@@ -87,56 +99,50 @@ impl SourceAdapter for LocalSourceAdapter {
     }
 }
 
-fn local_capability(version: &str) -> AdapterCapability {
+fn upload_capability(version: &str) -> AdapterCapability {
     AdapterCapability::new(
         AdapterRef {
             name: ADAPTER_NAME.to_string(),
             version: version.to_string(),
         },
-        SourceKind::Local,
-        SourceScope::Directory,
+        SourceKind::Upload,
+        SourceScope::File,
     )
-    .with_scope(SourceScope::File)
-    .with_scope(SourceScope::Workspace)
-    .with_scope(SourceScope::Repo)
+    .with_scope(SourceScope::Directory)
     .with_scope(SourceScope::Map)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    let capability = local_capability(env!("CARGO_PKG_VERSION"));
-    capability.validate_scope(plan.route.scope)?;
+    upload_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let options = validate_options(&plan.route.validated_options)?;
 
     let root = PathBuf::from(&plan.request.source);
-    let mut files = Vec::new();
-    match plan.route.scope {
-        SourceScope::File => files.push(root.clone()),
-        SourceScope::Directory | SourceScope::Workspace | SourceScope::Repo | SourceScope::Map => {
-            files = collect_files(&root, &options)?;
-        }
+    let files = match plan.route.scope {
+        SourceScope::File => vec![root.clone()],
+        SourceScope::Directory | SourceScope::Map => collect_files(&root, &options)?,
         _ => {
             return Err(ApiError::new(
-                "adapter.local.scope.unsupported",
+                "adapter.upload.scope.unsupported",
                 axon_error::ErrorStage::Routing,
-                "local adapter only discovers file-like local scopes",
+                "upload adapter only discovers file/directory/map scopes",
             )
             .with_context("scope", format!("{:?}", plan.route.scope)));
         }
-    }
-    files.sort();
+    };
 
     let base_uri = public_base_uri(&plan.route.source.canonical_uri);
     let root_for_keys = root_for_item_keys(&root, plan.route.scope);
     let mut items = Vec::new();
-    for file in files {
+    let mut sorted_files = files;
+    sorted_files.sort();
+    for file in sorted_files {
         let key = relative_key(root_for_keys, &file)?;
         if !options.should_include_file(plan.route.scope, &key, &file) {
             continue;
         }
-        let safe_path = safe_item_path(root_for_keys, &key)?;
-        let metadata = fs::metadata(&safe_path)
-            .map_err(|err| fs_error("adapter.local.stat_failed", &safe_path, err))?;
+        let metadata = fs::metadata(&file)
+            .map_err(|err| fs_error("adapter.upload.stat_failed", &file, err))?;
         if let Some(max_file_bytes) = options.max_file_bytes {
             if metadata.len() > max_file_bytes {
                 continue;
@@ -145,8 +151,14 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         if !metadata.is_file() {
             continue;
         }
-        let content_hash = content_fingerprint(&safe_path)?;
-        let identity = item_identity(SourceKind::Local, &base_uri, &key)?;
+        let content_hash = content_fingerprint(&file)?;
+        let identity = item_identity(SourceKind::Upload, &base_uri, &key)?;
+        let mut item_metadata = MetadataMap::new();
+        item_metadata.insert("staged_upload".to_string(), json!(true));
+        item_metadata.insert(
+            "upload_kind".to_string(),
+            json!(upload_kind_for(plan.route.scope)),
+        );
         items.push(ManifestItem {
             source_id: plan.route.source.source_id.clone(),
             source_item_key: identity.source_item_key,
@@ -160,7 +172,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
             mtime: modified_at(metadata.modified().ok()),
             version: None,
             fetch_plan: None,
-            metadata: MetadataMap::new(),
+            metadata: item_metadata,
             graph_hints: Vec::new(),
         });
     }
@@ -168,7 +180,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
 
     Ok(SourceManifest {
         source_id: plan.route.source.source_id.clone(),
-        generation: SourceGenerationId::from("gen_local_discovery"),
+        generation: SourceGenerationId::from("gen_upload_discovery"),
         adapter: plan.route.adapter.clone(),
         scope: plan.route.scope,
         items,
@@ -179,46 +191,19 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
 
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {
     validate_adapter(plan)?;
-    if plan.route.scope == SourceScope::Map {
-        return Ok(SourceAcquisition {
-            header: stage_header(plan.job_id, "local_fetch", PipelinePhase::Fetching, 0),
-            source_id: plan.route.source.source_id.clone(),
-            generation: diff.next_generation.clone(),
-            adapter: plan.route.adapter.clone(),
-            scope: plan.route.scope,
-            manifest: SourceManifest {
-                source_id: plan.route.source.source_id.clone(),
-                generation: diff.next_generation.clone(),
-                adapter: plan.route.adapter.clone(),
-                scope: plan.route.scope,
-                items: diff
-                    .added
-                    .iter()
-                    .chain(diff.modified.iter())
-                    .cloned()
-                    .collect(),
-                created_at: timestamp(),
-                metadata: MetadataMap::new(),
-            },
-            fetched_items: Vec::new(),
-            artifacts: Vec::new(),
-        });
-    }
-    let root = PathBuf::from(&plan.request.source);
-    let root_for_keys = root_for_item_keys(&root, plan.route.scope);
     let manifest_items = diff
         .added
         .iter()
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
+
+    let root = PathBuf::from(&plan.request.source);
+    let root_for_keys = root_for_item_keys(&root, plan.route.scope);
     let options = validate_options(&plan.route.validated_options)?;
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
     for item in &manifest_items {
         let path = safe_item_path(root_for_keys, &item.source_item_key.0)?;
-        if !options.fetches_body(&path) {
-            continue;
-        }
         let content_ref = read_content_ref(&path, &options)?;
         fetched_items.push(AcquiredSourceItem {
             manifest_item: item.clone(),
@@ -246,7 +231,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
     Ok(SourceAcquisition {
         header: stage_header(
             plan.job_id,
-            "local_fetch",
+            "upload_fetch",
             PipelinePhase::Fetching,
             fetched_items.len(),
         ),
@@ -260,12 +245,57 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
     })
 }
 
-fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
-    ApiError::new(
-        "adapter.local.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
-        err.to_string(),
-    )
+fn upload_source_document(
+    plan: &SourcePlan,
+    acquisition: &SourceAcquisition,
+    item: &AcquiredSourceItem,
+) -> SourceDocument {
+    let mut metadata = MetadataMap::new();
+    metadata.insert("source_family".to_string(), json!("upload"));
+    metadata.insert("source_type".to_string(), json!("upload"));
+    metadata.insert("source_kind".to_string(), json!("upload"));
+    metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
+    metadata.insert("source_scope".to_string(), json!(plan.route.scope));
+    metadata.insert("staged_upload".to_string(), json!(true));
+    metadata.insert(
+        "item_canonical_uri".to_string(),
+        json!(item.manifest_item.canonical_uri),
+    );
+    metadata.insert("committed_generation".to_string(), json!("uncommitted"));
+    metadata.insert("visibility".to_string(), json!("internal"));
+    metadata.insert("redaction_status".to_string(), json!("clean"));
+    SourceDocument {
+        document_id: upload_document_id(
+            &acquisition.source_id,
+            &item.manifest_item.source_item_key,
+        ),
+        source_id: acquisition.source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key.clone(),
+        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        content_kind: item
+            .manifest_item
+            .content_kind
+            .unwrap_or(ContentKind::PlainText),
+        content: item.content_ref.clone(),
+        metadata,
+        title: item.manifest_item.display_path.clone(),
+        language: None,
+        path: item.manifest_item.display_path.clone(),
+        mime_type: None,
+        structured_payload: None,
+        artifact_id: item.raw_artifact_id.clone(),
+        chunk_hints: plan.route.chunking_hints.clone(),
+        parser_hints: plan.route.parser_hints.clone(),
+    }
+}
+
+fn upload_kind_for(scope: SourceScope) -> &'static str {
+    match scope {
+        SourceScope::File => "file",
+        SourceScope::Directory => "archive",
+        SourceScope::Map => "map",
+        _ => "unknown",
+    }
 }
 
 fn validate_adapter(plan: &SourcePlan) -> Result<()> {
@@ -273,7 +303,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
         return Ok(());
     }
     Err(ApiError::new(
-        "adapter.local.mismatch",
+        "adapter.upload.mismatch",
         axon_error::ErrorStage::Routing,
         "route selected a different adapter",
     )
@@ -289,15 +319,13 @@ fn collect_files(root: &Path, options: &LocalOptions) -> Result<Vec<PathBuf>> {
         .git_ignore(options.respect_gitignore)
         .git_exclude(options.respect_gitignore)
         .git_global(options.respect_gitignore)
-        .parents(options.respect_gitignore);
-    if options.should_prune_default_dirs() {
-        builder.filter_entry(should_descend_entry);
-    }
+        .parents(options.respect_gitignore)
+        .filter_entry(should_descend_entry);
     let mut files = Vec::new();
     for entry in builder.build() {
         let entry = entry.map_err(|err| {
             ApiError::new(
-                "adapter.local.walk_failed",
+                "adapter.upload.walk_failed",
                 axon_error::ErrorStage::Discovering,
                 err.to_string(),
             )
@@ -329,9 +357,9 @@ fn relative_key(root: &Path, file: &Path) -> Result<String> {
         .join("/");
     if key.is_empty() {
         return Err(ApiError::new(
-            "adapter.local.item_key.invalid",
+            "adapter.upload.item_key.invalid",
             axon_error::ErrorStage::Normalizing,
-            "local item key must not be empty",
+            "upload item key must not be empty",
         ));
     }
     Ok(key)
@@ -350,11 +378,11 @@ fn root_for_item_keys(root: &Path, scope: SourceScope) -> &Path {
 
 fn public_base_uri(canonical_uri: &str) -> String {
     if let Some((scheme, rest)) = canonical_uri.split_once("://") {
-        if scheme == "local" {
-            return format!("local://{}", rest.trim_matches('/'));
+        if scheme == "upload" {
+            return format!("upload://{}", rest.trim_matches('/'));
         }
     }
-    "local://source".to_string()
+    "upload://source".to_string()
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {
@@ -374,44 +402,12 @@ fn content_kind_for(path: &Path) -> ContentKind {
     }
 }
 
-fn local_source_document(
-    plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
-) -> SourceDocument {
-    let mut metadata = MetadataMap::new();
-    metadata.insert("source_family".to_string(), json!("code"));
-    metadata.insert("source_type".to_string(), json!("local_code"));
-    metadata.insert("source_kind".to_string(), json!("local"));
-    metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
-    metadata.insert("source_scope".to_string(), json!(plan.route.scope));
-    metadata.insert(
-        "item_canonical_uri".to_string(),
-        json!(item.manifest_item.canonical_uri),
-    );
-    metadata.insert("committed_generation".to_string(), json!("uncommitted"));
-    metadata.insert("visibility".to_string(), json!("internal"));
-    metadata.insert("redaction_status".to_string(), json!("clean"));
-    SourceDocument {
-        document_id: local_document_id(&acquisition.source_id, &item.manifest_item.source_item_key),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
-        content_kind: item
-            .manifest_item
-            .content_kind
-            .unwrap_or(ContentKind::PlainText),
-        content: item.content_ref.clone(),
-        metadata,
-        title: item.manifest_item.display_path.clone(),
-        language: None,
-        path: item.manifest_item.display_path.clone(),
-        mime_type: None,
-        structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
-        chunk_hints: plan.route.chunking_hints.clone(),
-        parser_hints: plan.route.parser_hints.clone(),
-    }
+fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
+    ApiError::new(
+        "adapter.upload.blocking_task_failed",
+        axon_error::ErrorStage::Planning,
+        err.to_string(),
+    )
 }
 
 fn stage_header(
@@ -450,9 +446,9 @@ fn named_stage_id(stage_id: &str) -> StageId {
     StageId::new(Uuid::new_v5(&Uuid::NAMESPACE_OID, stage_id.as_bytes()))
 }
 
-fn local_document_id(source_id: &SourceId, item_key: &SourceItemKey) -> DocumentId {
+fn upload_document_id(source_id: &SourceId, item_key: &SourceItemKey) -> DocumentId {
     DocumentId::from(format!(
-        "doc_local_{}",
+        "doc_upload_{}",
         stable_token(&format!("{}\0{}", source_id.0, item_key.0))
     ))
 }
@@ -472,3 +468,7 @@ fn stable_token(value: &str) -> String {
 fn modified_at(modified: Option<SystemTime>) -> Option<Timestamp> {
     modified.map(|time| Timestamp(chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339()))
 }
+
+#[cfg(test)]
+#[path = "upload_tests.rs"]
+mod tests;
