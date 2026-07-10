@@ -125,6 +125,45 @@ export type CheckSummary = {
 };
 
 export type ConfigFile = 'toml' | 'env';
-export type PanelTab = 'dashboard' | 'jobs' | 'configurator';
+export type PanelTab = 'dashboard' | 'jobs' | 'sources' | 'configurator';
 
 export const TOKEN_KEY = 'axon-panel-token';
+
+// ---------------------------------------------------------------------------
+// Sources (GET/POST /v1/sources)
+// ---------------------------------------------------------------------------
+//
+// The OpenAPI schema for `GET /v1/sources` is intentionally untyped
+// (`schema: {}`) because the live handler
+// (crates/axon-web/src/server/handlers/discovery.rs -> axon_services::system::sources)
+// still returns the legacy "sources facet" shape (`count`/`limit`/`offset`/
+// `urls: [{url, chunks}]`), not the ledger `Page<SourceSummary>` shape the
+// pipeline-unification contract targets (`SourceService::list` is wired but
+// returns `not_implemented` in production — see
+// crates/axon-services/src/service_traits/source_service.rs). These types
+// tolerate both shapes so the UI renders correctly today and keeps working
+// if/when the server ships the ledger listing.
+export type SourceListEntry = {
+  url?: string;
+  canonical_uri?: string;
+  chunks?: number;
+  source_kind?: string;
+  status?: string;
+  adapter?: { name?: string; version?: string } | string | null;
+  counts?: {
+    items_total?: number;
+    documents_total?: number;
+    chunks_total?: number;
+    vector_points_total?: number;
+  };
+};
+
+export type SourcesListResult = {
+  count?: number;
+  limit?: number;
+  offset?: number;
+  total?: number;
+  next_cursor?: string | null;
+  urls?: SourceListEntry[];
+  items?: SourceListEntry[];
+};
