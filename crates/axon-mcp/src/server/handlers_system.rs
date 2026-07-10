@@ -1,17 +1,13 @@
 use super::AxonMcpServer;
 use super::artifacts::{InlineHint, artifact_root, client_context_name, respond_with_mode};
 use super::common::{
-    CURRENT_PRUNE_AUTHZ, MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error, to_pagination,
+    CURRENT_PRUNE_AUTHZ, MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error,
 };
-use crate::schema::{
-    AxonToolResponse, DoctorRequest, DomainsRequest, HelpRequest, PruneMcpRequest, SourcesRequest,
-    StatsRequest, StatusRequest,
-};
+use crate::schema::{AxonToolResponse, DoctorRequest, HelpRequest, PruneMcpRequest, StatusRequest};
 use axon_api::source::prune::{PruneRequest as ApiPruneRequest, PruneSelector};
 use axon_api::source::{SourceGenerationId, SourceId};
 use axon_services::prune::{PruneAuthz, prune};
 use axon_services::system;
-use axon_services::transport;
 use rmcp::ErrorData;
 use serde_json::Value;
 
@@ -221,112 +217,12 @@ impl AxonMcpServer {
         .await
     }
 
-    pub(super) async fn handle_domains(
-        &self,
-        req: DomainsRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let pagination = to_pagination(req.limit, req.offset, transport::DISCOVERY_PAGE_DEFAULT);
-        let response_mode = req.response_mode;
-        if let Some(domain) = req.domain.as_deref() {
-            let result = system::domain_indexed(self.cfg.as_ref(), domain)
-                .await
-                .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
-            let payload =
-                serde_json::to_value(result).map_err(|e| logged_internal_error("domains", &e))?;
-            return respond_with_mode(
-                "domains",
-                "domains",
-                response_mode,
-                "domains",
-                payload,
-                InlineHint::Default,
-            )
-            .await;
-        }
-        let result = system::domains(self.cfg.as_ref(), pagination)
-            .await
-            .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
-        let payload = serde_json::json!({
-            "limit": result.limit,
-            "offset": result.offset,
-            "domains": result.domains.iter().map(|d| serde_json::json!({
-                "domain": d.domain,
-                "vectors": d.vectors,
-            })).collect::<Vec<_>>(),
-        });
-        respond_with_mode(
-            "domains",
-            "domains",
-            response_mode,
-            "domains",
-            payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
-    pub(super) async fn handle_sources(
-        &self,
-        req: SourcesRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let response_mode = req.response_mode;
-        if let Some(domain) = req.domain.as_deref() {
-            let pagination = transport::domain_sources_pagination(req.limit, req.offset);
-            let result = system::sources_for_domain(
-                self.cfg.as_ref(),
-                domain,
-                pagination,
-                req.cursor.as_deref(),
-            )
-            .await
-            .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
-            let payload =
-                serde_json::to_value(result).map_err(|e| logged_internal_error("sources", &e))?;
-            return respond_with_mode(
-                "sources",
-                "sources",
-                response_mode,
-                "sources",
-                payload,
-                InlineHint::Default,
-            )
-            .await;
-        }
-        let pagination = to_pagination(req.limit, req.offset, transport::DISCOVERY_PAGE_DEFAULT);
-        let result = system::sources(self.cfg.as_ref(), pagination)
-            .await
-            .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
-        let payload =
-            serde_json::to_value(result).map_err(|e| logged_internal_error("sources", &e))?;
-        respond_with_mode(
-            "sources",
-            "sources",
-            response_mode,
-            "sources",
-            payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
-    pub(super) async fn handle_stats(
-        &self,
-        req: StatsRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let response_mode = req.response_mode;
-        let result = system::stats(self.cfg.as_ref())
-            .await
-            .map_err(|e| logged_internal_error("stats", e.as_ref()))?;
-        respond_with_mode(
-            "stats",
-            "stats",
-            response_mode,
-            "stats",
-            result.payload,
-            InlineHint::Default,
-        )
-        .await
-    }
+    // `handle_domains`/`handle_sources`/`handle_stats` were removed along
+    // with the `domains`/`sources`/`stats` MCP actions (issue #298 WS-G —
+    // see the rejection arm in `server.rs`). The underlying
+    // `system::domains`/`system::sources`/`system::stats` service functions
+    // are untouched and remain reachable through the CLI (`axon domains`,
+    // `axon sources`, `axon stats`) and REST.
 }
 
 /// Build a [`PruneSelector`] from an MCP [`PruneMcpRequest`]. Mirrors
@@ -399,13 +295,12 @@ fn help_payload() -> Value {
             "map": ["map"],
             "prune": ["plan", "exec", "dedupe", "purge"],
             "doctor": ["doctor"],
-            "domains": ["domains"],
-            "sources": ["sources"],
-            "stats": ["stats"],
+            "resolve": ["resolve"],
+            "capabilities": ["capabilities"],
+            "providers": ["list", "get"],
             "diff": ["diff"],
             "brand": ["brand"],
-            "watch": ["list", "get", "update", "pause", "resume", "delete"],
-            "elicit_demo": []
+            "watch": ["list", "get", "update", "pause", "resume", "delete"]
         },
         "resources": [
             MCP_TOOL_SCHEMA_URI

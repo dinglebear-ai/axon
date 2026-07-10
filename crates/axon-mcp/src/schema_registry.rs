@@ -76,6 +76,30 @@ pub fn action_registry() -> &'static [McpActionSpec] {
             mutates: true,
             async_job: false,
         },
+        McpActionSpec {
+            action: "resolve",
+            request_dto: "ResolveRequest",
+            result_dto: "RoutePlan",
+            required_scope: "read",
+            mutates: false,
+            async_job: false,
+        },
+        McpActionSpec {
+            action: "capabilities",
+            request_dto: "CapabilitiesRequest",
+            result_dto: "CapabilityDocument",
+            required_scope: "read",
+            mutates: false,
+            async_job: false,
+        },
+        McpActionSpec {
+            action: "providers",
+            request_dto: "ProvidersRequest",
+            result_dto: "ProviderSummary",
+            required_scope: "read",
+            mutates: false,
+            async_job: false,
+        },
     ]
 }
 
@@ -90,6 +114,10 @@ pub fn removed_actions() -> &'static [&'static str] {
         "vertical_scrape",
         "purge",
         "dedupe",
+        "sources",
+        "domains",
+        "stats",
+        "elicit_demo",
     ]
 }
 

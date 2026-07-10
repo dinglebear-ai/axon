@@ -4,6 +4,8 @@ pub(super) mod artifacts;
 pub mod common;
 #[path = "server/handler_meta.rs"]
 mod handler_meta;
+#[path = "server/handlers_discovery.rs"]
+mod handlers_discovery;
 #[path = "server/handlers_elicit.rs"]
 mod handlers_elicit;
 #[path = "server/handlers_extract.rs"]
@@ -141,7 +143,11 @@ impl AxonMcpServer {
     )]
     async fn axon<'a>(
         &'a self,
-        peer: rmcp::Peer<RoleServer>,
+        // `elicit_demo` (the only handler that needed the live peer for a
+        // server->client elicitation round-trip) was removed from the MCP
+        // action surface per the tool contract (issue #298 WS-G); no
+        // dispatch arm below needs `peer` anymore.
+        _peer: rmcp::Peer<RoleServer>,
         Parameters(raw): Parameters<serde_json::Map<String, Value>>,
     ) -> Result<String, ErrorData> {
         let action = raw
@@ -176,11 +182,30 @@ impl AxonMcpServer {
             AxonRequest::Evaluate(req) => self.handle_evaluate(req).await?,
             AxonRequest::Suggest(req) => self.handle_suggest(req).await?,
             AxonRequest::Doctor(req) => self.handle_doctor(req).await?,
-            AxonRequest::Domains(req) => self.handle_domains(req).await?,
-            AxonRequest::Sources(req) => self.handle_sources(req).await?,
-            AxonRequest::Stats(req) => self.handle_stats(req).await?,
             AxonRequest::Help(req) => self.handle_help(req).await?,
-            AxonRequest::ElicitDemo(req) => handlers_elicit::handle_elicit_demo(&peer, req).await?,
+            AxonRequest::Resolve(req) => self.handle_resolve(req).await?,
+            AxonRequest::Capabilities(req) => self.handle_capabilities(req).await?,
+            AxonRequest::Providers(req) => self.handle_providers(req).await?,
+            // `sources`, `domains`, `stats`, and `elicit_demo` are removed
+            // from the MCP surface per the tool contract (issue #298 WS-G):
+            // `sources`/`domains` have no contracted equivalent yet (tracked
+            // as a WS-G followup), `stats` folds toward `action=collections`
+            // once a real CollectionService backs it (also a followup), and
+            // `elicit_demo` was a developer-only demo action never in the
+            // contract's canonical list. All four remain on the shared
+            // `AxonRequest` enum for REST/CLI compatibility, but MCP authz
+            // (`MCP_ACTION_SPECS`) already denies them before dispatch; this
+            // arm keeps the match exhaustive and gives a clear message for
+            // LoopbackDev callers that skip the authz gate.
+            AxonRequest::Sources(_)
+            | AxonRequest::Domains(_)
+            | AxonRequest::Stats(_)
+            | AxonRequest::ElicitDemo(_) => {
+                return Err(invalid_params(
+                    "this action was removed from MCP; use action=query/retrieve for indexed \
+                     content lookups, or action=doctor for service health",
+                ));
+            }
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
