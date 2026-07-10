@@ -7,6 +7,7 @@ import {
   ClipboardCopy,
   Command,
   Database,
+  Eye,
   FileCog,
   Globe2,
   ListChecks,
@@ -41,6 +42,7 @@ import { jobSummary } from './job-helpers';
 import { SOURCE_FAMILY_OPTIONS, sourceEntryKey, sourcesSummaryLabel } from './source-helpers';
 import { TOKEN_KEY } from './panel-types';
 import { usePanelData } from './use-panel-data';
+import { WatchesTab } from './watches-tab';
 
 export default function Page() {
   const {
@@ -196,6 +198,13 @@ export default function Page() {
         >
           <Database aria-hidden="true" className="button-icon" />
           Sources
+        </button>
+        <button
+          className={activePanelTab === 'watches' ? 'selected' : ''}
+          onClick={() => setActivePanelTab('watches')}
+        >
+          <Eye aria-hidden="true" className="button-icon" />
+          Watches
         </button>
       </nav>
 
@@ -436,6 +445,8 @@ export default function Page() {
           </div>
         </section>
       )}
+
+      {activePanelTab === 'watches' && <WatchesTab token={token} active={activePanelTab === 'watches'} />}
 
       {activePanelTab === 'configurator' && (
         <section className="workbench-shell">

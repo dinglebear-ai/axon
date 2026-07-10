@@ -1,4 +1,5 @@
 import type { components, operations, paths } from './generated/axon-api';
+import type { WatchUpdateRequest } from '../app/panel-types';
 
 type FetchLike = typeof fetch;
 
@@ -195,6 +196,36 @@ export class AxonClient {
     return this.post(`/v1/watch/${encodeURIComponent(id)}/run`);
   }
 
+  // -------------------------------------------------------------------------
+  // /v1/watches — source-request-backed watch surface (distinct from the
+  // legacy /v1/watch task_type surface above). See panel-types.ts for the
+  // response shapes.
+  // -------------------------------------------------------------------------
+
+  listWatches(params?: { enabled?: boolean; source_id?: string; adapter?: string; limit?: number; cursor?: string }): Promise<unknown> {
+    return this.get('/v1/watches', params);
+  }
+
+  getWatch(watchId: string): Promise<unknown> {
+    return this.get(`/v1/watches/${encodeURIComponent(watchId)}`);
+  }
+
+  updateWatch(watchId: string, body: WatchUpdateRequest): Promise<unknown> {
+    return this.patch(`/v1/watches/${encodeURIComponent(watchId)}`, body);
+  }
+
+  pauseWatch(watchId: string): Promise<unknown> {
+    return this.post(`/v1/watches/${encodeURIComponent(watchId)}/pause`);
+  }
+
+  resumeWatch(watchId: string): Promise<unknown> {
+    return this.post(`/v1/watches/${encodeURIComponent(watchId)}/resume`);
+  }
+
+  deleteWatch(watchId: string): Promise<unknown> {
+    return this.delete(`/v1/watches/${encodeURIComponent(watchId)}`);
+  }
+
   artifactUrl(path: ArtifactRouteQuery['path']): string {
     return this.url('/v1/artifacts', { path });
   }
@@ -215,10 +246,14 @@ export class AxonClient {
     return this.request<T>(path, { method: 'DELETE' });
   }
 
+  private patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'PATCH', body });
+  }
+
   private async request<T>(
     path: string,
     options: {
-      method: 'GET' | 'POST' | 'DELETE';
+      method: 'GET' | 'POST' | 'DELETE' | 'PATCH';
       query?: Record<string, string | number | boolean | undefined>;
       body?: unknown;
     },
