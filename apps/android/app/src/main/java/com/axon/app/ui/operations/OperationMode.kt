@@ -36,9 +36,11 @@ enum class OperationMode(
     Summarize( "Summarize", Icons.AutoMirrored.Filled.Notes, openApiRoute("POST", "/v1/summarize")),
     Research(  "Research",  Icons.Filled.Science,           openApiRoute("POST", "/v1/research")),
     Query(     "Query",     Icons.Filled.Search,            openApiRoute("POST", "/v1/query")),
-    Scrape(    "Scrape",    Icons.Filled.ContentPaste,      openApiRoute("POST", "/v1/scrape")),
-    Crawl(     "Crawl",     Icons.Filled.TravelExplore,     openApiRoute("POST", "/v1/crawl")),
-    Ingest(    "Ingest",    Icons.Filled.CloudDownload,     openApiRoute("POST", "/v1/ingest")),
+    // Scrape/Crawl/Ingest all route through the unified source pipeline now —
+    // the legacy per-family endpoints hard-404 (see AxonClient.submitSource).
+    Scrape(    "Scrape",    Icons.Filled.ContentPaste,      openApiRoute("POST", "/v1/sources")),
+    Crawl(     "Crawl",     Icons.Filled.TravelExplore,     openApiRoute("POST", "/v1/sources")),
+    Ingest(    "Ingest",    Icons.Filled.CloudDownload,     openApiRoute("POST", "/v1/sources")),
     Search(    "Search",    Icons.Filled.Public,            openApiRoute("POST", "/v1/search")),
     Map(       "Map",       Icons.Filled.Map,               openApiRoute("POST", "/v1/map"));
 

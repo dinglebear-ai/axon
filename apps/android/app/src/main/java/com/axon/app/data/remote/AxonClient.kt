@@ -41,6 +41,9 @@ import com.axon.app.data.remote.models.SavePanelEnvRequest
 import com.axon.app.data.remote.models.SearchWebRequest
 import com.axon.app.data.remote.models.SearchWebResponse
 import com.axon.app.data.remote.models.ServiceJob
+import com.axon.app.data.remote.models.SourceRequest
+import com.axon.app.data.remote.models.SourceRequestLimits
+import com.axon.app.data.remote.models.SourceResult
 import com.axon.app.data.remote.models.StatusSummary
 import com.axon.app.data.remote.models.SuggestRequest
 import com.axon.app.data.remote.models.SuggestResponse
@@ -238,8 +241,26 @@ class AxonClient(
         get(openApiRoute("GET", "/v1/stats"))
     }
 
+    /**
+     * Scrapes one URL through the unified `POST /v1/sources` pipeline (the
+     * legacy `/v1/scrape` route hard-404s — see `rest_tests.rs`). Content is
+     * returned only when the server resolves the fetch inline; otherwise
+     * [ScrapeResponse.markdown] is empty and [ScrapeResponse.output] mirrors
+     * [SourceResult.canonicalUri] for display.
+     */
     suspend fun scrape(request: ScrapeRequest): Result<ScrapeResponse> = withContext(Dispatchers.IO) {
-        post(openApiRoute("POST", "/v1/scrape"), request)
+        submitSource(
+            source = request.url,
+            embed = request.embed,
+            collection = request.collection,
+        ).map { r ->
+            val text = r.inline?.content?.takeIf { it.kind == "inline_text" }?.text
+            ScrapeResponse(
+                url = r.canonicalUri.ifBlank { request.url },
+                markdown = text ?: "",
+                output = text ?: r.canonicalUri,
+            )
+        }
     }
 
     suspend fun map(request: MapRequest): Result<MapResponse> = withContext(Dispatchers.IO) {
@@ -250,8 +271,28 @@ class AxonClient(
         postWith(httpLong, openApiRoute("POST", "/v1/research"), request)
     }
 
+    /**
+     * Submits a crawl through the unified `POST /v1/sources` pipeline (the
+     * legacy `/v1/crawl` route hard-404s). The source pipeline accepts a
+     * single source string per request, so only [CrawlRequest.urls]' first
+     * entry is submitted — a pre-existing limitation of the one-source-per-
+     * request contract, not something this route migration introduces.
+     */
     suspend fun crawlSubmit(request: CrawlRequest): Result<CrawlJobResponse> = withContext(Dispatchers.IO) {
-        post(openApiRoute("POST", "/v1/crawl"), request)
+        val startUrl = request.urls.firstOrNull().orEmpty()
+        submitSource(
+            source = startUrl,
+            collection = request.collection,
+            limits = SourceRequestLimits(
+                maxPages = request.maxPages?.toLong(),
+                maxDepth = request.maxDepth,
+            ),
+        ).map { r ->
+            CrawlJobResponse(
+                jobId = r.job?.id?.ifBlank { null } ?: r.jobId,
+                url = r.canonicalUri.ifBlank { startUrl },
+            )
+        }
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
@@ -277,9 +318,14 @@ class AxonClient(
         post(openApiRoute("POST", "/v1/search"), req)
     }
 
-    /** POST /v1/ingest — submits an async ingest job. */
+    /**
+     * Submits an ingest target through the unified `POST /v1/sources`
+     * pipeline (the legacy `/v1/ingest` route hard-404s). `req.sourceType`
+     * was a routing hint for the old family-specific endpoint; the source
+     * pipeline classifies the target itself, so it is not sent.
+     */
     suspend fun ingestStart(req: IngestRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
-        post(openApiRoute("POST", "/v1/ingest"), req)
+        submitSource(source = req.target.orEmpty()).map { it.toAcceptedJob() }
     }
 
     /** POST /v1/extract — submits an async structured extraction job. */
@@ -287,10 +333,31 @@ class AxonClient(
         post(openApiRoute("POST", "/v1/extract"), req)
     }
 
-    /** POST /v1/embed — submits an async embedding job. */
+    /**
+     * Submits a local-path or text embed through the unified
+     * `POST /v1/sources` pipeline (the legacy `/v1/embed` route hard-404s).
+     */
     suspend fun embedStart(req: EmbedRequest): Result<AcceptedJob> = withContext(Dispatchers.IO) {
-        post(openApiRoute("POST", "/v1/embed"), req)
+        submitSource(source = req.input, collection = req.collection).map { it.toAcceptedJob() }
     }
+
+    /** Shared POST /v1/sources call — see [SourceRequest]/[SourceResult]. */
+    private suspend fun submitSource(
+        source: String,
+        embed: Boolean? = null,
+        collection: String? = null,
+        limits: SourceRequestLimits? = null,
+    ): Result<SourceResult> = post(
+        openApiRoute("POST", "/v1/sources"),
+        SourceRequest(source = source, embed = embed, collection = collection, limits = limits),
+    )
+
+    /** Maps [SourceResult] into the legacy [AcceptedJob] shape (`job_id`/`status`/`status_url`). */
+    private fun SourceResult.toAcceptedJob(): AcceptedJob = AcceptedJob(
+        jobId = job?.id?.ifBlank { null } ?: jobId,
+        status = status.ifBlank { "pending" },
+        statusUrl = job?.statusUrl,
+    )
 
     /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
