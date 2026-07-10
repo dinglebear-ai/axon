@@ -40,7 +40,7 @@ pub(super) fn router(
         service_context: Arc::clone(&service_context),
     };
     let rest_routes = protect_routes(
-        read_routes(Arc::clone(&service_context)),
+        read_routes(Arc::clone(&cfg), Arc::clone(&service_context)),
         &auth_policy,
         ScopeRequirement::Read,
     )
@@ -70,8 +70,10 @@ pub(super) fn router(
         // Prometheus scrape endpoint — unauthenticated like the health probes,
         // so an in-cluster scraper can read it without a token.
         .route("/metrics", get(super::super::metrics::metrics_handler))
-        .route("/v1/actions", post(v1_actions_removed))
-        .route("/v1/migrate", post(v1_migrate_not_exposed))
+        // `/v1/actions` and `/v1/migrate` are intentionally NOT registered.
+        // Per the REST contract's no-tombstone rule (U2-18), a removed/never-
+        // exposed route is a plain 404 from `api_aware_not_found`, not a
+        // dedicated remap-guidance handler.
         .merge(super::openapi::docs_router())
         .merge(panel_routes())
         .merge(rest_routes)
@@ -85,8 +87,15 @@ pub(super) fn router(
         .with_state((state, Arc::clone(&cfg)))
 }
 
-/// Routes reachable with `axon:read` — metadata and pure retrieval only.
-fn read_routes(service_context: Arc<ServiceContext>) -> Router<ServeState> {
+/// Routes reachable with `axon:read` — metadata and pure retrieval, plus the
+/// query-shaped surfaces from U2-20/C6-20 (ask/chat/search/research/
+/// summarize/suggest/evaluate, and memory search/context) that default to
+/// `axon:read` even though some may enqueue a background index/crawl job as
+/// a side effect. There is no `required_scope_if`/`mutates_if` conditional-
+/// upgrade metadata yet (tracked as a follow-up); until it lands these stay
+/// permanently read-gated rather than write-gated, matching the contract's
+/// stated default.
+fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
         .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
@@ -122,22 +131,12 @@ fn read_routes(service_context: Arc<ServiceContext>) -> Router<ServeState> {
             "/v1/jobs",
             handlers::jobs::unified_jobs_read_router(Arc::clone(&service_context)),
         )
-}
-
-/// Routes requiring `axon:write` — active-network operations, job
-/// submission, and destructive ops. Endpoint discovery fetches pages,
-/// bundles, probes endpoints, and may execute Chrome capture — it must not
-/// be accessible with read-only tokens.
-fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Router<ServeState> {
-    Router::new()
-        .route("/v1/endpoints", post(handlers::exploration::endpoints))
-        .route("/v1/brand", post(handlers::exploration::brand))
-        .route("/v1/diff", post(handlers::exploration::diff))
-        .route("/v1/screenshot", post(handlers::exploration::screenshot))
-        .merge(ask_router::<ServeState>(cfg, Arc::clone(service_context)))
+        .merge(ask_router::<ServeState>(
+            Arc::clone(&cfg),
+            Arc::clone(&service_context),
+        ))
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
-        .route("/v1/sources", post(handlers::sources::index_source))
         .route("/v1/summarize", post(handlers::exploration::summarize))
         .route(
             "/v1/summarize/stream",
@@ -145,8 +144,10 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
         )
         .route("/v1/search", post(handlers::exploration::search))
         .route("/v1/research", post(handlers::exploration::research))
-        .route("/v1/memory", post(handlers::memory::memory))
-        .route("/v1/memories", post(handlers::memory::remember_memory))
+        .route(
+            "/v1/research/stream",
+            post(handlers::exploration::research_stream),
+        )
         .route(
             "/v1/memories/search",
             post(handlers::memory::search_memories),
@@ -155,6 +156,21 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
             "/v1/memories/context",
             post(handlers::memory::memory_context),
         )
+}
+
+/// Routes requiring `axon:write` — active-network operations, job
+/// submission, and destructive ops. Endpoint discovery fetches pages,
+/// bundles, probes endpoints, and may execute Chrome capture — it must not
+/// be accessible with read-only tokens.
+fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Router<ServeState> {
+    Router::new()
+        .route("/v1/endpoints", post(handlers::exploration::endpoints))
+        .route("/v1/brand", post(handlers::exploration::brand))
+        .route("/v1/diff", post(handlers::exploration::diff))
+        .route("/v1/screenshot", post(handlers::exploration::screenshot))
+        .route("/v1/sources", post(handlers::sources::index_source))
+        .route("/v1/memory", post(handlers::memory::memory))
+        .route("/v1/memories", post(handlers::memory::remember_memory))
         .route(
             "/v1/memories/review",
             post(handlers::memory::review_memories),
@@ -199,16 +215,10 @@ fn write_routes(cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rout
             "/v1/jobs",
             handlers::jobs::unified_jobs_write_router(Arc::clone(service_context)),
         )
-        .route(
-            "/v1/research/stream",
-            post(handlers::exploration::research_stream),
-        )
         .nest(
             "/v1/extract",
             handlers::async_jobs::extract_router(Arc::clone(service_context)),
         )
-        .route("/v1/dedupe", post(handlers::admin::dedupe))
-        .route("/v1/purge", post(handlers::admin::purge))
         .route(
             "/v1/watch",
             get(handlers::admin::list_watch).post(handlers::admin::create_watch),
@@ -227,6 +237,8 @@ fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
         )
         .route("/v1/prune/plan", post(handlers::admin::prune_plan))
         .route("/v1/prune/exec", post(handlers::admin::prune_exec))
+        .route("/v1/prune/dedupe", post(handlers::admin::dedupe))
+        .route("/v1/prune/purge", post(handlers::admin::purge))
 }
 
 /// Write-scoped routes whose payloads exceed the standard REST body cap
@@ -319,22 +331,6 @@ async fn api_aware_not_found(uri: axum::http::Uri) -> Response {
         return super::json::not_found_fallback().await;
     }
     super::super::static_assets::serve_static(uri).await
-}
-
-async fn v1_actions_removed() -> HttpError {
-    HttpError::new(
-        StatusCode::NOT_FOUND,
-        "not_found",
-        "/v1/actions was removed; use direct /v1 REST routes",
-    )
-}
-
-async fn v1_migrate_not_exposed() -> HttpError {
-    HttpError::new(
-        StatusCode::NOT_FOUND,
-        "not_found",
-        "/v1/migrate is not exposed over REST",
-    )
 }
 
 pub(crate) fn ask_router<S>(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router<S>

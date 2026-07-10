@@ -47,6 +47,17 @@ impl AxonMcpServer {
         req: PruneMcpRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.as_deref().unwrap_or("plan");
+
+        // `dedupe`/`purge` are the target-state replacements for the removed
+        // legacy `dedupe`/`purge` MCP actions (U2-24/C6-18/C6-19) — they call
+        // the same `axon-services` facades the old actions did, just routed
+        // through `prune`'s subaction dispatch and its `axon:admin` gate.
+        // They bypass `PruneSelector`/`ApiPruneRequest` entirely since neither
+        // maps onto the source/generation/collection prune-selector grammar.
+        if subaction == "dedupe" || subaction == "purge" {
+            return self.handle_prune_dedupe_or_purge(subaction, &req).await;
+        }
+
         let selector = prune_selector_from_request(&req)?;
 
         // `prune` executes against the shared, cached `ServiceContext` (see
@@ -99,6 +110,58 @@ impl AxonMcpServer {
             "plan": plan,
             "result": result,
         });
+        respond_with_mode(
+            "prune",
+            subaction,
+            req.response_mode,
+            "prune",
+            payload,
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    /// `prune subaction=dedupe|purge` — thin wrappers over the same
+    /// `axon-services::system::{dedupe,purge}` facades the REST
+    /// `/v1/prune/dedupe` and `/v1/prune/purge` routes call.
+    ///
+    /// `purge` here only supports an exact-target delete (`prefix=false`,
+    /// `dry_run=!confirm`) — `PruneMcpRequest` has no `prefix`/`dry_run`
+    /// fields today (unlike REST's `PurgeRequest`), so prefix-scoped purge
+    /// over MCP is a follow-up pending an `axon-api` schema addition.
+    async fn handle_prune_dedupe_or_purge(
+        &self,
+        subaction: &str,
+        req: &PruneMcpRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let mut cfg = (*self.cfg).clone();
+        if let Some(collection) = req.collection.as_deref() {
+            let collection = collection.trim();
+            if collection.is_empty() {
+                return Err(invalid_params("collection must be non-empty when provided"));
+            }
+            cfg.collection = collection.to_string();
+        }
+
+        let payload = if subaction == "dedupe" {
+            let result = system::dedupe(&cfg, None)
+                .await
+                .map_err(|e| logged_internal_error("prune.dedupe", e.as_ref()))?;
+            serde_json::json!({ "subaction": "dedupe", "result": result })
+        } else {
+            let target = req
+                .target
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| invalid_params("purge requires a target"))?;
+            let dry_run = !req.confirm.unwrap_or(false);
+            let result = system::purge(&cfg, target, false, dry_run)
+                .await
+                .map_err(|e| logged_internal_error("prune.purge", e.as_ref()))?;
+            serde_json::json!({ "subaction": "purge", "result": result })
+        };
+
         respond_with_mode(
             "prune",
             subaction,
@@ -334,7 +397,7 @@ fn help_payload() -> Value {
             "retrieve": ["retrieve"],
             "search": ["search"],
             "map": ["map"],
-            "prune": ["plan", "exec"],
+            "prune": ["plan", "exec", "dedupe", "purge"],
             "doctor": ["doctor"],
             "domains": ["domains"],
             "sources": ["sources"],

@@ -599,6 +599,7 @@ version = "6.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
+ "axon-core",
  "axon-parse",
  "serde_json",
  "tokio",

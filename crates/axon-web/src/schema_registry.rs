@@ -1,5 +1,6 @@
 //! REST route registry used by schema-contract generation.
 
+mod admin_watch_routes;
 mod extract_routes;
 mod memory_routes;
 
@@ -26,13 +27,13 @@ pub fn rest_route_registry() -> &'static [RestRouteSpec] {
                 + memory_routes::MEMORY_ROUTES.len()
                 + POST_MEMORY_ROUTES.len()
                 + extract_routes::EXTRACT_ROUTES.len()
-                + ADMIN_WATCH_ROUTES.len(),
+                + admin_watch_routes::ADMIN_WATCH_ROUTES.len(),
         );
         routes.extend_from_slice(PRE_MEMORY_ROUTES);
         routes.extend_from_slice(memory_routes::MEMORY_ROUTES);
         routes.extend_from_slice(POST_MEMORY_ROUTES);
         routes.extend_from_slice(extract_routes::EXTRACT_ROUTES);
-        routes.extend_from_slice(ADMIN_WATCH_ROUTES);
+        routes.extend_from_slice(admin_watch_routes::ADMIN_WATCH_ROUTES);
         routes
     })
 }
@@ -81,13 +82,15 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         None,
         "DeleteMobileSessionResponse",
     ),
+    // U2-20/C6-20: ask/chat default to `axon:read` (query-shaped surfaces),
+    // matching the real router's `read_routes` gate.
     RestRouteSpec {
         method: "POST",
         path: "/v1/ask",
         operation_id: "ask",
         request_dto: Some("AskRequest"),
         result_dto: "AskResponse",
-        required_scope: "write",
+        required_scope: "read",
         mutates: true,
         streaming: false,
         responses: ASK_RESPONSES,
@@ -105,7 +108,7 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         operation_id: "chat",
         request_dto: Some("ChatRequest"),
         result_dto: "ChatResponse",
-        required_scope: "write",
+        required_scope: "read",
         mutates: true,
         streaming: false,
         responses: ASK_RESPONSES,
@@ -139,13 +142,14 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         streaming: false,
         responses: READ_RESPONSES,
     },
+    // U2-20/C6-20: search/research default to `axon:read`.
     RestRouteSpec {
         method: "POST",
         path: "/v1/search",
         operation_id: "search",
         request_dto: Some("SearchRequest"),
         result_dto: "SearchResponse",
-        required_scope: "write",
+        required_scope: "read",
         mutates: true,
         streaming: false,
         responses: SYNC_WRITE_RESPONSES,
@@ -156,7 +160,7 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         operation_id: "research",
         request_dto: Some("ResearchRequest"),
         result_dto: "ResearchResponse",
-        required_scope: "write",
+        required_scope: "read",
         mutates: true,
         streaming: false,
         responses: SYNC_WRITE_RESPONSES,
@@ -200,14 +204,14 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         Some("ScreenshotRequest"),
         "ScreenshotResponse",
     ),
-    write(
+    read_query_surface(
         "POST",
         "/v1/evaluate",
         "evaluate",
         Some("EvaluateRequest"),
         "EvaluateResponse",
     ),
-    write(
+    read_query_surface(
         "POST",
         "/v1/suggest",
         "suggest",
@@ -221,7 +225,7 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         Some("SourceRequest"),
         "SourceResult",
     ),
-    write(
+    read_query_surface(
         "POST",
         "/v1/summarize",
         "summarize",
@@ -303,52 +307,6 @@ static POST_MEMORY_ROUTES: &[RestRouteSpec] = &[
     ),
 ];
 
-static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
-    write(
-        "POST",
-        "/v1/dedupe",
-        "dedupe",
-        Some("DedupeRequest"),
-        "DedupeResponse",
-    ),
-    write(
-        "POST",
-        "/v1/purge",
-        "purge",
-        Some("PurgeRequest"),
-        "PurgeResult",
-    ),
-    job_admin(
-        "POST",
-        "/v1/prune/plan",
-        "prune_plan",
-        Some("PrunePlanRequest"),
-        "PrunePlan",
-    ),
-    job_admin(
-        "POST",
-        "/v1/prune/exec",
-        "prune_exec",
-        Some("PruneExecRequest"),
-        "PruneResult",
-    ),
-    read("GET", "/v1/watch", "watch_list", "WatchListResponse"),
-    write(
-        "POST",
-        "/v1/watch",
-        "watch_create",
-        Some("WatchRequest"),
-        "WatchResponse",
-    ),
-    accepted(
-        "POST",
-        "/v1/watch/{id}/run",
-        "watch_run",
-        None,
-        "WatchRunResponse",
-    ),
-];
-
 pub fn removed_routes() -> &'static [&'static str] {
     &["/v1/embed", "/v1/ingest", "/v1/scrape", "/v1/crawl"]
 }
@@ -393,6 +351,30 @@ const fn write(
         request_dto,
         result_dto,
         required_scope: "write",
+        mutates: true,
+        streaming: false,
+        responses: WRITE_RESPONSES,
+    }
+}
+
+/// Like [`write`], but gated `axon:read` — for query-shaped surfaces
+/// (evaluate/suggest/summarize/memory search/context, U2-20/C6-20) that may
+/// still enqueue a background job as a side effect (`mutates: true`)
+/// without requiring `axon:write` to invoke.
+const fn read_query_surface(
+    method: &'static str,
+    path: &'static str,
+    operation_id: &'static str,
+    request_dto: Option<&'static str>,
+    result_dto: &'static str,
+) -> RestRouteSpec {
+    RestRouteSpec {
+        method,
+        path,
+        operation_id,
+        request_dto,
+        result_dto,
+        required_scope: "read",
         mutates: true,
         streaming: false,
         responses: WRITE_RESPONSES,

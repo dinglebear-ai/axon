@@ -461,18 +461,6 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
     },
     RestRouteInfo {
         method: "POST",
-        path: "/v1/dedupe",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/purge",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
         path: "/v1/prune/plan",
         auth: RestRouteAuth::Admin,
         openapi: true,
@@ -480,6 +468,21 @@ const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
     RestRouteInfo {
         method: "POST",
         path: "/v1/prune/exec",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    // `/v1/dedupe` and `/v1/purge` were removed (U2-06/U2-09) and repointed
+    // through the prune surface below — destructive cleanup is now
+    // `axon:admin`-gated, not `axon:write`.
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/prune/dedupe",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/prune/purge",
         auth: RestRouteAuth::Admin,
         openapi: true,
     },

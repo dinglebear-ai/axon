@@ -4,7 +4,7 @@
 //! repo's monolith line cap. Spliced back into `rest_route_registry()`'s
 //! output in original position by the parent module.
 
-use super::{RestRouteSpec, read, write};
+use super::{RestRouteSpec, read, read_query_surface, write};
 
 pub(super) static MEMORY_ROUTES: &[RestRouteSpec] = &[
     write(
@@ -21,14 +21,15 @@ pub(super) static MEMORY_ROUTES: &[RestRouteSpec] = &[
         Some("MemoryRequest"),
         "MemoryResponse",
     ),
-    write(
+    // U2-20/C6-20: memory search/context default to `axon:read`.
+    read_query_surface(
         "POST",
         "/v1/memories/search",
         "search_memories",
         Some("MemoryRequest"),
         "MemoryResponse",
     ),
-    write(
+    read_query_surface(
         "POST",
         "/v1/memories/context",
         "memory_context",

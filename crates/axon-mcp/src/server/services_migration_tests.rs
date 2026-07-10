@@ -416,6 +416,7 @@ fn memory_import_request(mode: &str) -> crate::schema::MemoryRequest {
                 value: String::new(),
             },
             history: Vec::new(),
+            visibility: axon_api::source::Visibility::default(),
             title: None,
             links: Vec::new(),
             decay: None,
