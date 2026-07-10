@@ -458,29 +458,9 @@ pub struct MigrateRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct WatchRequest {
-    pub subaction: Option<WatchSubaction>,
-    pub id: Option<String>,
-    pub name: Option<String>,
-    pub task_type: Option<String>,
-    pub task_payload: Option<Value>,
-    pub every_seconds: Option<i64>,
-    pub enabled: Option<bool>,
-    pub limit: Option<i64>,
-    pub response_mode: Option<ResponseMode>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WatchSubaction {
-    Create,
-    List,
-    Get,
-    Exec,
-    History,
-}
+#[path = "requests/watch.rs"]
+mod watch;
+pub use watch::{WatchRequest, WatchSubaction};
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

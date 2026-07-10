@@ -55,4 +55,45 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         None,
         "WatchRunResponse",
     ),
+    // Canonical source-request-backed watch surface (issue #298 REST
+    // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
+    // Routes). Distinct from the legacy `/v1/watch` task_type/task_payload
+    // routes above — see `crates/axon-jobs/src/watch_store.rs` module docs.
+    // `POST /v1/watches` (create) and `POST /v1/watches/{id}/exec` are not
+    // yet implemented on this surface and are intentionally not registered.
+    read("GET", "/v1/watches", "watches_list", "Page<WatchSummary>"),
+    read(
+        "GET",
+        "/v1/watches/{watch_id}",
+        "watches_get",
+        "WatchResult",
+    ),
+    write(
+        "PATCH",
+        "/v1/watches/{watch_id}",
+        "watches_update",
+        Some("WatchUpdateRequest"),
+        "WatchResult",
+    ),
+    write(
+        "DELETE",
+        "/v1/watches/{watch_id}",
+        "watches_delete",
+        None,
+        "WatchDeleteResponse",
+    ),
+    write(
+        "POST",
+        "/v1/watches/{watch_id}/pause",
+        "watches_pause",
+        None,
+        "WatchResult",
+    ),
+    write(
+        "POST",
+        "/v1/watches/{watch_id}/resume",
+        "watches_resume",
+        None,
+        "WatchResult",
+    ),
 ];

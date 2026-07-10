@@ -99,6 +99,12 @@ use super::{handlers, openapi_jobs, routing};
         handlers::admin::list_watch,
         handlers::admin::create_watch,
         handlers::admin::run_watch,
+        handlers::source_watch::list_watches,
+        handlers::source_watch::get_watch,
+        handlers::source_watch::update_watch,
+        handlers::source_watch::delete_watch,
+        handlers::source_watch::pause_watch,
+        handlers::source_watch::resume_watch,
         handlers::artifacts::serve_artifact_query
     ),
     components(schemas(
@@ -328,6 +334,7 @@ fn operation_mut<'a>(
         "GET" => path_item.get.as_mut(),
         "POST" => path_item.post.as_mut(),
         "PUT" => path_item.put.as_mut(),
+        "PATCH" => path_item.patch.as_mut(),
         "DELETE" => path_item.delete.as_mut(),
         _ => None,
     }

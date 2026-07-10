@@ -486,3 +486,7 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
 ];
+
+#[path = "data/watch_routes.rs"]
+mod watch_routes;
+pub(super) use watch_routes::WATCH_ROUTES;

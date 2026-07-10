@@ -36,6 +36,8 @@ pub mod rag;
 pub(crate) mod rest;
 #[path = "handlers/setup.rs"]
 pub mod setup;
+#[path = "handlers/source_watch.rs"]
+pub mod source_watch;
 #[path = "handlers/sources.rs"]
 pub mod sources;
 #[path = "handlers/sources_resource.rs"]

@@ -404,6 +404,7 @@ fn help_payload() -> Value {
             "stats": ["stats"],
             "diff": ["diff"],
             "brand": ["brand"],
+            "watch": ["list", "get", "update", "pause", "resume", "delete"],
             "elicit_demo": []
         },
         "resources": [

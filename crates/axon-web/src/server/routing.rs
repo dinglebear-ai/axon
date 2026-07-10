@@ -160,6 +160,11 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
             "/v1/memories/context",
             post(handlers::memory::memory_context),
         )
+        .route("/v1/watches", get(handlers::source_watch::list_watches))
+        .route(
+            "/v1/watches/{watch_id}",
+            get(handlers::source_watch::get_watch),
+        )
 }
 
 /// Routes requiring `axon:write` — active-network operations, job
@@ -228,6 +233,19 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
             get(handlers::admin::list_watch).post(handlers::admin::create_watch),
         )
         .route("/v1/watch/{id}/run", post(handlers::admin::run_watch))
+        .route(
+            "/v1/watches/{watch_id}",
+            axum::routing::patch(handlers::source_watch::update_watch)
+                .delete(handlers::source_watch::delete_watch),
+        )
+        .route(
+            "/v1/watches/{watch_id}/pause",
+            post(handlers::source_watch::pause_watch),
+        )
+        .route(
+            "/v1/watches/{watch_id}/resume",
+            post(handlers::source_watch::resume_watch),
+        )
         .layer(DefaultBodyLimit::max(128 * 1024))
 }
 
