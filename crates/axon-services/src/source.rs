@@ -232,16 +232,19 @@ pub async fn index_source_with_auth(
     )
     .await?;
 
-    // Write the baseline source graph (source container + document nodes +
-    // containment edges) from the just-published manifest. A missing pool or a
-    // graph-store error degrades to a zero-count summary rather than failing the
-    // already-committed index.
+    // Write the source graph: the baseline container + document + containment
+    // skeleton from the just-published manifest, plus every parser-produced
+    // `GraphCandidate` collected from this generation's prepared documents
+    // (source-pipeline.md's `parsing` stage output feeding the `graphing`
+    // stage). A missing pool or a graph-store error degrades to a zero-count
+    // summary rather than failing the already-committed index.
     let graph = graph::write_baseline_graph(
         kind,
         ctx.jobs.sqlite_pool(),
         runtime.ledger.as_ref(),
         &counts,
         &input,
+        counts.graph_candidates.clone(),
     )
     .await;
 

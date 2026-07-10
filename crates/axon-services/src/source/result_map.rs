@@ -8,8 +8,9 @@
 //! one mapping instead of hand-building the DTO.
 
 use axon_api::source::{
-    AdapterRef, GraphWriteSummary, JobId, LedgerSummary, LifecycleStatus, SourceCounts,
-    SourceGenerationId, SourceId, SourceKind, SourceResult, SourceScope, SourceWarning,
+    AdapterRef, GraphCandidate, GraphWriteSummary, JobId, LedgerSummary, LifecycleStatus,
+    SourceCounts, SourceGenerationId, SourceId, SourceKind, SourceResult, SourceScope,
+    SourceWarning,
 };
 use axon_error::ApiError;
 use uuid::Uuid;
@@ -27,6 +28,11 @@ pub struct IndexCounts {
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
     pub removed: u64,
+    /// Parser-produced graph candidates carried up from every prepared
+    /// document in this generation (`source-pipeline.md`'s `parsing` stage
+    /// output), forwarded to the `graphing` stage instead of being dropped
+    /// after vectorization.
+    pub graph_candidates: Vec<GraphCandidate>,
 }
 
 /// Build a [`SourceResult`] from a family's normalized index output.

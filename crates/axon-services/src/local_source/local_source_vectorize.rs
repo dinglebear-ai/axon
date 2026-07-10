@@ -28,6 +28,12 @@ pub(super) struct VectorizeStats {
 pub(super) struct VectorizeResult {
     pub(super) stats: VectorizeStats,
     pub(super) document_statuses: Vec<DocumentStatus>,
+    /// Parser-produced graph candidates carried by each prepared document
+    /// (populated by `DocumentPreparer`'s self-parse when the caller supplies
+    /// no pre-computed facts). Collected here so the graphing stage
+    /// (`source::graph::write_baseline_graph`) can write them instead of
+    /// silently dropping them after vectorization.
+    pub(super) graph_candidates: Vec<GraphCandidate>,
 }
 
 impl VectorizeStats {
@@ -67,6 +73,9 @@ pub(super) async fn vectorize_changed_documents(
             result
                 .document_statuses
                 .extend(batch_result.document_statuses);
+            result
+                .graph_candidates
+                .extend(batch_result.graph_candidates);
         }
     }
     Ok(result)
@@ -203,6 +212,9 @@ async fn vectorize_documents(
         for document in documents {
             result.stats.chunks_prepared += document.chunks.len() as u64;
             result.stats.documents_prepared += 1;
+            result
+                .graph_candidates
+                .extend(document.graph_candidates.clone());
             let status = document_status(&document, 0, DocumentLifecycleStatus::Prepared);
             ledger.update_document_status(status.clone()).await?;
             result.document_statuses.push(status);
@@ -257,6 +269,9 @@ async fn vectorize_documents(
     for document in documents {
         result.stats.chunks_prepared += document.chunks.len() as u64;
         result.stats.documents_prepared += 1;
+        result
+            .graph_candidates
+            .extend(document.graph_candidates.clone());
         let status = document_status(
             &document,
             document.chunks.len() as u64,
