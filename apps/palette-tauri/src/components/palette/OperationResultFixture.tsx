@@ -52,7 +52,7 @@ export function OperationResultFixture() {
           ok: true,
           status: 200,
           method: "POST",
-          path: "/v1/scrape",
+          path: "/v1/sources",
           payload: {
             url: "https://docs.rs/serde",
             title: "Serde docs",
@@ -259,7 +259,7 @@ export function OperationResultFixture() {
           ok: false,
           status: 502,
           method: "POST",
-          path: "/v1/scrape",
+          path: "/v1/sources",
           payload: {
             kind: "upstream_error",
             url: "https://example.com/very-long-error",

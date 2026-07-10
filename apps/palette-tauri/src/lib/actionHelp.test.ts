@@ -28,7 +28,7 @@ describe("action help", () => {
   it("builds target help from neutral action metadata", () => {
     const help = buildActionHelp(action("scrape"));
     expect(help.title).toBe("Scrape URL");
-    expect(help.route).toEqual({ method: "POST", path: "/v1/scrape" });
+    expect(help.route).toEqual({ method: "POST", path: "/v1/sources" });
     expect(help.usage).toBe("scrape https://docs.rs/serde");
     expect(help.parameters).toEqual(expect.arrayContaining(["url from input", "collection from palette settings when configured"]));
   });

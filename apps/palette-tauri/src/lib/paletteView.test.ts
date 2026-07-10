@@ -93,7 +93,7 @@ describe("palette view parsing helpers", () => {
   it("exposes mock-aligned route metadata for browse rows", () => {
     expect(actionDisplayMeta(action("scrape"))).toEqual({
       category: "Fetch & read",
-      endpoint: "/v1/scrape",
+      endpoint: "/v1/sources",
       input: "one URL",
       output: "content",
       label: "Scrape",

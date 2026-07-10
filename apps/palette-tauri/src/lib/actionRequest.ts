@@ -75,8 +75,23 @@ export const noBody: BodyBuilder = () => null;
 
 // ---- Per-action body builders -------------------------------------------
 
-export const scrapeBody: BodyBuilder<Req["RestScrapeRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
-export const crawlBody: BodyBuilder<Req["RestCrawlRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
+// scrape/crawl route through the unified `POST /v1/sources` pipeline (the
+// verb-specific `/v1/scrape` and `/v1/crawl` routes were removed — see
+// docs/pipeline-unification/surfaces/rest-contract.md and the CLI shim at
+// crates/axon-cli/src/commands/source.rs, which this mirrors). `scope` hints
+// single-page vs. full-site acquisition; the server still auto-classifies
+// everything else. `SourceRequest.source` is singular, so — like the CLI —
+// only the first URL is used even though the action accepts multiple words.
+export const scrapeBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
+  source: first(ctx.words, "url"),
+  scope: "page",
+  ...ctx.collectionBody,
+});
+export const crawlBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
+  source: first(ctx.words, "url"),
+  scope: "site",
+  ...ctx.collectionBody,
+});
 export const mapBody: BodyBuilder<Req["RestMapRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
 export const summarizeBody: BodyBuilder<Req["RestSummarizeRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls") });
 export const askBody: BodyBuilder<Req["RestAskRequest"]> = (ctx) => ({
@@ -92,14 +107,22 @@ export const suggestBody: BodyBuilder<Req["RestSuggestRequest"]> = (ctx) => (ctx
 export const evaluateBody: BodyBuilder<Req["RestEvaluateRequest"]> = (ctx) => ({ question: first(ctx.words, "question") });
 export const searchBody: BodyBuilder<Req["RestSearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
 export const researchBody: BodyBuilder<Req["RestResearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
-export const embedBody: BodyBuilder<Req["RestEmbedRequest"]> = (ctx) => ({ input: first(ctx.words, "input"), ...ctx.collectionBody });
+// embed/ingest also route through `POST /v1/sources` (see the scrape/crawl
+// comment above). Neither sets `scope` — the server auto-detects local path
+// vs. URL vs. git/reddit/youtube/feed target via the canonical shared
+// classifier (`classify_target`), the single source of truth across
+// CLI/MCP/REST/palette. Do NOT reintroduce a client-side classifier here: it
+// drifts from the backend (the old one only knew github/reddit/youtube and
+// rejected gitlab/gitea/git/rss targets).
+export const embedBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
+  source: first(ctx.words, "input"),
+  ...ctx.collectionBody,
+});
 export const extractBody: BodyBuilder<Req["RestExtractRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
-// Ingest sends the RAW target with NO source_type — the server auto-detects the
-// provider via the canonical shared classifier (`classify_target`), the single
-// source of truth across CLI/MCP/REST/palette. Do NOT reintroduce a client-side
-// classifier here: it drifts from the backend (the old one only knew github/
-// reddit/youtube and rejected gitlab/gitea/git/rss targets).
-export const ingestBody: BodyBuilder<Req["RestIngestRequest"]> = (ctx) => ({ target: first(ctx.words, "target") });
+export const ingestBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
+  source: first(ctx.words, "target"),
+  ...ctx.collectionBody,
+});
 export const endpointsBody: BodyBuilder<Req["EndpointsRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
 export const brandBody: BodyBuilder<Req["RestBrandRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
 export const diffBody: BodyBuilder<Req["RestDiffRequest"]> = (ctx) => diffRequestBody(ctx.words);
