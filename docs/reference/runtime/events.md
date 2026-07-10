@@ -65,3 +65,6 @@ Run `cargo xtask schemas generate --check`.
 | `ProgressCurrent` |
 | `ProgressTiming` |
 | `StageCounts` |
+| `StreamEvent` |
+| `LogFieldSet` |
+| `SpanFieldSet` |

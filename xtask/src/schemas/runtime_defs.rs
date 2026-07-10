@@ -23,6 +23,9 @@ pub fn events_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             schema_def::<axon_api::source::ProgressTiming>("ProgressTiming"),
             schema_def::<axon_api::source::StageCounts>("StageCounts"),
             schema_def::<axon_observe::metric::MetricSample>("MetricSample"),
+            schema_def::<axon_api::source::StreamEvent>("StreamEvent"),
+            schema_def::<axon_observe::log::LogFieldSet>("LogFieldSet"),
+            schema_def::<axon_observe::span::SpanFieldSet>("SpanFieldSet"),
         ],
         Some(enum_defs("axon-api")),
     );
@@ -160,6 +163,9 @@ fn events_markdown(inputs: &[SourceInput]) -> String {
         "ProgressCurrent",
         "ProgressTiming",
         "StageCounts",
+        "StreamEvent",
+        "LogFieldSet",
+        "SpanFieldSet",
     ] {
         out.push_str(&format!("| `{dto}` |\n"));
     }

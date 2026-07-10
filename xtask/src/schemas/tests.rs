@@ -1779,6 +1779,90 @@ fn enum_projection_drift_rejects_non_canonical_extra_values() {
     assert!(err.to_string().contains("bogus_extra_variant"));
 }
 
+/// Cross-checks every `CANONICAL_ENUMS` entry against the real
+/// `schemars::JsonSchema` output of its backing `axon-api` enum, so a typo'd
+/// or stale hand-maintained value list fails fast instead of silently
+/// drifting from the Rust source of truth.
+#[test]
+fn canonical_enums_match_axon_api_schemars_output() {
+    use axon_api::source::*;
+
+    fn schemars_values<T: schemars::JsonSchema>() -> Vec<String> {
+        let schema = schemars::schema_for!(T);
+        let value: serde_json::Value = schema.into();
+        // Plain enums project as a flat `enum` array; variants carrying a doc
+        // comment (e.g. `JobKind::Embed`) make schemars emit a `oneOf` with
+        // per-variant `enum`/`const` branches instead — flatten both shapes.
+        if let Some(values) = value["enum"].as_array() {
+            return values
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+        }
+        let mut values = Vec::new();
+        for branch in value["oneOf"]
+            .as_array()
+            .unwrap_or_else(|| panic!("expected an `enum` or `oneOf` array in {value}"))
+        {
+            if let Some(v) = branch["const"].as_str() {
+                values.push(v.to_string());
+            } else if let Some(arr) = branch["enum"].as_array() {
+                values.extend(arr.iter().map(|v| v.as_str().unwrap().to_string()));
+            } else {
+                panic!("unexpected oneOf branch shape in {branch}");
+            }
+        }
+        values
+    }
+
+    macro_rules! check {
+        ($name:literal, $ty:ty) => {
+            let (_, expected) = registry::CANONICAL_ENUMS
+                .iter()
+                .find(|(name, _)| *name == $name)
+                .unwrap_or_else(|| panic!("{} missing from CANONICAL_ENUMS", $name));
+            let actual = schemars_values::<$ty>();
+            assert_eq!(
+                actual,
+                expected.to_vec(),
+                "{} CANONICAL_ENUMS values drifted from schemars output",
+                $name
+            );
+        };
+    }
+
+    check!("SourceIntent", SourceIntent);
+    check!("SourceRefreshPolicy", SourceRefreshPolicy);
+    check!("SourceWatchPolicy", SourceWatchPolicy);
+    check!("ExecutionMode", ExecutionMode);
+    check!("ResponseMode", ResponseMode);
+    check!("ArtifactMode", ArtifactMode);
+    check!("SourceKind", SourceKind);
+    check!("SourceScope", SourceScope);
+    check!("ItemKind", ItemKind);
+    check!("ContentKind", ContentKind);
+    check!("PipelinePhase", PipelinePhase);
+    check!("JobKind", JobKind);
+    check!("LifecycleStatus", LifecycleStatus);
+    check!("PublishState", PublishState);
+    check!("DocumentLifecycleStatus", DocumentLifecycleStatus);
+    check!("DiffKind", DiffKind);
+    check!("EnrichmentKind", EnrichmentKind);
+    check!("CleanupDebtKind", CleanupDebtKind);
+    check!("ProviderKind", ProviderKind);
+    check!("HealthStatus", HealthStatus);
+    check!("Visibility", Visibility);
+    check!("Severity", Severity);
+    check!("JobPriority", JobPriority);
+    check!("AuthorityLevel", AuthorityLevel);
+    check!("ExecutionAffinity", ExecutionAffinity);
+    check!("SafetyClass", SafetyClass);
+    check!("CredentialKind", CredentialKind);
+    check!("ArtifactKind", ArtifactKind);
+    check!("CachePolicy", CachePolicy);
+    check!("ChunkProfile", ChunkProfile);
+}
+
 #[test]
 fn migration_source_input_kind_uses_normalized_path_components() {
     assert_eq!(

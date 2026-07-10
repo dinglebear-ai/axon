@@ -688,6 +688,137 @@
       "format": "uuid",
       "type": "string"
     },
+    "LogFieldSet": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The canonical structured-log field set. See the \"Logs\" table in\n`runtime/observability-contract.md` for the required-field list and the\n\"Forbidden in logs\" list (raw auth headers, tokens/API keys/cookies, raw\nenv values, unredacted private prompts/responses, unredacted local\nabsolute paths in public logs).",
+      "properties": {
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogFieldSet_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "level": {
+          "$ref": "#/$defs/LogFieldSet_LogLevel"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogFieldSet_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogFieldSet_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogFieldSet_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "timestamp",
+        "level",
+        "target",
+        "message"
+      ],
+      "title": "LogFieldSet",
+      "type": "object"
+    },
+    "LogFieldSet_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "LogFieldSet_LogLevel": {
+      "description": "Log severity. Mirrors `tracing::Level`'s five levels so `LogFieldSet` can\nbe built from either a `tracing` event or a non-`tracing` log sink.",
+      "enum": [
+        "trace",
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "type": "string"
+    },
+    "LogFieldSet_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "LogFieldSet_ProviderId": {
+      "type": "string"
+    },
+    "LogFieldSet_SourceId": {
+      "type": "string"
+    },
     "MetricSample": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -1748,6 +1879,245 @@
       ],
       "type": "string"
     },
+    "SpanFieldSet": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The canonical bounded span/log field set.",
+      "properties": {
+        "adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_StageCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_SourceScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_Severity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "SpanFieldSet",
+      "type": "object"
+    },
+    "SpanFieldSet_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "SpanFieldSet_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "SpanFieldSet_ProviderId": {
+      "type": "string"
+    },
+    "SpanFieldSet_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "SpanFieldSet_SourceId": {
+      "type": "string"
+    },
+    "SpanFieldSet_SourceScope": {
+      "enum": [
+        "page",
+        "site",
+        "docs",
+        "repo",
+        "workspace",
+        "branch",
+        "org",
+        "package",
+        "version",
+        "feed",
+        "subreddit",
+        "thread",
+        "comment",
+        "video",
+        "playlist",
+        "channel",
+        "issue",
+        "pull_request",
+        "merge_request",
+        "release",
+        "wiki",
+        "file",
+        "directory",
+        "map",
+        "tool",
+        "script",
+        "api"
+      ],
+      "type": "string"
+    },
+    "SpanFieldSet_StageCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "documents_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "items_done": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "items_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items_done",
+        "documents_done",
+        "chunks_done",
+        "bytes_done"
+      ],
+      "type": "object"
+    },
     "StageCounts": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1814,7 +2184,532 @@
       "title": "StageCounts",
       "type": "object"
     },
+    "StreamEvent": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The contracted flat SSE/MCP streaming envelope. `data` carries the\nkind-specific payload (a `SourceProgressEvent` for `progress`, the\nroute-specific result DTO for `final`, a `{ \"text\": ... }` object for\n`token`, etc.) — see the contract doc for the per-kind validation rules.",
+      "properties": {
+        "data": {
+          "default": {}
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StreamEvent_ApiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StreamEvent_JobId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/StreamEvent_StreamKind"
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StreamEvent_SourceWarning"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "event_id",
+        "kind",
+        "sequence",
+        "timestamp"
+      ],
+      "title": "StreamEvent",
+      "type": "object"
+    },
+    "StreamEvent_ApiError": {
+      "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
+      "properties": {
+        "chunk_id": {
+          "description": "Chunk id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "$ref": "#/$defs/StreamEvent_ErrorCode",
+          "description": "Stable machine code (e.g. `provider.unavailable`)."
+        },
+        "cooldown_until": {
+          "description": "Provider/job cooling timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Redacted structured context (safe key/value pairs only).",
+          "type": "object"
+        },
+        "document_id": {
+          "description": "Document id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "description": "Job correlation id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Redacted human-readable message.",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider that failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Suggested retry delay, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/StreamEvent_ErrorSeverity",
+          "description": "Severity classification."
+        },
+        "source_id": {
+          "description": "Source id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_item_key": {
+          "description": "Item/file/page key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/StreamEvent_ErrorStage",
+          "description": "Pipeline/transport stage."
+        },
+        "visibility": {
+          "$ref": "#/$defs/StreamEvent_ErrorVisibility",
+          "description": "Where this error may be surfaced."
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "retryable",
+        "severity",
+        "visibility",
+        "details"
+      ],
+      "type": "object"
+    },
+    "StreamEvent_ErrorCode": {
+      "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
+      "type": "string"
+    },
+    "StreamEvent_ErrorSeverity": {
+      "description": "How severe an error is and whether it terminates the item/job.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "Informational event; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "warning",
+          "description": "Non-fatal issue, full behavior preserved; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Behavior reduced but acceptable by policy; may or may not be terminal.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Required work failed; terminal for the affected item/job.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "Cannot continue safely; terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "StreamEvent_ErrorStage": {
+      "description": "Pipeline/transport stage an error is attributed to.",
+      "oneOf": [
+        {
+          "const": "parsing",
+          "description": "CLI/MCP/REST request parse, removed command/action.",
+          "type": "string"
+        },
+        {
+          "const": "validation",
+          "description": "Missing fields, bad types, unsupported flags.",
+          "type": "string"
+        },
+        {
+          "const": "resolving",
+          "description": "Source resolution, canonical URI, authority.",
+          "type": "string"
+        },
+        {
+          "const": "routing",
+          "description": "Adapter/scope/provider selection.",
+          "type": "string"
+        },
+        {
+          "const": "authorizing",
+          "description": "Auth, credentials, execution policy.",
+          "type": "string"
+        },
+        {
+          "const": "planning",
+          "description": "Source plan, prune plan.",
+          "type": "string"
+        },
+        {
+          "const": "leasing",
+          "description": "Job/watch/source lease.",
+          "type": "string"
+        },
+        {
+          "const": "discovering",
+          "description": "Manifest/map discovery.",
+          "type": "string"
+        },
+        {
+          "const": "diffing",
+          "description": "Manifest diff.",
+          "type": "string"
+        },
+        {
+          "const": "fetching",
+          "description": "HTTP/git/package/local/MCP/CLI fetch.",
+          "type": "string"
+        },
+        {
+          "const": "rendering",
+          "description": "Browser/CDP/render provider.",
+          "type": "string"
+        },
+        {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
+          "const": "normalizing",
+          "description": "SourceDocument creation.",
+          "type": "string"
+        },
+        {
+          "const": "parsing_content",
+          "description": "Parser facts/chunk parser (serialized as `parsing_content`).",
+          "type": "string"
+        },
+        {
+          "const": "graphing",
+          "description": "Graph writes/merge/conflict.",
+          "type": "string"
+        },
+        {
+          "const": "preparing",
+          "description": "Chunking/PreparedDocument.",
+          "type": "string"
+        },
+        {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
+          "const": "embedding",
+          "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
+          "type": "string"
+        },
+        {
+          "const": "upserting",
+          "description": "VectorStore writes.",
+          "type": "string"
+        },
+        {
+          "const": "publishing",
+          "description": "Generation publish.",
+          "type": "string"
+        },
+        {
+          "const": "cleaning",
+          "description": "Cleanup/prune/dedupe.",
+          "type": "string"
+        },
+        {
+          "const": "retrieving",
+          "description": "Query/retrieve context.",
+          "type": "string"
+        },
+        {
+          "const": "synthesizing",
+          "description": "LLM synthesis.",
+          "type": "string"
+        },
+        {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
+          "const": "observing",
+          "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
+          "type": "string"
+        }
+      ]
+    },
+    "StreamEvent_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "StreamEvent_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "StreamEvent_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "StreamEvent_SourceItemKey": {
+      "type": "string"
+    },
+    "StreamEvent_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/StreamEvent_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StreamEvent_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "StreamEvent_StreamKind": {
+      "description": "`StreamEvent.kind` — the flat set of streaming event kinds shared by SSE\nand MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`\n(\"StreamEvent Shape\").",
+      "enum": [
+        "progress",
+        "token",
+        "citation",
+        "artifact",
+        "warning",
+        "error",
+        "final"
+      ],
+      "type": "string"
+    },
     "enums": {
+      "ArtifactKind": {
+        "enum": [
+          "raw_content",
+          "normalized_content",
+          "manifest",
+          "report",
+          "screenshot",
+          "warc",
+          "provider_trace"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ArtifactKind"
+        }
+      },
+      "ArtifactMode": {
+        "enum": [
+          "none",
+          "on_large_output",
+          "always"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ArtifactMode"
+        }
+      },
+      "AuthorityLevel": {
+        "enum": [
+          "official",
+          "verified",
+          "user_pinned",
+          "inferred",
+          "community",
+          "mirror",
+          "conflicting",
+          "unknown"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "AuthorityLevel"
+        }
+      },
+      "CachePolicy": {
+        "enum": [
+          "bypass",
+          "use",
+          "revalidate",
+          "offline"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "CachePolicy"
+        }
+      },
+      "ChunkProfile": {
+        "enum": [
+          "code_symbol",
+          "code_manifest",
+          "markdown_sections",
+          "html_article",
+          "plain_text_windows",
+          "transcript_segments",
+          "structured_records",
+          "api_schema",
+          "tool_output",
+          "session_turns",
+          "atomic_metadata"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ChunkProfile"
+        }
+      },
       "CleanupDebtKind": {
         "enum": [
           "vector_delete",
@@ -1829,6 +2724,57 @@
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "CleanupDebtKind"
+        }
+      },
+      "ContentKind": {
+        "enum": [
+          "code",
+          "markdown",
+          "html",
+          "plain_text",
+          "transcript",
+          "structured",
+          "json",
+          "yaml",
+          "toml",
+          "xml",
+          "binary_metadata"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ContentKind"
+        }
+      },
+      "CredentialKind": {
+        "enum": [
+          "api_key",
+          "o_auth_token",
+          "bearer_token",
+          "basic_auth",
+          "cookie",
+          "ssh_key",
+          "local_config"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "CredentialKind"
+        }
+      },
+      "DiffKind": {
+        "enum": [
+          "added",
+          "modified",
+          "removed",
+          "unchanged",
+          "skipped",
+          "failed"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "DiffKind"
         }
       },
       "DocumentLifecycleStatus": {
@@ -1853,6 +2799,86 @@
           "rust_enum": "DocumentLifecycleStatus"
         }
       },
+      "EnrichmentKind": {
+        "enum": [
+          "none",
+          "metadata",
+          "classification",
+          "summary",
+          "extraction",
+          "authority",
+          "dependency",
+          "api_schema",
+          "tool_schema",
+          "session",
+          "custom"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "EnrichmentKind"
+        }
+      },
+      "ExecutionAffinity": {
+        "enum": [
+          "inline",
+          "worker",
+          "scheduler",
+          "provider_bound"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ExecutionAffinity"
+        }
+      },
+      "ExecutionMode": {
+        "enum": [
+          "foreground",
+          "background",
+          "wait"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ExecutionMode"
+        }
+      },
+      "HealthStatus": {
+        "enum": [
+          "healthy",
+          "degraded",
+          "unavailable",
+          "cooling",
+          "unknown"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "HealthStatus"
+        }
+      },
+      "ItemKind": {
+        "enum": [
+          "web_page",
+          "repo_file",
+          "local_file",
+          "package_version",
+          "feed_entry",
+          "transcript",
+          "session_turn",
+          "tool_call",
+          "cli_output",
+          "mcp_tool_output",
+          "memory_record",
+          "artifact"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ItemKind"
+        }
+      },
       "JobKind": {
         "enum": [
           "source",
@@ -1867,12 +2893,29 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset"
+          "reset",
+          "crawl",
+          "ingest",
+          "embed"
         ],
         "type": "string",
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "JobKind"
+        }
+      },
+      "JobPriority": {
+        "enum": [
+          "interactive",
+          "high",
+          "normal",
+          "background",
+          "maintenance"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "JobPriority"
         }
       },
       "LifecycleStatus": {
@@ -1932,6 +2975,34 @@
           "rust_enum": "PipelinePhase"
         }
       },
+      "ProviderKind": {
+        "enum": [
+          "llm",
+          "embedding",
+          "vector",
+          "search",
+          "fetch",
+          "render",
+          "network_capture",
+          "artifact",
+          "ledger",
+          "graph",
+          "memory",
+          "job",
+          "watch",
+          "config",
+          "credential",
+          "cache",
+          "security",
+          "rate_limiter",
+          "health_probe"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ProviderKind"
+        }
+      },
       "PublishState": {
         "enum": [
           "planning",
@@ -1946,6 +3017,50 @@
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "PublishState"
+        }
+      },
+      "ResponseMode": {
+        "enum": [
+          "auto",
+          "summary",
+          "full",
+          "inline",
+          "artifact",
+          "path",
+          "job_only"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ResponseMode"
+        }
+      },
+      "SafetyClass": {
+        "enum": [
+          "public_network",
+          "authenticated_network",
+          "local_filesystem",
+          "tool_execution"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SafetyClass"
+        }
+      },
+      "Severity": {
+        "enum": [
+          "debug",
+          "info",
+          "warning",
+          "degraded",
+          "failed",
+          "fatal"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "Severity"
         }
       },
       "SourceIntent": {
@@ -1980,6 +3095,80 @@
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "SourceKind"
+        }
+      },
+      "SourceRefreshPolicy": {
+        "enum": [
+          "if_stale",
+          "force",
+          "never"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SourceRefreshPolicy"
+        }
+      },
+      "SourceScope": {
+        "enum": [
+          "page",
+          "site",
+          "docs",
+          "repo",
+          "workspace",
+          "branch",
+          "org",
+          "package",
+          "version",
+          "feed",
+          "subreddit",
+          "thread",
+          "comment",
+          "video",
+          "playlist",
+          "channel",
+          "issue",
+          "pull_request",
+          "merge_request",
+          "release",
+          "wiki",
+          "file",
+          "directory",
+          "map",
+          "tool",
+          "script",
+          "api"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SourceScope"
+        }
+      },
+      "SourceWatchPolicy": {
+        "enum": [
+          "disabled",
+          "ensure",
+          "enabled"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SourceWatchPolicy"
+        }
+      },
+      "Visibility": {
+        "enum": [
+          "public",
+          "internal",
+          "sensitive",
+          "redacted",
+          "derived"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "Visibility"
         }
       }
     }

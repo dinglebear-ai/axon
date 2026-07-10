@@ -11,8 +11,8 @@
 
 use super::AxonMcpServer;
 use super::common::{
-    InlineHint, internal_error, invalid_params, logged_internal_error, respond_with_mode,
-    validate_mcp_collection,
+    CURRENT_CALLER_AUTH_SNAPSHOT, InlineHint, internal_error, invalid_params,
+    logged_internal_error, respond_with_mode, validate_mcp_collection,
 };
 use crate::schema::{AxonToolResponse, SourceRequest};
 use axon_api::source::SourceRequest as ApiSourceRequest;
@@ -31,6 +31,7 @@ impl AxonMcpServer {
             .ok_or_else(|| invalid_params("source (input) is required for the source action"))?
             .to_string();
         let response_mode = req.response_mode;
+        let detached = req.detached.unwrap_or(false);
 
         let collection = req
             .collection
@@ -50,6 +51,42 @@ impl AxonMcpServer {
             .await
             .map_err(|e| logged_internal_error("source.context", e.as_ref()))?;
 
+        // Real caller-derived AuthSnapshot, resolved once in `call_tool`'s
+        // scope gate and threaded through via task-local (see
+        // `common.rs::CURRENT_CALLER_AUTH_SNAPSHOT`). `None` only in
+        // LoopbackDev mode, where there is no per-caller identity to
+        // snapshot — the enqueue/inline paths both fall back to
+        // `trusted_system` in that case.
+        let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
+            .try_with(Clone::clone)
+            .unwrap_or_default();
+
+        if detached {
+            let Some(job_store) = service_context.job_store() else {
+                return Err(internal_error(
+                    "source detached=true requires a running job store; retry with detached=false",
+                ));
+            };
+            let result = axon_services::source::enqueue::enqueue_source(
+                api_request,
+                job_store.as_ref(),
+                caller_auth_snapshot,
+            )
+            .await
+            .map_err(|e| logged_internal_error("source.enqueue", e.as_ref()))?;
+            let payload = serde_json::to_value(&result)
+                .map_err(|e| internal_error(format!("serialize source result: {e}")))?;
+            return respond_with_mode(
+                "source",
+                "source",
+                response_mode,
+                &format!("source-{}", super::common::slugify(&source, 56)),
+                payload,
+                InlineHint::Default,
+            )
+            .await;
+        }
+
         // `index_source` threads a non-`Send` error chain (`Box<dyn Error>`
         // through the crawl_sync ledger), so its future is not `Send` and cannot
         // be awaited directly inside the rmcp `#[tool]` wrapper's `Send` future.
@@ -63,9 +100,10 @@ impl AxonMcpServer {
                 .build()
                 .map_err(|e| format!("build source runtime: {e}"))?;
             runtime
-                .block_on(axon_services::index_source(
+                .block_on(axon_services::source::index_source_with_auth(
                     api_request,
                     service_context.as_ref(),
+                    caller_auth_snapshot,
                 ))
                 .map_err(|e| format!("source '{source_for_task}' failed: {e:#}"))
         })
