@@ -73,6 +73,33 @@
       "requires_auth_scope": "admin",
       "result_dto": "ConfigProjectionResponse",
       "subaction": null
+    },
+    {
+      "action": "resolve",
+      "async": false,
+      "mutates": false,
+      "request_dto": "ResolveRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "RoutePlan",
+      "subaction": null
+    },
+    {
+      "action": "capabilities",
+      "async": false,
+      "mutates": false,
+      "request_dto": "CapabilitiesRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "CapabilityDocument",
+      "subaction": null
+    },
+    {
+      "action": "providers",
+      "async": false,
+      "mutates": false,
+      "request_dto": "ProvidersRequest",
+      "requires_auth_scope": "read",
+      "result_dto": "ProviderSummary",
+      "subaction": null
     }
   ],
   "additionalProperties": false,
@@ -106,7 +133,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:f41acd92c675cb7fb16f0615f7280f51a4c70242c9621570c0f15cc6a649593d",
+        "checksum": "sha256:fc7de3b93f7f0f31cc5149efd9b8b3729f887f79d1f74ba6a9bdde245d8e5eee",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },

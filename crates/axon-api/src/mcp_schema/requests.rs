@@ -554,6 +554,10 @@ pub struct StatsRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
+#[path = "requests/discovery.rs"]
+mod discovery;
+pub use discovery::{CapabilitiesRequest, ProvidersRequest, ResolveRequest};
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScrapeRequest {

@@ -67,6 +67,9 @@ enum Command {
     PrePush(pre_push::PrePushArgs),
     /// Generate/check clean-break pipeline schema artifacts.
     Schemas(schemas::SchemasArgs),
+    /// Generate/check the docs-generator core: header rewrite, source-input
+    /// manifest, repo-wide link check, and docs-inventory diff.
+    Docs(docs::DocsArgs),
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
     CheckReleaseVersions {
         #[arg(long)]
@@ -175,6 +178,7 @@ fn main() -> Result<()> {
         Command::CheckAndroidApiContract => checks::android_api_contract::check(&root),
         Command::PrePush(args) => pre_push::run(&root, args),
         Command::Schemas(args) => schemas::run(&root, args),
+        Command::Docs(args) => docs::run(&root, args),
         Command::CheckReleaseVersions {
             base,
             head,
@@ -242,5 +246,6 @@ fn main() -> Result<()> {
 
 mod bench_embed;
 mod checks;
+mod docs;
 mod pre_push;
 pub mod schemas;

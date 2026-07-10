@@ -51,6 +51,9 @@ pub enum AxonRequest {
     ElicitDemo(ElicitDemoRequest),
     VerticalScrape(VerticalScrapeRequest),
     Source(SourceRequest),
+    Resolve(ResolveRequest),
+    Capabilities(CapabilitiesRequest),
+    Providers(ProvidersRequest),
 }
 
 /// The MCP contract version this server implements. Mirrors the REST

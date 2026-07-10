@@ -68,24 +68,6 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         cost: "cheap",
     },
     McpActionSpec {
-        name: "sources",
-        scope: ActionScope::Read,
-        description: "List indexed URLs and chunk counts",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "domains",
-        scope: ActionScope::Read,
-        description: "List indexed domains and aggregate stats",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "stats",
-        scope: ActionScope::Read,
-        description: "Show Qdrant collection statistics",
-        cost: "cheap",
-    },
-    McpActionSpec {
         name: "source",
         scope: ActionScope::Write,
         description: "Acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry target) through the unified pipeline",
@@ -101,6 +83,31 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         name: "retrieve",
         scope: ActionScope::Read,
         description: "Fetch stored document chunks by URL",
+        cost: "cheap",
+    },
+    // resolve/capabilities/providers (contract's `resolve`/`capabilities`/
+    // `providers` actions, WS-G #298): read-only discovery surfaces backed by
+    // real data — `resolve` calls `axon_services::source::routing::
+    // resolve_source_route`, `providers` reshapes `system::doctor`'s per-
+    // service payload (mirroring the REST `/v1/providers` resource-tier
+    // routes), and `capabilities` reports the live `MCP_ACTION_SPECS`
+    // registry plus provider health. None of these mutate state.
+    McpActionSpec {
+        name: "resolve",
+        scope: ActionScope::Read,
+        description: "Resolve source identity and adapter route without acquiring content",
+        cost: "cheap",
+    },
+    McpActionSpec {
+        name: "capabilities",
+        scope: ActionScope::Read,
+        description: "Machine-readable server capability document: actions, scopes, providers",
+        cost: "cheap",
+    },
+    McpActionSpec {
+        name: "providers",
+        scope: ActionScope::Read,
+        description: "List or inspect provider capability/health (list|get subactions)",
         cost: "cheap",
     },
     McpActionSpec {
@@ -191,12 +198,6 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         name: "endpoints",
         scope: ActionScope::Write,
         description: "Discover and optionally verify static site endpoints",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "elicit_demo",
-        scope: ActionScope::Write,
-        description: "Exercise MCP elicitation support with a demo form",
         cost: "write",
     },
     // `watch` (issue #298 WS-B): `list`/`get`/`update`/`pause`/`resume`/

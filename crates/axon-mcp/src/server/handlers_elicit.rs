@@ -29,6 +29,14 @@ struct ElicitDemoForm {
 // type (not a primitive), which is required by the MCP elicitation spec.
 rmcp::elicit_safe!(ElicitDemoForm);
 
+/// Retained but unwired: `elicit_demo` was removed from the dispatched MCP
+/// action surface (issue #298 WS-G — not part of the tool contract's
+/// canonical action list). `MCP_ACTION_SPECS` already denies the action
+/// before dispatch reaches `server.rs`. Kept as reference code for a future
+/// contract-compliant elicitation surface rather than deleted outright,
+/// since `AxonToolResponse`/`ElicitDemoRequest` remain on the shared
+/// `AxonRequest` enum for REST/CLI-side exhaustiveness elsewhere.
+#[allow(dead_code)]
 pub(crate) async fn handle_elicit_demo(
     peer: &Peer<RoleServer>,
     req: ElicitDemoRequest,
