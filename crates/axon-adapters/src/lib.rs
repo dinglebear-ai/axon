@@ -26,6 +26,7 @@ pub mod registry_sources;
 pub mod sessions;
 pub mod spec;
 pub mod testing;
+pub mod upload;
 pub mod web;
 pub mod youtube;
 
@@ -36,7 +37,9 @@ pub use enrichment::{NoopSourceEnricher, SourceEnricher};
 pub use family_matrix::{SourceFamilyMatrix, source_family_matrix};
 pub use onboarding::{OnboardingRow, SourceOnboardingStatus, onboarding_rows, onboarding_status};
 pub use registry::SourceAdapterRegistry;
-pub use spec::{ParserFamily, SourceAdapterSpec, SourceFamily, SourceScopeCapability};
+pub use spec::{
+    ParserFamily, SourceAdapterSpec, SourceFamily, SourceScopeCapability, scope_capability,
+};
 pub use testing::{
     FakeSourceAdapter, FakeSourceAdapterMode, FakeSourceEnricher, FakeSourceEnricherMode,
 };
