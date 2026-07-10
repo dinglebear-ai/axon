@@ -4,8 +4,8 @@ use super::common::{
     CURRENT_PRUNE_AUTHZ, MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error, to_pagination,
 };
 use crate::schema::{
-    AxonToolResponse, DoctorRequest, DomainsRequest, HelpRequest, PruneMcpRequest, PurgeRequest,
-    SourcesRequest, StatsRequest, StatusRequest,
+    AxonToolResponse, DoctorRequest, DomainsRequest, HelpRequest, PruneMcpRequest, SourcesRequest,
+    StatsRequest, StatusRequest,
 };
 use axon_api::source::prune::{PruneRequest as ApiPruneRequest, PruneSelector};
 use axon_api::source::{SourceGenerationId, SourceId};
@@ -42,41 +42,6 @@ impl AxonMcpServer {
         .await
     }
 
-    pub(super) async fn handle_purge(
-        &self,
-        req: PurgeRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let target = req
-            .target
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| invalid_params("purge requires a target URL"))?
-            .to_string();
-        // Agent safety: a bare `purge` previews; deletion requires dry_run=false.
-        let dry_run = req.dry_run.unwrap_or(true);
-        let mut cfg = (*self.cfg).clone();
-        if let Some(collection) = req.collection.as_deref() {
-            axon_core::config::validate_collection_name(collection)
-                .map_err(|e| invalid_params(format!("collection: {e}")))?;
-            cfg.collection = collection.to_string();
-        }
-        let result = system::purge(&cfg, &target, req.prefix, dry_run)
-            .await
-            .map_err(|e| logged_internal_error("purge", e.as_ref()))?;
-        let payload =
-            serde_json::to_value(result).map_err(|e| logged_internal_error("purge", &e))?;
-        respond_with_mode(
-            "purge",
-            "purge",
-            req.response_mode,
-            "purge",
-            payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
     pub(super) async fn handle_prune(
         &self,
         req: PruneMcpRequest,
@@ -86,10 +51,10 @@ impl AxonMcpServer {
 
         // `prune` executes against the shared, cached `ServiceContext` (see
         // `base_service_context`), which is built once from the server's
-        // startup config and cannot be overridden per-call the way
-        // `handle_purge` overrides a throwaway `Config` clone. A per-request
-        // `collection` override is therefore not honored here — reject
-        // rather than silently ignore it.
+        // startup config and cannot be overridden per-call the way the REST
+        // `purge` handler (`axon-web`) overrides a throwaway `Config` clone.
+        // A per-request `collection` override is therefore not honored here —
+        // reject rather than silently ignore it.
         if req.collection.is_some() {
             return Err(invalid_params(
                 "prune does not support a per-request collection override over MCP; the server's configured collection is always used",
@@ -369,7 +334,6 @@ fn help_payload() -> Value {
             "retrieve": ["retrieve"],
             "search": ["search"],
             "map": ["map"],
-            "purge": ["purge"],
             "prune": ["plan", "exec"],
             "doctor": ["doctor"],
             "domains": ["domains"],
