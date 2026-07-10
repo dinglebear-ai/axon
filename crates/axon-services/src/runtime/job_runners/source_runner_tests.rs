@@ -47,6 +47,7 @@ fn source_job_request(source_request: &SourceRequest) -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

@@ -121,6 +121,7 @@ fn job_create_request(input: &FeedSourceIndexInput, _source_id: SourceId) -> Job
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

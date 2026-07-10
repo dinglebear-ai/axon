@@ -409,6 +409,20 @@ pub(super) struct TomlWorkersSection {
     pub max_pending_extract_jobs: Option<usize>,
     /// Ingest queue cap (0 = unlimited).
     pub max_pending_ingest_jobs: Option<usize>,
+    /// Retention window (days) for terminal unified job rows.
+    pub jobs_retention_terminal_days: Option<i64>,
+    /// Retention window (days) for non-failed `job_events` rows.
+    pub jobs_retention_event_days: Option<i64>,
+    /// Retention window (days) for failed-job `job_events` rows.
+    pub jobs_retention_failed_event_days: Option<i64>,
+    /// Retention window (days) for `provider_reservations` rows.
+    pub jobs_retention_provider_health_days: Option<i64>,
+    /// Retention window (days) for `job_artifacts` rows.
+    pub jobs_retention_artifact_days: Option<i64>,
+    /// Seconds between periodic differentiated retention sweeps.
+    pub jobs_retention_sweep_secs: Option<i64>,
+    /// SLO in seconds for the priority-aware interactive-lane starvation watchdog.
+    pub jobs_interactive_starvation_slo_secs: Option<i64>,
     /// Timeout in seconds for `--wait true` job polling (clamped 30–3600).
     /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`.
     pub job_wait_timeout_secs: Option<u64>,

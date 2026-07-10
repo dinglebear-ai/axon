@@ -104,7 +104,7 @@ pub async fn extract_start_with_context(
         .create(JobCreateRequest {
             request_id: None,
             job_kind: UnifiedJobKind::Extract,
-            job_intent: JobIntent::Run,
+            job_intent: JobIntent::Extract,
             source_id: None,
             watch_id: None,
             parent_job_id: None,
@@ -131,6 +131,7 @@ pub async fn extract_start_with_context(
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e.message.into() })?;

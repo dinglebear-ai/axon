@@ -797,6 +797,43 @@ pub struct Config {
     /// Env: `AXON_MAX_JOB_ATTEMPTS`. TOML: `workers.max-job-attempts`. Default: 5.
     pub max_job_attempts: u32,
 
+    /// Retention window in days for terminal unified job rows (and their
+    /// cascaded children) before the retention sweep deletes them.
+    /// Env: `AXON_JOBS_RETENTION_TERMINAL_DAYS`. TOML: `jobs.terminal-retention-days`. Default: 30.
+    pub jobs_retention_terminal_days: i64,
+
+    /// Retention window in days for detailed `job_events` rows belonging to
+    /// non-failed jobs. Env: `AXON_JOBS_RETENTION_EVENT_DAYS`. TOML: `jobs.event-retention-days`. Default: 14.
+    pub jobs_retention_event_days: i64,
+
+    /// Retention window in days for `job_events` rows belonging to failed
+    /// jobs — kept longer than ordinary events for postmortem evidence.
+    /// Env: `AXON_JOBS_RETENTION_FAILED_EVENT_DAYS`. TOML: `jobs.failed-event-retention-days`. Default: 60.
+    pub jobs_retention_failed_event_days: i64,
+
+    /// Retention window in days for `provider_reservations` rows (provider
+    /// capacity/health history). Env: `AXON_JOBS_RETENTION_PROVIDER_HEALTH_DAYS`.
+    /// TOML: `jobs.provider-health-retention-days`. Default: 7.
+    pub jobs_retention_provider_health_days: i64,
+
+    /// Retention window in days for `job_artifacts` rows.
+    /// Env: `AXON_JOBS_RETENTION_ARTIFACT_DAYS`. TOML: `jobs.artifact-retention-days`. Default: 30.
+    pub jobs_retention_artifact_days: i64,
+
+    /// Seconds between periodic differentiated retention sweeps in the
+    /// long-running worker process. Env: `AXON_JOBS_RETENTION_SWEEP_SECS`.
+    /// TOML: `jobs.retention-sweep-secs`. Default: 3600.
+    pub jobs_retention_sweep_secs: i64,
+
+    /// SLO in seconds an `interactive`-priority job may sit `queued` with no
+    /// `interactive`-priority job running before the starvation watchdog
+    /// emits a warning event. Distinct from `worker_starvation_secs`, which
+    /// detects an entire wedged/dead lane rather than priority-class
+    /// fairness. `0` disables the check.
+    /// Env: `AXON_JOBS_INTERACTIVE_STARVATION_SLO_SECS`.
+    /// TOML: `jobs.interactive-starvation-slo-secs`. Default: 30.
+    pub jobs_interactive_starvation_slo_secs: i64,
+
     /// Emit machine-readable JSON output on stdout instead of human-readable text. Flag: `--json`.
     pub json_output: bool,
 

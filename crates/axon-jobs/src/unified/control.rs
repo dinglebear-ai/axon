@@ -90,13 +90,16 @@ impl SqliteUnifiedJobStore {
         request: JobCancelRequest,
     ) -> Result<JobCancelResult> {
         let mut tx = self.pool.begin().await.map_err(sql_error)?;
-        let row = sqlx::query("SELECT status FROM jobs WHERE job_id = ?")
+        let row = sqlx::query("SELECT status, phase FROM jobs WHERE job_id = ?")
             .bind(job_id.0.to_string())
             .fetch_optional(&mut *tx)
             .await
             .map_err(sql_error)?
             .ok_or_else(|| missing_job(job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+        // Last completed safe point before the cancellation unwind begins —
+        // the job's phase at the moment cancellation was requested.
+        let last_safe_stage = parse_enum::<PipelinePhase>(row.get::<String, _>("phase")).ok();
         validate_transition(job_id, current, LifecycleStatus::Canceling)?;
         let now = now_timestamp();
         let target = if matches!(current, LifecycleStatus::Queued | LifecycleStatus::Pending)
@@ -144,7 +147,41 @@ impl SqliteUnifiedJobStore {
             status: target,
             canceled_at,
             reason: request.reason,
+            canceled_by: request.actor,
+            last_safe_stage,
+            // No published-partial-side-effect or cleanup-debt tracking wired
+            // into this cooperative cancel path yet; empty is the correct
+            // "none observed" value, not a placeholder.
+            side_effects: Vec::new(),
+            cleanup_debt_ids: Vec::new(),
         })
+    }
+
+    /// Transition every `running` job whose `deadline_at` has passed to
+    /// `expired` (R1-V01). Runs on the watchdog cadence, independent of the
+    /// stale-heartbeat reclaim path — a job can still be heartbeating
+    /// healthily and still have blown past an explicit caller-set deadline.
+    /// Returns the number of jobs transitioned.
+    pub(crate) async fn expire_past_deadline_jobs(&self) -> Result<u64> {
+        let now = now_timestamp();
+        let result = sqlx::query(
+            "UPDATE jobs SET
+                status = 'expired',
+                phase = 'canceled',
+                updated_at = ?,
+                finished_at = ?,
+                cooldown_until = NULL
+             WHERE status = 'running'
+               AND deadline_at IS NOT NULL
+               AND deadline_at < ?",
+        )
+        .bind(now.0.as_str())
+        .bind(now.0.as_str())
+        .bind(now.0.as_str())
+        .execute(&self.pool)
+        .await
+        .map_err(sql_error)?;
+        Ok(result.rows_affected())
     }
 
     pub(crate) async fn retry_job(

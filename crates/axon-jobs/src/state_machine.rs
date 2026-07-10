@@ -29,6 +29,12 @@ pub(crate) fn validate_transition(
             | (LifecycleStatus::Running, LifecycleStatus::Completed)
             | (LifecycleStatus::Running, LifecycleStatus::CompletedDegraded)
             | (LifecycleStatus::Running, LifecycleStatus::Failed)
+            // Deadline enforcement (R1-V01): a running attempt that passed
+            // its `deadline_at` is expired by the watchdog/claim path. Not
+            // in the base contract's transition table (which only reaches
+            // `expired` from queued/pending/blocked/waiting), but additive
+            // per this implementation's deadline feature.
+            | (LifecycleStatus::Running, LifecycleStatus::Expired)
             | (LifecycleStatus::Waiting, LifecycleStatus::Running)
             | (LifecycleStatus::Waiting, LifecycleStatus::Canceling)
             | (LifecycleStatus::Waiting, LifecycleStatus::Failed)

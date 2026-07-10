@@ -52,6 +52,7 @@ fn create_request() -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 
@@ -758,6 +759,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             JobCancelRequest {
                 reason: Some("queued no longer needed".to_string()),
                 force_after_ms: None,
+                actor: None,
             },
         )
         .await
@@ -787,6 +789,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             JobCancelRequest {
                 reason: Some("user requested".to_string()),
                 force_after_ms: None,
+                actor: None,
             },
         )
         .await
@@ -950,6 +953,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             JobCancelRequest {
                 reason: Some("cleanup fixture".to_string()),
                 force_after_ms: Some(0),
+                actor: None,
             },
         )
         .await

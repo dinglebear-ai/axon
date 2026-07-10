@@ -22,8 +22,8 @@
 //! `SqliteUnifiedJobStore::create_job` / `find_by_idempotency_key`.
 
 use axon_api::source::{
-    AdapterRef, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap, SourceRequest,
-    SourceResult,
+    AdapterRef, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap, SourceIntent,
+    SourceRequest, SourceResult,
 };
 use axon_error::ErrorStage;
 use axon_jobs::boundary::JobStore;
@@ -105,7 +105,7 @@ fn job_create_request(request: &SourceRequest, auth_snapshot: AuthSnapshot) -> J
     JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
-        job_intent: JobIntent::Run,
+        job_intent: source_intent_to_job_intent(request.intent),
         source_id: None,
         watch_id: None,
         parent_job_id: None,
@@ -122,6 +122,18 @@ fn job_create_request(request: &SourceRequest, auth_snapshot: AuthSnapshot) -> J
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
+    }
+}
+
+/// Map the caller-facing `SourceRequest.intent` onto the durable job's
+/// `job_intent` (R1-08) instead of the catch-all `JobIntent::Run`.
+fn source_intent_to_job_intent(intent: SourceIntent) -> JobIntent {
+    match intent {
+        SourceIntent::Acquire => JobIntent::Acquire,
+        SourceIntent::Refresh => JobIntent::Refresh,
+        SourceIntent::Watch => JobIntent::Watch,
+        SourceIntent::Map => JobIntent::Map,
     }
 }
 

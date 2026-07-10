@@ -121,6 +121,14 @@ fn apply_jobs(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     legacy.workers.worker_starvation_secs = j.worker_starvation_secs;
     legacy.workers.crawl_job_timeout_secs = j.crawl_job_timeout_secs;
     legacy.workers.max_job_attempts = j.max_job_attempts;
+    legacy.workers.jobs_retention_terminal_days = j.terminal_retention_days.map(i64::from);
+    legacy.workers.jobs_retention_event_days = j.event_retention_days.map(i64::from);
+    legacy.workers.jobs_retention_failed_event_days = j.failed_event_retention_days.map(i64::from);
+    legacy.workers.jobs_retention_provider_health_days =
+        j.provider_health_retention_days.map(i64::from);
+    legacy.workers.jobs_retention_artifact_days = j.artifact_retention_days.map(i64::from);
+    legacy.workers.jobs_retention_sweep_secs = j.retention_sweep_secs;
+    legacy.workers.jobs_interactive_starvation_slo_secs = j.interactive_starvation_slo_secs;
     legacy.freshness.tick_secs = j.freshness.tick_secs;
     legacy.freshness.lease_secs = j.freshness.lease_secs;
     legacy.freshness.max_due_per_tick = j.freshness.max_due_per_tick;

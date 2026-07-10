@@ -45,6 +45,12 @@ pub struct JobCreateRequest {
     #[serde(default)]
     pub error: Option<ApiError>,
     pub metadata: MetadataMap,
+    /// Optional cancellation deadline. Past-deadline `running` attempts are
+    /// transitioned to `expired` by the worker claim/heartbeat path.
+    /// Per `docs/pipeline-unification/runtime/job-contract.md` "Required Job
+    /// Fields" (`deadline_at`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -134,6 +140,10 @@ pub struct JobCancelRequest {
     pub reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub force_after_ms: Option<u64>,
+    /// User/system identity requesting the cancellation, echoed back on
+    /// `JobCancelResult::canceled_by`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -145,6 +155,19 @@ pub struct JobCancelResult {
     pub canceled_at: Option<Timestamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// User/system identity that requested the cancellation.
+    /// Per `docs/pipeline-unification/runtime/job-contract.md` "Cancellation".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canceled_by: Option<String>,
+    /// Last completed safe point (stage phase) before cancellation unwound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_safe_stage: Option<PipelinePhase>,
+    /// Published/written side effects that survived the cooperative unwind.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub side_effects: Vec<String>,
+    /// Cleanup work created for any published partial side effect.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cleanup_debt_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

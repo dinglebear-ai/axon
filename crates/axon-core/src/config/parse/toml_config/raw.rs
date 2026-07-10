@@ -171,12 +171,17 @@ pub(in crate::config) struct RawJobsSection {
     pub heartbeat_secs: Option<u64>,
     pub stale_after_secs: Option<i64>,
     pub stale_grace_secs: Option<i64>,
-    #[allow(dead_code)]
     pub event_retention_days: Option<u32>,
-    #[allow(dead_code)]
     pub failed_event_retention_days: Option<u32>,
-    #[allow(dead_code)]
     pub terminal_retention_days: Option<u32>,
+    /// Retention window (days) for `provider_reservations` rows.
+    pub provider_health_retention_days: Option<u32>,
+    /// Retention window (days) for `job_artifacts` rows.
+    pub artifact_retention_days: Option<u32>,
+    /// Seconds between periodic differentiated retention sweeps.
+    pub retention_sweep_secs: Option<i64>,
+    /// SLO in seconds for the priority-aware interactive-lane starvation watchdog.
+    pub interactive_starvation_slo_secs: Option<i64>,
     #[allow(dead_code)]
     pub max_events_per_job: Option<u64>,
     #[allow(dead_code)]

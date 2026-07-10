@@ -41,6 +41,7 @@ fn detached_job_request(kind: UnifiedJobKind) -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

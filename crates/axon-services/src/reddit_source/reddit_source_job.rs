@@ -111,6 +111,7 @@ fn job_create_request(input: &RedditSourceIndexInput, _source_id: SourceId) -> J
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

@@ -105,6 +105,7 @@ fn job_create_request(input: &WebSourceIndexInput) -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

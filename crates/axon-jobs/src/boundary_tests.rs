@@ -514,6 +514,7 @@ async fn fake_job_store_controls_cancel_retry_recover_cleanup_and_artifacts() {
         JobCancelRequest {
             reason: Some("user requested".to_string()),
             force_after_ms: None,
+            actor: None,
         },
     )
     .await
@@ -707,6 +708,7 @@ fn job_create() -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

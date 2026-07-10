@@ -69,7 +69,7 @@ pub async fn ingest_start_with_context(
         .create(JobCreateRequest {
             request_id: None,
             job_kind: UnifiedJobKind::Ingest,
-            job_intent: JobIntent::Run,
+            job_intent: JobIntent::Index,
             source_id: None,
             watch_id: None,
             parent_job_id: None,
@@ -98,6 +98,7 @@ pub async fn ingest_start_with_context(
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e.message.into() })?;

@@ -403,6 +403,36 @@ fn populate_misc(
         .or(inputs.toml.workers.max_job_attempts)
         .map(|value| value.clamp(0, 1_000) as u32)
         .unwrap_or(cfg.max_job_attempts);
+    cfg.jobs_retention_terminal_days = parse_i64_env("AXON_JOBS_RETENTION_TERMINAL_DAYS")
+        .or(inputs.toml.workers.jobs_retention_terminal_days)
+        .unwrap_or(30)
+        .clamp(1, 3660);
+    cfg.jobs_retention_event_days = parse_i64_env("AXON_JOBS_RETENTION_EVENT_DAYS")
+        .or(inputs.toml.workers.jobs_retention_event_days)
+        .unwrap_or(14)
+        .clamp(1, 3660);
+    cfg.jobs_retention_failed_event_days = parse_i64_env("AXON_JOBS_RETENTION_FAILED_EVENT_DAYS")
+        .or(inputs.toml.workers.jobs_retention_failed_event_days)
+        .unwrap_or(60)
+        .clamp(1, 3660);
+    cfg.jobs_retention_provider_health_days =
+        parse_i64_env("AXON_JOBS_RETENTION_PROVIDER_HEALTH_DAYS")
+            .or(inputs.toml.workers.jobs_retention_provider_health_days)
+            .unwrap_or(7)
+            .clamp(1, 3660);
+    cfg.jobs_retention_artifact_days = parse_i64_env("AXON_JOBS_RETENTION_ARTIFACT_DAYS")
+        .or(inputs.toml.workers.jobs_retention_artifact_days)
+        .unwrap_or(30)
+        .clamp(1, 3660);
+    cfg.jobs_retention_sweep_secs = parse_i64_env("AXON_JOBS_RETENTION_SWEEP_SECS")
+        .or(inputs.toml.workers.jobs_retention_sweep_secs)
+        .unwrap_or(3600)
+        .clamp(60, 86_400);
+    cfg.jobs_interactive_starvation_slo_secs =
+        parse_i64_env("AXON_JOBS_INTERACTIVE_STARVATION_SLO_SECS")
+            .or(inputs.toml.workers.jobs_interactive_starvation_slo_secs)
+            .unwrap_or(30)
+            .clamp(0, 3600);
     cfg.json_output = g.json;
     cfg.reclaimed_status_only = g.reclaimed;
     cfg.active_status_only = g.active;

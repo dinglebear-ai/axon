@@ -68,6 +68,7 @@ impl JobService for JobServiceImpl {
         let request = JobCancelRequest {
             reason: None,
             force_after_ms: None,
+            actor: None,
         };
         unified_ops::cancel_unified_job(&self.ctx, job_id, request)
             .await

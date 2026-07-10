@@ -129,6 +129,7 @@ pub(crate) async fn dispatch_jobs(
                     JobCancelRequest {
                         reason: req.reason,
                         force_after_ms: None,
+                        actor: None,
                     },
                 )
                 .await?,

@@ -198,6 +198,14 @@ pub enum JobIntent {
     Cleanup,
     Probe,
     Reset,
+    /// Initial index/acquire submission for a legacy per-family job
+    /// (crawl/embed/ingest) that predates the unified `source` pipeline's
+    /// `Acquire` intent.
+    Index,
+    /// Discover items without embedding (`JobKind::Map`).
+    Map,
+    /// Structured LLM extraction (`JobKind::Extract`).
+    Extract,
 }
 
 #[derive(

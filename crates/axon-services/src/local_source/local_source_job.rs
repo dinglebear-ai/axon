@@ -123,6 +123,7 @@ fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> Jo
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

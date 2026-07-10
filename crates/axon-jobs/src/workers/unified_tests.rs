@@ -42,6 +42,7 @@ async fn enqueue_test_job(pool: &SqlitePool, kind: UnifiedJobKind) -> JobId {
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .unwrap();
