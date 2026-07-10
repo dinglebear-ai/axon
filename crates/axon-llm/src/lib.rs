@@ -14,6 +14,7 @@ pub mod gemini;
 pub mod openai_compat;
 pub mod prompt;
 pub mod provider;
+pub mod reservation;
 pub mod stream;
 pub mod testing;
 

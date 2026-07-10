@@ -65,6 +65,7 @@ pub struct FakeVectorStore {
     provider_id: ProviderId,
     health: HealthStatus,
     mode: FakeVectorMode,
+    cooldown_until_override: Option<Timestamp>,
     state: Arc<Mutex<FakeVectorState>>,
 }
 
@@ -95,6 +96,7 @@ impl FakeVectorStore {
             provider_id: ProviderId::new(provider_id),
             health: HealthStatus::Healthy,
             mode: FakeVectorMode::Success,
+            cooldown_until_override: None,
             state: Arc::new(Mutex::new(FakeVectorState::default())),
         }
     }
@@ -106,6 +108,15 @@ impl FakeVectorStore {
 
     pub fn with_mode(mut self, mode: FakeVectorMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Override `capabilities().cooldown_until`, taking precedence over the
+    /// fixed timestamp [`FakeVectorMode::RateLimited`] otherwise reports.
+    /// Lets tests simulate a live, "now"-relative cooldown window instead of
+    /// a mode-derived fixed instant.
+    pub fn with_cooldown_until(mut self, cooldown_until: Timestamp) -> Self {
+        self.cooldown_until_override = Some(cooldown_until);
         self
     }
 
@@ -192,6 +203,9 @@ impl FakeVectorStore {
         }
         if self.health != HealthStatus::Healthy {
             state.health = self.health;
+        }
+        if let Some(cooldown_until) = self.cooldown_until_override.clone() {
+            state.cooldown_until = Some(cooldown_until);
         }
         state
     }

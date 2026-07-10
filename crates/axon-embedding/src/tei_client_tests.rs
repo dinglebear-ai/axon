@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use axon_api::source::*;
+use chrono::Utc;
 use httpmock::prelude::*;
 use uuid::Uuid;
 
@@ -342,4 +343,65 @@ async fn derive_embedding_identity_errors_when_info_unreachable() {
     let err = provider.derive_embedding_identity().await.unwrap_err();
     // The status carries the opaque endpoint marker, never the raw host.
     assert!(!err.message.contains("127.0.0.1"));
+}
+
+/// End-to-end: retry-exhaustion on the real embedding path (not just the
+/// legacy per-family runner) produces a cooling `ApiError`, and the live
+/// `capabilities()` snapshot reflects it until a subsequent success clears
+/// it — F5-10..13/V01/V03 in the provider-contract audit.
+///
+/// `with_max_attempts(1)` makes the first 503 the exhausting attempt so the
+/// test does not wait out the real (multi-second) exponential backoff.
+#[tokio::test]
+async fn embed_retry_exhaustion_cools_the_provider_and_capabilities_report_it_live() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(503);
+        })
+        .await;
+
+    let provider =
+        TeiEmbeddingProvider::new(config(server.base_url(), 2, InstructionSupport::None))
+            .with_max_attempts(1);
+
+    let healthy = provider.capabilities().await.expect("capabilities");
+    assert_eq!(healthy.health, HealthStatus::Healthy);
+    assert!(healthy.cooldown_until.is_none());
+
+    let err = provider
+        .embed(batch(vec![input("chunk-a", "first")], None))
+        .await
+        .expect_err("persistent 503 must exhaust retries");
+    let cooling = err
+        .provider_cooling()
+        .expect("retry-exhausted embed errors must carry ProviderCooling metadata");
+    assert!(cooling.cooldown_until > Utc::now());
+
+    // capabilities() is now LIVE, not a static always-healthy snapshot: it
+    // reflects the just-recorded failure with the same provider and a
+    // populated `cooldown_until`, and stops reporting available capacity.
+    let cooling_caps = provider.capabilities().await.expect("capabilities");
+    assert_eq!(cooling_caps.health, HealthStatus::Cooling);
+    assert!(cooling_caps.cooldown_until.is_some());
+    assert_eq!(cooling_caps.reservation_state.available_units, 0);
+
+    // A subsequent successful embed — on the SAME provider/health tracker —
+    // clears the cooldown back to healthy.
+    server.reset_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32]]));
+        })
+        .await;
+    provider
+        .embed(batch(vec![input("chunk-b", "second")], None))
+        .await
+        .expect("embed against a now-healthy server succeeds");
+    let recovered_caps = provider.capabilities().await.expect("capabilities");
+    assert_eq!(recovered_caps.health, HealthStatus::Healthy);
+    assert!(recovered_caps.cooldown_until.is_none());
 }

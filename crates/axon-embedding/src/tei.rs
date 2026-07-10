@@ -14,8 +14,12 @@ use axon_api::source::*;
 use axon_error::ErrorStage;
 
 use crate::batch::validate_batch;
-use crate::capability::{EmbeddingCapabilityConfig, available_embedding_provider_capability};
+use crate::capability::{
+    EmbeddingCapabilityConfig, ProviderCapabilityConfig, embedding_capability,
+    embedding_provider_capability, embedding_reservation_policy, embedding_reservation_state,
+};
 use crate::provider::{EmbeddingProvider, Result};
+use crate::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use client::{TeiClient, TeiClientParams};
 
 /// Provider-derived embedding identity: the `model_id` reported by TEI `/info`
@@ -53,14 +57,47 @@ const MAX_ATTEMPTS: usize = 6;
 /// measured length reproducible across probes.
 const DIMENSION_PROBE_INPUT: &str = "axon";
 
+/// Self-tracked health/cooldown capacity, independent of any scheduler-side
+/// reservation pool the caller may layer on top. Sized generously (well above
+/// any realistic in-flight batch count) — it exists purely to fold live
+/// `record_success`/`record_failure` outcomes into `capabilities()`, not to
+/// gate concurrency.
+const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
+const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
+const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
+
 #[derive(Debug, Clone)]
 pub struct TeiEmbeddingProvider {
     config: TeiEmbeddingConfig,
+    health: ProviderReservationManager,
+    max_attempts: usize,
 }
 
 impl TeiEmbeddingProvider {
     pub fn new(config: TeiEmbeddingConfig) -> Self {
-        Self { config }
+        let health = ProviderReservationManager::new(ProviderReservationConfig {
+            provider_id: ProviderId::new("tei"),
+            provider_kind: ProviderKind::Embedding,
+            capacity: HEALTH_TRACKER_CAPACITY,
+            interactive_reserve: 0,
+            cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
+            cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
+        });
+        Self {
+            config,
+            health,
+            max_attempts: MAX_ATTEMPTS,
+        }
+    }
+
+    /// Override the retry-attempt budget (production always uses
+    /// [`MAX_ATTEMPTS`]). Lets tests exercise retry-exhaustion/cooling
+    /// deterministically without waiting out the real exponential backoff —
+    /// see `tei_client_tests.rs`.
+    #[cfg(test)]
+    pub(crate) fn with_max_attempts(mut self, max_attempts: usize) -> Self {
+        self.max_attempts = max_attempts;
+        self
     }
 
     pub fn config(&self) -> &TeiEmbeddingConfig {
@@ -90,7 +127,7 @@ impl TeiEmbeddingProvider {
             endpoint: self.config.endpoint.clone(),
             provider_id: "tei".to_string(),
             max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
-            max_attempts: MAX_ATTEMPTS,
+            max_attempts: self.max_attempts,
             request_timeout: self.config.timeout,
         })
     }
@@ -136,7 +173,18 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
         let client = self.build_client()?;
 
         let started = Instant::now();
-        let outcome = client.embed_all(&texts).await?;
+        let outcome = match client.embed_all(&texts).await {
+            Ok(outcome) => {
+                self.health.record_success().await;
+                outcome
+            }
+            Err(err) => {
+                self.health
+                    .record_failure(err.code.0.clone(), err.retryable)
+                    .await;
+                return Err(err);
+            }
+        };
         let duration_ms = started.elapsed().as_millis() as u64;
         let raw = outcome.vectors;
         let requests = outcome.requests;
@@ -193,19 +241,44 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
         })
     }
 
+    /// Reports the provider's **live** health/cooldown, folded in from every
+    /// [`embed`](Self::embed) call's `record_success`/`record_failure`
+    /// outcome — not a static always-healthy snapshot. A provider mid-cooldown
+    /// (see [`client::TeiClient::send_chunk_with_retries`]) reports
+    /// `HealthStatus::Cooling` with a populated `cooldown_until` here until the
+    /// window elapses or a subsequent call succeeds.
     async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(available_embedding_provider_capability(
-            ProviderId::new("tei"),
-            "tei",
-            ProviderLimits {
+        let health = self.health.health().await;
+        let cooldown_until = self.health.cooldown_until().await;
+        let last_error = self
+            .health
+            .cooling_snapshot()
+            .await
+            .map(|cooling| self.error("provider.cooling", &cooling.reason));
+        Ok(embedding_provider_capability(ProviderCapabilityConfig {
+            provider_id: ProviderId::new("tei"),
+            implementation: "tei".to_string(),
+            health,
+            limits: ProviderLimits {
                 max_batch_size: Some(self.config.max_batch_inputs),
                 timeout_ms: Some(self.config.timeout.as_millis() as u64),
                 ..ProviderLimits::default()
             },
-            vec!["dense_embeddings".to_string(), "http_client".to_string()],
-            ProviderCostClass::Internal,
-            self.config.max_batch_inputs,
-            EmbeddingCapabilityConfig {
+            features: vec!["dense_embeddings".to_string(), "http_client".to_string()],
+            cooldown_until,
+            last_error,
+            reservation_policy: embedding_reservation_policy(true, QueuePolicy::Fifo, 0),
+            reservation_state: embedding_reservation_state(
+                if health == HealthStatus::Cooling || health == HealthStatus::Unavailable {
+                    0
+                } else {
+                    self.config.max_batch_inputs
+                },
+            ),
+            cost_class: ProviderCostClass::Internal,
+            degraded_modes: Vec::new(),
+            fake_overrides_supported: false,
+            embedding: embedding_capability(EmbeddingCapabilityConfig {
                 model_id: self.config.model.clone(),
                 dimensions: self.config.dimensions,
                 max_input_tokens: self.config.max_input_tokens,
@@ -214,7 +287,7 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
                 sparse_output: false,
                 max_batch_items: self.config.max_batch_inputs,
                 max_batch_bytes: None,
-            },
-        ))
+            }),
+        }))
     }
 }

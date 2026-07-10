@@ -27,17 +27,29 @@ pub(crate) fn append_ask_delta(answer: &mut String, delta: &str) {
     answer.push_str(delta);
 }
 
+/// `ask` is the `interactive` priority lane in the LLM reservation pool
+/// (`axon_llm::reservation`) — the provider contract's interactive priority
+/// table lists `ask`/`query`/`retrieve` as reserved-minimum-capacity work.
+/// Both entry points below scope their synthesis call so the downstream
+/// `llm::complete_text`/`complete_streaming` reservation (acquired deep
+/// inside `ask_llm_streaming_ttft*`/`ask_llm_non_streaming` in `streaming.rs`)
+/// is tagged `Interactive` instead of the process-wide default `Background`,
+/// so bulk LLM work (research/extract/summarize synthesis, none of which
+/// opts into this scope) cannot starve an in-flight `ask`.
 pub(crate) async fn ask_llm_answer(
     cfg: &Config,
     query: &str,
     context: &str,
 ) -> Result<AskLlmCompletion, Box<dyn Error>> {
-    ask_llm_answer_impl(
-        cfg,
-        query,
-        context,
-        cfg.ask_stream && !cfg.json_output && !cfg.ask_explain,
-        Option::<fn(&str)>::None,
+    llm::reservation::with_priority(
+        axon_api::source::JobPriority::Interactive,
+        ask_llm_answer_impl(
+            cfg,
+            query,
+            context,
+            cfg.ask_stream && !cfg.json_output && !cfg.ask_explain,
+            Option::<fn(&str)>::None,
+        ),
     )
     .await
 }
@@ -51,7 +63,11 @@ pub(crate) async fn ask_llm_answer_with_deltas<F>(
 where
     F: FnMut(&str) + Send,
 {
-    ask_llm_answer_impl(cfg, query, context, false, Some(on_delta)).await
+    llm::reservation::with_priority(
+        axon_api::source::JobPriority::Interactive,
+        ask_llm_answer_impl(cfg, query, context, false, Some(on_delta)),
+    )
+    .await
 }
 
 async fn ask_llm_answer_impl<F>(

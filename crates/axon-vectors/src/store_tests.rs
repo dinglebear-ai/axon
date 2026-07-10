@@ -800,6 +800,21 @@ async fn fake_vector_store_capabilities_reflect_failure_mode() {
 }
 
 #[tokio::test]
+async fn fake_vector_store_with_cooldown_until_overrides_the_mode_derived_timestamp() {
+    // `with_cooldown_until` lets a test simulate a live, "now"-relative
+    // cooldown window instead of `FakeVectorMode::RateLimited`'s fixed
+    // timestamp.
+    let cooldown_until = Timestamp::from(chrono::Utc::now() + chrono::Duration::seconds(45));
+    let store = FakeVectorStore::new("fake-vector")
+        .with_mode(FakeVectorMode::RateLimited)
+        .with_cooldown_until(cooldown_until.clone());
+
+    let capability = store.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert_eq!(capability.cooldown_until, Some(cooldown_until));
+}
+
+#[tokio::test]
 async fn fake_vector_store_returns_deterministic_failure_modes_and_records_calls() {
     let unavailable = FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::Unavailable);
     let err = unavailable
