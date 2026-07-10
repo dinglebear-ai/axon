@@ -34,12 +34,20 @@ provider work.
 
 ## Current Implementation Snapshot
 
+Refreshed 2026-07-10 against HEAD `5a4558cc7`:
+
 Implemented today:
 
 - `axon-jobs` stores family-specific job payloads and workers for crawl, embed,
   extract, ingest, and watch scheduling.
-- REST exposes job lifecycle operations through family routes rather than a
-  generic `/v1/jobs` collection.
+- REST now exposes a generic `/v1/jobs` collection
+  (`handlers::jobs::unified_jobs_read_router` /
+  `unified_jobs_write_router` / `unified_jobs_admin_router` in
+  `crates/axon-web/src/server/routing.rs`) alongside the still-family-specific
+  `/v1/extract` job routes — the read/write/admin split is scope-based, not
+  family-based, but the underlying job storage is still per-family
+  (`axon_crawl_jobs`, `axon_embed_jobs`, etc.), not the single `job_kind`
+  table this contract targets.
 - The current transport-neutral job status enum is narrower:
   `pending`, `running`, `completed`, `failed`, `canceled`, plus an unknown
   fallback.
@@ -48,8 +56,10 @@ Implemented today:
 
 Planned by this contract:
 
-- Family-specific queues collapse into one job model with `job_kind`, stage
-  plan, attempts, provider reservations, progress events, and typed results.
+- Family-specific *storage* (the SQLite job tables) collapses into one job
+  model with `job_kind`, stage plan, attempts, provider reservations,
+  progress events, and typed results. The REST surface has already converged
+  on one `/v1/jobs` collection ahead of the storage-layer unification.
 
 ## Design Rules
 

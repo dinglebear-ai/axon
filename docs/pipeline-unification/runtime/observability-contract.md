@@ -84,6 +84,8 @@ Rules:
 
 ## Current Implementation Snapshot
 
+Refreshed 2026-07-10 against HEAD `5a4558cc7`:
+
 Implemented today:
 
 - Jobs have SQLite rows with lifecycle status and `progress_json`.
@@ -96,14 +98,17 @@ Implemented today:
 - Heartbeat/worker freshness is implemented today by refreshing job row
   `updated_at`, lifecycle updates, worker heartbeat guards, and a starvation
   watchdog. It is not a durable heartbeat event stream/table yet.
+- `SourceProgressEvent` (`axon-api::source`, emitted via `axon-observe`'s
+  `EventCollector::emit`) is implemented and real, not target-only.
+- `GET /v1/jobs/{id}/events` and `GET /v1/jobs/{id}/stream` both exist
+  (`crates/axon-web/src/server/handlers/jobs.rs`), backed by
+  `services::jobs::unified_job_events`.
 
 Planned by this contract:
 
-- Every long-running operation emits durable `SourceProgressEvent` records with
-  event ids, monotonic sequence, phase, status, severity, visibility, timestamp,
-  and message.
-- `/v1/jobs/{job_id}/events` and `/v1/jobs/{job_id}/stream` expose the same
-  event model used by CLI/MCP/status output.
+- Wire `SourceProgressEvent` emission into every long-running operation
+  uniformly (today's coverage matches the family-specific progress state
+  above, not yet a single event model across crawl/embed/ingest/code-search).
 - `job_id` is propagated into ledger rows, graph updates, artifacts, vector
   payloads, traces, logs, and watch/status output.
 

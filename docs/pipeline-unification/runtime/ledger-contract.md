@@ -136,6 +136,17 @@ Ledger creates cleanup debt for:
 Cleanup debt is idempotent and retryable. The ledger owns debt state; `axon-prune`
 executes it.
 
+**Decision (C4-08, 2026-07-09 audit):** cleanup-debt rows created at
+generation publish time are stamped with the nil UUID as `job_id`, since no
+job context is available at publish time — a structural exception to the
+"one job_id links everything" rule stated elsewhere. Resolved: accept the
+nil-UUID `job_id` as a documented exception for publish-time-created debt
+rather than threading a synthetic job context through publish (publish is
+not itself a durable job in every caller path, so inventing one would be
+misleading). `CleanupDebtResult` and any consumer reading `job_id` off a
+cleanup-debt row must treat the nil UUID as "no originating job — created
+inline at publish" and must not treat it as a real, queryable job.
+
 ## Empty Store Assumption
 
 This refactor assumes empty stores. No old ledger schema migration, backfill, or

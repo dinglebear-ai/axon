@@ -308,18 +308,23 @@ pub struct AskContext {
     pub metadata: MetadataMap,
 }
 
+// CAS discipline: optimistic concurrency keys off `expected_previous_generation`
+// (the generation id the caller believes is currently published), not a
+// status enum or job_id. `None` means "no generation published yet".
 pub struct PublishGenerationRequest {
-    pub job_id: JobId,
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
-    pub expected_status: LifecycleStatus,
+    pub expected_previous_generation: Option<SourceGenerationId>,
 }
 
 pub struct PublishPlan {
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
-    pub documents_to_publish: u64,
-    pub cleanup_debt: Vec<CleanupDebt>,
+    pub previous_generation: Option<SourceGenerationId>,
+    pub ready: bool,
+    pub estimated_document_count: u64,
+    pub estimated_chunk_count: u64,
+    pub cleanup_debt_preview: Vec<CleanupDebtId>,
     pub warnings: Vec<SourceWarning>,
 }
 

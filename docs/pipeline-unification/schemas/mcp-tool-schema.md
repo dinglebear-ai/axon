@@ -16,6 +16,19 @@ The MCP schema is generated from `axon-api` DTOs plus the `axon-mcp` action
 registry. Hand-written schema fragments are allowed only for MCP-specific
 transport wrapper fields.
 
+**Decision (U2-35/Q1-02/Q1-03, 2026-07-09 audit):** three non-overlapping
+action lists currently exist — the schema generator's stub registry (8
+actions), the live `axon-mcp` dispatcher (26 actions), and this contract's
+target `Action` enum below (30 actions). This contract's target set is
+authoritative going forward. Convergence direction: the schema generator
+must be rebuilt to read its action list from `axon-mcp`'s live dispatcher
+registry (`crates/axon-mcp/src/action_registry.rs`), not maintain a
+hand-written stub — and the dispatcher itself must be brought up to this
+contract's 30-action target set (Workstream G, once the settled
+action/route registries exist per `dependency-order-map.md` §5). Do not
+regenerate this contract's target set from either code list; both code
+lists converge toward it.
+
 ## Generated Artifacts
 
 ```text

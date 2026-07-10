@@ -624,7 +624,12 @@ git commit -m "feat: add vector-backed memory recall"
 
 ---
 
-### Task 6: Memory Graph Mirror And Status Rules
+### Task 6: Memory Graph Mirror And Status Rules — DONE
+
+**Status (P1-V01, confirmed 2026-07-09 audit):** fully implemented — `MemoryGraphMirror`
+is a real trait/impl in `crates/axon-memory/src/graph.rs` (not a marker
+module), with `upsert_memory_node`/`supersedes`/`contradicts` wired. Checkboxes
+below were stale (unchecked despite landed code) and are now checked.
 
 **Files:**
 - Create: `crates/axon-memory/src/graph.rs` implementation replacing marker module
@@ -638,7 +643,7 @@ git commit -m "feat: add vector-backed memory recall"
 - Consumes: `GraphStore`, `MemoryLink`, `MemoryStatus`.
 - Produces: `MemoryGraphMirror`, memory nodes, `supersedes`, `contradicts`, `derived_from`, and evidence-backed scope links.
 
-- [ ] **Step 1: Add failing graph/status tests**
+- [x] **Step 1: Add failing graph/status tests**
 
 Add tests for graph mirror operations and recall exclusions:
 
@@ -664,13 +669,13 @@ async fn contradicted_memory_returns_with_warning() {
 }
 ```
 
-- [ ] **Step 2: Run tests to confirm current gap**
+- [x] **Step 2: Run tests to confirm current gap**
 
 Run: `cargo test -p axon-memory graph supersede contradicted --no-fail-fast`
 
 Expected: tests fail because graph mirror is a marker and status behavior is incomplete in the composed service.
 
-- [ ] **Step 3: Implement `MemoryGraphMirror`**
+- [x] **Step 3: Implement `MemoryGraphMirror`**
 
 Add:
 
@@ -688,7 +693,7 @@ pub trait MemoryGraphMirror: Send + Sync {
 
 Graph evidence includes memory id, job/request id, caller, timestamp, reason, visibility, and redaction report.
 
-- [ ] **Step 4: Enforce status rules in search/context**
+- [x] **Step 4: Enforce status rules in search/context**
 
 Implement these rules in one predicate used by search and context:
 
@@ -701,7 +706,7 @@ review: may return with lower confidence and warning
 pinned: minimum score floor, still respects auth/redaction
 ```
 
-- [ ] **Step 5: Run graph/status tests**
+- [x] **Step 5: Run graph/status tests**
 
 Run:
 
@@ -712,7 +717,7 @@ cargo test -p axon-graph memory --no-fail-fast
 
 Expected: graph mirror fixture and status rules pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -820,7 +825,14 @@ git commit -m "feat: complete memory lifecycle service"
 
 ---
 
-### Task 8: Memory Batch Boundaries And Partial-Failure Recovery
+### Task 8: Memory Batch Boundaries And Partial-Failure Recovery — DONE
+
+**Status (P1-V01, confirmed 2026-07-09 audit):** fully implemented —
+`MemoryBatchLimits`/`crates/axon-memory/src/vector.rs` and the partial-failure
+recovery path in `crates/axon-memory/src/vector/batch.rs` (returns one
+outcome per record, in input order, so a caller can recover from a partial
+batch failure) are landed. Checkboxes below were stale (unchecked despite
+landed code) and are now checked.
 
 **Files:**
 - Modify: `crates/axon-memory/src/vector.rs`
@@ -835,7 +847,7 @@ git commit -m "feat: complete memory lifecycle service"
 - Consumes: `MemoryBatchLimits`, Qdrant scroll/page APIs, SQLite metadata indexes, graph mirror transactions.
 - Produces: bounded embedding/upsert batches, Qdrant pagination, metadata indexes, graph transaction strategy, and recovery checkpoints.
 
-- [ ] **Step 1: Add failing batch/recovery tests**
+- [x] **Step 1: Add failing batch/recovery tests**
 
 ```rust
 #[tokio::test]
@@ -855,13 +867,13 @@ async fn partial_vector_failure_keeps_memory_in_review_with_recovery_marker() {
 }
 ```
 
-- [ ] **Step 2: Run tests to confirm current gap**
+- [x] **Step 2: Run tests to confirm current gap**
 
 Run: `cargo test -p axon-memory batch partial --no-fail-fast`
 
 Expected: failures for missing batch limits/recovery markers.
 
-- [ ] **Step 3: Add indexes and limits**
+- [x] **Step 3: Add indexes and limits**
 
 Add SQLite indexes for:
 
@@ -874,7 +886,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_reinforcement_memory_time ON memory_reinfo
 
 Add `MemoryBatchLimits { embed_batch_size, upsert_batch_size, qdrant_page_size, graph_tx_batch_size }` with bounded defaults.
 
-- [ ] **Step 4: Implement partial-failure recovery**
+- [x] **Step 4: Implement partial-failure recovery**
 
 On partial failure:
 
@@ -885,13 +897,13 @@ Forget/archive vector delete failed: status transition persists, cleanup debt re
 Import batch partial failure: successful memories remain durable; failed items return item-level ApiError entries
 ```
 
-- [ ] **Step 5: Run batch/recovery tests**
+- [x] **Step 5: Run batch/recovery tests**
 
 Run: `cargo test -p axon-memory batch migration partial --no-fail-fast`
 
 Expected: bounded batch and partial recovery tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 

@@ -232,13 +232,24 @@ Candidate rules:
 
 ## Parser-to-Graph Matrix
 
+Node and edge kinds here must be `source-graph.md`'s canonical registry
+names verbatim (that file explicitly forbids alternates like `site`,
+`repository`, `file`, or `api_endpoint`). This table previously listed
+several forbidden alternate names even though the parser code already emits
+canonical names (`crates/axon-parse/src/docker/compose.rs` uses
+`runtime_service`, never `docker_service`); the table below has been
+corrected to match. Cells marked `n/a — not yet registered` have no
+canonical registry equivalent yet (e.g. a code-AST module/symbol node kind);
+do not invent a name for those — file a `source-graph.md` registry addition
+first.
+
 | Parser Family | Node Kinds | Edge Kinds |
 |---|---|---|
-| dependency manifest | `package`, `package_version` | `depends_on` |
-| code AST | `file`, `module`, `symbol` | `contains`, `defines`, `imports` |
-| Docker compose | `docker_service`, `package` | `depends_on`, `compose_service_uses_image` |
-| API schema | `api_endpoint`, `api_schema` | `exposes_endpoint`, `uses_schema` |
-| session JSONL | `session`, `session_turn`, `tool_call`, `skill`, `agent`, `decision` | `session_contains_turn`, `turn_invoked_tool`, `tool_invoked_skill`, `agent_participated`, `decision_touched_file` |
+| dependency manifest | `package`, `package_version` | `repo_declares_dependency` |
+| code AST | `repo_file`, n/a — not yet registered (module), n/a — not yet registered (symbol) | n/a — not yet registered |
+| Docker compose | `runtime_service`, `package` | `repo_declares_service`, `service_uses_image` |
+| API schema | `api_operation`, `api_surface` | `api_has_operation`, `operation_uses_schema` |
+| session JSONL | `session`, `session_turn`, `tool_call`, `skill`, `agent`, `decision` | `session_has_turn`, `turn_invoked_tool`, `turn_invoked_skill`, `session_invoked_agent`, `session_produced_decision` |
 
 ## Merge Rules
 
