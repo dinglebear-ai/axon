@@ -194,6 +194,58 @@ fn artifact_metadata_secret_fixture_fails_before_write() {
 }
 
 #[test]
+fn opaque_gitlab_token_is_scrubbed_by_context_plus_entropy() {
+    // Gitea/GitLab/OAuth-style opaque tokens have no fixed prefix, so the
+    // structured boundary must classify them by field-name context plus
+    // value entropy.
+    // Field name uses "gitlab" (opaque-token context) rather than "token"/
+    // "secret"/etc. — those field-name fragments already get dropped
+    // non-fatally by the existing key-name detector before this value ever
+    // reaches the entropy classifier, so this fixture exercises the new
+    // context-plus-entropy path specifically.
+    let value = json!({
+        "gitlab_identifier": "aK9fQ2mP7zT4xL8vN1cR6bY3wE0sJ5h",
+        "web_title": "keep me",
+    });
+    let (out, report) = DefaultRedactor::new().redact_json(value, &ctx());
+    assert_eq!(out["gitlab_identifier"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(out["web_title"], json!("keep me"));
+    assert!(
+        report
+            .redacted_fields
+            .contains(&"gitlab_identifier".to_string())
+    );
+    assert!(
+        report
+            .detectors_triggered
+            .contains(&"opaque_token_entropy".to_string())
+    );
+}
+
+#[test]
+fn low_entropy_value_in_token_context_field_is_untouched() {
+    // A non-secret lookalike: field name matches the opaque-token context,
+    // but the value doesn't look random (too short / low entropy), so it
+    // must not be flagged as a false positive.
+    let value = json!({ "gitlab_identifier": "not-a-real-secret" });
+    let (out, report) = DefaultRedactor::new().redact_json(value.clone(), &ctx());
+    assert_eq!(out, value);
+    assert_eq!(report.status(), RedactionStatus::Clean);
+}
+
+#[test]
+fn pem_private_key_and_url_credentials_are_scrubbed_in_free_text_field() {
+    let value = json!({
+        "note": "-----BEGIN RSA PRIVATE KEY-----\nMIIB...\n-----END RSA PRIVATE KEY-----",
+        "other": "connect via postgres://myuser:s3cr3tpass@db.internal:5432/mydb",
+    });
+    let (out, report) = DefaultRedactor::new().redact_json(value, &ctx());
+    assert_eq!(out["note"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(out["other"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(report.status(), RedactionStatus::Redacted);
+}
+
+#[test]
 fn redact_metadata_roundtrips_map() {
     let mut map = MetadataMap::default();
     map.insert("web_title".to_string(), json!("keep"));

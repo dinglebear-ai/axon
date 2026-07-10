@@ -18,7 +18,10 @@ use axon_api::source::{MetadataMap, SourceKind, Visibility};
 use serde_json::Value;
 
 use super::REDACTION_PLACEHOLDER;
-use super::detectors::{forbidden_field_name, secret_like_field_name, value_contains_secret};
+use super::detectors::{
+    field_is_opaque_token_context, forbidden_field_name, last_field_segment,
+    secret_like_field_name, value_contains_secret, value_is_high_entropy_token,
+};
 
 /// Redaction contract version stamped alongside `redaction_status` so a
 /// payload records which detector generation classified it.
@@ -270,10 +273,19 @@ impl Redactor for DefaultRedactor {
         if forbidden_field_name(field) || secret_like_field_name(field) {
             return Visibility::Sensitive;
         }
-        if let Value::String(text) = value
-            && value_contains_secret(text)
-        {
-            return Visibility::Sensitive;
+        if let Value::String(text) = value {
+            if value_contains_secret(text) {
+                return Visibility::Sensitive;
+            }
+            // Gitea/GitLab/OAuth-style opaque tokens carry no fixed prefix:
+            // classify by field-name context plus value entropy, per the
+            // redaction contract's "entropy checks only as a secondary
+            // signal with key/path context" rule.
+            if field_is_opaque_token_context(last_field_segment(field))
+                && value_is_high_entropy_token(text)
+            {
+                return Visibility::Sensitive;
+            }
         }
         // Unknown metadata defaults non-public per the contract.
         Visibility::Internal
@@ -289,12 +301,23 @@ impl DefaultRedactor {
                 // body, hiding a real secret from the hard-skip validator. A
                 // secret in the body must skip the chunk, not be laundered
                 // into the index.
-                if !Self::is_structural_field(path) && value_contains_secret(&text) {
-                    report.record_redacted(path, "secret_value");
-                    Value::String(REDACTION_PLACEHOLDER.to_string())
-                } else {
-                    Value::String(text)
+                if Self::is_structural_field(path) {
+                    return Value::String(text);
                 }
+                if value_contains_secret(&text) {
+                    report.record_redacted(path, "secret_value");
+                    return Value::String(REDACTION_PLACEHOLDER.to_string());
+                }
+                // Gitea/GitLab/OAuth-style opaque tokens carry no fixed
+                // prefix — classify by field-name context plus value
+                // entropy (secondary signal, per the redaction contract).
+                if field_is_opaque_token_context(last_field_segment(path))
+                    && value_is_high_entropy_token(&text)
+                {
+                    report.record_redacted(path, "opaque_token_entropy");
+                    return Value::String(REDACTION_PLACEHOLDER.to_string());
+                }
+                Value::String(text)
             }
             Value::Array(items) => Value::Array(
                 items
