@@ -7,7 +7,6 @@ import {
   ClipboardCopy,
   Command,
   Database,
-  Eye,
   FileCog,
   Globe2,
   ListChecks,
@@ -18,14 +17,12 @@ import {
   Save,
   Settings2,
   Terminal,
-  UploadCloud,
-  X
+  UploadCloud
 } from 'lucide-react';
 
 import { commandExamples } from './command-format';
 import {
   CheckCard,
-  CommandResultCard,
   DoctorCard,
   EmptyState,
   JobRow,
@@ -43,6 +40,10 @@ import { SOURCE_FAMILY_OPTIONS, sourceEntryKey, sourcesSummaryLabel } from './so
 import { TOKEN_KEY } from './panel-types';
 import { usePanelData } from './use-panel-data';
 import { WatchesTab } from './watches-tab';
+import { MemoryTab } from './memory-tab';
+import { PanelNav } from './panel-nav';
+import { CommandPalette } from './command-palette';
+import { LoginPanel } from './login-panel';
 
 export default function Page() {
   const {
@@ -107,35 +108,7 @@ export default function Page() {
 
   if (!token) {
     return (
-      <main className="shell narrow">
-        <section className="login-panel">
-          <div className="brand-heading">
-            <img className="brand-mark" src="/assets/axon-glyph.svg" alt="" aria-hidden="true" />
-            <div>
-              <p className="eyebrow">Axon Admin</p>
-              <h1>{panelState?.setup_required ? 'Setup Wizard' : 'Management Dashboard'}</h1>
-              <p className="muted">{panelState?.config_path ?? '~/.axon/config.toml'}</p>
-            </div>
-          </div>
-          <label>
-            Panel password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void login();
-              }}
-              autoFocus
-            />
-          </label>
-          <button onClick={() => void login()}>
-            <LockKeyhole aria-hidden="true" className="button-icon" />
-            Unlock
-          </button>
-          {message && <p className="error">{message}</p>}
-        </section>
-      </main>
+      <LoginPanel panelState={panelState} password={password} setPassword={setPassword} login={login} message={message} />
     );
   }
 
@@ -168,45 +141,13 @@ export default function Page() {
         </div>
       </header>
 
-      <nav className="panel-tabs" aria-label="Admin panel sections">
-        <button
-          className={activePanelTab === 'dashboard' ? 'selected' : ''}
-          onClick={() => setActivePanelTab('dashboard')}
-        >
-          <Activity aria-hidden="true" className="button-icon" />
-          Dashboard
-        </button>
-        <button
-          className={activePanelTab === 'configurator' ? 'selected' : ''}
-          onClick={() => setActivePanelTab('configurator')}
-        >
-          <FileCog aria-hidden="true" className="button-icon" />
-          Configurator
-          {(configDirty || envDirty) && <span className="dirty-dot" aria-label="Modified" />}
-        </button>
-        <button
-          className={activePanelTab === 'jobs' ? 'selected' : ''}
-          onClick={() => setActivePanelTab('jobs')}
-        >
-          <ListChecks aria-hidden="true" className="button-icon" />
-          Jobs
-          {activeJobs.length > 0 && <span className="dirty-dot" aria-label="Active jobs" />}
-        </button>
-        <button
-          className={activePanelTab === 'sources' ? 'selected' : ''}
-          onClick={() => setActivePanelTab('sources')}
-        >
-          <Database aria-hidden="true" className="button-icon" />
-          Sources
-        </button>
-        <button
-          className={activePanelTab === 'watches' ? 'selected' : ''}
-          onClick={() => setActivePanelTab('watches')}
-        >
-          <Eye aria-hidden="true" className="button-icon" />
-          Watches
-        </button>
-      </nav>
+      <PanelNav
+        activePanelTab={activePanelTab}
+        setActivePanelTab={setActivePanelTab}
+        configDirty={configDirty}
+        envDirty={envDirty}
+        activeJobCount={activeJobs.length}
+      />
 
       {activePanelTab === 'dashboard' && (
         <section className="stack-panel">
@@ -448,6 +389,8 @@ export default function Page() {
 
       {activePanelTab === 'watches' && <WatchesTab token={token} active={activePanelTab === 'watches'} />}
 
+      {activePanelTab === 'memory' && <MemoryTab />}
+
       {activePanelTab === 'configurator' && (
         <section className="workbench-shell">
           <div className="workbench-header">
@@ -533,53 +476,18 @@ export default function Page() {
         </section>
       )}
 
-      {paletteOpen && (
-        <div className="palette-backdrop" role="presentation" onMouseDown={() => setPaletteOpen(false)}>
-          <section className="command-palette" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="palette-input-row">
-              <Command aria-hidden="true" className="heading-icon" />
-              <input
-                value={commandInput}
-                onChange={(event) => setCommandInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void runCommand();
-                }}
-                placeholder="scrape code.claude.com"
-                autoFocus
-              />
-              <button className="ghost icon-button" onClick={() => setPaletteOpen(false)} title="Close palette">
-                <X aria-hidden="true" className="button-icon" />
-              </button>
-            </div>
-            <div className="palette-body">
-              <div className="palette-suggestions">
-                {[...commandHistory, ...commandExamples]
-                  .filter((item, index, all) => all.indexOf(item) === index)
-                  .slice(0, 8)
-                  .map((example) => (
-                    <button
-                      className="palette-suggestion"
-                      key={example}
-                      onClick={() => {
-                        setCommandInput(example);
-                        void runCommand(example);
-                      }}
-                    >
-                      <Terminal aria-hidden="true" className="button-icon" />
-                      <span>{example}</span>
-                      <Play aria-hidden="true" className="inline-icon" />
-                    </button>
-                  ))}
-              </div>
-              <button className="command-run" onClick={() => void runCommand()} disabled={commandBusy || !commandInput.trim()}>
-                <Play aria-hidden="true" className="button-icon" />
-                {commandBusy ? 'Running' : 'Run command'}
-              </button>
-              {commandResult && <CommandResultCard result={commandResult} panelToken={token} />}
-            </div>
-          </section>
-        </div>
-      )}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commandInput={commandInput}
+        setCommandInput={setCommandInput}
+        commandHistory={commandHistory}
+        commandExamples={commandExamples}
+        runCommand={runCommand}
+        commandBusy={commandBusy}
+        commandResult={commandResult}
+        panelToken={token}
+      />
     </main>
   );
 }
