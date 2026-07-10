@@ -1,4 +1,5 @@
 use axon_core::content::redact_url;
+use axon_core::redact::redact_secrets;
 use axon_core::ui::{muted, primary, status_text, symbol_for_status};
 
 fn report_value<'a>(report: &'a serde_json::Value, path: &[&str]) -> &'a serde_json::Value {
@@ -15,11 +16,16 @@ pub(crate) fn report_bool(report: &serde_json::Value, path: &[&str]) -> bool {
     report_value(report, path).as_bool().unwrap_or(false)
 }
 
+/// Extracts a string field from a doctor/status/debug report and redacts any
+/// secret-shaped substrings (tokens, API keys, passwords) via the shared
+/// redaction boundary (D1-09). Every render call site pulls its display text
+/// through this helper, so this is the single choke point that keeps secrets
+/// out of human-readable doctor/status/debug output — service `detail`
+/// strings, config diagnostics, and LLM-echoed text may all carry raw
+/// upstream error bodies or env values.
 pub(crate) fn report_text(report: &serde_json::Value, path: &[&str], default: &str) -> String {
-    report_value(report, path)
-        .as_str()
-        .unwrap_or(default)
-        .to_string()
+    let raw = report_value(report, path).as_str().unwrap_or(default);
+    redact_secrets(raw)
 }
 
 pub(crate) fn report_i64(report: &serde_json::Value, path: &[&str]) -> i64 {
@@ -328,3 +334,7 @@ pub(crate) fn render_doctor_report_human(report: &serde_json::Value) {
         status_text(status),
     );
 }
+
+#[cfg(test)]
+#[path = "render_tests.rs"]
+mod tests;
