@@ -157,7 +157,12 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
                 Some("axon:read")
             }
-            WatchSubaction::Create | WatchSubaction::Exec => Some("axon:write"),
+            WatchSubaction::Create
+            | WatchSubaction::Exec
+            | WatchSubaction::Update
+            | WatchSubaction::Pause
+            | WatchSubaction::Resume
+            | WatchSubaction::Delete => Some("axon:write"),
         },
         AxonRequest::Setup(req) => match req.mode.unwrap_or(SetupMode::Check) {
             SetupMode::Check => Some("axon:read"),

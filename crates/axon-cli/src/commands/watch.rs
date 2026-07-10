@@ -237,12 +237,60 @@ async fn handle_watch_create(
         Some(pool) => watch_svc::create_watch_def_with_pool(pool, &input).await?,
         None => watch_svc::create_watch_def(cfg, &input).await?,
     };
+    // Dual-write (WS-B followups, issue #298): also register the watch in the
+    // source-request-backed `SqliteWatchStore` (`axon_source_watches`), so
+    // `watch get|update|pause|resume|delete` — which act exclusively on that
+    // store — can find watches created here. The legacy `axon_watch_defs` row
+    // above remains authoritative for the still-live scheduler
+    // (`crates/axon-jobs/src/workers/watch_scheduler.rs`); this is
+    // deliberately additive, not a migration off that model. Best-effort: a
+    // failure here does not fail `watch create` — the legacy watch was
+    // already persisted and remains fully functional through
+    // `list`/`history`/`exec`.
+    if let Some(source) = first_watch_url(&created.task_payload) {
+        let request = watch_svc::WatchRequest {
+            source,
+            schedule: watch_svc::WatchSchedule {
+                every_seconds: created.every_seconds.max(0) as u64,
+                cron: None,
+                timezone: None,
+            },
+            embed: false,
+            options: watch_svc::AdapterOptions::default(),
+            scope: None,
+            collection: None,
+            enabled: Some(created.enabled),
+        };
+        if let Ok(store) = watch_svc::open_source_watch_store(cfg, pool).await
+            && let Err(err) = watch_svc::SourceWatchStoreTrait::create(&store, request).await
+        {
+            axon_core::logging::log_warn(&format!(
+                "watch create: dual-write to source-request-backed watch store failed: {err} \
+                 (legacy watch {} was still created; 'watch get/update/pause/resume/delete' \
+                 will not see it)",
+                created.id
+            ));
+        }
+    }
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&created)?);
     } else {
         println!("created watch {} ({})", created.name, created.id);
     }
     Ok(())
+}
+
+/// Extract the first URL from a legacy watch's `task_payload.urls` array, for
+/// the source-request-backed dual-write above. Returns `None` when the
+/// payload has no `urls` array or it is empty (e.g. a non-`watch` task_type,
+/// though today `watch` is the only supported `task_type`).
+fn first_watch_url(task_payload: &serde_json::Value) -> Option<String> {
+    task_payload
+        .get("urls")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
 }
 
 async fn handle_watch_exec(

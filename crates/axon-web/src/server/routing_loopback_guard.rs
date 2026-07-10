@@ -43,11 +43,15 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
             || path == "/v1/prune/dedupe"
             || path == "/v1/prune/purge"
             || path.starts_with("/v1/watch/")
+            || path.starts_with("/v1/watches/")
             || path.starts_with("/v1/jobs/"))
     {
         return true;
     }
     if *method == Method::DELETE && path == "/v1/jobs" {
+        return true;
+    }
+    if (*method == Method::DELETE || *method == Method::PATCH) && path.starts_with("/v1/watches/") {
         return true;
     }
     if *method == Method::POST && path == "/v1/memory" {

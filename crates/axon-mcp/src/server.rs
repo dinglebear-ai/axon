@@ -18,6 +18,8 @@ mod handlers_query;
 mod handlers_source;
 #[path = "server/handlers_system.rs"]
 mod handlers_system;
+#[path = "server/handlers_watch.rs"]
+mod handlers_watch;
 #[path = "server/http.rs"]
 mod http;
 #[path = "server/authz.rs"]
@@ -212,10 +214,10 @@ impl AxonMcpServer {
                     "this action was removed from MCP; use action=prune for destructive cleanup",
                 ));
             }
+            AxonRequest::Watch(req) => self.handle_watch(req).await?,
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
             | AxonRequest::Migrate(_)
-            | AxonRequest::Watch(_)
             | AxonRequest::Setup(_) => {
                 return Err(invalid_params(
                     "this action is available through the HTTP API, not MCP",

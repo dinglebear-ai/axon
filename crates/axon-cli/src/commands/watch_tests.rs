@@ -64,6 +64,48 @@ async fn handle_watch_create_rejects_invalid_task_payload_json() {
     assert!(err.to_string().contains("--task-payload is not valid JSON"));
 }
 
+/// WS-B followups (issue #298): `watch create` dual-writes into the
+/// source-request-backed `SqliteWatchStore` so `watch get|update|pause|
+/// resume|delete` — which act exclusively on that store — can find watches
+/// created here.
+#[tokio::test]
+async fn handle_watch_create_dual_writes_source_watch_store() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+
+    handle_watch_create(
+        &cfg,
+        None,
+        "demo".to_string(),
+        "watch".to_string(),
+        3600,
+        Some(r#"{"urls": ["https://example.com/dual-write"]}"#.to_string()),
+    )
+    .await?;
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let page = watch_svc::SourceWatchStoreTrait::list(
+        &store,
+        watch_svc::WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: None,
+            cursor: None,
+        },
+    )
+    .await?;
+    assert_eq!(page.items.len(), 1);
+    let found = watch_svc::SourceWatchStoreTrait::get(&store, page.items[0].watch_id.clone())
+        .await?
+        .expect("dual-written watch present");
+    assert_eq!(found.canonical_uri, "https://example.com/dual-write");
+    assert_eq!(found.schedule.every_seconds, 3600);
+    assert!(found.enabled);
+    Ok(())
+}
+
 #[tokio::test]
 async fn run_watch_rejects_unknown_subcommand() {
     let tmp = tempfile::tempdir().expect("tempdir");

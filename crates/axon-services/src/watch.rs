@@ -16,7 +16,8 @@ pub use axon_jobs::watch::{
 // task_type/task_payload facade above (see `watch_store.rs` module docs for
 // why the two models are not unified in this slice).
 pub use axon_api::source::{
-    WatchId, WatchListRequest, WatchRequest, WatchResult, WatchSummary, WatchUpdateRequest,
+    AdapterOptions, WatchId, WatchListRequest, WatchRequest, WatchResult, WatchSchedule,
+    WatchSummary, WatchUpdateRequest,
 };
 pub use axon_jobs::boundary::WatchStore as SourceWatchStoreTrait;
 pub use axon_jobs::watch_store::SqliteWatchStore;

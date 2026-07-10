@@ -199,6 +199,20 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "Exercise MCP elicitation support with a demo form",
         cost: "write",
     },
+    // `watch` (issue #298 WS-B): `list`/`get`/`update`/`pause`/`resume`/
+    // `delete` subactions over the source-request-backed watch store, mirroring
+    // the REST `/v1/watches` surface. `list`/`get` are `axon:read` there and
+    // `update`/`pause`/`resume`/`delete` are `axon:write`; `ActionScope` has no
+    // per-subaction granularity (same simplification already used for `jobs`
+    // and `memory` above), so the action is gated at the broader `axon:write`
+    // requirement. `create`/`exec`/`history` subactions (the legacy
+    // task_type/task_payload model) remain HTTP-only.
+    McpActionSpec {
+        name: "watch",
+        scope: ActionScope::Write,
+        description: "List, inspect, update, pause, resume, or delete source-request-backed watches",
+        cost: "write",
+    },
 ];
 
 pub(super) fn mcp_action_names() -> Vec<&'static str> {
@@ -281,6 +295,18 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
         return match subaction {
             "search" | "show" | "context" => Some("axon:read"),
             _ => Some("axon:write"),
+        };
+    }
+    // `watch` (issue #298 WS-B): per-subaction scope mirroring the REST
+    // `/v1/watches` surface and `axon_services::action_api`'s
+    // `AxonRequest::Watch` resolution. `list`/`get`/`history` are pure
+    // retrieval; `create`/`exec`/`update`/`pause`/`resume`/`delete` mutate
+    // state.
+    if action == "watch" {
+        return match subaction {
+            "list" | "get" | "history" | "" => Some("axon:read"),
+            "create" | "exec" | "update" | "pause" | "resume" | "delete" => Some("axon:write"),
+            _ => Some("__deny__"),
         };
     }
     MCP_ACTION_SPECS

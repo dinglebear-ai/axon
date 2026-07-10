@@ -120,6 +120,13 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
                     .send()
                     .await
             }
+            "PATCH" => {
+                client
+                    .patch(format!("{base}{path}"))
+                    .json(&serde_json::json!({}))
+                    .send()
+                    .await
+            }
             _ => unreachable!("unexpected test method"),
         }
         .unwrap_or_else(|err| panic!("{method} {path} failed: {err}"));
@@ -142,6 +149,7 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 fn route_to_test_path(path: &str) -> String {
     path.replace("{id}", &Uuid::nil().to_string())
         .replace("{memory_id}", "mem_test")
+        .replace("{watch_id}", "watch_test")
         .replace("{path}", "missing.txt")
 }
 
