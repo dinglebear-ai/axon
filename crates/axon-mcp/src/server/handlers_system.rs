@@ -300,7 +300,8 @@ fn help_payload() -> Value {
             "providers": ["list", "get"],
             "diff": ["diff"],
             "brand": ["brand"],
-            "watch": ["list", "get", "update", "pause", "resume", "delete"]
+            "watch": ["list", "get", "update", "pause", "resume", "delete"],
+            "graph": ["kinds", "resolve", "query", "node", "edge", "source"]
         },
         "resources": [
             MCP_TOOL_SCHEMA_URI
