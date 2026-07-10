@@ -51,25 +51,31 @@ Exit criteria:
 
 ## Phase 3: Stores And Providers
 
-- [ ] implement `LedgerStore`
-- [ ] implement `GraphStore`
-- [ ] implement `MemoryStore`
-- [ ] implement `VectorStore`
-- [ ] implement `EmbeddingProvider`
-- [ ] implement `LlmProvider`
-- [ ] implement `ArtifactStore`
-- [ ] implement `JobStore`
-- [ ] implement `ConfigStore`
-- [ ] implement `CredentialProvider`
-- [ ] implement `DocumentCache`
-- [ ] implement `HealthProbe`
-- [ ] implement `RateLimiter`
-- [ ] implement `WatchStore`
-- [ ] implement `SearchProvider`
-- [ ] implement `FetchProvider`
-- [ ] implement `RenderProvider`
-- [ ] implement `NetworkCaptureProvider`
-- [ ] implement `SecurityPolicy`
+Verified 2026-07-10 against HEAD `5a4558cc7`: all 19 trait definitions below
+exist in the workspace (checked via `grep -rl "trait <Name>\b" crates/`).
+Checked as done; strict-fake coverage, reservations/cooling/health, and the
+generated capability schema/markdown pass are tracked separately below since
+they need per-boundary verification, not a single grep.
+
+- [x] implement `LedgerStore` (`crates/axon-ledger/src/store.rs`)
+- [x] implement `GraphStore` (`crates/axon-graph/src/store.rs`)
+- [x] implement `MemoryStore` (`crates/axon-memory/src/store.rs`)
+- [x] implement `VectorStore` (`crates/axon-vectors/src/store.rs`)
+- [x] implement `EmbeddingProvider` (`crates/axon-embedding/src/provider.rs`)
+- [x] implement `LlmProvider` (`crates/axon-llm/src/provider.rs`)
+- [x] implement `ArtifactStore` (`crates/axon-core/src/boundary.rs`)
+- [x] implement `JobStore` (`crates/axon-jobs/src/boundary.rs`)
+- [x] implement `ConfigStore` (`crates/axon-core/src/boundary.rs`)
+- [x] implement `CredentialProvider` (`crates/axon-authz/src/policy.rs`)
+- [x] implement `DocumentCache` (`crates/axon-core/src/boundary.rs`)
+- [x] implement `HealthProbe` (`crates/axon-core/src/boundary.rs`)
+- [x] implement `RateLimiter` (`crates/axon-core/src/boundary.rs`)
+- [x] implement `WatchStore` (`crates/axon-jobs/src/boundary.rs`)
+- [x] implement `SearchProvider` (`crates/axon-adapters/src/boundary.rs`)
+- [x] implement `FetchProvider` (`crates/axon-adapters/src/boundary.rs`)
+- [x] implement `RenderProvider` (`crates/axon-adapters/src/boundary.rs`)
+- [x] implement `NetworkCaptureProvider` (`crates/axon-adapters/src/boundary.rs`)
+- [x] implement `SecurityPolicy` (`crates/axon-authz/src/policy.rs`)
 - [ ] keep `DocumentStatus` ledger-owned, not a separate store
 - [ ] add strict fakes for all Phase 3 stores/providers
 - [ ] add provider reservations/cooling/health
@@ -110,12 +116,17 @@ tracked by the planned source-family PRs:
 
 ## Phase 5: Parse, Graph, Document, And Index Pipeline
 
-- [ ] implement parser registry and parse facts
-- [ ] implement graph candidate ingestion
-- [ ] implement `DocumentPreparer` and `ChunkRouter`
-- [ ] port tree-sitter/code chunking and markdown/session/schema chunking
-- [ ] implement vector point batch construction
-- [ ] implement generation publish and cleanup debt execution
+Verified 2026-07-10 against HEAD `5a4558cc7`: all six boundary types below are
+implemented; wiring every source family through this pipeline uniformly
+(rather than command/service-specific paths) remains open per
+`source-pipeline.md`'s "Partially implemented" snapshot.
+
+- [x] implement parser registry and parse facts (`axon-parse`: docker/env/config/tool families)
+- [x] implement graph candidate ingestion (`GraphStore::upsert_candidates`, wired via `axon-services::source::graph::write_baseline_graph`)
+- [x] implement `DocumentPreparer` and `ChunkRouter` (`crates/axon-document/src/preparer.rs`, `chunk_router.rs`)
+- [x] port tree-sitter/code chunking and markdown/session/schema chunking (`crates/axon-document/src/code.rs` + chunk router families)
+- [x] implement vector point batch construction (`crates/axon-vectors/src/point.rs`)
+- [x] implement generation publish and cleanup debt execution (`LedgerStore::publish_generation`, `prune::drain_cleanup_debt`)
 
 Exit criteria:
 

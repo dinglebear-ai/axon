@@ -18,24 +18,31 @@ Implemented today:
   diff/explain/ingest/purge DTOs, and service job contracts.
 - `ServiceJob`, `JobStatus`, `JobProgress`, MCP request/response structs, and
   several query/retrieve/memory request structs are real implementation types.
-- The crate comments still describe DTO migration as in progress.
+- `SourceRequest`/`SourceResult` (`crates/axon-api/src/source/lifecycle.rs`),
+  `SuccessEnvelope`/`ErrorEnvelope` (`crates/axon-api/src/source/status.rs`),
+  and `CapabilityDocument` (`crates/axon-api/src/source/capability.rs`) are
+  implemented, unit-tested types — not target-only. `SourceRequest` alone has
+  40+ call sites across `axon-services` and `axon-cli`.
+- The crate comments still describe DTO migration as in progress; that is
+  still accurate for the routes/services that have not yet switched to the
+  shared source DTOs (see "Partially implemented").
 
 Partially implemented:
 
 - CLI, MCP, REST, and jobs share some DTOs, but many current routes still return
-  route-specific structs or raw typed results.
+  route-specific structs or raw typed results instead of the `SourceRequest`/
+  `SourceResult` shapes.
 - Provider capability data exists in places such as server capabilities and LLM
   configuration, but not as one full provider capability contract.
 
 Planned by this contract:
 
-- The DTO registry below is the desired complete catalog. Types such as
-  `SourceRequest`, `SourceResult`, `SuccessEnvelope`, `ErrorEnvelope`,
-  `CapabilityDocument`, source ledger DTOs, graph DTOs, upload DTOs, provider
-  DTOs, and prune-plan DTOs are target contract types unless explicitly called
-  out as implemented in code. `ApiError` is sourced from `axon-error`;
-  `SourceProgressEvent` is sourced from `axon-observe` and projected here for
-  transports.
+- The DTO registry below is the desired complete catalog. Source ledger DTOs,
+  graph DTOs, upload DTOs, provider DTOs, and prune-plan DTOs remain
+  target-only unless explicitly called out as implemented in code; the source
+  request/result/envelope/capability DTOs above have already landed.
+  `ApiError` is sourced from `axon-error`; `SourceProgressEvent` is sourced
+  from `axon-observe` and projected here for transports.
 
 ## Required DTOs
 
@@ -243,10 +250,6 @@ pub struct UploadCompleteRequest;
 pub struct UploadCompleteResult;
 pub struct UploadAbortRequest;
 pub struct UploadAbortResult;
-pub struct PrunePlanRequest;
-pub struct PrunePlan;
-pub struct PruneExecRequest;
-pub struct PruneJobStatus;
 pub struct DedupeRequest;
 pub struct DedupeResult;
 pub struct PurgeRequest;
@@ -499,10 +502,10 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `UploadCompleteResult` | `upload_id`, `artifact_id`, `source_ref` | `warnings` |
 | `UploadAbortRequest` | none | `reason` |
 | `UploadAbortResult` | `upload_id`, `deleted` | none |
-| `PrunePlanRequest` | `targets`, `include`, `mode` | `retention`, `filters` |
-| `PrunePlan` | `prune_plan_id`, `summary`, `requires_confirmation`, `expires_at` | `risk_flags`, `warnings` |
-| `PruneExecRequest` | `confirm` | `prune_plan_id`, `inline_plan` |
-| `PruneJobStatus` | `job_id`, `status`, `delete_counts`, `verification_state` | `warnings` |
+| `PruneRequest` | `selector`, `dry_run`, `require_confirmation`, `reason` | none |
+| `PrunePlan` | `job_id`, `selector`, `destructive`, `requires_admin`, `estimated`, `steps`, `warnings` | none |
+| `PruneExecuteRequest` | `plan`, `confirm`, `reason` | none |
+| `PruneResult` | `job_id`, `status`, `steps`, `deleted_counts`, `cleanup_debt_remaining` | none |
 | `DedupeRequest` | `dry_run` | `collection`, `threshold`, `source_id` |
 | `DedupeResult` | `matched`, `deduped`, `dry_run` | `job`, `warnings` |
 | `PurgeRequest` | `dry_run` | `source_id`, `url`, `prefix`, `filters`, `confirm` |
@@ -594,6 +597,11 @@ pub trait VectorStore {
     async fn capabilities(&self) -> Result<VectorStoreCapability>;
 }
 
+// NOTE: this is an illustrative sketch of DTO usage, not the authoritative
+// `LedgerStore` trait shape — the method names and `publish_generation`
+// signature here are stale relative to landed code. See
+// `foundation/types/store-contract.md`'s `Required Store Traits` for the
+// current, code-verified `LedgerStore` signature.
 pub trait LedgerStore {
     async fn create_job(&self, request: SourceRequest) -> Result<SourceJob>;
     async fn update_job_status(&self, status: SourceStatus) -> Result<()>;
@@ -888,8 +896,8 @@ pub async fn get_upload(ctx: &ServiceContext, upload_id: UploadId) -> Result<Upl
 pub async fn put_upload_content(ctx: &ServiceContext, upload_id: UploadId, body: ByteStream) -> Result<UploadStatus>;
 pub async fn complete_upload(ctx: &ServiceContext, upload_id: UploadId, request: UploadCompleteRequest) -> Result<UploadCompleteResult>;
 pub async fn abort_upload(ctx: &ServiceContext, upload_id: UploadId, request: UploadAbortRequest) -> Result<UploadAbortResult>;
-pub async fn plan_prune(ctx: &ServiceContext, request: PrunePlanRequest) -> Result<PrunePlan>;
-pub async fn exec_prune(ctx: &ServiceContext, request: PruneExecRequest) -> Result<JobDescriptor>;
+pub async fn plan_prune(ctx: &ServiceContext, request: PruneRequest) -> Result<PrunePlan>;
+pub async fn exec_prune(ctx: &ServiceContext, request: PruneExecuteRequest) -> Result<PruneResult>;
 pub async fn dedupe(ctx: &ServiceContext, request: DedupeRequest) -> Result<DedupeResult>;
 pub async fn purge(ctx: &ServiceContext, request: PurgeRequest) -> Result<PurgeResult>;
 pub async fn list_collections(ctx: &ServiceContext, request: CollectionListRequest) -> Result<Page<CollectionSummary>>;

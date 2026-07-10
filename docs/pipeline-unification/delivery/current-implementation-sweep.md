@@ -1,5 +1,5 @@
 # Current Implementation Sweep
-Last Modified: 2026-07-02
+Last Modified: 2026-07-10
 
 ## Contract
 
@@ -8,9 +8,33 @@ informs the pipeline-unification contracts. It is not a compatibility promise.
 It exists so implementation work starts from the real current surface and
 deletes/replaces old paths deliberately.
 
-## Verification Refresh
+## Verification Refresh (2026-07-10)
 
-Refreshed on 2026-07-02 against the current checkout:
+Refreshed against the current checkout (`5a4558cc7`) after merges #396/#398/
+#399/#400/#384/#385:
+
+- There is no `axon-code-index` or `axon-extract` workspace member — neither
+  directory nor `Cargo.toml` entry exists. Local code-search's ledger/
+  generation/manifest logic and vertical-extractor dispatch both live inside
+  the `axon-vector` legacy crate (see `source-pipeline.md` and
+  `boundary-map.md` snapshots for exact modules). The workspace has 26
+  members: `xtask` plus the 25 crates listed in the table below.
+- `axon-parse`, `axon-graph`, `axon-memory`, and `axon-adapters` are no longer
+  scaffolding-only — they are wired and exercised: `axon-parse` ships
+  docker/env/config/tool parser families with source-range validation
+  (see commit `fcadcc89a`); `axon-graph` receives real `GraphCandidate`
+  writes from the parser stage into `GraphStore` (commit `5a4558cc7`);
+  `axon-memory` implements the full memory subsystem per
+  `runtime/memory-contract.md` (commit `8ed9a56d7`); `axon-adapters` backs
+  local adapter capability/discovery/acquisition in the target local-source
+  path.
+- `SourceRequest`/`SourceResult`/envelope DTOs in `axon-api::source` are
+  implemented and exercised outside fake-boundary tests (40+ call sites in
+  `axon-services`/`axon-cli`), not spike-only as an earlier draft of this
+  sweep described them.
+
+Prior refresh (2026-07-02), retained for the history it still documents
+accurately below:
 
 - CLI command inventory was checked against
   `crates/axon-core/src/config/cli.rs`.
@@ -32,8 +56,9 @@ Refreshed on 2026-07-02 against the current checkout:
   and is not yet the default public `embed`/`code-search` runtime.
 - `code-search` refresh has an opt-in target-local bridge. When target local
   source dependencies are injected, refresh can run the target local-source job
-  path; current user-facing search still reads the legacy `axon-code-index`
-  committed-generation path until target vector search is feature-complete.
+  path; current user-facing search still reads the legacy code-search
+  committed-generation path inside `axon-vector` until target vector search
+  is feature-complete.
 - The target TEI/OpenAI-compatible embedding providers and target Qdrant vector
   store are still runtime shells/not-wired for live indexing. The existing live
   TEI/Qdrant implementation remains in the legacy `axon-vector` crate.
@@ -52,24 +77,23 @@ Current Cargo workspace members:
 | `axon-api` | Current shared DTOs, MCP schema pieces, job DTO/status/progress, ingest/diff/purge/explain result types, plus the initial data-only `source` DTO spike. |
 | `axon-authz` | Current OAuth scope constants and HTTP auth helpers. |
 | `axon-core` | Config, HTTP/content helpers, artifacts, redaction, LLM provider implementations, CLI config parsing. |
-| `axon-observe` | Target observability boundary scaffolding. |
-| `axon-route` | Target source resolver/router capability scaffolding. |
-| `axon-adapters` | Target source adapter scaffolding, including local adapter capability/discovery/acquisition. |
-| `axon-ledger` | Target source ledger store boundary with fake and SQLite implementations. |
-| `axon-parse` | Target parsing boundary scaffolding. |
-| `axon-graph` | Target source graph boundary scaffolding. |
-| `axon-memory` | Target memory boundary scaffolding. |
-| `axon-document` | Target document preparation/chunk routing boundary. |
-| `axon-embedding` | Target embedding provider boundary with fake provider and not-wired live shells. |
-| `axon-vectors` | Target vector store/payload boundary with fake store and not-wired Qdrant shell. |
+| `axon-error` | Error taxonomy shared across crates. |
+| `axon-observe` | Target observability boundary — event/span/metric plumbing, wired (`SourceProgressEvent`, sink-based emitters); see `crates/axon-observe/README.md`. |
+| `axon-route` | Target source resolver/router capability, including `local-code://` and other canonical source id helpers. |
+| `axon-adapters` | Target source adapter boundary — live and wired, backing local adapter capability/discovery/acquisition in the target local-source path. |
+| `axon-ledger` | Target source ledger store boundary with fake and SQLite implementations, `LedgerStore` trait (see `foundation/types/store-contract.md`). |
+| `axon-parse` | Target parsing boundary — live: docker/env/config/tool parser families with source-range validation. |
+| `axon-graph` | Target source graph boundary — live: `GraphCandidate` writes from the parser stage land in `GraphStore` via `axon-services::source::graph::write_baseline_graph`. |
+| `axon-memory` | Target memory boundary — live: full memory subsystem per `runtime/memory-contract.md`. |
+| `axon-document` | Target document preparation/chunk routing boundary, live and consumed (`DocumentPreparer`, chunk router). |
+| `axon-embedding` | Target embedding provider boundary with fake provider and not-yet-default live shells. |
+| `axon-vectors` | Target vector store/payload boundary with fake store and not-yet-default Qdrant shell. |
 | `axon-retrieval` | Target retrieval boundary scaffolding. |
 | `axon-llm` | Target LLM provider boundary scaffolding. |
 | `axon-prune` | Target pruning/cleanup boundary scaffolding. |
 | `axon-crawl` | Spider.rs crawl engine, scrape helpers, sitemap/backfill, Chrome bootstrap. |
-| `axon-extract` | Vertical extractor framework, scrape dispatch, deterministic/LLM structured extraction sync path. |
 | `axon-ingest` | GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, RSS, YouTube, and session ingest. |
-| `axon-vector` | SourceDocument planning, chunking, TEI embedding, Qdrant collection/upsert/search/delete, hybrid retrieval, ask/evaluate/query/retrieve/suggest. |
-| `axon-code-index` | Local code-search ledger, manifest diff, generations, leases, progress, freshness, and code-search indexing. |
+| `axon-vector` | SourceDocument planning, chunking, TEI embedding, Qdrant collection/upsert/search/delete, hybrid retrieval, ask/evaluate/query/retrieve/suggest. Also still hosts local code-search ledger/generation/manifest logic and vertical-extractor dispatch — there is no separate `axon-code-index` or `axon-extract` crate. |
 | `axon-jobs` | SQLite job tables/runtime/workers/watch scheduler, heartbeats, watchdog, panic guard, starvation detector. |
 | `axon-services` | Typed service facade/orchestration consumed by CLI, MCP, REST, and app surfaces. |
 | `axon-mcp` | Single-tool MCP server with action/subaction routing and MCP HTTP auth. |
