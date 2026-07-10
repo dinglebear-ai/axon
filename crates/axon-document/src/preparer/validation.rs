@@ -105,10 +105,21 @@ pub(crate) fn validate_prepared_document_ranges_against_bounds(
         validate_source_range(&chunk.chunk_locator.range, bounds)
             .map_err(|error| format!("chunk {} locator range {error}", chunk.chunk_id.0))?;
     }
+    // Parse facts are internal metadata, not published to the graph or vector
+    // store with their ranges. A fact range that survived parser-side
+    // validation against raw content but falls outside the *normalized*
+    // document bounds (e.g. a raw JSONL -> markdown transform shifting offsets,
+    // as session sources do) degrades rather than failing the whole document —
+    // publish-critical ranges (chunks above, graph-candidate evidence below)
+    // stay fail-closed. See docs/reports/2026-07-09-...-audit.md S2-V01.
     for fact in &document.parse_facts {
-        if let Some(range) = &fact.range {
-            validate_source_range(range, bounds)
-                .map_err(|error| format!("parse fact {} range {error}", fact.name))?;
+        if let Some(range) = &fact.range
+            && validate_source_range(range, bounds).is_err()
+        {
+            tracing::debug!(
+                fact = %fact.name,
+                "dropping out-of-normalized-bounds parse fact range (degraded)"
+            );
         }
     }
     for candidate in &document.graph_candidates {
