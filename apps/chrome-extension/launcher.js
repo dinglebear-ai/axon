@@ -31,10 +31,36 @@
   function isLoopback(server) {
     try { const h = new URL(server).hostname; return h === "127.0.0.1" || h === "localhost" || h === "::1"; } catch { return false; }
   }
+  // `chrome.permissions.request` only prompts within a real user gesture —
+  // checkHealth()/refreshTab() fire from timers/listeners, not clicks, so
+  // requestAxon itself only *checks* the grant (never prompts). Actions
+  // dispatched from callApi() run inside a click/keydown handler (actionRow,
+  // quickBtn, the arg-bar Run button, Enter in the arg input) and call
+  // ensureServerPermissionForGesture first to actually request it.
+  // host-permissions.js declares `AxonHostPermissions` as a bare top-level
+  // `const` — classic-script `const`/`let` join the shared global lexical
+  // scope but are never installed as `window` properties, so it must be
+  // referenced directly (not as `window.AxonHostPermissions`).
+  async function ensureServerPermissionForGesture(server) {
+    if (typeof AxonHostPermissions === "undefined") return true;
+    if (await AxonHostPermissions.hasAxonHostPermission(server)) return true;
+    const granted = await AxonHostPermissions.requestAxonHostPermission(server);
+    if (!granted) {
+      const err = new Error(`Axon needs permission for ${server}. Grant it when Chrome prompts, or open Settings.`);
+      err.status = 0;
+      throw err;
+    }
+    return true;
+  }
   async function requestAxon(method, path, body) {
     const server = config.axonUrl.trim().replace(/\/+$/, "");
     const token = config.axonToken.trim();
     if (!server) throw new Error("Axon server URL is required. Open Settings.");
+    if (typeof AxonHostPermissions !== "undefined" && !(await AxonHostPermissions.hasAxonHostPermission(server))) {
+      const err = new Error(`Axon needs permission for ${server}. Open Settings and run an action to grant it.`);
+      err.status = 0;
+      throw err;
+    }
     const headers = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -101,34 +127,32 @@
     return url;
   }
 
-  function callApi(op, arg) {
+  async function callApi(op, arg) {
     const mode = argMode(op);
     if (mode === "url" && arg) {
       splitUrls(arg).forEach(assertUrlCaptureAllowed);
     } else if (mode === "query" && typeof arg === "string" && arg) {
       arg = window.AxonRedact.redactText(arg).text;
     }
+    // Called directly from a click/keydown handler (see runWithArg's call
+    // site) — a real user gesture — so this may prompt.
+    await ensureServerPermissionForGesture(config.axonUrl.trim().replace(/\/+$/, ""));
     switch (op.id) {
       case "scrape": return requestAxon("POST", "/v1/sources", { source: arg, scope: "page", embed: true, execution: FOREGROUND_EXECUTION });
-      case "map": return requestAxon("POST", "/v1/map", { url: arg });
       case "retrieve": return requestAxon("POST", "/v1/retrieve", { url: arg });
       case "screenshot": return requestAxon("POST", "/v1/screenshot", { url: arg, full_page: true });
       case "brand": return requestAxon("POST", "/v1/brand", { url: arg });
       case "endpoints": return requestAxon("POST", "/v1/endpoints", { url: arg });
       case "diff": { const u = splitUrls(arg); if (u.length < 2) { const e = new Error("Diff needs two URLs — “URL A  URL B”."); e.status = 400; throw e; } return requestAxon("POST", "/v1/diff", { url_a: u[0], url_b: u[1] }); }
       case "crawl": return requestAxon("POST", "/v1/sources", { source: arg, scope: "site" });
-      case "extract": return requestAxon("POST", "/v1/extract", { urls: [arg] });
       case "embed": return requestAxon("POST", "/v1/sources", { source: arg });
       case "ingest": return requestAxon("POST", "/v1/sources", { source: arg });
       case "search": return requestAxon("POST", "/v1/search", { query: arg, limit: 10 });
       case "research": return requestAxon("POST", "/v1/research", { query: arg, limit: 10 });
       case "query": return requestAxon("POST", "/v1/query", { query: arg, limit: 10 });
-      case "suggest": return requestAxon("POST", "/v1/suggest", arg ? { focus: arg } : {});
       case "sources": return requestAxon("GET", "/v1/sources");
       case "domains": return requestAxon("GET", "/v1/domains");
       case "ask": return requestAxon("POST", "/v1/ask", { query: arg });
-      case "summarize": return requestAxon("POST", "/v1/summarize", { urls: [arg] });
-      case "evaluate": return requestAxon("POST", "/v1/evaluate", { question: arg });
       case "doctor": return requestAxon("GET", "/v1/doctor");
       case "status": return requestAxon("GET", "/v1/status");
       case "stats": return requestAxon("GET", "/v1/stats");
@@ -194,7 +218,6 @@
       el("div", { class: "ext-quick" }, [
         quickBtn("scrape", "Scrape", "scrape"),
         quickBtn("crawl", "Crawl", "crawl"),
-        quickBtn("extract", "Extract", "braces"),
       ]),
     ]);
     scroll.appendChild(tabCard);

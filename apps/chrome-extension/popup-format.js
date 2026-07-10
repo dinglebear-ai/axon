@@ -22,41 +22,6 @@ function formatAxonScrape(result, tab, fallbackUrl) {
   ].join("\n");
 }
 
-function formatSummary(result, tab, fallbackUrl) {
-  const summary = result.summary || result.payload?.summary || "";
-  const urls = result.urls || result.payload?.urls || [fallbackUrl || tab?.url || ""];
-  const contextChars = result.context_chars || result.payload?.context_chars;
-
-  return [
-    `# Summary`,
-    "",
-    `${badge(summary ? "success" : "warn", summary ? "ready" : "empty")}`,
-    `Page: ${tab?.title || "Untitled page"}`,
-    `URL: ${urls[0] || fallbackUrl || tab?.url || ""}`,
-    contextChars ? `Context: ${contextChars.toLocaleString()} chars` : "",
-    "",
-    summary || "(Axon returned no summary.)"
-  ].filter(Boolean).join("\n");
-}
-
-function formatMap(result, tab, fallbackUrl) {
-  const urls = result.urls || [];
-  const total = result.total ?? urls.length;
-  const source = result.map_source || "unknown";
-
-  return [
-    `# Map`,
-    "",
-    `${badge(urls.length ? "success" : "warn", `${total.toLocaleString()} discovered`)}`,
-    `Page: ${tab?.title || "Untitled page"}`,
-    `Start URL: ${result.url || fallbackUrl || tab?.url || ""}`,
-    `Source: ${source}`,
-    result.warning ? `Warning: ${result.warning}` : "",
-    "",
-    ...urls
-  ].filter(Boolean).join("\n");
-}
-
 function formatChatAnswer(result, question, tab) {
   return [
     `# Chat: ${question}`,
@@ -145,12 +110,25 @@ function formatGenericResult(title, result) {
   if (normalized.includes("status")) return formatStatusResult(result);
   if (normalized.includes("research")) return formatResearchResult(result);
   if (normalized.includes("search")) return formatSearchResult(result, "Search");
-  if (normalized.includes("evaluate")) return formatEvaluateResult(result);
-  if (normalized.includes("suggest")) return formatSuggestResult(result);
   if (normalized.includes("watch")) return formatWatchResult(result);
   if (normalized.includes("dedupe")) return formatDedupeResult(result);
   if (normalized.includes("migrate")) return formatMigrateResult(result);
   return [`# ${capitalize(title)}`, "", readableValue(result)].join("\n");
+}
+
+// map/summarize/evaluate/suggest/extract routes were removed server-side and
+// are not in the extension's required API surface — see
+// docs/pipeline-unification/surfaces/chrome-extension-contract.md.
+function removedServerRouteCommand(name) {
+  const output = [
+    `# ${name}`,
+    "",
+    `\`${name}\` called a route that Axon removed. It is no longer available from this extension.`
+  ].join("\n");
+  return {
+    output,
+    doneMessage: `${name} was removed.`
+  };
 }
 
 function unsupportedCliCommand(name) {
@@ -274,29 +252,6 @@ function formatResearchResult(result) {
   const payload = payloadOf(result) || {};
   const answer = payload.answer || payload.summary || payload.synthesis;
   return answer ? ["# Research", "", answer].join("\n") : formatSearchResult(result, "Research");
-}
-
-function formatEvaluateResult(result) {
-  const payload = payloadOf(result) || {};
-  const lines = ["# Evaluate", ""];
-  if (payload.verdict) lines.push(`Verdict: ${badge(toneForVerdict(payload.verdict), payload.verdict)}`);
-  ["accuracy", "relevance", "completeness", "specificity"].forEach((key) => {
-    if (payload[key] != null) lines.push(`${humanizeKey(key)}: ${badge(scoreTone(payload[key]), payload[key])}`);
-  });
-  if (payload.explanation || payload.reasoning) lines.push("", payload.explanation || payload.reasoning);
-  return lines.length > 2 ? lines.join("\n") : ["# Evaluate", "", readableValue(payload)].join("\n");
-}
-
-function formatSuggestResult(result) {
-  const payload = payloadOf(result) || {};
-  const suggestions = payload.suggestions || payload.urls || result.suggestions || [];
-  const lines = ["# Suggest", "", badge(suggestions.length ? "success" : "warn", `${suggestions.length.toLocaleString()} suggestions`)];
-  suggestions.slice(0, 20).forEach((suggestion) => {
-    const url = typeof suggestion === "string" ? suggestion : suggestion.url || suggestion.href || "";
-    const reason = suggestion.reason || suggestion.title || "";
-    lines.push(`- ${url || readableInline(suggestion)}${reason ? ` - ${reason}` : ""}`);
-  });
-  return lines.join("\n");
 }
 
 function formatWatchResult(result) {
@@ -431,14 +386,6 @@ function scoreTone(score) {
   if (value >= 0.45) return "info";
   if (value > 0) return "warn";
   return "neutral";
-}
-
-function toneForVerdict(verdict) {
-  const normalized = String(verdict || "").toLowerCase();
-  if (normalized.includes("pass") || normalized.includes("good") || normalized.includes("correct")) return "success";
-  if (normalized.includes("fail") || normalized.includes("incorrect")) return "error";
-  if (normalized.includes("partial") || normalized.includes("mixed")) return "warn";
-  return "info";
 }
 
 function formatPrimitive(value) {

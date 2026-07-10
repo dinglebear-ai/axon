@@ -1,3 +1,31 @@
+// host-permissions.js declares `AxonHostPermissions` as a bare top-level
+// `const` (see popup.html) — classic-script `const`/`let` share the global
+// lexical scope but are never installed as `window` properties, so it's
+// referenced directly here, guarded the same way background.js does.
+async function hasAxonServerPermission(serverUrl) {
+  if (typeof AxonHostPermissions === "undefined") {
+    return true;
+  }
+  return AxonHostPermissions.hasAxonHostPermission(serverUrl);
+}
+
+// Only call from a real user gesture — the command-send button/Enter
+// keypress and the "Check API" click/keydown handlers count; the automatic
+// checkApi() at popup init does not, so it only ever checks (never prompts).
+async function ensureAxonServerPermissionForGesture(serverUrl) {
+  if (typeof AxonHostPermissions === "undefined") {
+    return true;
+  }
+  if (await AxonHostPermissions.hasAxonHostPermission(serverUrl)) {
+    return true;
+  }
+  const granted = await AxonHostPermissions.requestAxonHostPermission(serverUrl);
+  if (!granted) {
+    throw new Error(`Axon needs permission for ${serverUrl}. Grant it when Chrome prompts, or open Settings.`);
+  }
+  return true;
+}
+
 async function setWatchFromCommand(arg) {
   const args = splitArgs(arg || "");
   const value = (args[0] || "").toLowerCase();
@@ -119,14 +147,6 @@ async function startCrawlWithAxon(urls, flags = {}) {
   return results.length === 1 ? results[0] : { ...results[0], results };
 }
 
-async function startExtractWithAxon(urls, flags = {}) {
-  return postAxon("/v1/extract", {
-    urls,
-    prompt: flags.prompt || flags.query,
-    max_pages: flags.maxPages
-  });
-}
-
 async function startEmbedWithAxon(input) {
   return postAxon("/v1/sources", { source: input });
 }
@@ -156,14 +176,6 @@ async function cancelCrawlWithAxon(jobId) {
   return { ...result, canceled };
 }
 
-async function summarizeWithAxon(urls) {
-  return postAxon("/v1/summarize", { urls: Array.isArray(urls) ? urls : [urls] });
-}
-
-async function mapWithAxon(url) {
-  return postAxon("/v1/map", { url });
-}
-
 async function retrieveWithAxon(url) {
   return postAxon("/v1/retrieve", { url });
 }
@@ -185,14 +197,6 @@ async function searchWithAxon(query, flags = {}) {
 
 async function researchWithAxon(query, flags = {}) {
   return postAxon("/v1/research", withOptionalPaging({ query }, flags));
-}
-
-async function evaluateWithAxon(question) {
-  return postAxon("/v1/evaluate", { question });
-}
-
-async function suggestWithAxon(focus) {
-  return postAxon("/v1/suggest", { focus: focus || undefined });
 }
 
 async function askWithAxon(url, question) {
@@ -220,6 +224,9 @@ async function checkApi() {
   setApiStatus("Checking", "info");
 
   try {
+    // "Check API" is bound to a click/keydown handler, so this may prompt.
+    const config = await loadConfig();
+    await ensureAxonServerPermissionForGesture(config.axonUrl.trim().replace(/\/+$/, ""));
     await getAxon("/healthz", { parseJson: false });
     await probeAxonAuth();
     setApiStatus("Online", "success");
@@ -273,6 +280,10 @@ async function requestAxon(method, path, body) {
 
   if (!token && path !== "/healthz" && !isLoopbackServer(server)) {
     throw new Error("Missing bearer token. Open Settings or run `auth` to check extension config.");
+  }
+
+  if (!(await hasAxonServerPermission(server))) {
+    throw new Error(`Axon needs permission for ${server}. Open Settings and run a command to grant it.`);
   }
 
   const response = await fetch(`${server}${path}`, {

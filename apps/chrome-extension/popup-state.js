@@ -36,16 +36,11 @@ const COMMANDS = [
   { name: "remember", meta: "Save selection/page to Axon memory", kind: "write" },
   { name: "scrape", meta: "Scrape URL(s)", kind: "write" },
   { name: "crawl", meta: "Start a crawl job", kind: "job" },
-  { name: "map", meta: "Discover URLs", kind: "read" },
-  { name: "extract", meta: "Start extract job", kind: "job" },
   { name: "search", meta: "Web search and auto-crawl", kind: "write" },
   { name: "research", meta: "Research synthesis", kind: "write" },
   { name: "embed", meta: "Start embed job", kind: "job" },
   { name: "query", meta: "Search indexed sources", kind: "read" },
   { name: "retrieve", meta: "Retrieve indexed chunks", kind: "read" },
-  { name: "summarize", meta: "Summarize URL(s)", kind: "write" },
-  { name: "evaluate", meta: "Evaluate RAG answer", kind: "write" },
-  { name: "suggest", meta: "Suggest URLs to crawl", kind: "write" },
   { name: "ingest", meta: "Start ingest job", kind: "job" },
   { name: "sessions", meta: "Ingest AI sessions", kind: "job" },
   { name: "sources", meta: "List indexed sources", kind: "read" },
@@ -75,8 +70,6 @@ const COMMAND_ALIASES = {
   c: "crawl",
   r: "retrieve",
   q: "query",
-  sum: "summarize",
-  m: "map",
   d: "doctor",
   o: "open",
   w: "watch"
@@ -251,6 +244,9 @@ async function runCommandInput() {
   const pending = appendChatMessage("assistant", activity);
 
   try {
+    // Bound to the Send button click / Enter keydown, so this may prompt.
+    const config = await loadConfig();
+    await ensureAxonServerPermissionForGesture(config.axonUrl.trim().replace(/\/+$/, ""));
     const tab = await activeTab().catch(() => null);
     refreshTargetContext();
     const result = await executeCommand(command, tab);

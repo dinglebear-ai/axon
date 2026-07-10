@@ -27,6 +27,25 @@ async function loadConfig() {
   autoScrapeInput.checked = stored.autoScrapeEnabled === true;
 }
 
+// host-permissions.js declares `AxonHostPermissions` as a bare top-level
+// `const` (see options.html) — classic-script `const`/`let` share the
+// document's global lexical scope but are never installed as `window`
+// properties, so it's referenced directly, guarded the same way
+// background.js/popup-api.js/launcher.js do.
+async function ensureAxonServerPermissionForGesture(serverUrl) {
+  if (typeof AxonHostPermissions === "undefined") {
+    return true;
+  }
+  if (await AxonHostPermissions.hasAxonHostPermission(serverUrl)) {
+    return true;
+  }
+  const granted = await AxonHostPermissions.requestAxonHostPermission(serverUrl);
+  if (!granted) {
+    throw new Error(`Axon needs permission for ${serverUrl}. Grant it when Chrome prompts to finish saving.`);
+  }
+  return true;
+}
+
 async function saveConfig() {
   if (!globalThis.chrome?.storage?.local) {
     setStatus("Chrome storage is unavailable.");
@@ -36,6 +55,9 @@ async function saveConfig() {
   const axonUrl = axonUrlInput.value.trim() || DEFAULT_AXON_URL;
   const axonToken = axonTokenInput.value.trim();
   const autoScrapeEnabled = autoScrapeInput.checked;
+
+  // The Save button click is a real user gesture, so this may prompt.
+  await ensureAxonServerPermissionForGesture(axonUrl.trim().replace(/\/+$/, ""));
 
   await chrome.storage.local.set({ axonUrl, axonToken, autoScrapeEnabled });
   axonUrlInput.value = axonUrl;

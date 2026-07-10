@@ -1,7 +1,13 @@
 // Client-side pre-redaction + blocked-capture-scheme guard shared with the
 // popup (see capture-redaction.js — AxonRedact.redactText/redactUrl/
 // isBlockedCaptureUrl/blockedCaptureReason).
-importScripts("capture-redaction.js");
+// Optional host-permission helper (see host-permissions.js —
+// AxonHostPermissions.hasAxonHostPermission/requestAxonHostPermission).
+// manifest.json declares the Axon server origins as
+// `optional_host_permissions`, not a blanket `host_permissions` grant, so
+// every fetch path here must check (or, for a real user gesture, request)
+// the grant first.
+importScripts("capture-redaction.js", "host-permissions.js");
 
 const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
 const AUTO_SCRAPE_HISTORY_KEY = "autoScrapeHistory";
@@ -41,6 +47,23 @@ async function scrapeVisitedUrl(tabId, url) {
 
   const urlKey = scrapeHistoryKey(url);
   if (await wasScrapedWithinCooldown(urlKey)) {
+    return;
+  }
+
+  // A tab-update listener is not a user gesture, so this can only *check*
+  // the grant (chrome.permissions.contains never prompts) — it must never
+  // call chrome.permissions.request here. Open Settings and click Save (a
+  // real gesture) to grant the server origin.
+  if (!(await hasAxonServerPermission(config.axonUrl))) {
+    await markAutoScrapeAttempt(urlKey, url, false);
+    await chrome.storage.local.set({
+      lastAutoScrape: {
+        ok: false,
+        url,
+        at: new Date().toISOString(),
+        error: `Axon needs permission for ${config.axonUrl}. Open Settings and click "Save settings" to grant it.`
+      }
+    });
     return;
   }
 
@@ -119,6 +142,31 @@ async function postAxon(config, path, body) {
 
 function isScrapableUrl(url) {
   return /^https?:\/\//i.test(url) && !AxonRedact.isBlockedCaptureUrl(url);
+}
+
+// `AxonHostPermissions` is loaded via importScripts above; guard anyway so a
+// missing/failed import degrades to "assume granted" rather than throwing.
+async function hasAxonServerPermission(serverUrl) {
+  if (typeof AxonHostPermissions === "undefined") {
+    return true;
+  }
+  return AxonHostPermissions.hasAxonHostPermission(serverUrl);
+}
+
+// Only call from a real user gesture (a context-menu click counts; a
+// tab-update listener does not — see scrapeVisitedUrl).
+async function ensureAxonServerPermissionForGesture(serverUrl) {
+  if (typeof AxonHostPermissions === "undefined") {
+    return true;
+  }
+  if (await AxonHostPermissions.hasAxonHostPermission(serverUrl)) {
+    return true;
+  }
+  const granted = await AxonHostPermissions.requestAxonHostPermission(serverUrl);
+  if (!granted) {
+    throw new Error(`Axon needs permission for ${serverUrl}. Grant it when Chrome prompts, or open Settings and click "Save settings".`);
+  }
+  return true;
 }
 
 async function wasScrapedWithinCooldown(urlKey) {
@@ -249,7 +297,10 @@ async function scrapeAndCopyFromContext(url, tab) {
 
   await setContextBadge(tab, "SCR", "#0e7490");
   try {
-    const raw = await postAxon(await loadConfig(), "/v1/sources", {
+    const config = await loadConfig();
+    // Context-menu clicks are a real user gesture, so this may prompt.
+    await ensureAxonServerPermissionForGesture(config.axonUrl);
+    const raw = await postAxon(config, "/v1/sources", {
       source: url,
       scope: "page",
       embed: false,
@@ -295,7 +346,10 @@ async function crawlFromContext(url, tab) {
 
   await setContextBadge(tab, "CRL", "#c96a1c");
   try {
-    const raw = await postAxon(await loadConfig(), "/v1/sources", { source: url, scope: "site" });
+    const config = await loadConfig();
+    // Context-menu clicks are a real user gesture, so this may prompt.
+    await ensureAxonServerPermissionForGesture(config.axonUrl);
+    const raw = await postAxon(config, "/v1/sources", { source: url, scope: "site" });
     await chrome.storage.local.set({
       lastContextAction: {
         action: "crawl",

@@ -137,28 +137,6 @@
     return col(items, 10);
   }
 
-  /* ── summarize → single synthesized summary ── */
-  function SummaryCard(data, tones) {
-    return col([
-      el("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, [
-        ...(data.urls || []).map((u) => el("span", { style: { fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--aurora-accent-strong)", padding: "3px 9px", borderRadius: 999, background: tint(tones.base, 10, "var(--axon-control)"), border: `1px solid ${tint(tones.base, 26)}` } }, hostOf(u))),
-        data.context_chars != null ? Mono(`${Number(data.context_chars).toLocaleString()} ctx chars${data.context_truncated ? " · truncated" : ""}`) : null,
-      ]),
-      Card([el("p", { style: { margin: 0, fontFamily: "var(--font-sans)", fontSize: 14, lineHeight: 1.62, color: "var(--aurora-text-primary)" } }, data.summary)], { background: tint(tones.base, 8, "var(--axon-control)"), border: `1px solid ${tint(tones.base, 26)}` }),
-    ], 10);
-  }
-
-  /* ── map → discovered URL list ── */
-  function MapUrls(data, tones) {
-    return col([
-      Mono(`${data.mapped_urls} of ${data.total} URLs · bodies skipped`),
-      Card(data.urls.map((u, i) => el("div", { style: { display: "flex", alignItems: "center", gap: 9, padding: "7px 8px", borderTop: i ? "1px solid var(--aurora-border-default)" : "none" } }, [
-        Icon("link", 12, tones.fg),
-        el("span", { style: { fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--aurora-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, hostOf(u)),
-      ])), { padding: "6px 6px", display: "flex", flexDirection: "column" }),
-    ], 8);
-  }
-
   /* ── sources → the indexed-doc library ── */
   function SourcesList(data, tones, onOpenDoc) {
     const totalChunks = data.urls.reduce((n, u) => n + (u[1] || 0), 0);
@@ -234,26 +212,6 @@
         Mono(Number(d.vectors || 0).toLocaleString(), tones.fg, 11),
       ])), { display: "flex", flexDirection: "column", gap: 11 }),
     ], 8);
-  }
-
-  /* ── suggest → gap analysis with crawl/ingest chips ── */
-  function SuggestList(data, tones, onAct) {
-    return col([
-      Mono(`${data.urls.length} suggestions · gaps in the corpus`),
-      ...data.urls.map((s) => {
-        const ingest = /github\.com|reddit\.com|youtube\.com/.test(s.url);
-        const chipTone = ingest ? "var(--axon-orange)" : "var(--aurora-accent-primary)";
-        const chipFg = ingest ? "var(--axon-orange-strong)" : "var(--aurora-accent-strong)";
-        return Card([
-          Icon(ingest ? "box" : "scrape", 16, tones.fg),
-          el("div", { style: { flex: 1, minWidth: 0 } }, [
-            Mono(hostOf(s.url), "var(--aurora-accent-strong)", 12),
-            s.reason ? el("div", { style: { marginTop: 3, fontFamily: "var(--font-sans)", fontSize: 12, fontStyle: "italic", color: "var(--aurora-text-muted)" } }, s.reason) : null,
-          ]),
-          el("button", { style: { all: "unset", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 12, fontWeight: 650, color: chipFg, padding: "5px 11px", borderRadius: 8, background: tint(chipTone, 12, "var(--axon-control)"), border: `1px solid ${tint(chipTone, 30)}`, flex: "0 0 auto" }, ...(onAct ? { onclick: () => onAct(ingest ? "ingest" : "crawl", s.url) } : {}) }, ingest ? "Ingest" : "Crawl"),
-        ], { display: "flex", alignItems: "center", gap: 11 });
-      }),
-    ], 9);
   }
 
   /* ── doctor → service health ── */
@@ -364,23 +322,6 @@
     ], 10);
   }
 
-  /* ── evaluate → readable score card (real /v1/evaluate shape) ── */
-  function EvaluateReport(data, tones) {
-    const metrics = ["accuracy", "relevance", "completeness", "specificity"].filter((k) => data[k] != null);
-    return col([
-      data.verdict ? Card([
-        Mono("VERDICT", tones.fg, 10.5),
-        el("div", { style: { marginTop: 4, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, color: "var(--aurora-text-primary)", textTransform: "capitalize" } }, data.verdict),
-      ]) : null,
-      metrics.length ? Card(metrics.map((k) => el("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, [
-        el("span", { style: { fontFamily: "var(--font-sans)", fontSize: 12.5, color: "var(--aurora-text-primary)", width: 110, flex: "0 0 auto", textTransform: "capitalize" } }, k),
-        el("div", { style: { flex: 1 } }, Bar(scorePct(data[k]), tones, 6)),
-        Mono(String(data[k]), tones.fg),
-      ])), { display: "flex", flexDirection: "column", gap: 10 }) : null,
-      data.explanation || data.reasoning ? Card([el("p", { style: { margin: 0, fontFamily: "var(--font-sans)", fontSize: 13.5, lineHeight: 1.6, color: "var(--aurora-text-primary)" } }, data.explanation || data.reasoning)]) : null,
-    ].filter(Boolean), 11);
-  }
-
   /* ── ask → answer + citations ── */
   function AskAnswer(data, tones) {
     return col([
@@ -411,7 +352,6 @@
   }
 
   function num(v) { return v == null ? "—" : Number(v).toLocaleString(); }
-  function scorePct(v) { const n = Number(v); if (!Number.isFinite(n)) return 0; return n <= 1 ? n * 100 : n; }
   /* ── dispatch ── */
   function ActionBody(op, raw, tones, handlers) {
     handlers = handlers || {};
@@ -420,21 +360,17 @@
       if (id === "query") { const d = PREP.query(raw); return d ? QueryHits(d, tones) : GenericResult(op, raw); }
       if (id === "search") { return WebResults(PREP.search(raw), tones, "search"); }
       if (id === "research") { return WebResults(PREP.research(raw), tones, "research"); }
-      if (id === "summarize") { const d = PREP.summarize(raw); return d ? SummaryCard(d, tones) : GenericResult(op, raw); }
-      if (id === "map") { return MapUrls(PREP.map(raw), tones); }
       if (id === "sources") { const d = PREP.sources(raw); return d ? SourcesList(d, tones, handlers.onOpenDoc) : GenericResult(op, raw); }
       if (id === "retrieve") { const d = PREP.retrieve(raw); return d ? RetrieveDoc(d, tones) : GenericResult(op, raw); }
       if (id === "stats") { const d = PREP.stats(raw); return d ? StatsGrid(d, tones) : GenericResult(op, raw); }
       if (id === "domains") { const d = PREP.domains(raw); return d ? DomainsList(d, tones) : GenericResult(op, raw); }
-      if (id === "suggest") { const d = PREP.suggest(raw); return d ? SuggestList(d, tones, handlers.onAct) : GenericResult(op, raw); }
       if (id === "doctor") { const d = PREP.doctor(raw); return d ? DoctorReport(d, tones) : GenericResult(op, raw); }
       if (id === "status") { const d = PREP.status(raw); return d ? StatusReport(d, tones) : GenericResult(op, raw); }
-      if (id === "ingest" || id === "embed" || id === "extract" || id === "crawl") { return JobAccepted(PREP.job(raw), op, tones); }
+      if (id === "ingest" || id === "embed" || id === "crawl") { return JobAccepted(PREP.job(raw), op, tones); }
       if (id === "diff") { const d = PREP.diff(raw); return d ? DiffView(d, tones) : GenericResult(op, raw); }
       if (id === "brand") { const d = PREP.brand(raw); return d ? BrandPalette(d, tones) : GenericResult(op, raw); }
       if (id === "endpoints") { const d = PREP.endpoints(raw); return d ? EndpointsList(d, tones) : GenericResult(op, raw); }
       if (id === "screenshot") { return ScreenshotView(PREP.screenshot(raw), tones); }
-      if (id === "evaluate") { const d = PREP.evaluate(raw); return d ? EvaluateReport(d, tones) : GenericResult(op, raw); }
       if (id === "ask") { const d = PREP.ask(raw); return d ? AskAnswer(d, tones) : GenericResult(op, raw); }
       if (id === "scrape") { const d = PREP.scrape(raw); return d ? MdBlocks(d.blocks, tones) : GenericResult(op, raw); }
       return GenericResult(op, raw);

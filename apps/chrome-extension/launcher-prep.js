@@ -55,17 +55,6 @@
       const results = arr(p.search_results).length ? p.search_results : arr(p.results).length ? p.results : arr(r.results);
       return { summary: p.summary || p.answer || p.synthesis || "", results: results.map((x) => ({ title: x.title || x.url || "Result", url: x.url || x.href || "", snippet: x.snippet || x.content || "", score: x.score })) };
     },
-    summarize(r) {
-      const p = payloadOf(r);
-      const summary = p.summary || r.summary;
-      if (!summary) return null;
-      return { summary, urls: arr(p.urls || r.urls), context_chars: p.context_chars != null ? p.context_chars : r.context_chars, context_truncated: p.context_truncated || r.context_truncated };
-    },
-    map(r) {
-      const p = payloadOf(r);
-      const urls = arr(p.urls).length ? p.urls : arr(r.urls);
-      return { urls: urls.slice(0, 200), total: p.total != null ? p.total : r.total != null ? r.total : urls.length, mapped_urls: p.mapped_urls != null ? p.mapped_urls : urls.length };
-    },
     sources(r) {
       const p = payloadOf(r);
       const raw = arr(p.sources).length ? p.sources : arr(p.urls).length ? p.urls : arr(r.sources);
@@ -147,12 +136,6 @@
       if (p.running != null || p.pending != null) return { payload: { running: p.running || 0, pending: p.pending || 0, by_type: p.by_type || {} } };
       return null;
     },
-    suggest(r) {
-      const p = payloadOf(r);
-      const raw = arr(p.suggestions).length ? p.suggestions : arr(p.urls).length ? p.urls : arr(r.suggestions);
-      if (!raw.length) return null;
-      return { urls: raw.map((s) => (typeof s === "string" ? { url: s, reason: "" } : { url: s.url || s.href || "", reason: s.reason || s.title || "" })) };
-    },
     job(r) {
       const p = payloadOf(r);
       return { job_id: r.job_id || r.jobId || r.id || p.job_id || p.id || "", status: r.status || p.status || "pending", status_url: r.status_url || p.status_url, target: r.target || p.target, source_type: r.source_type || p.source_type };
@@ -178,7 +161,6 @@
       const p = payloadOf(r);
       return { url: p.url || r.url || "", width: p.width, height: p.height, bytes: p.bytes, full_page: p.full_page, path: p.path || p.screenshot_path };
     },
-    evaluate(r) { const p = payloadOf(r); return p && typeof p === "object" ? p : null; },
     ask(r) {
       const p = payloadOf(r);
       const answer = r.answer || p.answer || "";

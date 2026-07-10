@@ -44,26 +44,13 @@ test("manifest.json wires the expected background/side-panel/options entry point
 
 // chrome-extension-contract.md "Permission Contract": "request host
 // permissions only when needed" / "prefer `activeTab` for user-triggered
-// capture" — the extension should request `http(s)://*/*` as
+// capture" — the extension requests `http(s)://*/*` as
 // `optional_host_permissions` (granted per-origin via a user gesture, e.g.
-// the Options "Save"/"Check API" flow) rather than an always-on blanket
-// `host_permissions` grant.
-//
-// TRACKED GAP: the shipped manifest.json still declares this as a blanket
-// `host_permissions` grant. A prior handoff note describes an
-// optional-permissions flow, but that work landed only in the orphaned
-// `src/` tree (never wired into manifest.json/background.js/options.js —
-// see popup-render.js's `init()` / the flat-file scripts this extension
-// actually ships). Fixing it for real requires a `chrome.permissions.
-// request`/`contains` flow gated on a user gesture in background.js and
-// options.js, which is functional, browser-verified work outside a
-// tests-only change — not something to bolt on unverified here. This test
-// is intentionally skipped until that flow lands; un-skip it as part of
-// that work.
-test("manifest.json does not request a blanket host_permissions grant", (t) => {
-  t.skip("known gap — see TRACKED GAP comment above; requires a browser-verified optional_host_permissions request flow");
-  return;
-  // eslint-disable-next-line no-unreachable
+// the Options "Save"/"Check API" flow, background.js's context-menu
+// actions, popup-api.js's request layer, and launcher.js's request layer —
+// see host-permissions.js's `AxonHostPermissions` helper) rather than an
+// always-on blanket `host_permissions` grant.
+test("manifest.json does not request a blanket host_permissions grant", () => {
   const manifest = readManifest();
   assert.equal(manifest.host_permissions, undefined);
   assert.ok(Array.isArray(manifest.optional_host_permissions) && manifest.optional_host_permissions.length > 0);

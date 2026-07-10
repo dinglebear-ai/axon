@@ -26,7 +26,7 @@
     "default_path": "sidepanel.html"
   },
   "permissions": ["activeTab", "clipboardWrite", "contextMenus", "notifications", "offscreen", "sidePanel", "storage", "tabs"],
-  "host_permissions": [
+  "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
   ],
