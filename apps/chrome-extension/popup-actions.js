@@ -1,3 +1,8 @@
+// `RestMemoryRequest` (crates/axon-services/src/client_contract/memory.rs)
+// uses `#[serde(deny_unknown_fields)]` and only accepts these memory types —
+// any other field or type value is a 400.
+const REMEMBER_MEMORY_TYPES = new Set(["decision", "fact", "preference", "task", "bug"]);
+
 async function executeCommand(command, tab) {
   if (command.name === "ask") {
     const question = command.arg || command.raw;
@@ -11,6 +16,10 @@ async function executeCommand(command, tab) {
       copiedMessage: "Copied Axon answer to clipboard.",
       doneMessage: "Axon answer ready."
     };
+  }
+
+  if (command.name === "remember") {
+    return rememberWithAxon(command.args, tab);
   }
 
   if (command.name === "scrape") {
@@ -262,21 +271,32 @@ function resolveCommandUrl(arg, tab) {
   const normalized = (arg || "").trim().toLowerCase();
   if (["this", "current", "page", "here"].includes(normalized)) {
     if (tab?.url) {
-      return tab.url;
+      return assertCaptureAllowed(tab.url);
     }
     throw new Error("No current page URL is available.");
   }
 
   if (arg && /^https?:\/\//i.test(arg)) {
-    return arg;
+    return assertCaptureAllowed(arg);
   }
   if (arg) {
-    return normalizeUrl(arg);
+    return assertCaptureAllowed(normalizeUrl(arg));
   }
   if (tab?.url) {
-    return tab.url;
+    return assertCaptureAllowed(tab.url);
   }
   throw new Error("Provide a URL or open an http:// or https:// tab.");
+}
+
+// Refuses capture of browser-internal/privileged schemes (chrome://,
+// chrome-extension://, file://, about:, devtools://, ...) with a
+// user-visible reason, per chrome-extension-contract.md's capture guard.
+function assertCaptureAllowed(url) {
+  const reason = AxonRedact.blockedCaptureReason(url);
+  if (reason) {
+    throw new Error(reason);
+  }
+  return url;
 }
 
 function resolveCommandUrls(args, tab) {
@@ -296,6 +316,58 @@ function normalizeUrl(value) {
     return value;
   }
   return `https://${value}`;
+}
+
+// `remember [type] <text...>` saves typed text (or, absent typed text, the
+// current page's title/URL) as a durable Axon memory
+// (chrome-extension-contract.md "Source and Memory Behavior": "page capture
+// and memory capture are distinct user intents"). Body/title are redacted
+// client-side before the request body is built; the server re-redacts.
+async function rememberWithAxon(args, tab) {
+  const url = tab?.url || "";
+  assertCaptureAllowed(url || "about:blank");
+
+  const positionals = Array.isArray(args) ? args : splitArgs(args || "");
+  const maybeType = (positionals[0] || "").toLowerCase();
+  const hasExplicitType = REMEMBER_MEMORY_TYPES.has(maybeType);
+  const memoryType = hasExplicitType ? maybeType : "fact";
+  const typedText = (hasExplicitType ? positionals.slice(1) : positionals).join(" ").trim();
+
+  let body = typedText;
+  if (!body && tab?.title) {
+    body = url ? `${tab.title} — ${url}` : tab.title;
+  }
+  if (!body) {
+    throw new Error('remember requires text (e.g. "remember fact <text>") or an open http(s) tab to save.');
+  }
+
+  // Matches RestMemoryRequest (crates/axon-services/src/client_contract/
+  // memory.rs) exactly — that struct is #[serde(deny_unknown_fields)], so
+  // any extra key (scope, tags, salience, embed, ...) is a 400.
+  const request = { memory_type: memoryType, body: AxonRedact.redactText(body).text };
+  if (tab?.title) {
+    request.title = AxonRedact.redactText(tab.title).text.slice(0, 200);
+  }
+
+  const result = await postAxon("/v1/memories", request);
+  const output = formatMemoryResult(result);
+  return {
+    output,
+    copyText: output,
+    copiedMessage: "Copied Axon memory result to clipboard.",
+    doneMessage: "Saved to Axon memory."
+  };
+}
+
+function formatMemoryResult(result) {
+  const tone = result?.status === "active" ? "success" : "info";
+  return [
+    "# Remember",
+    "",
+    `${badge(tone, result?.status || "saved")} ${result?.memory_type || "memory"}`,
+    result?.memory_id ? `Memory: \`${result.memory_id}\`` : "",
+    result?.memory_score !== undefined ? `Score: ${result.memory_score}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 function completeCommand() {

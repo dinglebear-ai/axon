@@ -271,10 +271,14 @@ fn populate_services_and_ask_basics(
     cfg.codex_completion_concurrency =
         parse_positive_usize_env("AXON_CODEX_COMPLETION_CONCURRENCY", 4)?;
     cfg.codex_load_user_config = env_bool("AXON_CODEX_LOAD_USER_CONFIG", false);
-    cfg.llm_completion_concurrency =
-        parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
-    cfg.llm_completion_timeout_secs =
-        parse_positive_u64_env("AXON_LLM_COMPLETION_TIMEOUT_SECS", 300)?;
+    // llm_completion_concurrency / llm_completion_timeout_secs / codex_pool_idle_ttl_secs
+    // get their real env-over-toml-over-default value in
+    // `tuning::apply_env_toml_tuning` (config.toml keys `llm.completion-concurrency`,
+    // `llm.completion-timeout-secs`, `llm.codex-pool-idle-ttl-secs`); these are
+    // just placeholder defaults in case that pass is ever skipped.
+    cfg.llm_completion_concurrency = 4;
+    cfg.llm_completion_timeout_secs = 300;
+    cfg.codex_pool_idle_ttl_secs = 300;
     cfg.openai_base_url = non_empty_env("AXON_OPENAI_BASE_URL").unwrap_or_default();
     cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
     cfg.openai_model = non_empty_env("AXON_SYNTHESIS_OPENAI_MODEL")
@@ -288,7 +292,9 @@ fn populate_services_and_ask_basics(
     cfg.searxng_url = non_empty_env("AXON_SEARXNG_URL")
         .map(|u| u.trim_end_matches('/').to_string())
         .unwrap_or_default();
-    cfg.research_full_content = env_bool("AXON_RESEARCH_FULL_CONTENT", true);
+    // research_full_content resolved in `tuning::apply_env_toml_tuning`
+    // (config.toml key `search.research-full-content`); placeholder default here.
+    cfg.research_full_content = true;
     cfg.mcp_allowed_origins = env::var("AXON_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))
@@ -339,18 +345,6 @@ fn parse_positive_usize_env(var_name: &str, default: usize) -> Result<usize, Str
         Ok(raw) if raw.trim().is_empty() => Ok(default),
         Ok(raw) => raw
             .parse::<usize>()
-            .ok()
-            .filter(|value| *value > 0)
-            .ok_or_else(|| format!("{var_name} must be a positive integer, got {raw:?}")),
-        Err(_) => Ok(default),
-    }
-}
-
-fn parse_positive_u64_env(var_name: &str, default: u64) -> Result<u64, String> {
-    match env::var(var_name) {
-        Ok(raw) if raw.trim().is_empty() => Ok(default),
-        Ok(raw) => raw
-            .parse::<u64>()
             .ok()
             .filter(|value| *value > 0)
             .ok_or_else(|| format!("{var_name} must be a positive integer, got {raw:?}")),

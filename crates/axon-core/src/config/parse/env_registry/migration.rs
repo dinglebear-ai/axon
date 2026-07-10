@@ -673,4 +673,20 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         WarnEnvOverride,
         false,
     ),
+    spec(
+        "AXON_RESEARCH_FULL_CONTENT",
+        MoveToml,
+        NotRuntime,
+        Some("search.research-full-content"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_CODEX_POOL_IDLE_TTL_SECS",
+        MoveToml,
+        NotRuntime,
+        Some("llm.codex-pool-idle-ttl-secs"),
+        WarnEnvOverride,
+        false,
+    ),
 ];

@@ -33,6 +33,7 @@ const OUTPUT_LIMIT = 30;
 
 const COMMANDS = [
   { name: "ask", meta: "Ask Axon RAG", kind: "chat" },
+  { name: "remember", meta: "Save selection/page to Axon memory", kind: "write" },
   { name: "scrape", meta: "Scrape URL(s)", kind: "write" },
   { name: "crawl", meta: "Start a crawl job", kind: "job" },
   { name: "map", meta: "Discover URLs", kind: "read" },
@@ -69,6 +70,7 @@ const COMMANDS = [
 
 const COMMAND_ALIASES = {
   a: "ask",
+  rem: "remember",
   s: "scrape",
   c: "crawl",
   r: "retrieve",

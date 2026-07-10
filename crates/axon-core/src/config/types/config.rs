@@ -420,6 +420,11 @@ pub struct Config {
     /// Timeout for each LLM completion request across the selected backend. Env: `AXON_LLM_COMPLETION_TIMEOUT_SECS`.
     pub llm_completion_timeout_secs: u64,
 
+    /// How long (seconds) an idle pooled `codex app-server` child may sit
+    /// unused before the pool discards it on next checkout; 0 disables TTL
+    /// eviction. Env: `AXON_CODEX_POOL_IDLE_TTL_SECS`. TOML: `llm.codex-pool-idle-ttl-secs`.
+    pub codex_pool_idle_ttl_secs: u64,
+
     /// OpenAI-compatible API base URL, e.g. llama.cpp `http://127.0.0.1:8080/v1`.
     /// Env: `AXON_OPENAI_BASE_URL`.
     pub openai_base_url: String,

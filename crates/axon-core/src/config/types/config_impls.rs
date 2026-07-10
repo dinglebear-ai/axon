@@ -136,6 +136,7 @@ impl Default for Config {
             codex_load_user_config: false,
             llm_completion_concurrency: 4,
             llm_completion_timeout_secs: 300,
+            codex_pool_idle_ttl_secs: 300,
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),

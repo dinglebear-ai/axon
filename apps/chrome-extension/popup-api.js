@@ -196,8 +196,13 @@ async function suggestWithAxon(focus) {
 }
 
 async function askWithAxon(url, question) {
+  // Blocked-scheme tabs (chrome://, file://, ...) never leave the browser as
+  // page context; the question text is still redacted defensively since it
+  // may contain pasted secrets.
+  const safeUrl = url && !AxonRedact.isBlockedCaptureUrl(url) ? AxonRedact.redactUrl(url) : "";
+  const safeQuestion = AxonRedact.redactText(question || "").text;
   return postAxon("/v1/ask", {
-    query: url ? `${question}\n\nCurrent page URL: ${url}` : question,
+    query: safeUrl ? `${safeQuestion}\n\nCurrent page URL: ${safeUrl}` : safeQuestion,
     explain: false,
     diagnostics: false
   });
