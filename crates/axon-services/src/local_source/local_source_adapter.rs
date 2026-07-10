@@ -184,41 +184,11 @@ fn source_plan(
 ) -> SourcePlan {
     let canonical_uri = format!("local://{source_token}");
     let source = SourceRequest::local_path(root.to_string_lossy().to_string(), !root.is_file());
+    let route = routed_plan(input, root, &canonical_uri, source_id, &adapter, scope);
     SourcePlan {
         job_id: input.job_id,
         request: source,
-        route: RoutePlan {
-            source: ResolvedSource {
-                source: root.to_string_lossy().to_string(),
-                canonical_uri: canonical_uri.clone(),
-                source_id: source_id.clone(),
-                source_kind: SourceKind::Local,
-                adapter: adapter.clone(),
-                default_scope: scope,
-                available_scopes: vec![scope],
-                authority: AuthorityLevel::UserPinned,
-                confidence: 1.0,
-                reason: "target local source".to_string(),
-                graph: Vec::new(),
-                warnings: Vec::new(),
-                metadata: MetadataMap::new(),
-            },
-            adapter,
-            scope,
-            provider_requirements: Vec::new(),
-            credential_requirements: Vec::new(),
-            execution_affinity: ExecutionAffinity::Worker,
-            safety_class: SafetyClass::LocalFilesystem,
-            option_schema_id: "adapter:local:options:v1".to_string(),
-            validated_options: AdapterOptions {
-                values: adapter_options(input.selection_policy),
-            },
-            chunking_hints: Vec::new(),
-            parser_hints: Vec::new(),
-            graph_fact_kinds: Vec::new(),
-            watch_supported: true,
-            refresh_supported: true,
-        },
+        route,
         stage_plan: Vec::new(),
         limits: EffectiveLimits {
             request: SourceLimits::default(),
@@ -228,6 +198,69 @@ fn source_plan(
         },
         config_snapshot_id: ConfigSnapshotId::new("cfg_local_source"),
         provider_reservations: provider_reservations(input),
+    }
+}
+
+/// Build the `RoutePlan` embedded in the local `SourcePlan`.
+///
+/// When `input.route` carries the real routed plan from
+/// `source::routing::resolve_source_route` (S2-routeplan-threading), its
+/// `validated_options`, `credential_requirements`, `provider_requirements`,
+/// `safety_class`, and hint fields survive into acquisition — only the
+/// runtime-resolved `source`/`adapter`/`scope` (file-vs-directory is only
+/// known once the root is canonicalized on disk) are overlaid. Falls back to
+/// the pre-S2 ad-hoc `RoutePlan` when no route was threaded (tests, direct
+/// bridge callers).
+fn routed_plan(
+    input: &LocalSourceIndexInput,
+    root: &Path,
+    canonical_uri: &str,
+    source_id: &SourceId,
+    adapter: &AdapterRef,
+    scope: SourceScope,
+) -> RoutePlan {
+    let resolved_source = ResolvedSource {
+        source: root.to_string_lossy().to_string(),
+        canonical_uri: canonical_uri.to_string(),
+        source_id: source_id.clone(),
+        source_kind: SourceKind::Local,
+        adapter: adapter.clone(),
+        default_scope: scope,
+        available_scopes: vec![scope],
+        authority: AuthorityLevel::UserPinned,
+        confidence: 1.0,
+        reason: "target local source".to_string(),
+        graph: Vec::new(),
+        warnings: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    if let Some(routed) = &input.route {
+        return RoutePlan {
+            source: resolved_source,
+            adapter: adapter.clone(),
+            scope,
+            ..routed.clone()
+        };
+    }
+
+    RoutePlan {
+        source: resolved_source,
+        adapter: adapter.clone(),
+        scope,
+        provider_requirements: Vec::new(),
+        credential_requirements: Vec::new(),
+        execution_affinity: ExecutionAffinity::Worker,
+        safety_class: SafetyClass::LocalFilesystem,
+        option_schema_id: "adapter:local:options:v1".to_string(),
+        validated_options: AdapterOptions {
+            values: adapter_options(input.selection_policy),
+        },
+        chunking_hints: Vec::new(),
+        parser_hints: Vec::new(),
+        graph_fact_kinds: Vec::new(),
+        watch_supported: true,
+        refresh_supported: true,
     }
 }
 

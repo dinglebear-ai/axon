@@ -8,7 +8,8 @@ use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder}
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
-use super::{WebAdapterRun, WebSourceIndexInput, timestamp};
+use super::WebSourceIndexInput;
+use super::run::{WebAdapterRun, timestamp};
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
 const WEB_CHANGED_CHUNK_BATCH_SIZE: usize = 512;

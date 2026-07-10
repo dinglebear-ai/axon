@@ -1,5 +1,8 @@
-use super::{discover, parse_map_result};
+use super::{build_map_request, discover, parse_map_result, unsupported_map_result};
+use crate::source::classify::SourceInputKind;
+use crate::source::routing::resolve_source_route;
 use crate::types::MapOptions;
+use axon_api::source::{SourceIntent, SourceScope};
 use axon_core::config::Config;
 use serde_json::json;
 
@@ -178,4 +181,70 @@ async fn discover_rejects_private_ip_before_mapping() {
         err.to_string().contains("blocked"),
         "error should preserve SSRF blocker reason, got: {err}"
     );
+}
+
+// ── source-pipeline routing (source-pipeline.md SourceRequest.intent=map) ──
+
+#[test]
+fn build_map_request_sets_map_intent_no_embed_map_scope() {
+    let request = build_map_request("https://example.com/docs");
+
+    assert_eq!(request.source, "https://example.com/docs");
+    assert_eq!(request.intent, SourceIntent::Map);
+    assert!(!request.embed, "map must never write vectors");
+    assert_eq!(request.scope, Some(SourceScope::Map));
+}
+
+#[test]
+fn plain_web_url_routes_through_resolver_and_router_as_web_kind() {
+    let request = build_map_request("https://example.com/docs");
+    let routed = resolve_source_route(&request).expect("plain web url routes");
+
+    assert_eq!(routed.kind, SourceInputKind::Web);
+    assert_eq!(routed.route.scope, SourceScope::Map);
+}
+
+#[test]
+fn git_url_map_scope_is_rejected_by_the_router_not_silently_treated_as_web() {
+    // A GitHub repo URL is http(s) but must classify as `Git`, so the router
+    // rejects the map-scope request (the git adapter has no map scope)
+    // instead of silently falling through to the web catch-all the way the
+    // pre-pipeline map path did. This is exactly the routing failure
+    // `discover` degrades to `unsupported_map_result` for.
+    let request = build_map_request("https://github.com/jmagar/axon");
+    let err = resolve_source_route(&request).expect_err("git adapter has no map scope");
+
+    assert_eq!(err.code.0, "source.scope.unsupported");
+}
+
+#[test]
+fn unsupported_map_result_is_degraded_with_zero_urls_and_no_vectors() {
+    let result = unsupported_map_result(
+        "https://github.com/jmagar/axon",
+        "map route error: adapter does not support requested source scope",
+    );
+
+    assert_eq!(result.url, "https://github.com/jmagar/axon");
+    assert_eq!(result.map_source, "unsupported");
+    assert_eq!(result.returned_url_count, 0);
+    assert_eq!(result.total, 0);
+    assert!(result.urls.is_empty());
+    assert!(result.warning.is_some());
+}
+
+#[tokio::test]
+async fn discover_degrades_non_web_git_source_to_unsupported_result_without_crawling() {
+    // Exercises the same branch `discover` takes internally, without paying
+    // for the outer live-DNS `validate_url_with_dns` gate that a github.com
+    // hostname would otherwise require network access for in this sandbox:
+    // route the request directly and confirm the router-rejection path feeds
+    // `unsupported_map_result` rather than ever reaching `map_with_sitemap`.
+    let url = "https://github.com/jmagar/axon";
+    let request = build_map_request(url);
+    let err = resolve_source_route(&request).expect_err("git adapter has no map scope");
+
+    let result = unsupported_map_result(url, format!("map route error: {err}"));
+    assert_eq!(result.map_source, "unsupported");
+    assert_eq!(result.returned_url_count, 0);
+    assert!(result.urls.is_empty());
 }

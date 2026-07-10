@@ -29,6 +29,8 @@ fn input(root: std::path::PathBuf) -> LocalSourceIndexInput {
         selection_policy: LocalSourceSelectionPolicy::Permissive,
         embedding_reservations: None,
         vector_reservations: None,
+        embed: true,
+        route: None,
     }
 }
 
