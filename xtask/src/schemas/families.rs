@@ -16,6 +16,8 @@ pub(crate) mod adapters;
 pub(crate) mod api_defs;
 #[path = "families/bundles.rs"]
 mod bundles;
+#[path = "graph_defs.rs"]
+mod graph_defs;
 #[path = "families/markdown.rs"]
 mod markdown_render;
 #[path = "provider_capabilities.rs"]
@@ -437,7 +439,14 @@ fn graph_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             json!({"kind": edge.kind, "type": "edge", "requires_evidence": edge.requires_evidence}),
         );
     }
-    let schema = registry_schema_bundle(
+
+    let mut def_pairs = graph_defs::graph_dto_defs();
+    def_pairs.extend(graph_defs::graph_kind_enum_defs());
+    def_pairs.push(graph_defs::graph_merge_rule_def());
+    def_pairs.push(graph_defs::graph_kind_registry_item_def());
+    let defs = schema_defs(&def_pairs, None);
+
+    let mut schema = registry_schema_bundle(
         schema_id(SchemaFamily::Graph),
         spec.title,
         "cargo xtask schemas graph",
@@ -447,6 +456,11 @@ fn graph_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         kinds,
         &[],
     );
+    schema
+        .as_object_mut()
+        .expect("graph schema bundle is an object")
+        .insert("$defs".to_string(), defs);
+
     Ok(vec![
         SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
         SchemaArtifact::new(

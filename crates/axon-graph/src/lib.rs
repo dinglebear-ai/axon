@@ -38,6 +38,9 @@ pub const CRATE_NAME: &str = "axon-graph";
 #[cfg(test)]
 #[path = "fixture_tests.rs"]
 mod fixture_tests;
+#[cfg(test)]
+#[path = "schema_fixture_tests.rs"]
+mod schema_fixture_tests;
 pub mod schema_registry;
 #[cfg(test)]
 #[path = "store_tests.rs"]

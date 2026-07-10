@@ -111,7 +111,7 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:a09160e89b2b6fbccbcfe477fb228b8822551ea6bf2249558b6665f8c78dbdab",
+        "checksum": "sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       }
