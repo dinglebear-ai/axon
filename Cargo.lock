@@ -597,9 +597,11 @@ dependencies = [
 name = "axon-document"
 version = "6.2.2"
 dependencies = [
+ "async-trait",
  "axon-api",
  "axon-parse",
  "serde_json",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -794,6 +796,7 @@ dependencies = [
  "axon-embedding",
  "axon-error",
  "axon-graph",
+ "axon-observe",
  "axon-retrieval",
  "axon-vectors",
  "chrono",
@@ -855,6 +858,7 @@ dependencies = [
  "axon-embedding",
  "axon-error",
  "axon-vectors",
+ "chrono",
  "serde_json",
  "tokio",
  "uuid",
@@ -864,10 +868,12 @@ dependencies = [
 name = "axon-route"
 version = "6.2.2"
 dependencies = [
+ "async-trait",
  "axon-api",
  "axon-error",
  "hex",
  "sha2 0.11.0",
+ "tokio",
  "url",
 ]
 
