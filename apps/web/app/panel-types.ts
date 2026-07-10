@@ -125,7 +125,7 @@ export type CheckSummary = {
 };
 
 export type ConfigFile = 'toml' | 'env';
-export type PanelTab = 'dashboard' | 'jobs' | 'sources' | 'configurator';
+export type PanelTab = 'dashboard' | 'jobs' | 'sources' | 'watches' | 'configurator';
 
 export const TOKEN_KEY = 'axon-panel-token';
 
@@ -166,4 +166,71 @@ export type SourcesListResult = {
   next_cursor?: string | null;
   urls?: SourceListEntry[];
   items?: SourceListEntry[];
+};
+
+// ---------------------------------------------------------------------------
+// Watches (GET/PATCH/DELETE /v1/watches, POST /v1/watches/{id}/{pause,resume})
+// ---------------------------------------------------------------------------
+//
+// Mirrors crates/axon-api/src/source/job_listing.rs (WatchSummary,
+// WatchUpdateRequest) and crates/axon-api/src/source/lifecycle.rs
+// (WatchResult, WatchSchedule). Hand-typed rather than generated because the
+// checked-in apps/web/openapi/axon.json snapshot predates the /v1/watches
+// route landing (crates/axon-web/src/server/handlers/source_watch.rs) and a
+// fresh export requires a running server build outside this territory. All
+// *Id newtypes (WatchId/SourceId/JobId) serialize transparently as plain
+// strings — see crates/axon-api/src/source/ids.rs.
+export type WatchSchedule = {
+  every_seconds: number;
+  cron?: string | null;
+  timezone?: string | null;
+};
+
+export type WatchSummary = {
+  watch_id: string;
+  source_id: string;
+  enabled: boolean;
+  schedule: WatchSchedule;
+  next_run_at: string;
+  last_job_id?: string | null;
+  last_status?: string | null;
+};
+
+export type WatchPage = {
+  items: WatchSummary[];
+  next_cursor?: string | null;
+  limit: number;
+  total?: number;
+};
+
+export type WatchAdapterRef = {
+  name: string;
+  version: string;
+};
+
+export type WatchWarning = {
+  code?: string;
+  severity?: string;
+  message?: string;
+};
+
+export type WatchResult = {
+  watch_id: string;
+  source_id: string;
+  canonical_uri: string;
+  adapter?: WatchAdapterRef;
+  scope?: unknown;
+  enabled: boolean;
+  schedule: WatchSchedule;
+  job?: unknown;
+  latest_job?: unknown;
+  warnings?: WatchWarning[];
+};
+
+export type WatchUpdateRequest = {
+  enabled?: boolean;
+  schedule?: WatchSchedule;
+  options?: Record<string, unknown>;
+  embed?: boolean;
+  collection?: string;
 };

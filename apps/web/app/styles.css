@@ -656,6 +656,29 @@ select {
   vertical-align: middle;
 }
 
+.watch-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.watch-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-button.danger {
+  color: var(--aurora-error);
+}
+
+.icon-button.danger:hover {
+  border-color: var(--aurora-error);
+}
+
+.watch-edit-form {
+  display: grid;
+  gap: 10px;
+}
+
 .command-card {
   display: grid;
   align-content: start;
