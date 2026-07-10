@@ -7,8 +7,12 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-error = { path = "../axon-error" }
 hex = "0.4"
 sha2 = "0.11"
 url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

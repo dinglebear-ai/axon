@@ -32,6 +32,23 @@ pub struct PublishGenerationRequest {
     pub expected_previous_generation: Option<SourceGenerationId>,
 }
 
+/// Result of [`GenerationPublisher::validate_publish`] — a dry-run readiness
+/// check performed before `publish_generation` commits a generation as the
+/// source's live/published state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PublishPlan {
+    pub source_id: SourceId,
+    pub generation: SourceGenerationId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_generation: Option<SourceGenerationId>,
+    pub ready: bool,
+    pub estimated_document_count: u64,
+    pub estimated_chunk_count: u64,
+    pub cleanup_debt_preview: Vec<CleanupDebtId>,
+    pub warnings: Vec<SourceWarning>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ItemCounts {

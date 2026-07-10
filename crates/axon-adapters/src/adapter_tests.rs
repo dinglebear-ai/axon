@@ -1,7 +1,20 @@
+use std::sync::Arc;
+
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::{AdapterCapability, FakeSourceAdapter, SourceAdapter, SourceAdapterRegistry};
+use crate::feed::FeedSourceAdapter;
+use crate::git::GitSourceAdapter;
+use crate::local::LocalSourceAdapter;
+use crate::reddit::RedditSourceAdapter;
+use crate::registry_sources::RegistrySourceAdapter;
+use crate::sessions::SessionSourceAdapter;
+use crate::web::WebSourceAdapter;
+use crate::youtube::YoutubeSourceAdapter;
+use crate::{
+    AdapterCapability, FakeSourceAdapter, FakeSourceAdapterMode, SourceAdapter,
+    SourceAdapterRegistry,
+};
 
 #[tokio::test]
 async fn fake_source_adapter_acquires_manifest_items_and_documents_without_preparing() {
@@ -14,7 +27,7 @@ async fn fake_source_adapter_acquires_manifest_items_and_documents_without_prepa
     let plan = source_plan(route);
 
     let capability = adapter.capabilities().await.unwrap();
-    assert_eq!(capability.adapter.name, "local");
+    assert_eq!(capability.0.name, "local");
 
     let manifest = adapter.discover(&plan).await.unwrap();
     assert_eq!(manifest.generation, SourceGenerationId::from("gen_fake"));
@@ -86,12 +99,21 @@ async fn source_adapter_registry_routes_by_selected_adapter_and_reports_capabili
         .expect("selected adapter is registered");
     let capability = adapter.capabilities().await.unwrap();
 
-    assert_eq!(capability.adapter.name, "web");
-    assert_eq!(capability.source_kind, SourceKind::Web);
-    assert_eq!(capability.default_scope, SourceScope::Site);
-    assert!(capability.scopes.contains(&SourceScope::Page));
-    assert!(capability.watch_supported);
-    assert!(capability.refresh_supported);
+    assert_eq!(capability.0.name, "web");
+    assert_eq!(capability.0.owner_crate, "axon-adapters");
+    assert_eq!(capability.0.health, HealthStatus::Healthy);
+    assert!(capability.0.features.contains(&"scope:site".to_string()));
+    assert!(capability.0.features.contains(&"scope:page".to_string()));
+    assert!(capability.0.features.contains(&"watch".to_string()));
+    assert!(capability.0.features.contains(&"refresh".to_string()));
+    assert_eq!(
+        capability.0.limits.0.get("source_kind"),
+        Some(&serde_json::json!(SourceKind::Web))
+    );
+    assert_eq!(
+        capability.0.limits.0.get("default_scope"),
+        Some(&serde_json::json!(SourceScope::Site))
+    );
 }
 
 #[tokio::test]
@@ -169,6 +191,117 @@ fn adapter_capability_rejects_unsupported_scope_before_acquisition() {
 
     assert_eq!(err.code.0, "adapter.scope.unsupported");
     assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+}
+
+/// Every production `SourceAdapter` implementor coerces to `Arc<dyn
+/// SourceAdapter>` without changing call sites — the load-bearing
+/// compatibility check for the trait-signature edit in `adapter.rs`
+/// (`&str` -> `&'static str`, `AdapterCapability` -> `SourceAdapterCapability`).
+#[test]
+fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
+    let adapters: Vec<Arc<dyn SourceAdapter>> = vec![
+        Arc::new(WebSourceAdapter::new()),
+        Arc::new(GitSourceAdapter::new()),
+        Arc::new(FeedSourceAdapter::new()),
+        Arc::new(SessionSourceAdapter::new()),
+        Arc::new(YoutubeSourceAdapter::new()),
+        Arc::new(RedditSourceAdapter::new()),
+        Arc::new(LocalSourceAdapter::new()),
+        Arc::new(RegistrySourceAdapter::new()),
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "fake".to_string(),
+            version: "test".to_string(),
+        })),
+    ];
+
+    let names: Vec<&'static str> = adapters.iter().map(|adapter| adapter.name()).collect();
+    assert_eq!(
+        names,
+        vec![
+            "web", "git", "feed", "session", "youtube", "reddit", "local", "registry", "fake",
+        ]
+    );
+    for adapter in &adapters {
+        assert!(!adapter.version().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn every_production_adapter_reports_capabilities_via_source_adapter_capability() {
+    let adapters: Vec<Arc<dyn SourceAdapter>> = vec![
+        Arc::new(WebSourceAdapter::new()),
+        Arc::new(GitSourceAdapter::new()),
+        Arc::new(FeedSourceAdapter::new()),
+        Arc::new(SessionSourceAdapter::new()),
+        Arc::new(YoutubeSourceAdapter::new()),
+        Arc::new(RedditSourceAdapter::new()),
+        Arc::new(LocalSourceAdapter::new()),
+        Arc::new(RegistrySourceAdapter::new()),
+    ];
+
+    for adapter in &adapters {
+        let capability = adapter.capabilities().await.unwrap();
+        assert_eq!(capability.0.name, adapter.name());
+        assert_eq!(capability.0.owner_crate, "axon-adapters");
+        assert_eq!(capability.0.health, HealthStatus::Healthy);
+        assert!(!capability.0.features.is_empty());
+        assert!(capability.0.limits.0.contains_key("source_kind"));
+    }
+}
+
+#[tokio::test]
+async fn fake_source_adapter_failure_mode_fails_discover_acquire_normalize() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone())
+        .with_item("README.md", ContentKind::Markdown, "# Axon")
+        .with_mode(FakeSourceAdapterMode::Failure);
+    let plan = source_plan(route);
+
+    let err = adapter
+        .discover(&plan)
+        .await
+        .expect_err("failure mode fails discover");
+    assert_eq!(err.code.0, "adapter.fake.failure");
+
+    assert_eq!(adapter.calls(), vec!["discover"]);
+}
+
+#[tokio::test]
+async fn fake_source_adapter_degraded_mode_emits_warnings_and_succeeds() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone())
+        .with_item("README.md", ContentKind::Markdown, "# Axon")
+        .with_mode(FakeSourceAdapterMode::Degraded);
+    let plan = source_plan(route);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items);
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+    assert!(!acquisition.header.warnings.is_empty());
+    assert_eq!(acquisition.header.warnings[0].severity, Severity::Degraded);
+
+    let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
+    assert!(!normalized.header.warnings.is_empty());
+
+    assert_eq!(adapter.calls(), vec!["discover", "acquire", "normalize"]);
+}
+
+#[tokio::test]
+async fn fake_source_adapter_capability_override_replaces_reported_capability() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let override_capability = AdapterCapability::new(
+        AdapterRef {
+            name: "local".to_string(),
+            version: "override".to_string(),
+        },
+        SourceKind::Local,
+        SourceScope::Directory,
+    );
+    let adapter =
+        FakeSourceAdapter::new(route.adapter.clone()).with_capability_override(override_capability);
+
+    let capability = adapter.capabilities().await.unwrap();
+    assert_eq!(capability.0.version, "override");
 }
 
 fn source_plan(route: RoutePlan) -> SourcePlan {

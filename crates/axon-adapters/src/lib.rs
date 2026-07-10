@@ -8,6 +8,7 @@ pub mod adapter;
 pub mod boundary;
 pub mod capability;
 pub mod cli_tool;
+pub mod enrichment;
 pub mod family_matrix;
 pub mod feed;
 pub mod git;
@@ -28,11 +29,14 @@ pub mod youtube;
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
 pub use adapter::SourceAdapter;
 pub use capability::{AdapterCapability, AdapterVersion};
+pub use enrichment::{NoopSourceEnricher, SourceEnricher};
 pub use family_matrix::{SourceFamilyMatrix, source_family_matrix};
 pub use onboarding::{OnboardingRow, SourceOnboardingStatus, onboarding_rows, onboarding_status};
 pub use registry::SourceAdapterRegistry;
 pub use spec::{ParserFamily, SourceAdapterSpec, SourceFamily, SourceScopeCapability};
-pub use testing::FakeSourceAdapter;
+pub use testing::{
+    FakeSourceAdapter, FakeSourceAdapterMode, FakeSourceEnricher, FakeSourceEnricherMode,
+};
 
 pub const CRATE_NAME: &str = "axon-adapters";
 

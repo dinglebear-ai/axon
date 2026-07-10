@@ -9,11 +9,17 @@ async fn registry_adapter_declares_package_and_version_scopes() {
     let adapter = RegistrySourceAdapter::new();
 
     let capability = adapter.capabilities().await.unwrap();
-    assert_eq!(capability.adapter.name, "registry");
-    assert_eq!(capability.source_kind, SourceKind::Registry);
-    assert_eq!(capability.default_scope, SourceScope::Package);
-    assert!(capability.scopes.contains(&SourceScope::Package));
-    assert!(capability.scopes.contains(&SourceScope::Version));
+    assert_eq!(capability.0.name, "registry");
+    assert_eq!(
+        capability.0.limits.0.get("source_kind"),
+        Some(&serde_json::json!(SourceKind::Registry))
+    );
+    assert_eq!(
+        capability.0.limits.0.get("default_scope"),
+        Some(&serde_json::json!(SourceScope::Package))
+    );
+    assert!(capability.0.features.contains(&"scope:package".to_string()));
+    assert!(capability.0.features.contains(&"scope:version".to_string()));
 }
 
 #[tokio::test]

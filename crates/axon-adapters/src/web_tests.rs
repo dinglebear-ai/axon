@@ -14,16 +14,26 @@ async fn web_adapter_declares_page_site_docs_and_map_scopes() {
 
     let capability = adapter.capabilities().await.unwrap();
 
-    assert_eq!(capability.adapter.name, "web");
-    assert_eq!(capability.source_kind, SourceKind::Web);
-    assert_eq!(capability.default_scope, SourceScope::Site);
+    assert_eq!(capability.0.name, "web");
+    assert_eq!(
+        capability.0.limits.0.get("source_kind"),
+        Some(&serde_json::json!(SourceKind::Web))
+    );
+    assert_eq!(
+        capability.0.limits.0.get("default_scope"),
+        Some(&serde_json::json!(SourceScope::Site))
+    );
     for scope in [
         SourceScope::Page,
         SourceScope::Site,
         SourceScope::Docs,
         SourceScope::Map,
     ] {
-        assert!(capability.scopes.contains(&scope), "missing {scope:?}");
+        let tag = format!(
+            "scope:{}",
+            serde_json::to_value(scope).unwrap().as_str().unwrap()
+        );
+        assert!(capability.0.features.contains(&tag), "missing {scope:?}");
     }
 }
 

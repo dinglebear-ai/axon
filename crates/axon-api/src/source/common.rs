@@ -78,6 +78,15 @@ pub struct AdapterOptions {
     pub values: MetadataMap,
 }
 
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct ValidatedOptions {
+    pub values: MetadataMap,
+    pub warnings: Vec<SourceWarning>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterRef {

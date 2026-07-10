@@ -3,6 +3,7 @@
 //! This crate is intentionally marker-only in PR0. Runtime behavior moves here
 //! in issue #298 implementation PRs after contract tests exist.
 
+pub mod boundary;
 pub mod chunk;
 pub mod chunk_router;
 pub mod code;
