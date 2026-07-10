@@ -34,12 +34,13 @@ impl RestRouteInfo {
 }
 
 pub fn rest_route_inventory() -> &'static [RestRouteInfo] {
-    // Chained across `data.rs` + `data/watch_routes.rs` (split for the
-    // monolith line cap); materialized once.
+    // Chained across `data.rs` + `data/watch_routes.rs` + `data/graph_routes.rs`
+    // (split for the monolith line cap); materialized once.
     static FULL: std::sync::LazyLock<Vec<RestRouteInfo>> = std::sync::LazyLock::new(|| {
         REST_ROUTE_INVENTORY
             .iter()
             .chain(WATCH_ROUTES.iter())
+            .chain(GRAPH_ROUTES.iter())
             .copied()
             .collect()
     });
@@ -54,4 +55,4 @@ pub fn supported_routes() -> Vec<String> {
 }
 
 mod data;
-use data::{REST_ROUTE_INVENTORY, WATCH_ROUTES};
+use data::{GRAPH_ROUTES, REST_ROUTE_INVENTORY, WATCH_ROUTES};

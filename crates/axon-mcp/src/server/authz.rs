@@ -214,6 +214,16 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "List, inspect, update, pause, resume, or delete source-request-backed watches",
         cost: "write",
     },
+    // `graph` (issue #298 GQ): read-only SourceGraph query surface mirroring
+    // the REST `/v1/graph/*` routes. All subactions (`kinds`/`resolve`/
+    // `query`/`node`/`edge`/`source`) are pure reads — graph writes stay
+    // parser/source-job owned, never caller-provided through this action.
+    McpActionSpec {
+        name: "graph",
+        scope: ActionScope::Read,
+        description: "Query the read-only SourceGraph: kinds, resolve, query, node, edge, source subgraph",
+        cost: "cheap",
+    },
 ];
 
 pub(super) fn mcp_action_names() -> Vec<&'static str> {

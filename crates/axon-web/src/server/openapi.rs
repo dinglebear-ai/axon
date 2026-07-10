@@ -105,6 +105,13 @@ use super::{handlers, openapi_jobs, routing};
         handlers::source_watch::delete_watch,
         handlers::source_watch::pause_watch,
         handlers::source_watch::resume_watch,
+        handlers::graph::kinds,
+        handlers::graph::resolve,
+        handlers::graph::query,
+        handlers::graph::get_node,
+        handlers::graph::get_node_edges,
+        handlers::graph::get_edge,
+        handlers::graph::get_source_subgraph,
         handlers::artifacts::serve_artifact_query
     ),
     components(schemas(
@@ -225,7 +232,19 @@ use super::{handlers, openapi_jobs, routing};
         axon_api::job_progress::JobProgress,
         axon_api::job_progress::JobFamily,
         axon_api::job_progress::JobPhase,
-        axon_api::job_progress::JobMetric
+        axon_api::job_progress::JobMetric,
+        axon_api::source::GraphKindDocument,
+        axon_api::source::GraphNode,
+        axon_api::source::GraphEdge,
+        axon_api::source::GraphIdentifier,
+        axon_api::source::GraphResolveRequest,
+        axon_api::source::GraphResolveMatch,
+        axon_api::source::GraphResolveMiss,
+        axon_api::source::GraphResolveResult,
+        axon_api::source::GraphDirection,
+        axon_api::source::GraphQueryFilters,
+        axon_api::source::GraphQueryRequest,
+        axon_api::source::GraphQueryResult
     )),
     tags(
         (name = "discovery", description = "Read-only source, domain, stats, status, and health endpoints"),
@@ -234,6 +253,7 @@ use super::{handlers, openapi_jobs, routing};
         (name = "sources", description = "Unified source indexing entrypoint"),
         (name = "jobs", description = "Async extract job endpoints"),
         (name = "admin", description = "Administrative mutation endpoints"),
+        (name = "graph", description = "Read-only SourceGraph query/resolve/detail endpoints"),
         (name = "watch", description = "Scheduled watch definitions and runs"),
         (name = "memory", description = "Persistent agent memory endpoints"),
         (name = "mobile", description = "Mobile app session synchronization endpoints")

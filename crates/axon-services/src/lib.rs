@@ -21,6 +21,7 @@ pub mod endpoints;
 pub mod events;
 pub mod extract;
 pub mod feed_acquire;
+pub mod graph;
 pub use feed_acquire::fetch_feed_to_file;
 #[allow(dead_code)]
 pub(crate) mod feed_source;

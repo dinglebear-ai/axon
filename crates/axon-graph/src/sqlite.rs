@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use axon_api::source::{
     CapabilityBase, GraphCandidate, GraphEdge, GraphEdgeId, GraphNode, GraphNodeId,
     GraphQueryRequest, GraphQueryResult, GraphResolveRequest, GraphResolveResult,
-    GraphStoreCapability, GraphWriteResult, HealthStatus, MetadataMap,
+    GraphStoreCapability, GraphWriteResult, HealthStatus, MetadataMap, SourceId,
 };
 use sqlx::SqlitePool;
 
@@ -120,6 +120,14 @@ impl GraphStore for SqliteGraphStore {
                 .map_err(|e| graph_storage_error(format!("failed to reset {table}: {e}")))?;
         }
         Ok(())
+    }
+
+    async fn node_edges(&self, node_id: GraphNodeId) -> Result<Vec<GraphEdge>> {
+        resolve::edges_for_node(&self.pool, &node_id).await
+    }
+
+    async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>> {
+        resolve::nodes_for_source(&self.pool, &source_id).await
     }
 
     async fn capabilities(&self) -> Result<GraphStoreCapability> {

@@ -179,9 +179,13 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         // discovery surfaces, no side-effects.
         AxonRequest::Resolve(_) | AxonRequest::Capabilities(_) | AxonRequest::Providers(_) => {
             Some("axon:read")
-        } // NOTE: no wildcard arm — the match must be exhaustive.
-          // Adding a new AxonRequest variant without a required_scope arm is a compile error,
-          // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
+        }
+        // graph (issue #298 GQ): read-only SourceGraph query surface. Every
+        // subaction (kinds/resolve/query/node/edge/source) is a pure read —
+        // graph writes stay parser/source-job owned.
+        AxonRequest::Graph(_) => Some("axon:read"), // NOTE: no wildcard arm — the match must be exhaustive.
+                                                    // Adding a new AxonRequest variant without a required_scope arm is a compile error,
+                                                    // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
     }
 }
 
@@ -240,6 +244,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Resolve(_) => "resolve",
         AxonRequest::Capabilities(_) => "capabilities",
         AxonRequest::Providers(_) => "providers",
+        AxonRequest::Graph(_) => "graph",
     }
 }
 

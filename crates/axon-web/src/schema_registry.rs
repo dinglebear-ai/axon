@@ -2,6 +2,7 @@
 
 mod admin_watch_routes;
 mod extract_routes;
+mod graph_routes;
 mod memory_routes;
 
 use std::sync::OnceLock;
@@ -27,13 +28,15 @@ pub fn rest_route_registry() -> &'static [RestRouteSpec] {
                 + memory_routes::MEMORY_ROUTES.len()
                 + POST_MEMORY_ROUTES.len()
                 + extract_routes::EXTRACT_ROUTES.len()
-                + admin_watch_routes::ADMIN_WATCH_ROUTES.len(),
+                + admin_watch_routes::ADMIN_WATCH_ROUTES.len()
+                + graph_routes::GRAPH_ROUTES.len(),
         );
         routes.extend_from_slice(PRE_MEMORY_ROUTES);
         routes.extend_from_slice(memory_routes::MEMORY_ROUTES);
         routes.extend_from_slice(POST_MEMORY_ROUTES);
         routes.extend_from_slice(extract_routes::EXTRACT_ROUTES);
         routes.extend_from_slice(admin_watch_routes::ADMIN_WATCH_ROUTES);
+        routes.extend_from_slice(graph_routes::GRAPH_ROUTES);
         routes
     })
 }
