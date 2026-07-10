@@ -195,7 +195,7 @@ fn unsupported_input_degrades_to_warning_result() {
     )));
 
     assert_eq!(result.parser_id, "none");
-    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.header.status, LifecycleStatus::Skipped);
     assert_eq!(result.warnings.len(), 1);
     assert_eq!(result.warnings[0].code, "parse.unsupported");
     assert!(result.facts.is_empty());
@@ -500,4 +500,106 @@ fn fake_parser_emits_api_facts_and_deterministic_graph_candidate() {
     assert_eq!(round_trip.graph_candidates, vec![candidate]);
     assert_eq!(round_trip.parser_id, "cargo_manifest");
     assert_eq!(round_trip.header.status, LifecycleStatus::Completed);
+}
+
+#[test]
+fn multiple_parsers_run_when_they_specifically_match_same_document() {
+    // docker-compose.yaml matches both the generic manifest parser (via its
+    // ".yaml"/".yml" path suffix) and the docker-specific parser (via its
+    // "docker-compose.yaml" path suffix + "services:" sniff) — the contract's
+    // literal multi-parser example. Both must run and merge into one result.
+    let registry = production_registry();
+
+    let result = registry.parse(&input(source_doc(
+        ContentKind::Yaml,
+        Some("docker-compose.yaml"),
+        None,
+        // A single YAML document with both a `services:` block (the
+        // docker-specific parser) and an `apiVersion`/`kind`/`metadata.name`
+        // shape (the generic manifest parser's YAML-IaC heuristic), so both
+        // parsers' facts are independently observable in the merged result.
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: axon-web\nservices:\n  api:\n    image: alpine:3\n",
+    )));
+
+    assert_eq!(result.parser_id, "docker_manifest");
+    assert!(
+        result
+            .facts
+            .iter()
+            .any(|fact| fact.parser_id == "docker_manifest"),
+        "expected docker-specific facts"
+    );
+    assert!(
+        result
+            .facts
+            .iter()
+            .any(|fact| fact.parser_id == "yaml_iac_manifest"),
+        "expected the generic manifest parser to also run: {:?}",
+        result.facts
+    );
+}
+
+#[test]
+fn explicit_hint_runs_only_the_requested_parser() {
+    let registry = production_registry();
+    let mut request = input(source_doc(
+        ContentKind::Yaml,
+        Some("docker-compose.yaml"),
+        None,
+        "services:\n  api:\n    image: alpine:3\n",
+    ));
+    request.requested_parser = Some("manifest".to_string());
+
+    let result = registry.parse(&request);
+
+    assert_eq!(result.parser_id, "manifest");
+    assert!(result.facts.iter().all(|fact| fact.parser_id == "manifest"));
+}
+
+#[test]
+fn sanitize_drops_facts_with_impossible_source_range() {
+    let mut bad_fact = crate::facts::source_fact(
+        &input(source_doc(
+            ContentKind::Code,
+            Some("lib.rs"),
+            None,
+            "fn a() {}\n",
+        )),
+        "code_symbols",
+        "line_heuristic",
+        "code_symbol",
+        "a",
+        serde_json::json!({}),
+        Some(5),
+    );
+    // Corrupt the range so line_start > line_end — impossible per
+    // chunking-contract.md's "source ranges are impossible or unordered".
+    let mut range = bad_fact.range.clone().unwrap();
+    range.line_end = Some(1);
+    bad_fact.range = Some(range);
+
+    let fake = parser("bad_range_parser")
+        .with_content_kind(ContentKind::Code)
+        .with_fact(bad_fact);
+    let registry = FakeParserRegistry::new().with_parser(fake);
+
+    let result = registry.parse(&input(source_doc(
+        ContentKind::Code,
+        Some("lib.rs"),
+        None,
+        "fn a() {}\n",
+    )));
+
+    assert!(
+        result.facts.is_empty(),
+        "a fact with an impossible source range must never publish: {:?}",
+        result.facts
+    );
+    assert_eq!(result.header.status, LifecycleStatus::CompletedDegraded);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "parse.invalid_source_range")
+    );
 }

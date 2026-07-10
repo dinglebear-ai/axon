@@ -105,6 +105,153 @@ fn extracts_heuristic_yaml_iac_resources_and_graph_candidates() {
 }
 
 #[test]
+fn extracts_cargo_workspace_members_and_features() {
+    let (facts, candidates) = dependency_facts(&input(
+        "Cargo.toml",
+        ContentKind::Toml,
+        "[workspace]\nmembers = [\"crates/a\", \"crates/b\"]\n\n[features]\ndefault = [\"a\"]\n",
+    ));
+
+    let members: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.fact_kind == "workspace_member")
+        .map(|fact| fact.name.as_str())
+        .collect();
+    assert_eq!(members, vec!["crates/a", "crates/b"]);
+
+    let features: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.fact_kind == "manifest_feature")
+        .map(|fact| fact.name.as_str())
+        .collect();
+    assert_eq!(features, vec!["default"]);
+
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "workspace_member")
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "manifest_feature")
+    );
+}
+
+#[test]
+fn extracts_npm_toolchain_scripts() {
+    let (facts, candidates) = dependency_facts(&input(
+        "package.json",
+        ContentKind::Json,
+        r#"{"scripts":{"build":"tsc","test":"vitest"}}"#,
+    ));
+
+    let scripts: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.fact_kind == "toolchain_script")
+        .map(|fact| fact.name.as_str())
+        .collect();
+    assert_eq!(scripts.len(), 2);
+    assert!(scripts.contains(&"build"));
+    assert!(scripts.contains(&"test"));
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "toolchain_script")
+    );
+}
+
+#[test]
+fn extracts_pyproject_optional_dependency_extras() {
+    let (facts, candidates) = dependency_facts(&input(
+        "pyproject.toml",
+        ContentKind::Toml,
+        "[project]\ndependencies = [\"httpx\"]\n\n[project.optional-dependencies]\ndev = [\"pytest\", \"black\"]\n",
+    ));
+
+    let extras: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.fact_kind == "manifest_extra")
+        .map(|fact| fact.name.as_str())
+        .collect();
+    assert_eq!(extras, vec!["dev"]);
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "manifest_extra")
+    );
+}
+
+#[test]
+fn extracts_toolchain_facts_across_manifest_ecosystems() {
+    let samples = [
+        (
+            "Cargo.toml",
+            ContentKind::Toml,
+            "[package]\nedition = \"2021\"\nrust-version = \"1.75\"\n",
+            vec![
+                ("toolchain", "2021".to_string()),
+                ("toolchain_version", "1.75".to_string()),
+            ],
+        ),
+        (
+            "go.mod",
+            ContentKind::PlainText,
+            "module example.com/axon\n\ngo 1.22\ntoolchain go1.22.3\n",
+            vec![
+                ("toolchain_version", "1.22".to_string()),
+                ("toolchain_version", "1.22.3".to_string()),
+            ],
+        ),
+        (
+            "package.json",
+            ContentKind::Json,
+            r#"{"engines":{"node":">=18"}}"#,
+            vec![("toolchain_version", ">=18".to_string())],
+        ),
+        (
+            "pyproject.toml",
+            ContentKind::Toml,
+            "[project]\nrequires-python = \">=3.11\"\n",
+            vec![("toolchain_version", ">=3.11".to_string())],
+        ),
+        (
+            "pom.xml",
+            ContentKind::Xml,
+            "<project><properties><maven.compiler.release>21</maven.compiler.release></properties></project>",
+            vec![("toolchain_version", "21".to_string())],
+        ),
+    ];
+
+    for (path, kind, text, expected) in samples {
+        let (facts, candidates) = dependency_facts(&input(path, kind, text));
+        let toolchain_facts: Vec<_> = facts
+            .iter()
+            .filter(|fact| fact.fact_kind == "toolchain" || fact.fact_kind == "toolchain_version")
+            .collect();
+        assert_eq!(
+            toolchain_facts.len(),
+            expected.len(),
+            "unexpected toolchain fact count for {path}"
+        );
+        for (fact, (kind, version)) in toolchain_facts.iter().zip(expected.iter()) {
+            assert_eq!(fact.fact_kind, *kind, "fact_kind mismatch for {path}");
+            assert_eq!(
+                fact.value.get("version").and_then(|v| v.as_str()),
+                Some(version.as_str()),
+                "version mismatch for {path}"
+            );
+        }
+        assert!(
+            candidates.iter().any(|candidate| {
+                candidate.kind == "toolchain" || candidate.kind == "toolchain_version"
+            }),
+            "missing toolchain graph candidate for {path}"
+        );
+    }
+}
+
+#[test]
 fn malformed_package_json_degrades_with_warning() {
     let result = dependency_parse_result(&input(
         "package.json",

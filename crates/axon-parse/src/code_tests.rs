@@ -80,3 +80,100 @@ fn ignores_commented_out_symbols() {
     let names: Vec<_> = facts.iter().map(|fact| fact.name.as_str()).collect();
     assert_eq!(names, vec!["real"]);
 }
+
+#[test]
+fn every_fact_is_stamped_as_a_disclosed_regex_fallback() {
+    let facts = symbol_facts(&input("src/lib.rs", "pub fn run() {}\n"));
+
+    assert_eq!(facts[0].parser_method, "regex_fallback");
+    assert!(
+        facts[0].confidence < 0.75,
+        "fallback facts must carry confidence < 0.75 per parsing-contract.md"
+    );
+    assert_eq!(
+        facts[0].value["symbol_extraction_status"],
+        "heuristic_fallback"
+    );
+}
+
+#[test]
+fn rust_visibility_is_derived_from_the_pub_keyword() {
+    let facts = symbol_facts(&input(
+        "src/lib.rs",
+        "pub struct Public;\nstruct Private;\n",
+    ));
+
+    assert_eq!(facts[0].value["symbol_visibility"], "public");
+    assert_eq!(facts[1].value["symbol_visibility"], "private");
+}
+
+#[test]
+fn python_visibility_is_derived_from_a_leading_underscore() {
+    let facts = symbol_facts(&input(
+        "pkg/mod.py",
+        "def public_fn():\n    pass\ndef _private_fn():\n    pass\n",
+    ));
+
+    assert_eq!(facts[0].value["symbol_visibility"], "public");
+    assert_eq!(facts[1].value["symbol_visibility"], "private");
+}
+
+#[test]
+fn nested_python_method_records_its_class_as_parent_symbol() {
+    let facts = symbol_facts(&input(
+        "pkg/mod.py",
+        "class Widget:\n    def render(self):\n        pass\n",
+    ));
+
+    assert_eq!(facts[0].name, "Widget");
+    assert!(facts[0].value["parent_symbol"].is_null());
+    assert_eq!(facts[1].name, "render");
+    assert_eq!(facts[1].value["parent_symbol"], "Widget");
+}
+
+#[test]
+fn rust_function_span_covers_its_full_brace_body() {
+    let facts = symbol_facts(&input(
+        "src/lib.rs",
+        "pub fn run() {\n    let x = 1;\n    println!(\"{x}\");\n}\n",
+    ));
+
+    let range = facts[0].range.as_ref().expect("range");
+    assert_eq!(range.line_start, Some(1));
+    assert_eq!(range.line_end, Some(4));
+}
+
+#[test]
+fn rust_unit_struct_span_is_single_line() {
+    let facts = symbol_facts(&input("src/lib.rs", "pub struct Parser;\n"));
+
+    let range = facts[0].range.as_ref().expect("range");
+    assert_eq!(range.line_start, Some(1));
+    assert_eq!(range.line_end, Some(1));
+}
+
+#[test]
+fn python_function_span_covers_its_indented_body() {
+    let facts = symbol_facts(&input(
+        "pkg/mod.py",
+        "def run():\n    a = 1\n    b = 2\n\nc = 3\n",
+    ));
+
+    let range = facts[0].range.as_ref().expect("range");
+    assert_eq!(range.line_start, Some(1));
+    assert_eq!(range.line_end, Some(3));
+}
+
+#[test]
+fn every_symbol_range_is_ordered_and_therefore_survives_sanitization() {
+    let (facts, candidates) = symbol_facts_with_graph(&input(
+        "src/lib.rs",
+        "pub struct Parser;\nasync fn run() {\n    let _ = 1;\n}\nclass PyThing:\n    def run(self):\n        pass\n",
+    ));
+
+    for fact in &facts {
+        let range = fact.range.as_ref().expect("every code_symbol has a range");
+        assert!(range.line_start.unwrap() <= range.line_end.unwrap());
+    }
+    assert_eq!(facts.len(), candidates.len());
+}

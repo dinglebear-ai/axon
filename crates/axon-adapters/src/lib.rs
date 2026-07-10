@@ -1,7 +1,10 @@
-//! Target pipeline crate skeleton for `axon-adapters`.
+//! Target pipeline crate for `axon-adapters` (issue #298).
 //!
-//! This crate is intentionally marker-only in PR0. Runtime behavior moves here
-//! in issue #298 implementation PRs after contract tests exist.
+//! Live, not marker-only: `SourceAdapterRegistry`, per-family adapters
+//! (git/local/web/feed/reddit/youtube/sessions), capability/onboarding
+//! tracking, and the tool-invocation adapters (`cli_tool`, `mcp_tool`) are
+//! wired and exercised by tests in this crate and consumed by
+//! `axon-services`.
 
 pub mod acquisition;
 pub mod adapter;
