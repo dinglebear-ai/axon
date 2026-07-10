@@ -44,13 +44,18 @@ class AxonClientPhase2Test {
         assertEquals("j1", resp.crawlJobs[0].jobId)
     }
 
-    @Test fun `ingestStart posts to v1 ingest and decodes AcceptedJob`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"job_id":"abc","status":"pending"}""").addHeader("Content-Type","application/json"))
+    @Test fun `ingestStart posts to v1 sources and decodes AcceptedJob`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"job_id":"abc","canonical_uri":"https://github.com/o/r","status":"queued"}""").addHeader("Content-Type","application/json"))
         val r = client.ingestStart(IngestRequest(sourceType = "github", target = "https://github.com/o/r"))
         assertTrue(r.isSuccess)
         assertEquals("abc", r.getOrThrow().jobId)
-        val body = server.takeRequest().body.readUtf8()
-        assertTrue(body.contains("\"source_type\":\"github\""))
+        val req = server.takeRequest()
+        assertEquals("/v1/sources", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"source\":\"https://github.com/o/r\""))
+        // `source_type` was a routing hint for the removed family-specific endpoint;
+        // the unified pipeline classifies the target itself, so it must not be sent.
+        assertTrue(!body.contains("source_type"))
         assertTrue(!body.contains("\"collection\""))
     }
 
