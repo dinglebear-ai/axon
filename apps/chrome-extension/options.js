@@ -95,27 +95,27 @@ async function requestAuthProbe() {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${server}/v1/scrape`, {
+  const response = await fetch(`${server}/v1/sources`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ url: "" })
+    body: JSON.stringify({ source: "" })
   });
 
   const body = await response.text();
-  if (isExpectedScrapeProbeResponse(response, body)) {
+  if (isExpectedSourceProbeResponse(response, body)) {
     return;
   }
 
   throw new Error(`${response.status} ${response.statusText}${body ? `: ${body}` : ""}`);
 }
 
-function isExpectedScrapeProbeResponse(response, body) {
+function isExpectedSourceProbeResponse(response, body) {
   if (response.status !== 400) {
     return false;
   }
   try {
     const payload = JSON.parse(body);
-    return payload?.kind === "bad_request" && payload?.message === "url or urls is required";
+    return payload?.error?.code === "route.validation.missing_field" && payload?.error?.message === "source is required";
   } catch {
     return false;
   }

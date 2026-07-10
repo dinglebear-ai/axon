@@ -1,6 +1,10 @@
 const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
 const AUTO_SCRAPE_HISTORY_KEY = "autoScrapeHistory";
 const AUTO_SCRAPE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// `SourceRequest.execution` has no per-field defaults once the key is
+// present, so a synchronous ("foreground") request must spell out the whole
+// policy rather than just `{ mode: "foreground" }`.
+const FOREGROUND_EXECUTION = { mode: "foreground", priority: "normal", detached: false, heartbeat_interval_secs: 5 };
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.action.setBadgeBackgroundColor({ color: "#24536c" });
@@ -39,7 +43,9 @@ async function scrapeVisitedUrl(tabId, url) {
   await setBadge(tabId, "SCR", "#0e7490");
 
   try {
-    await postAxon(config, "/v1/scrape", { url });
+    // Background execution (the SourceRequest default) — this just submits
+    // the page for indexing, it doesn't need the content back.
+    await postAxon(config, "/v1/sources", { source: url, scope: "page" });
     await markAutoScrapeAttempt(urlKey, url, true);
     await chrome.storage.local.set({
       lastAutoScrape: {
@@ -231,7 +237,12 @@ async function scrapeAndCopyFromContext(url, tab) {
 
   await setContextBadge(tab, "SCR", "#0e7490");
   try {
-    const raw = await postAxon(await loadConfig(), "/v1/scrape", { url, embed: false });
+    const raw = await postAxon(await loadConfig(), "/v1/sources", {
+      source: url,
+      scope: "page",
+      embed: false,
+      execution: FOREGROUND_EXECUTION
+    });
     const markdown = scrapeMarkdownFromRaw(raw);
     if (!markdown) {
       throw new Error("Scrape response did not include markdown.");
@@ -271,7 +282,7 @@ async function crawlFromContext(url, tab) {
 
   await setContextBadge(tab, "CRL", "#c96a1c");
   try {
-    const raw = await postAxon(await loadConfig(), "/v1/crawl", { urls: [url] });
+    const raw = await postAxon(await loadConfig(), "/v1/sources", { source: url, scope: "site" });
     await chrome.storage.local.set({
       lastContextAction: {
         action: "crawl",
@@ -299,6 +310,10 @@ async function crawlFromContext(url, tab) {
 }
 
 function scrapeMarkdownFromRaw(raw) {
+  const content = raw && typeof raw === "object" ? raw.inline?.content : null;
+  if (content && content.kind === "inline_text") {
+    return content.text;
+  }
   const payload = raw && typeof raw === "object" && raw.payload && typeof raw.payload === "object" ? raw.payload : {};
   return raw?.markdown || payload.markdown || raw?.content || payload.content || raw?.output || "";
 }
