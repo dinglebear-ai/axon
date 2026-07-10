@@ -14,7 +14,7 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-web/src/schema_registry.rs` | `sha256:44934021ebdb1fc7f2b4d7f665dc1f778f6c4123caa2efd7431e9718ddc67694` |
+| `crates/axon-web/src/schema_registry.rs` | `sha256:eb50ceac331134c941e5e5dc80f2543828a7d27e468e7b6100f0ccf7fa71e93a` |
 | `docs/pipeline-unification/schemas/openapi-schema.md` | `sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7` |
 
 ## Root Shape

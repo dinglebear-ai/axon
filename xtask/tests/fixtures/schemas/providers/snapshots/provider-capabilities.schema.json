@@ -1774,7 +1774,7 @@
         "path": "crates/axon-core/src/boundary.rs"
       },
       {
-        "checksum": "sha256:0a7f6c9f4936ea017c78273c8ce43c93952c9ea147f34439429149b4c89d6e80",
+        "checksum": "sha256:ee3ae9d7dbee3455d25afb00a4e9c62689521a6b543cec31c74d3eb082c8b17f",
         "kind": "rust_module",
         "path": "crates/axon-embedding/src/fake.rs"
       },
@@ -1784,7 +1784,7 @@
         "path": "crates/axon-embedding/src/provider.rs"
       },
       {
-        "checksum": "sha256:434f6306076a521876554880cc676663e7cd94b3998e4c80422f263df3d92a06",
+        "checksum": "sha256:6b864926eb293c52751e81390fc85f13f014900e7399bb8bafd014c4915ef6d5",
         "kind": "rust_module",
         "path": "crates/axon-llm/src/fake.rs"
       },
@@ -1799,7 +1799,7 @@
         "path": "crates/axon-observe/src/reservation.rs"
       },
       {
-        "checksum": "sha256:dcb2623f2d3757a17c364cf377dc5d746524a9a439608f051e09e5e00a43be6b",
+        "checksum": "sha256:147f6b2e4f9e857456d6ef7dfc5dd5142ba18e050f8d96a85723e4bc0837fb62",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/store.rs"
       },

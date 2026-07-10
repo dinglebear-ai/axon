@@ -28,6 +28,8 @@ pub mod jobs_stream;
 pub mod memory;
 #[path = "handlers/mobile_sessions.rs"]
 pub mod mobile_sessions;
+#[path = "handlers/providers.rs"]
+pub(crate) mod providers;
 #[path = "handlers/rag.rs"]
 pub mod rag;
 #[path = "handlers/rest.rs"]
@@ -36,6 +38,8 @@ pub(crate) mod rest;
 pub mod setup;
 #[path = "handlers/sources.rs"]
 pub mod sources;
+#[path = "handlers/sources_resource.rs"]
+pub(crate) mod sources_resource;
 
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;
