@@ -360,7 +360,19 @@ pub(crate) async fn export_memories(
     Json(req): Json<MemoryExportRequest>,
 ) -> Result<Json<axon_api::source::MemoryExportResult>, HttpError> {
     log_caller("/v1/memories/export", auth.as_ref());
-    services::memory::export(&state.service_context, req)
+    // Caller-scope redaction (contract "Import and Export": "export writes
+    // an artifact or stream with redacted content according to caller
+    // scope"): a non-admin caller's export drops `sensitive`-visibility
+    // records. Same admin-scope derivation as `import_memories`'s
+    // `replace_scope` gate; `LoopbackDev` has no `AuthContext` and is
+    // locally-trusted.
+    let authz = match auth.as_ref() {
+        Some(Extension(auth_ctx)) => services::memory::MemoryAuthz {
+            is_admin: axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE),
+        },
+        None => services::memory::MemoryAuthz::admin(),
+    };
+    services::memory::export(&state.service_context, req, &authz)
         .await
         .map(Json)
         .map_err(anyhow_to_http_error)

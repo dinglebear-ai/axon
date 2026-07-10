@@ -9,9 +9,11 @@
 
 use super::*;
 use axon_api::source::{
-    MemoryExportRequest, MemoryExportResult, MemoryImportMode, MemoryImportRequest,
-    MemoryImportResult,
+    ArtifactId, ArtifactKind, ArtifactRef, MemoryExportRequest, MemoryExportResult,
+    MemoryImportMode, MemoryImportRequest, MemoryImportResult, Visibility,
 };
+use axon_core::artifacts::write_configured_output;
+use sha2::{Digest, Sha256};
 
 /// Hard cap on the number of records accepted by a single import request.
 ///
@@ -72,13 +74,75 @@ pub async fn import(
         );
     }
     let store = memory_store(ctx).await?;
-    store.import(req).await.map_err(store_err)
+    // Job-tracked like `compact` (contract R3-16: memory jobs pollable via
+    // `job_id`) — `request_json`'s `payload` is the full typed
+    // `MemoryImportRequest` so a detached unified-worker claim of this same
+    // `memory_import` job (`crate::runtime::job_runners::
+    // MemoryCompactionRunner`) can reconstruct and execute it independently
+    // of this foreground call.
+    let request_json = json!({
+        "operation": "memory_import",
+        "payload": serde_json::to_value(&req).context("serialize import request")?,
+    });
+    job_tracking::track_operation_job(
+        ctx,
+        axon_api::source::OperationKind::MemoryImport,
+        request_json,
+        || async move { store.import(req).await.map_err(store_err) },
+    )
+    .await
 }
 
 /// Export memory records matching a scope.
-pub async fn export(ctx: &ServiceContext, req: MemoryExportRequest) -> Result<MemoryExportResult> {
+///
+/// Contract "Import and Export": "export writes an artifact or stream with
+/// redacted content according to caller scope." Two things happen beyond the
+/// raw store call:
+/// - caller-scope filtering: `sensitive`-visibility records are dropped
+///   unless `authz.is_admin` (bodies are already secret-redacted at write
+///   time — see `MemoryRecord::visibility` and `RedactionContext::
+///   memory_record()` — so this is a classification-level access gate, not a
+///   second content scrub).
+/// - artifact backing: the filtered record set is written through the
+///   artifact boundary (`axon_core::artifacts::write_configured_output`)
+///   under `cfg.output_dir`, and the result carries the resulting
+///   `ArtifactRef` so REST/CLI/MCP callers get a durable, hashable export
+///   even when the response body itself is also returned inline.
+pub async fn export(
+    ctx: &ServiceContext,
+    req: MemoryExportRequest,
+    authz: &MemoryAuthz,
+) -> Result<MemoryExportResult> {
     let store = memory_store(ctx).await?;
-    store.export(req).await.map_err(store_err)
+    let mut result = store.export(req).await.map_err(store_err)?;
+
+    if !authz.is_admin {
+        result
+            .records
+            .retain(|record| record.visibility != Visibility::Sensitive);
+    }
+    result.count = result.records.len() as u32;
+
+    let payload = serde_json::to_vec_pretty(&result.records)
+        .context("serialize exported memory records for artifact write")?;
+    let mut hasher = Sha256::new();
+    hasher.update(&payload);
+    let content_hash = format!("{:x}", hasher.finalize());
+    let relative_path = format!("memory-exports/{}.json", uuid::Uuid::new_v4());
+    let written = write_configured_output(&ctx.cfg().output_dir, None, &relative_path, &payload)
+        .await
+        .map_err(|err| anyhow::anyhow!("write memory export artifact: {err}"))?;
+
+    result.artifact = Some(ArtifactRef {
+        artifact_id: ArtifactId::new(format!("art_mem_export_{}", &content_hash[..16])),
+        artifact_kind: ArtifactKind::Report,
+        uri: written.to_string_lossy().to_string(),
+        size_bytes: Some(payload.len() as u64),
+        content_hash: Some(content_hash),
+        created_at: axon_api::source::Timestamp::from(chrono::Utc::now()),
+    });
+
+    Ok(result)
 }
 
 /// Build a [`MemoryImportRequest`] from the flat CLI/MCP [`MemoryRequest`]
@@ -101,5 +165,6 @@ pub(crate) fn export_request_from_flat(req: MemoryRequest) -> MemoryExportReques
     MemoryExportRequest {
         scope: req.export_scope,
         include_archived: req.include_archived.unwrap_or(false),
+        include_working: req.include_working.unwrap_or(false),
     }
 }

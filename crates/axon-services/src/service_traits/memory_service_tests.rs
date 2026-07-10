@@ -57,6 +57,7 @@ async fn fake_memory_service_search_matches_body() {
         include_graph: false,
         include_archived: false,
         reinforce: false,
+        include_statuses: Vec::new(),
     };
     let result = fake.search(request).await.expect("search should succeed");
     assert_eq!(result.results.len(), 1);

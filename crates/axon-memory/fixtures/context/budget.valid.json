@@ -1,0 +1,10 @@
+{
+  "token_budget": 2000,
+  "query": "jobs metadata store architecture",
+  "source_id": "src_axon_repo",
+  "filters": {
+    "scope_kind": "repo"
+  },
+  "depth": 1,
+  "include_working": false
+}

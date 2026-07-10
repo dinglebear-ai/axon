@@ -21,19 +21,24 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axon_api::source::*;
 use axon_core::redact::{DefaultRedactor, RedactionContext, redact_text_checked};
+use axon_observe::collector::ObservabilitySink;
+use axon_observe::sink::tracing_sink::TracingObservabilitySink;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
 use crate::migration::ensure_schema;
 use crate::record::Clock;
+use crate::sqlite::compact::CompactionSynthesizer;
 use crate::store::{MemoryStore, Result};
 use error::{invalid, not_found, redaction_failed, store_error};
-use rows::{record_from_row, record_json_columns, status_to_str, type_to_str};
+use rows::{record_from_row, record_json_columns, status_to_str, type_to_str, visibility_to_str};
 
 /// A durable memory store backed by SQLite.
 pub struct SqliteMemoryStore {
     conn: Arc<Mutex<Connection>>,
     clock: Arc<dyn Clock>,
+    sink: Arc<dyn ObservabilitySink>,
+    synthesizer: Option<Arc<dyn CompactionSynthesizer>>,
 }
 
 impl SqliteMemoryStore {
@@ -54,7 +59,39 @@ impl SqliteMemoryStore {
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             clock,
+            sink: Arc::new(TracingObservabilitySink::new()),
+            synthesizer: None,
         })
+    }
+
+    /// Inject an observability sink (default: [`TracingObservabilitySink`]).
+    /// Tests use `axon_observe::testing::InMemoryObservabilitySink` to
+    /// assert on emitted lifecycle events.
+    #[must_use]
+    pub fn with_observability_sink(mut self, sink: Arc<dyn ObservabilitySink>) -> Self {
+        self.sink = sink;
+        self
+    }
+
+    /// Inject an LLM-backed compaction synthesizer (contract "compact"
+    /// strategy `semantic_summary`). Without one, `compact` requests for
+    /// that strategy fail closed with `memory.llm_unavailable` rather than
+    /// silently falling back to `concatenate`.
+    #[must_use]
+    pub fn with_compaction_synthesizer(
+        mut self,
+        synthesizer: Arc<dyn CompactionSynthesizer>,
+    ) -> Self {
+        self.synthesizer = Some(synthesizer);
+        self
+    }
+
+    pub(crate) fn sink(&self) -> &Arc<dyn ObservabilitySink> {
+        &self.sink
+    }
+
+    pub(crate) fn synthesizer(&self) -> Option<&Arc<dyn CompactionSynthesizer>> {
+        self.synthesizer.as_ref()
     }
 
     /// Generate a fresh memory id. UUIDv4-based rather than a per-instance
@@ -158,6 +195,7 @@ impl MemoryStore for SqliteMemoryStore {
                 message: "created".to_string(),
                 timestamp: Timestamp(now.clone()),
             }],
+            visibility: request.visibility.unwrap_or(Visibility::Internal),
             title: request_title,
             links: request.links.clone(),
             decay,
@@ -171,8 +209,19 @@ impl MemoryStore for SqliteMemoryStore {
         for link in &request.links {
             lifecycle::insert_link(&conn, &memory_id.0, link, &now)?;
         }
+        drop(conn);
         let age = 0.0;
         let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
+        crate::observe::emit(
+            &self.sink,
+            crate::observe::MemoryPhase::Remembering,
+            &record,
+            Severity::Info,
+            None,
+            Some(score),
+            None,
+        )
+        .await;
         Ok(result_from_record(&record, score, &now, &now))
     }
 
@@ -210,8 +259,19 @@ impl MemoryStore for SqliteMemoryStore {
             timestamp: Timestamp(now.clone()),
         });
         update_history(&conn, &record, &now)?;
+        drop(conn);
         let (age, created, updated) = age_and_bounds(&record, self.clock.now_epoch_secs());
         let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
+        crate::observe::emit(
+            &self.sink,
+            crate::observe::MemoryPhase::Linking,
+            &record,
+            Severity::Info,
+            None,
+            Some(score),
+            None,
+        )
+        .await;
         Ok(result_from_record(&record, score, &created, &updated))
     }
 
@@ -338,9 +398,9 @@ pub(crate) fn insert_record(conn: &Connection, record: &MemoryRecord, now: &str)
         "INSERT INTO memory_records (
             memory_id, memory_type, status, body, title, confidence, salience,
             scope_kind, scope_value, decay_json, history_json, embedding_refs_json,
-            superseded_by, contradicts, created_at, updated_at
+            superseded_by, contradicts, visibility, created_at, updated_at
          ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
          )",
         rusqlite::params![
             record.memory_id.0,
@@ -357,6 +417,7 @@ pub(crate) fn insert_record(conn: &Connection, record: &MemoryRecord, now: &str)
             embedding_json,
             record.superseded_by.as_ref().map(|m| m.0.clone()),
             record.contradicts.as_ref().map(|m| m.0.clone()),
+            visibility_to_str(record.visibility),
             now,
             now,
         ],
@@ -373,7 +434,7 @@ pub(crate) fn update_record(conn: &Connection, record: &MemoryRecord, now: &str)
             memory_type = ?2, status = ?3, body = ?4, title = ?5,
             confidence = ?6, salience = ?7, scope_kind = ?8, scope_value = ?9,
             decay_json = ?10, history_json = ?11, embedding_refs_json = ?12,
-            superseded_by = ?13, contradicts = ?14, updated_at = ?15
+            superseded_by = ?13, contradicts = ?14, visibility = ?15, updated_at = ?16
          WHERE memory_id = ?1",
         rusqlite::params![
             record.memory_id.0,
@@ -390,6 +451,7 @@ pub(crate) fn update_record(conn: &Connection, record: &MemoryRecord, now: &str)
             embedding_json,
             record.superseded_by.as_ref().map(|m| m.0.clone()),
             record.contradicts.as_ref().map(|m| m.0.clone()),
+            visibility_to_str(record.visibility),
             now,
         ],
     )

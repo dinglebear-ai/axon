@@ -106,6 +106,123 @@ async fn detached_memory_compaction_job_is_claimed_and_completed_by_unified_work
     backend.shutdown().await;
 }
 
+/// Real end-to-end proof (not just the registry-seam fallback above): a
+/// `memory_compaction`-payload job, claimed and run purely through the
+/// detached unified worker (never invoked inline), actually merges two
+/// pre-seeded memories into a third — the `MemoryCompactionRunner` payload
+/// dispatch, not `capabilities()`, did the work.
+#[tokio::test]
+async fn detached_memory_compaction_job_actually_compacts_seeded_memories() {
+    use axon_api::source::{
+        MemoryCompactRequest, MemoryId, MemoryRequest, MemoryScope, MemoryType, Timestamp,
+    };
+    use axon_memory::record::SystemClock as MemoryClock;
+    use axon_memory::sqlite::SqliteMemoryStore;
+    use axon_memory::store::MemoryStore;
+
+    let (_tmp, cfg) = test_cfg().await;
+
+    // Seed two memories directly against the same sqlite_path the registry's
+    // `MemoryCompactionRunner` will open.
+    let seed_store =
+        SqliteMemoryStore::open(&cfg.sqlite_path.to_string_lossy(), Arc::new(MemoryClock))
+            .expect("open seed memory store");
+    let scope = MemoryScope {
+        kind: "project".to_string(),
+        value: "axon".to_string(),
+    };
+    let first = seed_store
+        .remember(MemoryRequest {
+            memory_type: MemoryType::Fact,
+            body: "alpha fact".to_string(),
+            confidence: 0.8,
+            salience: 0.6,
+            scope: scope.clone(),
+            title: None,
+            tags: Vec::new(),
+            links: Vec::new(),
+            decay: None,
+            embed: false,
+            visibility: None,
+        })
+        .await
+        .expect("remember first");
+    let second = seed_store
+        .remember(MemoryRequest {
+            memory_type: MemoryType::Fact,
+            body: "beta fact".to_string(),
+            confidence: 0.7,
+            salience: 0.5,
+            scope: scope.clone(),
+            title: None,
+            tags: Vec::new(),
+            links: Vec::new(),
+            decay: None,
+            embed: false,
+            visibility: None,
+        })
+        .await
+        .expect("remember second");
+
+    let backend = SqliteJobBackend::new_with_workers_and_registry(
+        Arc::clone(&cfg),
+        Some(Arc::new(build_registry(&cfg).expect("build registry"))),
+    )
+    .await
+    .expect("backend with workers + registry");
+    let store = SqliteUnifiedJobStore::new(Arc::clone(backend.pool()).as_ref().clone());
+
+    let compact_request = MemoryCompactRequest {
+        memory_ids: vec![
+            MemoryId::new(first.memory_id.0.clone()),
+            MemoryId::new(second.memory_id.0.clone()),
+        ],
+        strategy: "concatenate".to_string(),
+        result_type: MemoryType::Fact,
+        title: None,
+        scope,
+        archive_sources: true,
+        instructions: None,
+        timestamp: Timestamp(chrono::Utc::now().to_rfc3339()),
+    };
+    let mut request = detached_job_request(UnifiedJobKind::Memory);
+    request.request = Some(serde_json::json!({
+        "operation": "memory_compaction",
+        "payload": serde_json::to_value(&compact_request).expect("serialize compact request"),
+    }));
+
+    let job = store
+        .create(request)
+        .await
+        .expect("create detached memory compaction job");
+    let summary = wait_for_terminal(&store, job.job_id).await;
+    assert_eq!(
+        summary.status,
+        LifecycleStatus::Completed,
+        "real payload compaction should complete: {:?}",
+        summary.last_error
+    );
+
+    // The two sources are archived and a third (compacted) memory exists.
+    let first_after = seed_store
+        .get(first.memory_id.clone())
+        .await
+        .expect("get first")
+        .expect("first still exists");
+    assert_eq!(first_after.status, axon_api::source::MemoryStatus::Archived);
+    let second_after = seed_store
+        .get(second.memory_id.clone())
+        .await
+        .expect("get second")
+        .expect("second still exists");
+    assert_eq!(
+        second_after.status,
+        axon_api::source::MemoryStatus::Archived
+    );
+
+    backend.shutdown().await;
+}
+
 /// Same proof for `JobKind::ProviderProbe`, backed by the real
 /// `system::doctor::doctor` connectivity check.
 #[tokio::test]
