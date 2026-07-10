@@ -1,3 +1,8 @@
+// Client-side pre-redaction + blocked-capture-scheme guard shared with the
+// popup (see capture-redaction.js — AxonRedact.redactText/redactUrl/
+// isBlockedCaptureUrl/blockedCaptureReason).
+importScripts("capture-redaction.js");
+
 const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
 const AUTO_SCRAPE_HISTORY_KEY = "autoScrapeHistory";
 const AUTO_SCRAPE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -113,7 +118,7 @@ async function postAxon(config, path, body) {
 }
 
 function isScrapableUrl(url) {
-  return /^https?:\/\//i.test(url);
+  return /^https?:\/\//i.test(url) && !AxonRedact.isBlockedCaptureUrl(url);
 }
 
 async function wasScrapedWithinCooldown(urlKey) {
@@ -210,7 +215,13 @@ chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
     return;
   }
 
-  const intent = { op: "ask", arg: info.selectionText || "" };
+  const blockedReason = AxonRedact.blockedCaptureReason(tab?.url || info.pageUrl || "");
+  if (blockedReason) {
+    await notifyContextAction("Axon capture blocked", blockedReason);
+    return;
+  }
+
+  const intent = { op: "ask", arg: AxonRedact.redactText(info.selectionText || "").text };
 
   // Stash the intent so a freshly-opened panel can pick it up on load,
   // then nudge any already-open panel via runtime message.
@@ -232,6 +243,7 @@ chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
 async function scrapeAndCopyFromContext(url, tab) {
   if (!isScrapableUrl(url)) {
     await flashContextError(tab);
+    await notifyContextAction("Axon capture blocked", AxonRedact.blockedCaptureReason(url) || "Only http:// and https:// pages can be scraped.");
     return;
   }
 
@@ -277,6 +289,7 @@ async function scrapeAndCopyFromContext(url, tab) {
 async function crawlFromContext(url, tab) {
   if (!isScrapableUrl(url)) {
     await flashContextError(tab);
+    await notifyContextAction("Axon capture blocked", AxonRedact.blockedCaptureReason(url) || "Only http:// and https:// pages can be crawled.");
     return;
   }
 

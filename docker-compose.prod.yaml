@@ -173,6 +173,16 @@ services:
       - "${TEI_HTTP_PORT:-52000}:80"
     volumes:
       - ${AXON_HOME:-${HOME}/.axon}/tei:/data
+    # TEI server-side tuning below is compose-only interpolation — these vars
+    # have no config.toml home because they configure the TEI *container*
+    # process, not axon itself. Set them in ~/.axon/.env only if you need to
+    # override the inline defaults; do not add more axon tuning vars here.
+    #   TEI_MAX_CONCURRENT_REQUESTS       (default 512)
+    #   TEI_MAX_BATCH_TOKENS              (default 196608)
+    #   TEI_MAX_BATCH_REQUESTS            (default 512)
+    #   TEI_SERVER_MAX_CLIENT_BATCH_SIZE  (default 128)
+    #   TEI_POOLING                       (default last-token)
+    #   TEI_TOKENIZATION_WORKERS          (default 20)
     command:
       - --model-id
       - ${TEI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}

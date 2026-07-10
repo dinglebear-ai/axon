@@ -280,6 +280,26 @@ fn render_cutover_stores_section(report: &serde_json::Value) {
     }
 }
 
+fn render_config_diagnostics_section(report: &serde_json::Value) {
+    let Some(diagnostics) = report["config_diagnostics"].as_array() else {
+        return;
+    };
+    if diagnostics.is_empty() {
+        return;
+    }
+    println!();
+    println!("{}", primary("Config Diagnostics"));
+    for item in diagnostics {
+        let key = item["key"].as_str().unwrap_or("?");
+        let message = item["message"].as_str().unwrap_or("");
+        let remediation = item["remediation"].as_str().unwrap_or("");
+        println!("  {} {}: {}", muted("⚠"), key, message);
+        if !remediation.is_empty() {
+            println!("    {} {}", muted("→"), muted(remediation));
+        }
+    }
+}
+
 pub(crate) fn render_doctor_report_human(report: &serde_json::Value) {
     let all_ok = report_bool(report, &["all_ok"]);
 
@@ -297,6 +317,8 @@ pub(crate) fn render_doctor_report_human(report: &serde_json::Value) {
 
     println!();
     render_browser_runtime_section(report);
+
+    render_config_diagnostics_section(report);
 
     println!();
     let status = status_from_bool(all_ok);

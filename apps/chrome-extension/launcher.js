@@ -86,7 +86,28 @@
   }
 
   /* ── API dispatch per action ── */
+  // Every URL-taking op refuses browser-internal/privileged schemes
+  // (chrome://, file://, about:, devtools://, ...) with a user-visible
+  // reason before dispatch; every free-text ("query") op is redacted
+  // client-side first. See capture-redaction.js (window.AxonRedact) —
+  // chrome-extension-contract.md Capture Contract / Security Contract.
+  function assertUrlCaptureAllowed(url) {
+    const reason = window.AxonRedact.blockedCaptureReason(url);
+    if (reason) {
+      const e = new Error(reason);
+      e.status = 400;
+      throw e;
+    }
+    return url;
+  }
+
   function callApi(op, arg) {
+    const mode = argMode(op);
+    if (mode === "url" && arg) {
+      splitUrls(arg).forEach(assertUrlCaptureAllowed);
+    } else if (mode === "query" && typeof arg === "string" && arg) {
+      arg = window.AxonRedact.redactText(arg).text;
+    }
     switch (op.id) {
       case "scrape": return requestAxon("POST", "/v1/sources", { source: arg, scope: "page", embed: true, execution: FOREGROUND_EXECUTION });
       case "map": return requestAxon("POST", "/v1/map", { url: arg });

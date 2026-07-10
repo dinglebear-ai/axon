@@ -87,6 +87,16 @@ pub(super) struct TomlLlmSection {
     /// window (drives the adaptive full-docs floor in `ask`). Absent = infer
     /// from the model name. Env `AXON_SYNTHESIS_HIGH_CONTEXT` wins.
     pub synthesis_high_context: Option<bool>,
+    /// Max concurrent LLM completion requests across the selected backend
+    /// (clamped 1–64). Env `AXON_LLM_COMPLETION_CONCURRENCY` wins.
+    pub completion_concurrency: Option<usize>,
+    /// Timeout in seconds for each LLM completion request (clamped
+    /// 10–1800). Env `AXON_LLM_COMPLETION_TIMEOUT_SECS` wins.
+    pub completion_timeout_secs: Option<u64>,
+    /// How long (seconds) an idle pooled `codex app-server` child may sit
+    /// unused before the pool discards it on next checkout (clamped 0–3600;
+    /// 0 disables TTL eviction). Env `AXON_CODEX_POOL_IDLE_TTL_SECS` wins.
+    pub codex_pool_idle_ttl_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -197,6 +207,10 @@ pub(super) struct TomlSearchSection {
     pub hnsw_ef_legacy: Option<usize>,
     /// Qdrant collection name.
     pub collection: Option<String>,
+    /// When true (default), `research` fetches each top source's full page
+    /// and synthesizes over it; when false it synthesizes over search
+    /// snippets only (much faster). Env `AXON_RESEARCH_FULL_CONTENT` wins.
+    pub research_full_content: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
