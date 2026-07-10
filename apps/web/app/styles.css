@@ -239,6 +239,18 @@ label {
   font-weight: var(--aurora-weight-ui);
 }
 
+.checkbox-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-field input {
+  width: auto;
+  min-height: 0;
+}
+
 input,
 select,
 textarea {

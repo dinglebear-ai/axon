@@ -13,11 +13,14 @@ import {
   type PanelStatusResponse,
   type PanelTab,
   type SaveConfigResponse,
+  type SourcesListResult,
   type StackResponse
 } from './panel-types';
 import { formatCommandResponse } from './command-format';
 import { collectDoctorServices, collectJobs, doctorCheckSummary, savedMessage } from './job-helpers';
 import { mergeStatus, summarizeChecks, summarizeConfig } from './panel-components';
+import { AxonClient, type SourceRequest, type SourceResult } from '../lib/axon-client';
+import { normalizeSourceEntries, sourceErrorMessage } from './source-helpers';
 
 export function usePanelData() {
   const [token, setToken] = useState('');
@@ -46,6 +49,23 @@ export function usePanelData() {
   const [commandResult, setCommandResult] = useState<CommandResultView | null>(null);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [message, setMessage] = useState('');
+
+  // Sources tab (GET/POST /v1/sources) — see source-helpers.ts / panel-types.ts
+  // for why the list shape is defensively typed.
+  const [sourcesResult, setSourcesResult] = useState<SourcesListResult | null>(null);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [sourcesMessage, setSourcesMessage] = useState('');
+  const [sourcesUpdatedAt, setSourcesUpdatedAt] = useState('');
+  const [sourceFormValue, setSourceFormValue] = useState('');
+  const [sourceFormFamily, setSourceFormFamily] = useState('auto');
+  const [sourceFormEmbed, setSourceFormEmbed] = useState(true);
+  const [sourceFormMaxPages, setSourceFormMaxPages] = useState('');
+  const [sourceSubmitBusy, setSourceSubmitBusy] = useState(false);
+  const [sourceSubmitResult, setSourceSubmitResult] = useState<SourceResult | null>(null);
+  const [sourceSubmitError, setSourceSubmitError] = useState('');
+
+  const axonClient = useMemo(() => new AxonClient(), []);
+  const sourceEntries = useMemo(() => normalizeSourceEntries(sourcesResult), [sourcesResult]);
 
   const authedHeaders = useMemo(
     () => ({
@@ -133,6 +153,13 @@ export function usePanelData() {
   }, [token, authedHeaders]);
 
   useEffect(() => {
+    if (!token) return;
+    if (activePanelTab !== 'sources') return;
+    void refreshSources();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activePanelTab]);
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -211,6 +238,45 @@ export function usePanelData() {
 
   async function refreshAll(options: { quiet?: boolean } = {}) {
     await Promise.all([refreshStack(options), refreshDoctor(options), refreshAxonStatus(options)]);
+  }
+
+  async function refreshSources(options: { quiet?: boolean } = {}) {
+    if (!token) return;
+    if (!options.quiet) setSourcesLoading(true);
+    setSourcesMessage('');
+    try {
+      const result = (await axonClient.sources({ limit: 50 })) as SourcesListResult;
+      setSourcesResult(result);
+      setSourcesUpdatedAt(new Date().toLocaleTimeString());
+    } catch (error) {
+      setSourcesResult(null);
+      setSourcesMessage(sourceErrorMessage(error));
+    } finally {
+      if (!options.quiet) setSourcesLoading(false);
+    }
+  }
+
+  async function submitSourceForm() {
+    const source = sourceFormValue.trim();
+    if (!source) return;
+    setSourceSubmitBusy(true);
+    setSourceSubmitError('');
+    setSourceSubmitResult(null);
+    try {
+      const request: SourceRequest = { source, embed: sourceFormEmbed };
+      if (sourceFormFamily !== 'auto') request.adapter = sourceFormFamily;
+      const maxPages = Number(sourceFormMaxPages.trim());
+      if (sourceFormMaxPages.trim() && Number.isFinite(maxPages) && maxPages >= 0) {
+        request.limits = { max_pages: maxPages };
+      }
+      const result = await axonClient.submitSource(request);
+      setSourceSubmitResult(result);
+      await refreshSources({ quiet: true });
+    } catch (error) {
+      setSourceSubmitError(sourceErrorMessage(error));
+    } finally {
+      setSourceSubmitBusy(false);
+    }
   }
 
   async function login() {
@@ -366,5 +432,20 @@ export function usePanelData() {
     refreshAxonStatus,
     // helpers needed in JSX
     savedMessage,
+    // sources tab
+    sourcesResult,
+    sourceEntries,
+    sourcesLoading,
+    sourcesMessage,
+    sourcesUpdatedAt,
+    refreshSources,
+    sourceFormValue, setSourceFormValue,
+    sourceFormFamily, setSourceFormFamily,
+    sourceFormEmbed, setSourceFormEmbed,
+    sourceFormMaxPages, setSourceFormMaxPages,
+    sourceSubmitBusy,
+    sourceSubmitResult,
+    sourceSubmitError,
+    submitSourceForm,
   };
 }

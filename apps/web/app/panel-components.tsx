@@ -34,7 +34,14 @@ import {
   titleLabel
 } from './command-format';
 import { normalizeJobStatus, jobTargetFromUrls, jobKindLabel } from './job-helpers';
-import type { ServiceJob } from './panel-types';
+import type { ServiceJob, SourceListEntry } from './panel-types';
+import type { SourceResult } from '../lib/axon-client';
+import {
+  sourceEntryAdapterName,
+  sourceEntryChunkCount,
+  sourceEntryFamily,
+  sourceEntryLabel
+} from './source-helpers';
 
 // ---------------------------------------------------------------------------
 // Icon maps (used by UrlCard and CheckCard)
@@ -478,6 +485,53 @@ export function DoctorCard({ service }: { service: DoctorService & { name: strin
       <StatusBadge status={status} />
       {target && <strong>{target}</strong>}
       <p>{detail}</p>
+    </div>
+  );
+}
+
+export function SourceListRow({ entry }: { entry: SourceListEntry }) {
+  const label = sourceEntryLabel(entry);
+
+  return (
+    <div className={`job-row ${entry.status ?? ''}`}>
+      <div className="job-row-main">
+        <strong title={label}>{label}</strong>
+        <small className="job-row-meta">
+          <span>{sourceEntryFamily(entry)}</span>
+          <span>{sourceEntryAdapterName(entry)}</span>
+          <span>{sourceEntryChunkCount(entry)} chunks</span>
+        </small>
+      </div>
+      {entry.status && <StatusBadge status={normalizeJobStatus(entry.status)} />}
+    </div>
+  );
+}
+
+export function SourceSubmitResultCard({ result }: { result: SourceResult }) {
+  const status = normalizeJobStatus(result.status ?? '');
+  const counts = result.counts;
+
+  return (
+    <div className={`check-card ${status}`}>
+      <span>
+        <StatusGlyph status={status} />
+        {result.canonical_uri}
+      </span>
+      <StatusBadge status={status} />
+      <p>
+        source {result.source_id} · job {result.job_id} · kind {result.source_kind}
+      </p>
+      {counts && (
+        <p>
+          {counts.items_total} items · {counts.documents_total} docs · {counts.chunks_total} chunks ·{' '}
+          {counts.vector_points_total} points
+        </p>
+      )}
+      {result.warnings?.map((warning, index) => (
+        <p className="error" key={`${warning.code}-${index}`}>
+          {warning.severity}: {warning.message}
+        </p>
+      ))}
     </div>
   );
 }
