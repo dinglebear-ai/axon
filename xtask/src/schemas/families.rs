@@ -16,6 +16,10 @@ pub(crate) mod adapters;
 pub(crate) mod api_defs;
 #[path = "families/bundles.rs"]
 mod bundles;
+#[path = "families/config.rs"]
+mod config;
+#[path = "config_schema_registry.rs"]
+mod config_schema_registry;
 #[path = "graph_defs.rs"]
 mod graph_defs;
 #[path = "families/markdown.rs"]
@@ -90,7 +94,7 @@ impl FamilyGenerator for Generator {
             SchemaFamily::Cli => cli_artifacts(root),
             SchemaFamily::Openapi => openapi_artifacts(root),
             SchemaFamily::Mcp => mcp_artifacts(root),
-            SchemaFamily::Config => config_artifacts(root),
+            SchemaFamily::Config => config::config_artifacts(root),
             SchemaFamily::Errors => error_artifacts(root),
             SchemaFamily::VectorPayload => vector_payload::vector_payload_artifacts(root),
             SchemaFamily::Events => runtime_defs::events_artifacts(root),
@@ -370,59 +374,6 @@ fn openapi_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             registry_projection_markdown("openapi-schemas", "openapi", &inputs, "Routes"),
         ),
     ])
-}
-
-fn config_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
-    let spec = family_specs::spec_for(SchemaFamily::Config);
-    let inputs = source_inputs(root, spec.source_paths)?;
-    let keys = config_key_records();
-    let schema = registry_schema_bundle(
-        schema_id(SchemaFamily::Config),
-        spec.title,
-        "cargo xtask schemas config",
-        spec.owner_crates,
-        &inputs,
-        "config_keys",
-        keys.clone(),
-        &[],
-    );
-    let extra = spec.extra_json.unwrap();
-    let env_schema = registry_schema_bundle(
-        extra.id,
-        extra.title,
-        "cargo xtask schemas config",
-        spec.owner_crates,
-        &inputs,
-        "config_keys",
-        keys,
-        &[],
-    );
-    Ok(vec![
-        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
-        SchemaArtifact::new(rel(extra.path), json_string(&env_schema)?),
-        SchemaArtifact::new(
-            rel(spec.markdown_path),
-            registry_markdown("config", &inputs, "Config Keys"),
-        ),
-        SchemaArtifact::new(
-            rel(spec.extra_markdown_path.unwrap()),
-            registry_markdown("env", &inputs, "Config Keys"),
-        ),
-    ])
-}
-
-fn config_key_records() -> Vec<Value> {
-    axon_core::config::schema_registry::config_key_registry()
-        .iter()
-        .map(|key| {
-            json!({
-                "key": key.key,
-                "section": key.section,
-                "env_key": key.env_key,
-                "secret": key.secret
-            })
-        })
-        .collect()
 }
 
 fn graph_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {

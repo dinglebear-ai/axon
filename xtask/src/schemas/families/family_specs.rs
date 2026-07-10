@@ -75,8 +75,9 @@ fn config_spec() -> FamilySpec {
         title: "AxonConfigSchema",
         owner_crates: &["axon-core"],
         source_paths: &[
-            "crates/axon-core/src/config/schema_registry.rs",
+            "xtask/src/schemas/config_schema_registry.rs",
             "docs/pipeline-unification/schemas/config-schema.md",
+            "docs/pipeline-unification/configuration/config-contract.md",
         ],
         json_path: "docs/reference/config/config.schema.json",
         extra_json: Some(ExtraJsonSpec {

@@ -40,6 +40,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/context.rs",
         "crates/axon-cli/src/schema_registry.rs",
         "crates/axon-core/src/config/schema_registry.rs",
+        "xtask/src/schemas/config_schema_registry.rs",
         "crates/axon-core/src/boundary.rs",
         "crates/axon-embedding/src/provider.rs",
         "crates/axon-embedding/src/fake.rs",
@@ -74,6 +75,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "docs/pipeline-unification/schemas/openapi-schema.md",
         "docs/pipeline-unification/schemas/mcp-tool-schema.md",
         "docs/pipeline-unification/schemas/config-schema.md",
+        "docs/pipeline-unification/configuration/config-contract.md",
         "docs/pipeline-unification/schemas/event-schema.md",
         "docs/pipeline-unification/schemas/error-schema.md",
         "docs/pipeline-unification/schemas/database-schema.md",
@@ -1726,6 +1728,194 @@ fn config_and_env_schema_artifacts_have_distinct_identity() {
         "https://axon.local/schemas/config/env.schema.json"
     );
     assert_ne!(config["title"], env["title"]);
+
+    // Distinct identity means more than a differing $id/title: the two
+    // artifacts must not be near-duplicate arrays of the same record shape.
+    assert!(config.get("config_keys").is_some());
+    assert!(env.get("env_vars").is_some());
+    assert!(config.get("env_vars").is_none());
+    assert!(env.get("config_keys").is_none());
+    assert_ne!(
+        config["properties"], env["properties"],
+        "config and env item schemas must differ, not just top-level metadata"
+    );
+}
+
+#[test]
+fn config_schema_covers_all_required_contract_keys() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Config(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+
+    let config: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/config/config.schema.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let keys: std::collections::BTreeSet<&str> = config["config_keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["key"].as_str())
+        .collect();
+    for required in [
+        "server.default_collection",
+        "server.json_pretty",
+        "pipeline.max_active_source_jobs",
+        "pipeline.max_active_interactive_jobs",
+        "jobs.heartbeat_secs",
+        "jobs.provider_reservation_timeout_secs",
+        "sources.embed_by_default",
+        "sources.default_scope_web",
+        "sources.default_scope_local",
+        "watch.tick_secs",
+        "watch.lease_secs",
+        "providers.embedding.batch_size",
+        "providers.embedding.max_concurrent_requests",
+        "providers.embedding.interactive_reserved_requests",
+        "providers.vector.write_concurrency",
+        "providers.vector.read_concurrency",
+        "providers.llm.completion_concurrency",
+        "providers.search.default",
+        "retrieval.limit",
+        "retrieval.hybrid_candidates",
+        "retrieval.ask_hybrid_candidates",
+        "crawl.max_pages",
+        "crawl.respect_robots",
+        "memory.decay_enabled",
+        "memory.review_interval_days",
+        "graph.enabled",
+        "prune.retention_days.jobs",
+        "observability.log_level",
+        "security.allow_private_network_fetch",
+    ] {
+        assert!(
+            keys.contains(required),
+            "config schema missing required key {required}"
+        );
+    }
+
+    let env: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/config/env.schema.json")).unwrap(),
+    )
+    .unwrap();
+    let env_names: std::collections::BTreeSet<&str> = env["env_vars"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["name"].as_str())
+        .collect();
+    for required in [
+        "AXON_DATA_DIR",
+        "QDRANT_URL",
+        "TEI_URL",
+        "AXON_CHROME_REMOTE_URL",
+        "AXON_HTTP_HOST",
+        "AXON_HTTP_PORT",
+        "AXON_PUBLIC_URL",
+        "AXON_HTTP_TOKEN",
+        "AXON_AUTH_MODE",
+        "AXON_GOOGLE_CLIENT_ID",
+        "AXON_GOOGLE_CLIENT_SECRET",
+        "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "GITEA_TOKEN",
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "TAVILY_API_KEY",
+        "AXON_SEARXNG_URL",
+        "AXON_OPENAI_API_KEY",
+        "AXON_OPENAI_BASE_URL",
+        "AXON_CODEX_HOME",
+    ] {
+        assert!(
+            env_names.contains(required),
+            "env schema missing required var {required}"
+        );
+    }
+}
+
+#[test]
+fn schema_generation_is_idempotent_across_all_families() {
+    let tmp = fixture_repo();
+
+    // First pass: --update-fixtures regenerates docs/reference/** artifacts
+    // and the fixture snapshots together.
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Generate(SchemaGenerateArgs {
+                update_fixtures: true,
+                ..SchemaGenerateArgs::default()
+            }),
+        },
+    )
+    .unwrap();
+    let first_pass = generated_artifact_contents(tmp.path());
+    let first_snapshots = snapshot_contents(tmp.path());
+    assert!(
+        !first_pass.is_empty(),
+        "first pass should produce artifacts"
+    );
+
+    // Second pass over the same tree must be byte-identical: no drift from
+    // running the generator again with no source changes.
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Generate(SchemaGenerateArgs {
+                update_fixtures: true,
+                ..SchemaGenerateArgs::default()
+            }),
+        },
+    )
+    .unwrap();
+    let second_pass = generated_artifact_contents(tmp.path());
+    let second_snapshots = snapshot_contents(tmp.path());
+
+    assert_eq!(
+        first_pass, second_pass,
+        "cargo xtask schemas generate --update-fixtures is not idempotent for docs/reference artifacts"
+    );
+    assert_eq!(
+        first_snapshots, second_snapshots,
+        "cargo xtask schemas generate --update-fixtures is not idempotent for fixture snapshots"
+    );
+
+    // `--check` against the first pass's output must also be clean, i.e. a
+    // plain (non-update-fixtures) `generate` run afterward writes nothing new.
+    check(tmp.path()).expect("generated artifacts must already satisfy --check");
+}
+
+fn snapshot_contents(root: &Path) -> std::collections::BTreeMap<String, String> {
+    let mut contents = std::collections::BTreeMap::new();
+    for family in families::all_families() {
+        let dir = root.join(format!(
+            "xtask/tests/fixtures/schemas/{}/snapshots",
+            family.as_str()
+        ));
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(&dir) {
+            let entry = entry.unwrap();
+            if entry.file_type().is_file() {
+                let rel = entry
+                    .path()
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                contents.insert(rel, std::fs::read_to_string(entry.path()).unwrap());
+            }
+        }
+    }
+    contents
 }
 
 #[test]
