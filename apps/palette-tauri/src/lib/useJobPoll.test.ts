@@ -23,8 +23,11 @@ function runningAsyncJob(jobId: string): RunState {
   };
 }
 
+// Unified `GET /v1/jobs/{id}` returns a flat `JobSummary`, not the legacy
+// `{ job, progress }` envelope — see `summarizeUnifiedJob` (bead
+// axon_rust-ruzox.9) in `jobProgress.ts`.
 function okResponse(status: string) {
-  return new Response(JSON.stringify({ job: { status }, progress: { phase: "running", percent: null, metrics: [], error: null } }), {
+  return new Response(JSON.stringify({ status }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });

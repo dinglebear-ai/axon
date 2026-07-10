@@ -34,6 +34,7 @@ import {
   summarizeChecks
 } from './panel-components';
 import { jobSummary } from './job-helpers';
+import { TOKEN_KEY } from './panel-types';
 import { usePanelData } from './use-panel-data';
 
 export default function Page() {
@@ -136,7 +137,7 @@ export default function Page() {
           <button
             className="ghost"
             onClick={() => {
-              window.localStorage.removeItem('axon-panel-token');
+              window.sessionStorage.removeItem(TOKEN_KEY);
               setToken('');
             }}
           >

@@ -16,7 +16,8 @@ export function useOpenJob(setRun: Dispatch<SetStateAction<RunState>>) {
           title: `Crawling ${hostFromUrl(label)}`,
           subtitle: `job ${jobId}`,
           jobId,
-          statusUrl: `/v1/crawl/${jobId}`,
+          // Unified route (bead axon_rust-ruzox.9) — `/v1/crawl/{id}` no longer exists.
+          statusUrl: `/v1/jobs/${jobId}`,
           url: label,
           startedAtMs,
           maxPages: 0,
@@ -31,7 +32,10 @@ export function useOpenJob(setRun: Dispatch<SetStateAction<RunState>>) {
           title: `${family[0].toUpperCase()}${family.slice(1)}`,
           subtitle: `job ${jobId}`,
           jobId,
-          statusUrl: `/v1/${family}/${jobId}`,
+          // Unified route (bead axon_rust-ruzox.9) — the per-family status
+          // route for embed/ingest no longer exists (extract's still does,
+          // but the unified route is polled uniformly — see useJobPoll.ts).
+          statusUrl: `/v1/jobs/${jobId}`,
           target: label,
           startedAtMs,
           snapshot: summarizeJob(family, { job: { status: "running" } }, { jobId, label }),

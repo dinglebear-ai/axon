@@ -44,7 +44,8 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
             repository.listMobileSessions().fold(
                 onSuccess = { remote ->
                     _error.value = null
-                    _sessions.value = remote.map { it.toLocalSession() }
+                    val existingById = _sessions.value.associateBy { it.id }
+                    _sessions.value = remote.map { it.toLocalSession(existingById[it.id]) }
                 },
                 onFailure = { cause ->
                     Log.w(TAG, "Failed to load mobile sessions", cause)
@@ -111,7 +112,14 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
-private fun MobileSessionDto.toLocalSession(): Session =
+/**
+ * Maps a server session onto the local Room cache. `status`/`sourceRefsJson`/
+ * `draft`/`syncVersion` are not yet echoed by the server (see
+ * `MobileSessionDto` kdoc), so when [existing] is supplied its values are
+ * carried forward instead of being reset to the DTO defaults on every
+ * refresh — otherwise a locally-set draft would be wiped by the next sync.
+ */
+private fun MobileSessionDto.toLocalSession(existing: Session? = null): Session =
     Session(
         id = id,
         title = title,
@@ -121,6 +129,10 @@ private fun MobileSessionDto.toLocalSession(): Session =
         createdAt = createdAt,
         updatedAt = updatedAt,
         pinnedAt = pinnedAt,
+        status = existing?.status ?: status,
+        sourceRefsJson = existing?.sourceRefsJson ?: Session.encodeSourceRefs(sourceRefs),
+        draft = existing?.draft ?: draft,
+        syncVersion = existing?.syncVersion ?: syncVersion,
     )
 
 private fun sessionSyncMessage(cause: Throwable, fallback: String = "Could not sync sessions"): String {
