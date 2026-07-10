@@ -25,6 +25,8 @@ mod ops;
 mod pagination;
 #[path = "unified/request_read.rs"]
 mod request_read;
+#[path = "unified/retention.rs"]
+pub(crate) mod retention;
 #[path = "unified/schema.rs"]
 mod schema;
 

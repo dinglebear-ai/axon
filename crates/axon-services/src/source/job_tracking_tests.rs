@@ -403,6 +403,7 @@ async fn completed_source_job(store: &Arc<dyn JobStore>) -> JobId {
             warnings: Vec::new(),
             error: None,
             metadata: axon_api::source::MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .expect("create parent source job");

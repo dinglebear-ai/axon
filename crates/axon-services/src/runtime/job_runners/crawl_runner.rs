@@ -245,6 +245,7 @@ async fn enqueue_embed_handoff(
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     };
     match store.create(request).await {
         Ok(_descriptor) => {}

@@ -114,6 +114,7 @@ fn job_create_request(input: &RegistrySourceIndexInput, _source_id: SourceId) ->
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

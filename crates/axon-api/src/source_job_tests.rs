@@ -204,6 +204,7 @@ fn target_job_management_dtos_round_trip() {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::default(),
+        deadline_at: None,
     };
     let event_page = JobEventPage {
         events: vec![JobEvent {
@@ -227,6 +228,7 @@ fn target_job_management_dtos_round_trip() {
     let cancel = JobCancelRequest {
         reason: Some("user requested".to_string()),
         force_after_ms: Some(30_000),
+        actor: Some("test-user".to_string()),
     };
     let retry = JobRetryRequest {
         mode: JobRetryMode::SameConfig,

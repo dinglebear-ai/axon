@@ -315,6 +315,7 @@ impl JobStore for FakeJobWatchStore {
             .get_mut(&job_id)
             .ok_or_else(|| missing_job(job_id))?;
         validate_transition(job_id, job.status, LifecycleStatus::Canceling)?;
+        let last_safe_stage = job.phase;
         let target = if matches!(
             job.status,
             LifecycleStatus::Queued | LifecycleStatus::Pending
@@ -345,6 +346,10 @@ impl JobStore for FakeJobWatchStore {
             status: target,
             canceled_at: (target == LifecycleStatus::Canceled).then_some(updated_at),
             reason: request.reason,
+            canceled_by: request.actor,
+            last_safe_stage: Some(last_safe_stage),
+            side_effects: Vec::new(),
+            cleanup_debt_ids: Vec::new(),
         })
     }
 

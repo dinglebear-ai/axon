@@ -139,6 +139,7 @@ fn create_request() -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 
@@ -433,6 +434,7 @@ async fn cooldown_until_is_cleared_by_cancel_job() {
             JobCancelRequest {
                 reason: None,
                 force_after_ms: None,
+                actor: None,
             },
         )
         .await

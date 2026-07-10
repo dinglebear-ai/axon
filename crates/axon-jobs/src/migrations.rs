@@ -151,6 +151,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0023_create_source_watch_store",
         sql: include_str!("migrations/0023_create_source_watch_store.sql"),
     },
+    SqlMigration {
+        version: 24,
+        name: "0024_job_intent_widen_and_deadline",
+        sql: include_str!("migrations/0024_job_intent_widen_and_deadline.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and
@@ -162,7 +167,7 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
 /// child row (job_attempts/job_stages/job_events/job_heartbeats/
 /// provider_reservations/job_artifacts) the moment `DROP TABLE jobs` executes.
 /// See `run_migration`'s special-cased branch below.
-const JOBS_TABLE_REBUILD_VERSIONS: &[i64] = &[21];
+const JOBS_TABLE_REBUILD_VERSIONS: &[i64] = &[21, 24];
 
 /// Namespace under which the composed runner tracks jobs migrations.
 pub const JOBS_NAMESPACE: &str = "jobs";

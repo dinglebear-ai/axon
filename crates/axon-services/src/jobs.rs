@@ -218,6 +218,7 @@ pub async fn enqueue_operation(
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .map_err(|error| Box::<dyn Error>::from(error.message))?;

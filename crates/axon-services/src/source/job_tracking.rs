@@ -134,6 +134,7 @@ fn child_job_request(
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

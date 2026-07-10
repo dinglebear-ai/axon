@@ -114,6 +114,7 @@ fn job_create_request(input: &GitSourceIndexInput, _source_id: SourceId) -> JobC
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

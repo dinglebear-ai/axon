@@ -24,6 +24,7 @@ fn request() -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 
@@ -129,6 +130,7 @@ async fn target_source_job_services_delegate_to_job_store() {
         JobCancelRequest {
             reason: Some("user".to_string()),
             force_after_ms: None,
+            actor: None,
         },
     )
     .await

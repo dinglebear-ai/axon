@@ -58,6 +58,7 @@ pub(crate) async fn start_watch_job(pool: &SqlitePool, watch_id: Uuid) -> Option
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     };
 
     let descriptor = match store.create(request).await {
