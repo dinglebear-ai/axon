@@ -129,12 +129,19 @@ async fn drain_one_debt(
     summary: &mut DebtDrainSummary,
 ) {
     let Some(step) = debt_to_step(debt) else {
-        // Non-vector debt kinds are not yet wired here (artifact/graph/memory/
-        // ledger/job/cache). Leave them pending for their owning executor.
+        // Non-vector debt kinds cannot be drained here today. This is not a
+        // "not wired yet" placeholder — it is a documented gap per kind (see
+        // `skip_reason_for_kind`), because either the store boundary has no
+        // real per-item deletion API, or `CleanupSelector` (axon-api) has no
+        // variant naming the entity that kind would delete. Faking a drain
+        // for any of these would violate the pruning contract's "no fake
+        // drains" requirement, so they are left pending for their owning
+        // executor until the prerequisite lands.
         tracing::debug!(
             debt_id = %debt.debt_id.0,
             kind = ?debt.kind,
-            "skipping non-vector cleanup debt (not wired)"
+            reason = skip_reason_for_kind(debt.kind),
+            "skipping cleanup debt: no real drain available for this kind"
         );
         return;
     };
@@ -176,6 +183,49 @@ async fn drain_one_debt(
 
     summary.resolved += 1;
     summary.points_deleted += result.deleted_counts.vector_points;
+}
+
+/// Name the specific, current reason a non-`VectorDelete` debt kind cannot be
+/// drained yet. Kept in one place so the reasons stay in sync with the
+/// prerequisites named in the pruning contract's "Cleanup Debt Execution"
+/// section and don't drift into a vague "not wired" blanket excuse.
+///
+/// Followups (tracked against axon-prune wiring, not yet beaded individually):
+/// - `ArtifactDelete`: no durable `ArtifactStore` exists in this codebase yet
+///   (see `docs/pipeline-unification/runtime/pruning-contract.md`'s "artifact
+///   deletes" ownership row) — there is nothing to call.
+/// - `GraphPrune`: `GraphStore` (`crates/axon-graph/src/store.rs`) exposes
+///   only a whole-collection `reset()`, not a scoped node/edge delete, so
+///   there is no per-debt-entry API to drive even though a store exists.
+/// - `MemoryPrune`: `MemoryStore::forget`/`archive` are real scoped deletes,
+///   but `CleanupSelector` (`crates/axon-api/src/source/document.rs`) has no
+///   `MemoryId`-bearing variant, so a debt row can never carry the identity
+///   `forget`/`archive` would need.
+/// - `LedgerPrune`: `LedgerStore` has no generic prune/delete primitive beyond
+///   `resolve_cleanup_debt` (which marks debt resolved, it does not delete
+///   ledger rows itself).
+/// - `JobRetention`: `axon-jobs`' `cleanup_jobs`/`clear_jobs` are real but are
+///   bulk, age/kind-scoped operations — `CleanupSelector` has no per-job-id
+///   variant to target one debt entry's job.
+/// - `CachePrune`: no `CacheStore` boundary exists in this codebase.
+fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
+    match kind {
+        CleanupDebtKind::VectorDelete => "drained (should not reach the skip path)",
+        CleanupDebtKind::ArtifactDelete => "no ArtifactStore exists yet",
+        CleanupDebtKind::GraphPrune => {
+            "GraphStore has no scoped node/edge delete, only whole-collection reset()"
+        }
+        CleanupDebtKind::MemoryPrune => {
+            "CleanupSelector has no MemoryId variant for MemoryStore::forget/archive to target"
+        }
+        CleanupDebtKind::LedgerPrune => {
+            "LedgerStore has no generic prune primitive beyond resolve_cleanup_debt itself"
+        }
+        CleanupDebtKind::JobRetention => {
+            "axon-jobs cleanup is bulk age/kind-scoped; CleanupSelector has no per-job-id variant"
+        }
+        CleanupDebtKind::CachePrune => "no CacheStore boundary exists yet",
+    }
 }
 
 /// Map a vector-delete cleanup-debt entry to a single prune step. Returns `None`

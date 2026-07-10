@@ -52,9 +52,92 @@ use crate::context::ServiceContext;
 /// Resolve a [`PruneRequest`]'s selector into a reviewable [`PrunePlan`]
 /// without mutating any state. Always safe to call — dry-run planning never
 /// touches a store beyond (future) read-only impact estimation.
+///
+/// This is the zero-dependency variant (no `ServiceContext`/ledger access) —
+/// it always reports [`NullScopeSource`]'s honest zero. Prefer
+/// [`prune_plan_estimated`] wherever a `ServiceContext` is available; it
+/// reports real ledger-backed counts for `Source`/`Generation` selectors.
 pub fn prune_plan(request: &PruneRequest) -> PrunePlan {
     let planner = PrunePlanner::new(NullScopeSource);
     planner.resolve(&request.selector)
+}
+
+/// Real-count variant of [`prune_plan`]: reads `ctx`'s
+/// [`axon_ledger::store::LedgerStore`] for a genuine, non-fabricated impact
+/// estimate before resolving the plan.
+///
+/// Only `Source`/`Generation` selectors are sizeable from the ledger today —
+/// `vector_points` is reported from the committed manifest's item count (a
+/// real, ledger-backed proxy for chunk count; `VectorStore` still has no
+/// count-without-deleting primitive, see module docs) and `ledger_generations`
+/// reflects whether a committed generation/manifest was actually found.
+/// Other selector shapes (`Collection`, `CleanupDebt`, `Artifact`, `Graph`,
+/// `Memory`, `JobRetention`, `Cache`) still resolve to a zero estimate for the
+/// same honest-zero reason `NullScopeSource` documents — the ledger has
+/// nothing to size for them.
+pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) -> PrunePlan {
+    let estimate = match ctx.target_local_source_runtime() {
+        Some(runtime) => estimate_from_ledger(runtime.ledger.as_ref(), &request.selector).await,
+        // No target-local ledger wired for this `ServiceContext` (e.g. a
+        // pure-vector `ServiceContext::new`) — honest zero, same rationale as
+        // `NullScopeSource`.
+        None => PruneEstimate::default(),
+    };
+    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate));
+    planner.resolve(&request.selector)
+}
+
+/// Compute a real `PruneEstimate` for `selector` from ledger data. See
+/// [`prune_plan_estimated`] for what is and is not sizeable this way.
+async fn estimate_from_ledger(
+    ledger: &dyn axon_ledger::store::LedgerStore,
+    selector: &PruneSelector,
+) -> PruneEstimate {
+    match selector {
+        PruneSelector::Source { source_id } => {
+            match ledger.committed_generation(source_id.clone()).await {
+                Ok(Some(generation)) => {
+                    manifest_estimate(ledger, source_id.clone(), generation).await
+                }
+                _ => PruneEstimate::default(),
+            }
+        }
+        PruneSelector::Generation {
+            source_id,
+            generation,
+        } => manifest_estimate(ledger, source_id.clone(), generation.clone()).await,
+        // Collection/CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache
+        // selectors don't name a ledger-sizeable source+generation — honest
+        // zero, same as `NullScopeSource`.
+        _ => PruneEstimate::default(),
+    }
+}
+
+async fn manifest_estimate(
+    ledger: &dyn axon_ledger::store::LedgerStore,
+    source_id: SourceId,
+    generation: SourceGenerationId,
+) -> PruneEstimate {
+    match ledger.get_manifest(source_id, generation).await {
+        Ok(Some(manifest)) => PruneEstimate {
+            vector_points: manifest.items.len() as u64,
+            ledger_generations: 1,
+            ..Default::default()
+        },
+        _ => PruneEstimate::default(),
+    }
+}
+
+/// A [`PruneScopeSource`] that always returns a single, precomputed estimate
+/// regardless of the selector passed to `estimate()`. Valid because a caller
+/// only ever resolves one selector per [`PrunePlanner::resolve`] call — the
+/// async ledger read happens once, up front, in [`prune_plan_estimated`].
+struct PrefetchedScopeSource(PruneEstimate);
+
+impl PruneScopeSource for PrefetchedScopeSource {
+    fn estimate(&self, _selector: &PruneSelector) -> PruneEstimate {
+        self.0.clone()
+    }
 }
 
 /// Execute a previously resolved [`PrunePlan`] against the live vector store.
@@ -96,7 +179,7 @@ pub async fn prune(
     request: &PruneRequest,
     authz: &PruneAuthz,
 ) -> Result<(PrunePlan, Option<PruneResult>), Box<dyn Error>> {
-    let plan = prune_plan(request);
+    let plan = prune_plan_estimated(ctx, request).await;
     if request.dry_run {
         return Ok((plan, None));
     }
