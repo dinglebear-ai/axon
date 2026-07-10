@@ -8,9 +8,9 @@
 //! one mapping instead of hand-building the DTO.
 
 use axon_api::source::{
-    AdapterRef, GraphCandidate, GraphWriteSummary, JobId, LedgerSummary, LifecycleStatus,
-    SourceCounts, SourceGenerationId, SourceId, SourceKind, SourceResult, SourceScope,
-    SourceWarning,
+    AdapterRef, GraphCandidate, GraphWriteSummary, JobDescriptor, JobId, LedgerSummary,
+    LifecycleStatus, SourceCounts, SourceGenerationId, SourceId, SourceKind, SourceResult,
+    SourceScope, SourceWarning,
 };
 use axon_error::ApiError;
 use uuid::Uuid;
@@ -81,6 +81,61 @@ pub fn to_source_result(
         warnings: Vec::new(),
         inline: None,
         job: None,
+        watch: None,
+        artifacts: Vec::new(),
+        errors: Vec::new(),
+    }
+}
+
+/// Build a `SourceResult` for a `SourceRequest` that was enqueued as a
+/// detached `JobKind::Source` job instead of dispatched inline.
+///
+/// `descriptor.status` reflects whatever the unified store returned —
+/// normally `Queued` for a freshly-created row, but a matching in-flight or
+/// already-`Completed` job returned by an idempotency-key hit surfaces its
+/// real status here too. All other counts are zero; the caller polls
+/// `job.status_url` for the real outcome.
+pub fn queued_result(
+    kind: SourceKind,
+    adapter: AdapterRef,
+    scope: SourceScope,
+    canonical_uri: String,
+    descriptor: JobDescriptor,
+) -> SourceResult {
+    let zero = SourceCounts {
+        items_total: 0,
+        items_changed: 0,
+        documents_total: 0,
+        chunks_total: 0,
+        vector_points_total: 0,
+        bytes_total: 0,
+    };
+    let source_id = SourceId::new(&canonical_uri);
+    SourceResult {
+        job_id: descriptor.job_id,
+        source_id: source_id.clone(),
+        canonical_uri,
+        source_kind: kind,
+        adapter,
+        scope,
+        status: descriptor.status,
+        ledger: LedgerSummary {
+            source_id,
+            generation: SourceGenerationId::new(""),
+            committed_generation: None,
+            status: descriptor.status,
+            counts: zero.clone(),
+        },
+        graph: GraphWriteSummary {
+            nodes_upserted: 0,
+            edges_upserted: 0,
+            evidence_records: 0,
+            degraded: false,
+        },
+        counts: zero,
+        warnings: Vec::new(),
+        inline: None,
+        job: Some(descriptor),
         watch: None,
         artifacts: Vec::new(),
         errors: Vec::new(),

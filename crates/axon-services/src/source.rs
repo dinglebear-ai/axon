@@ -23,6 +23,7 @@
 pub mod authorize;
 pub mod classify;
 pub mod dispatch;
+pub mod enqueue;
 pub mod graph;
 pub mod job_tracking;
 pub mod prune;
