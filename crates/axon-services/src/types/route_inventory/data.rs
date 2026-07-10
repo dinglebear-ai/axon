@@ -490,3 +490,7 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
 #[path = "data/watch_routes.rs"]
 mod watch_routes;
 pub(super) use watch_routes::WATCH_ROUTES;
+
+#[path = "data/graph_routes.rs"]
+mod graph_routes;
+pub(super) use graph_routes::GRAPH_ROUTES;

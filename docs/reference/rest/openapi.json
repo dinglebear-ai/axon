@@ -1627,6 +1627,141 @@
       ],
       "result_dto": "WatchResult",
       "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "graph_kinds",
+      "path": "/v1/graph/kinds",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphKindDocument",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "graph_resolve",
+      "path": "/v1/graph/resolve",
+      "request_dto": "GraphResolveRequest",
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphResolveResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "graph_query",
+      "path": "/v1/graph/query",
+      "request_dto": "GraphQueryRequest",
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphQueryResponse",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "graph_node",
+      "path": "/v1/graph/nodes/{node_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphNodeDetail",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "graph_node_edges",
+      "path": "/v1/graph/nodes/{node_id}/edges",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphNodeEdges",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "graph_edge",
+      "path": "/v1/graph/edges/{edge_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphEdgeDetail",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "graph_source_subgraph",
+      "path": "/v1/graph/sources/{source_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "GraphSourceSubgraph",
+      "streaming": false
     }
   ],
   "title": "AxonOpenApiSchema",
@@ -1641,7 +1776,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:eb50ceac331134c941e5e5dc80f2543828a7d27e468e7b6100f0ccf7fa71e93a",
+        "checksum": "sha256:f99294dacc94f7fbc144f82c964d2c22e56b6848324cd50d6969d1ae5e7a7075",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

@@ -9,7 +9,10 @@
 //! `graph.schema.json`/`graph.md` stay in lockstep with the enums (and, by
 //! the enums' own doc contract, with `source-graph.md`).
 
+use axon_api::source::{AuthorityLevel, GraphKindDocument};
+
 use crate::edge::GraphEdgeKind;
+use crate::evidence::EvidenceKind;
 use crate::node::GraphNodeKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +49,38 @@ pub fn edge_kind_registry() -> Vec<GraphKindSpec> {
             requires_evidence: true,
         })
         .collect()
+}
+
+/// The full closed-registry kind document served by `GET /v1/graph/kinds`
+/// (REST) and `graph.kinds` (MCP). Derived directly from the same closed
+/// enums `node_kind_registry`/`edge_kind_registry` project, plus
+/// [`EvidenceKind::ALL`] and every [`AuthorityLevel`] variant, so it can never
+/// drift from the registries that gate candidate validation.
+pub fn kind_document() -> GraphKindDocument {
+    GraphKindDocument {
+        node_kinds: GraphNodeKind::ALL
+            .iter()
+            .map(|kind| kind.as_str().to_string())
+            .collect(),
+        edge_kinds: GraphEdgeKind::ALL
+            .iter()
+            .map(|kind| kind.as_str().to_string())
+            .collect(),
+        evidence_kinds: EvidenceKind::ALL
+            .iter()
+            .map(|kind| kind.as_str().to_string())
+            .collect(),
+        authority_levels: vec![
+            AuthorityLevel::Official,
+            AuthorityLevel::Verified,
+            AuthorityLevel::UserPinned,
+            AuthorityLevel::Inferred,
+            AuthorityLevel::Community,
+            AuthorityLevel::Mirror,
+            AuthorityLevel::Conflicting,
+            AuthorityLevel::Unknown,
+        ],
+    }
 }
 
 #[cfg(test)]

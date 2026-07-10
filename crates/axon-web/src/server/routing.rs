@@ -165,6 +165,19 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
             "/v1/watches/{watch_id}",
             get(handlers::source_watch::get_watch),
         )
+        .route("/v1/graph/kinds", get(handlers::graph::kinds))
+        .route("/v1/graph/resolve", post(handlers::graph::resolve))
+        .route("/v1/graph/query", post(handlers::graph::query))
+        .route("/v1/graph/nodes/{node_id}", get(handlers::graph::get_node))
+        .route(
+            "/v1/graph/nodes/{node_id}/edges",
+            get(handlers::graph::get_node_edges),
+        )
+        .route("/v1/graph/edges/{edge_id}", get(handlers::graph::get_edge))
+        .route(
+            "/v1/graph/sources/{source_id}",
+            get(handlers::graph::get_source_subgraph),
+        )
 }
 
 /// Routes requiring `axon:write` — active-network operations, job

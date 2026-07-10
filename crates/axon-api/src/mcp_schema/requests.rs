@@ -558,6 +558,10 @@ pub struct StatsRequest {
 mod discovery;
 pub use discovery::{CapabilitiesRequest, ProvidersRequest, ResolveRequest};
 
+#[path = "requests/graph.rs"]
+mod graph;
+pub use graph::{GraphDirectionArg, GraphRequest, GraphSubaction};
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScrapeRequest {

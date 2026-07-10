@@ -54,6 +54,7 @@ pub enum AxonRequest {
     Resolve(ResolveRequest),
     Capabilities(CapabilitiesRequest),
     Providers(ProvidersRequest),
+    Graph(GraphRequest),
 }
 
 /// The MCP contract version this server implements. Mirrors the REST

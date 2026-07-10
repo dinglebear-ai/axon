@@ -10,6 +10,8 @@ mod handlers_discovery;
 mod handlers_elicit;
 #[path = "server/handlers_extract.rs"]
 mod handlers_extract;
+#[path = "server/handlers_graph.rs"]
+mod handlers_graph;
 #[path = "server/handlers_jobs.rs"]
 mod handlers_jobs;
 #[path = "server/handlers_memory.rs"]
@@ -240,6 +242,7 @@ impl AxonMcpServer {
                 ));
             }
             AxonRequest::Watch(req) => self.handle_watch(req).await?,
+            AxonRequest::Graph(req) => self.handle_graph(req).await?,
             AxonRequest::Debug(_)
             | AxonRequest::Dedupe(_)
             | AxonRequest::Migrate(_)

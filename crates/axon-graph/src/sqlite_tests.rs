@@ -478,3 +478,73 @@ async fn multi_source_upsert_unions_node_source_ids() {
     assert!(node.source_ids.contains(&SourceId::new("src-a")));
     assert!(node.source_ids.contains(&SourceId::new("src-b")));
 }
+
+#[tokio::test]
+async fn node_edges_returns_incident_edges_regardless_of_direction() {
+    let graph = store().await;
+    graph
+        .upsert_candidates(vec![repo_docs_candidate(
+            "gc",
+            "src",
+            vec![ev("ev-1", "github_homepage", 0.9)],
+        )])
+        .await
+        .unwrap();
+
+    let repo_id = node_id_for("repo", "https://github.com/x/y");
+    let docs_id = node_id_for("docs_site", "https://x.dev/docs");
+
+    let repo_edges = graph.node_edges(repo_id).await.unwrap();
+    assert_eq!(repo_edges.len(), 1);
+    assert_eq!(repo_edges[0].kind, "repo_has_docs");
+
+    let docs_edges = graph.node_edges(docs_id).await.unwrap();
+    assert_eq!(
+        docs_edges.len(),
+        1,
+        "docs_site is the `to` side of the edge"
+    );
+
+    let none = graph.node_edges(GraphNodeId::new("missing")).await.unwrap();
+    assert!(none.is_empty());
+}
+
+#[tokio::test]
+async fn nodes_for_source_filters_by_source_id_without_prefix_collisions() {
+    let graph = store().await;
+    graph
+        .upsert_candidates(vec![repo_docs_candidate(
+            "gc-1",
+            "src-a",
+            vec![ev("ev-1", "github_homepage", 0.9)],
+        )])
+        .await
+        .unwrap();
+    graph
+        .upsert_candidates(vec![repo_docs_candidate(
+            "gc-2",
+            "src-ab",
+            vec![ev("ev-2", "github_homepage", 0.9)],
+        )])
+        .await
+        .unwrap();
+
+    // Both candidates upsert onto the SAME nodes (repo/docs_site stable keys
+    // are identical), so both source ids land on both nodes' `source_ids`.
+    let nodes = graph
+        .nodes_for_source(SourceId::new("src-a"))
+        .await
+        .unwrap();
+    assert_eq!(nodes.len(), 2);
+    assert!(
+        nodes
+            .iter()
+            .all(|node| node.source_ids.contains(&SourceId::new("src-a")))
+    );
+
+    let none = graph
+        .nodes_for_source(SourceId::new("src-missing"))
+        .await
+        .unwrap();
+    assert!(none.is_empty());
+}

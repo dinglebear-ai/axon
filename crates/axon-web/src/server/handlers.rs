@@ -20,6 +20,8 @@ pub mod config;
 pub mod discovery;
 #[path = "handlers/exploration.rs"]
 pub mod exploration;
+#[path = "handlers/graph.rs"]
+pub mod graph;
 #[path = "handlers/jobs.rs"]
 pub mod jobs;
 #[path = "handlers/jobs_stream.rs"]
