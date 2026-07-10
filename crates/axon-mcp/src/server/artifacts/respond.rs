@@ -100,6 +100,42 @@ fn artifact_handle_value(artifact: &serde_json::Value) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+/// Best-effort job descriptor extraction from an already-built response
+/// payload, for the MCP envelope's additive `job` field (U2-27). Mirrors the
+/// `job_id`/`job.id` lookup `write_json_artifact` already does for artifact
+/// bookkeeping — this does not invent job data, it only surfaces what the
+/// handler already put in `payload`.
+fn job_ref_from_payload(payload: &serde_json::Value) -> Option<serde_json::Value> {
+    let job_id = payload
+        .get("job_id")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            payload
+                .get("job")
+                .and_then(|job| job.get("id"))
+                .and_then(serde_json::Value::as_str)
+        })?;
+    Some(serde_json::json!({ "id": job_id }))
+}
+
+/// Attach the additive envelope fields (U2-27) that are derivable from data
+/// the handler already produced: the written artifact reference (when one
+/// exists) and a `job` descriptor (when `payload` carries a job id).
+fn with_envelope_extras(
+    response: AxonToolResponse,
+    artifact: Option<&serde_json::Value>,
+    payload: &serde_json::Value,
+) -> AxonToolResponse {
+    let response = match artifact {
+        Some(artifact) => response.with_artifact(artifact_handle_value(artifact)),
+        None => response,
+    };
+    match job_ref_from_payload(payload) {
+        Some(job) => response.with_job(job),
+        None => response,
+    }
+}
+
 /// Respond with the appropriate mode, respecting the caller's explicit choice.
 ///
 /// When `mode` is `None` or `Some(AutoInline)`, small payloads are auto-inlined
@@ -118,7 +154,7 @@ pub async fn respond_with_mode(
     if matches!(hint, InlineHint::AlwaysPath) {
         let artifact = write_json_artifact(artifact_stem, &payload).await?;
         let shape = json_shape_preview(&payload);
-        return Ok(AxonToolResponse::ok(
+        let response = AxonToolResponse::ok(
             action,
             subaction,
             serde_json::json!({
@@ -127,7 +163,8 @@ pub async fn respond_with_mode(
                 "artifact_handle": artifact_handle_value(&artifact),
                 "artifact": artifact,
             }),
-        ));
+        );
+        return Ok(with_envelope_extras(response, Some(&artifact), &payload));
     }
 
     // Fields hint: always write artifact, always extract named fields.
@@ -135,7 +172,7 @@ pub async fn respond_with_mode(
         let artifact = write_json_artifact(artifact_stem, &payload).await?;
         let key_fields = extract_key_fields(&payload, fields);
         let shape = json_shape_preview(&payload);
-        return Ok(AxonToolResponse::ok(
+        let response = AxonToolResponse::ok(
             action,
             subaction,
             serde_json::json!({
@@ -145,7 +182,8 @@ pub async fn respond_with_mode(
                 "artifact_handle": artifact_handle_value(&artifact),
                 "artifact": artifact,
             }),
-        ));
+        );
+        return Ok(with_envelope_extras(response, Some(&artifact), &payload));
     }
 
     let effective_mode = match mode {
@@ -156,14 +194,15 @@ pub async fn respond_with_mode(
                 .unwrap_or(usize::MAX);
             let threshold = inline_bytes_threshold();
             if threshold > 0 && payload_bytes <= threshold {
-                return Ok(AxonToolResponse::ok(
+                let response = AxonToolResponse::ok(
                     action,
                     subaction,
                     serde_json::json!({
                         "response_mode": "auto-inline",
                         "data": payload,
                     }),
-                ));
+                );
+                return Ok(with_envelope_extras(response, None, &payload));
             }
             // Large payload with auto mode — default to path.
             ResponseMode::Path
@@ -174,19 +213,22 @@ pub async fn respond_with_mode(
     let artifact = write_json_artifact(artifact_stem, &payload).await?;
     let shape = json_shape_preview(&payload);
     match effective_mode {
-        ResponseMode::Path => Ok(AxonToolResponse::ok(
-            action,
-            subaction,
-            serde_json::json!({
-                "response_mode": "path",
-                "shape": shape,
-                "artifact_handle": artifact_handle_value(&artifact),
-                "artifact": artifact,
-            }),
-        )),
+        ResponseMode::Path => {
+            let response = AxonToolResponse::ok(
+                action,
+                subaction,
+                serde_json::json!({
+                    "response_mode": "path",
+                    "shape": shape,
+                    "artifact_handle": artifact_handle_value(&artifact),
+                    "artifact": artifact,
+                }),
+            );
+            Ok(with_envelope_extras(response, Some(&artifact), &payload))
+        }
         ResponseMode::Inline => {
             let (inline, truncated) = clip_inline_json(&payload, inline_clip_chars(is_document));
-            Ok(AxonToolResponse::ok(
+            let response = AxonToolResponse::ok(
                 action,
                 subaction,
                 serde_json::json!({
@@ -196,11 +238,12 @@ pub async fn respond_with_mode(
                     "artifact_handle": artifact_handle_value(&artifact),
                     "artifact": artifact,
                 }),
-            ))
+            );
+            Ok(with_envelope_extras(response, Some(&artifact), &payload))
         }
         ResponseMode::Both => {
             let (inline, truncated) = clip_inline_json(&payload, inline_clip_chars(is_document));
-            Ok(AxonToolResponse::ok(
+            let response = AxonToolResponse::ok(
                 action,
                 subaction,
                 serde_json::json!({
@@ -211,7 +254,8 @@ pub async fn respond_with_mode(
                     "artifact_handle": artifact_handle_value(&artifact),
                     "artifact": artifact,
                 }),
-            ))
+            );
+            Ok(with_envelope_extras(response, Some(&artifact), &payload))
         }
         ResponseMode::AutoInline => unreachable!("auto-inline is normalized before matching"),
     }

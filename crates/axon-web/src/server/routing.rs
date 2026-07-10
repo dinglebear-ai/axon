@@ -26,6 +26,9 @@ use std::sync::Arc;
 mod loopback_guard;
 use loopback_guard::block_loopback_destructive_request;
 
+#[path = "routing_resource_tier.rs"]
+mod resource_tier;
+
 /// The state type every `/v1` REST subrouter is built over.
 type ServeState = (AppState, Arc<Config>);
 
@@ -99,6 +102,7 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
     Router::new()
         .route("/v1/capabilities", get(v1_capabilities))
         .route("/v1/sources", get(handlers::discovery::sources))
+        .merge(resource_tier::routes())
         .route("/v1/domains", get(handlers::discovery::domains))
         .route("/v1/stats", get(handlers::discovery::stats))
         .route("/v1/status", get(handlers::discovery::status))
