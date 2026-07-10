@@ -2,7 +2,7 @@ use axon_api::source::{ContentKind, LifecycleStatus};
 
 use crate::parser::{ParseInput, ParseResult, ParserCapability, SourceParser, stage_header};
 use crate::registry::ParserRegistry;
-use crate::{code, docker, env, manifest, markdown, schema, session, tool};
+use crate::{code, docker, env, manifest, markdown, schema, session, tool, tool_schema};
 
 pub fn production_registry() -> ParserRegistry {
     ParserRegistry::new()
@@ -13,6 +13,7 @@ pub fn production_registry() -> ParserRegistry {
         .with_parser(ManifestParser)
         .with_parser(MarkdownParser)
         .with_parser(ToolParser)
+        .with_parser(ToolSchemaParser)
         .with_parser(SessionParser)
 }
 
@@ -24,6 +25,7 @@ struct DockerManifestParser;
 struct EnvExampleParser;
 struct SessionParser;
 struct ToolParser;
+struct ToolSchemaParser;
 
 impl SourceParser for CodeSymbolsParser {
     fn capability(&self) -> &ParserCapability {
@@ -49,7 +51,37 @@ impl SourceParser for CodeSymbolsParser {
 
     fn parse(&self, input: &ParseInput) -> ParseResult {
         let (facts, graph_candidates) = code::symbol_facts_with_graph(input);
-        completed_result(input, self.capability(), facts, graph_candidates)
+        // No tree-sitter/AST grammar is wired in yet (see code.rs); every
+        // fact here is a `regex_fallback` line/indentation heuristic, so the
+        // fallback must be visible per parsing-contract.md, not just implied
+        // by the per-fact `parser_method`/`confidence`.
+        if facts.is_empty() {
+            return completed_result(input, self.capability(), facts, graph_candidates);
+        }
+        let warning = axon_api::source::SourceWarning {
+            code: "parse.code_ast_unavailable".to_string(),
+            severity: axon_api::source::Severity::Info,
+            message: "no AST/tree-sitter grammar is wired into axon-parse yet; code symbols \
+                      were extracted with a line/indentation regex_fallback heuristic"
+                .to_string(),
+            source_item_key: Some(input.document.source_item_key.clone()),
+            retryable: false,
+        };
+        ParseResult {
+            header: stage_header(
+                input,
+                LifecycleStatus::CompletedDegraded,
+                vec![warning.clone()],
+                None,
+            ),
+            document_id: input.document.document_id.clone(),
+            facts,
+            graph_candidates,
+            parser_id: self.capability().parser_id.clone(),
+            parser_version: self.capability().parser_version.clone(),
+            warnings: vec![warning],
+            errors: Vec::new(),
+        }
     }
 }
 
@@ -238,6 +270,41 @@ impl SourceParser for ToolParser {
 
     fn parse(&self, input: &ParseInput) -> ParseResult {
         tool::tool_parse_result(input)
+    }
+}
+
+impl SourceParser for ToolSchemaParser {
+    fn capability(&self) -> &ParserCapability {
+        static CAPABILITY: std::sync::OnceLock<ParserCapability> = std::sync::OnceLock::new();
+        CAPABILITY.get_or_init(|| ParserCapability {
+            parser_id: "tool_schema".to_string(),
+            parser_version: crate::facts::PARSER_VERSION.to_string(),
+            content_kinds: Vec::new(),
+            mime_types: Vec::new(),
+            file_extensions: Vec::new(),
+            path_suffixes: vec![
+                "--help.txt".to_string(),
+                "cli-help.txt".to_string(),
+                "mcp-tools-list.json".to_string(),
+                "mcp.tools.json".to_string(),
+            ],
+            sniff_prefixes: vec![
+                "Usage:".to_string(),
+                "USAGE:".to_string(),
+                "{\"tools\":".to_string(),
+            ],
+            priority: 4,
+        })
+    }
+
+    fn parse(&self, input: &ParseInput) -> ParseResult {
+        let parsed = tool_schema::tool_schema_parse_items(input);
+        completed_result(
+            input,
+            self.capability(),
+            parsed.facts,
+            parsed.graph_candidates,
+        )
     }
 }
 

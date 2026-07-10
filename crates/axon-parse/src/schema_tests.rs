@@ -66,3 +66,60 @@ fn extracts_openapi_graphql_and_proto_schema_facts() {
     assert_eq!(proto_candidates[1].kind, "proto_rpc");
     assert_eq!(proto_candidates[2].kind, "proto_message");
 }
+
+#[test]
+fn extracts_openapi_operations_schemas_and_auth_requirements() {
+    let text = concat!(
+        "openapi: 3.1.0\n",
+        "paths:\n",
+        "  /v1/ask:\n",
+        "    post:\n",
+        "      operationId: ask\n",
+        "      security:\n",
+        "        - bearerAuth: []\n",
+        "components:\n",
+        "  schemas:\n",
+        "    AskRequest:\n",
+        "      type: object\n",
+        "  securitySchemes:\n",
+        "    bearerAuth:\n",
+        "      type: http\n",
+    );
+    let (facts, candidates) = api_schema_facts(&input("openapi.yaml", ContentKind::Yaml, text));
+
+    let by_kind =
+        |kind: &str| -> Vec<_> { facts.iter().filter(|fact| fact.fact_kind == kind).collect() };
+
+    let endpoints = by_kind("api_endpoint");
+    assert_eq!(endpoints.len(), 1);
+    assert_eq!(endpoints[0].name, "POST /v1/ask");
+
+    let operations = by_kind("api_operation");
+    assert_eq!(operations.len(), 1);
+    assert_eq!(operations[0].name, "POST /v1/ask #ask");
+    assert_eq!(operations[0].value["operation_id"], "ask");
+
+    let schemas = by_kind("api_schema");
+    assert_eq!(schemas.len(), 1);
+    assert_eq!(schemas[0].name, "AskRequest");
+
+    let auth = by_kind("api_auth_requirement");
+    let auth_names: Vec<_> = auth.iter().map(|fact| fact.name.as_str()).collect();
+    assert_eq!(auth_names, vec!["bearerAuth", "bearerAuth"]);
+
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "api_operation")
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "api_schema")
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|candidate| candidate.kind == "api_auth_requirement")
+    );
+}

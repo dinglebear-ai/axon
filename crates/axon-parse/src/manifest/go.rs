@@ -15,6 +15,21 @@ pub(super) fn deps(input: &ParseInput) -> Vec<Dep> {
             in_require_block = false;
             continue;
         }
+        if !in_require_block {
+            // `go 1.21` pins the language toolchain version; the newer
+            // `toolchain go1.21.5` directive pins an exact Go toolchain
+            // build. Both satisfy the parsing contract's Go toolchain fact
+            // requirement.
+            if let Some(version) = trimmed.strip_prefix("go ") {
+                push_toolchain(&mut deps, "go", version.trim(), trimmed, idx as u32 + 1);
+                continue;
+            }
+            if let Some(version) = trimmed.strip_prefix("toolchain ") {
+                let version = version.trim().strip_prefix("go").unwrap_or(version.trim());
+                push_toolchain(&mut deps, "go", version, trimmed, idx as u32 + 1);
+                continue;
+            }
+        }
         let dep_line = trimmed.strip_prefix("require ").unwrap_or(trimmed);
         if dep_line.is_empty()
             || dep_line.starts_with("//")
@@ -31,6 +46,8 @@ pub(super) fn deps(input: &ParseInput) -> Vec<Dep> {
             parser_id: "go_mod",
             ecosystem: "go",
             scope: "require",
+            fact_kind: "dependency",
+            candidate_kind: "manifest_dependency",
             name: name.to_string(),
             version: parts.next().map(ToOwned::to_owned),
             line: idx as u32 + 1,
@@ -38,4 +55,21 @@ pub(super) fn deps(input: &ParseInput) -> Vec<Dep> {
         });
     }
     deps
+}
+
+fn push_toolchain(deps: &mut Vec<Dep>, name: &str, version: &str, quote: &str, line: u32) {
+    if version.is_empty() {
+        return;
+    }
+    deps.push(Dep {
+        parser_id: "go_mod",
+        ecosystem: "go",
+        scope: "toolchain",
+        fact_kind: "toolchain_version",
+        candidate_kind: "toolchain_version",
+        name: name.to_string(),
+        version: Some(version.to_string()),
+        line,
+        quote: quote.to_string(),
+    });
 }
