@@ -22,7 +22,6 @@ const CATEGORIES = [
 const OPERATIONS = [
   /* ── Fetch & Read (cyan) ── */
   { id: "scrape",     name: "Scrape",     tone: "cyan",   icon: "scrape",   category: "read",     arg: "url",     argLabel: "URL",            argHint: "https://docs.rs/serde",                short: "Fetch one page → markdown" },
-  { id: "map",        name: "Map",        tone: "cyan",   icon: "map",      category: "read",     arg: "url",     argLabel: "domain",         argHint: "https://spider.rs",                    short: "Discover URLs, skip bodies" },
   { id: "retrieve",   name: "Retrieve",   tone: "cyan",   icon: "database", category: "read",     arg: "url",     argLabel: "URL",            argHint: "https://docs.rs/serde",                short: "Read a stored doc by URL" },
   { id: "screenshot", name: "Screenshot", tone: "cyan",   icon: "camera",   category: "read",     arg: "url",     argLabel: "URL",            argHint: "https://tokio.rs",                     short: "Capture a full-page PNG" },
   { id: "diff",       name: "Diff",       tone: "cyan",   icon: "diff",     category: "read",     arg: "url",     argLabel: "URL A · URL B",  argHint: "https://a.example  https://b.example",  short: "Compare two URLs", dual: true },
@@ -31,7 +30,6 @@ const OPERATIONS = [
 
   /* ── Crawl & Ingest (orange · async lifecycle) ── */
   { id: "crawl",      name: "Crawl",      tone: "orange", icon: "crawl",    category: "jobs",     async: true, arg: "url",    argLabel: "start URL",   argHint: "https://docs.rs",                short: "Queue a recursive site crawl" },
-  { id: "extract",    name: "Extract",    tone: "orange", icon: "braces",   category: "jobs",     async: true, arg: "url",    argLabel: "URL(s)",      argHint: "https://news.ycombinator.com",   short: "Structured extraction (LLM)" },
   { id: "embed",      name: "Embed",      tone: "orange", icon: "layers",   category: "jobs",     async: true, arg: "input",  argLabel: "text or path", argHint: "./notes/*.md",                  short: "Embed text / files → vectors" },
   { id: "ingest",     name: "Ingest",     tone: "orange", icon: "box",      category: "jobs",     async: true, arg: "target", argLabel: "source",      argHint: "github.com/jmagar/axon",         short: "Ingest a repo / feed / sessions" },
 
@@ -39,14 +37,11 @@ const OPERATIONS = [
   { id: "search",     name: "Search",     tone: "cyan",   icon: "search",   category: "discover", arg: "query", argLabel: "query",          argHint: "rust async runtime comparison",     short: "Web search (Tavily / SearXNG)" },
   { id: "research",   name: "Research",   tone: "rose",   icon: "compass",  category: "discover", arg: "query", argLabel: "topic",          argHint: "state of WASM component model 2026", short: "Deep research + synthesis" },
   { id: "query",      name: "Query",      tone: "cyan",   icon: "target",   category: "discover", arg: "query", argLabel: "query",          argHint: "how does Pin work",                 short: "Vector search the collection" },
-  { id: "suggest",    name: "Suggest",    tone: "rose",   icon: "sparkles", category: "discover", arg: "focus", argLabel: "focus (optional)", argHint: "tokio internals",                short: "Suggest what to crawl next", optionalArg: true, noArg: true },
   { id: "sources",    name: "Sources",    tone: "cyan",   icon: "folder",   category: "discover", arg: null,    argLabel: "domain (optional)", argHint: "docs.rs",                       short: "List indexed sources", optionalArg: true, noArg: true },
   { id: "domains",    name: "Domains",    tone: "cyan",   icon: "globe",    category: "discover", arg: null,    argLabel: "filter (optional)", argHint: "rs",                            short: "List indexed domains", optionalArg: true, noArg: true },
 
   /* ── Reason (rose) ── */
   { id: "ask",        name: "Ask",        tone: "rose",   icon: "ask",      category: "reason",   arg: "query", argLabel: "question",       argHint: "how does serde derive work?",       short: "RAG over the collection" },
-  { id: "summarize",  name: "Summarize",  tone: "rose",   icon: "summarize", category: "reason",  arg: "url",   argLabel: "URL",            argHint: "https://docs.rs/tokio",             short: "Scrape + LLM summary" },
-  { id: "evaluate",   name: "Evaluate",   tone: "rose",   icon: "beaker",   category: "reason",   arg: "query", argLabel: "question",       argHint: "what is a Waker?",                  short: "Grade retrieval quality" },
 
   /* ── System & Diagnostics (cyan) ── */
   { id: "doctor",     name: "Doctor",     tone: "cyan",   icon: "activity", category: "system",   arg: null, noArg: true, short: "Health-check the stack" },

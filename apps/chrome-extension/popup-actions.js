@@ -59,13 +59,6 @@ async function executeCommand(command, tab) {
     };
   }
 
-  if (command.name === "extract") {
-    const parsed = parseCliArgs(command.args);
-    const urls = resolveCommandUrls(parsed.positionals, tab);
-    const result = await startExtractWithAxon(urls, parsed.flags);
-    return acceptedJobResult("Extract queued", result, "extract");
-  }
-
   if (command.name === "embed") {
     const input = command.arg || tab?.url || "";
     if (!input) {
@@ -125,55 +118,6 @@ async function executeCommand(command, tab) {
       copyText: output,
       copiedMessage: `Copied Axon ${command.name} result to clipboard.`,
       doneMessage: `Axon ${command.name} complete.`
-    };
-  }
-
-  if (command.name === "summarize") {
-    const urls = resolveCommandUrls(command.args, tab);
-    const result = await summarizeWithAxon(urls);
-    const output = formatSummary(result, tab, urls[0]);
-    return {
-      output,
-      copyText: output,
-      sourceUrl: urls[0],
-      copiedMessage: "Copied Axon summary to clipboard.",
-      doneMessage: "Axon summary ready."
-    };
-  }
-
-  if (command.name === "map") {
-    const url = resolveCommandUrl(command.arg, tab);
-    const result = await mapWithAxon(url);
-    const output = formatMap(result, tab, url);
-    return {
-      output,
-      copyText: output,
-      sourceUrl: url,
-      copiedMessage: `Copied ${result.urls?.length || 0} mapped URLs to clipboard.`,
-      doneMessage: "Axon URL map ready."
-    };
-  }
-
-  if (command.name === "evaluate") {
-    const question = command.arg || command.raw;
-    const result = await evaluateWithAxon(question);
-    const output = formatGenericResult("evaluate", result);
-    return {
-      output,
-      copyText: output,
-      copiedMessage: "Copied Axon evaluation to clipboard.",
-      doneMessage: "Axon evaluation complete."
-    };
-  }
-
-  if (command.name === "suggest") {
-    const result = await suggestWithAxon(command.arg);
-    const output = formatGenericResult("suggest", result);
-    return {
-      output,
-      copyText: output,
-      copiedMessage: "Copied Axon suggestions to clipboard.",
-      doneMessage: "Axon suggestions ready."
     };
   }
 
@@ -262,6 +206,14 @@ async function executeCommand(command, tab) {
 
   if (["debug", "screenshot", "setup", "mcp", "serve", "completions"].includes(command.name)) {
     return unsupportedCliCommand(command.name);
+  }
+
+  // These command names once fanned out to per-action routes that were
+  // removed server-side and are not part of the extension's required API
+  // surface (docs/pipeline-unification/surfaces/chrome-extension-contract.md
+  // "Required API Surface") — never fan these out as live requests.
+  if (["map", "summarize", "evaluate", "suggest", "extract"].includes(command.name)) {
+    return removedServerRouteCommand(command.name);
   }
 
   throw new Error(`Unknown command: ${command.name}`);

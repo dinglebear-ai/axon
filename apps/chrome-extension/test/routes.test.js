@@ -90,7 +90,17 @@ function stripComments(source) {
 }
 
 test("removed legacy routes never appear as a live reference in any shipped extension script", () => {
-  const forbidden = [/\/v1\/scrape\b/, /\/v1\/crawl\b/, /\/v1\/embed\b/, /\/v1\/ingest\b/];
+  const forbidden = [
+    /\/v1\/scrape\b/,
+    /\/v1\/crawl\b/,
+    /\/v1\/embed\b/,
+    /\/v1\/ingest\b/,
+    /\/v1\/map\b/,
+    /\/v1\/summarize\b/,
+    /\/v1\/evaluate\b/,
+    /\/v1\/suggest\b/,
+    /\/v1\/extract\b/
+  ];
   const jsFiles = fs
     .readdirSync(EXT_ROOT)
     .filter((f) => f.endsWith(".js") && fs.statSync(path.join(EXT_ROOT, f)).isFile());
