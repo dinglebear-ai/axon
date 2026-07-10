@@ -12,12 +12,12 @@ describe("chatToolActions", () => {
       ok: true,
       status: 200,
       method: "POST",
-      path: "/v1/scrape",
+      path: "/v1/sources",
       payload: { markdown: "# Example\n\nHello from the page.", url: "https://example.com" },
     });
 
     expect(message).toContain("Scrape completed");
-    expect(message).toContain("POST /v1/scrape");
+    expect(message).toContain("POST /v1/sources");
     expect(message).toContain("# Example");
   });
 
@@ -29,7 +29,7 @@ describe("chatToolActions", () => {
       ok: true,
       status: 202,
       method: "POST",
-      path: "/v1/crawl",
+      path: "/v1/sources",
       payload: { job_id: "job-123", status: "queued" },
     });
 

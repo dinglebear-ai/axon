@@ -4,7 +4,7 @@
 // `isTauriRuntime` is false, directory listing + navigation + file preview
 // against a mocked Tauri fs bridge, and the real ingest wiring — proving it
 // dispatches through `axon_http_request` with the same shape the `embed`
-// action would build (POST /v1/embed with the file's absolute path).
+// action would build (POST /v1/sources with the file's absolute path).
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -138,12 +138,12 @@ describe("FilesView — real ingest wiring", () => {
       if (command === "axon_http_request") {
         const request = args?.request as { method: string; path: string; body: unknown };
         expect(request.method).toBe("POST");
-        expect(request.path).toBe("/v1/embed");
-        expect(request.body).toEqual({ input: "/home/user/README.md", collection: "axon" });
+        expect(request.path).toBe("/v1/sources");
+        expect(request.body).toEqual({ source: "/home/user/README.md", collection: "axon" });
         return Promise.resolve({
           ok: true,
           status: 200,
-          path: "/v1/embed",
+          path: "/v1/sources",
           method: "POST",
           payload: { job_id: "abc" },
         });
@@ -164,7 +164,7 @@ describe("FilesView — real ingest wiring", () => {
     expect(invokeMock).toHaveBeenCalledWith(
       "axon_http_request",
       expect.objectContaining({
-        request: expect.objectContaining({ method: "POST", path: "/v1/embed" }),
+        request: expect.objectContaining({ method: "POST", path: "/v1/sources" }),
       }),
     );
   });
@@ -194,7 +194,7 @@ describe("FilesView — real ingest wiring", () => {
         return Promise.resolve({
           ok: false,
           status: 500,
-          path: "/v1/embed",
+          path: "/v1/sources",
           method: "POST",
           payload: { message: "TEI unreachable" },
         });
@@ -341,7 +341,7 @@ describe("FilesView — bulk selection and ingest", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          path: "/v1/embed",
+          path: "/v1/sources",
           method: "POST",
           payload: { job_id: "abc" },
         });
@@ -393,7 +393,7 @@ describe("FilesView — bulk selection and ingest", () => {
       if (command === "axon_http_request") {
         return new Promise((resolve) => {
           resolvers.push(() =>
-            resolve({ ok: true, status: 200, path: "/v1/embed", method: "POST", payload: {} }),
+            resolve({ ok: true, status: 200, path: "/v1/sources", method: "POST", payload: {} }),
           );
         });
       }
@@ -418,7 +418,7 @@ describe("FilesView — bulk selection and ingest", () => {
       if (command === "axon_http_request") {
         return new Promise((resolve) => {
           resolvers.push(() =>
-            resolve({ ok: true, status: 200, path: "/v1/embed", method: "POST", payload: {} }),
+            resolve({ ok: true, status: 200, path: "/v1/sources", method: "POST", payload: {} }),
           );
         });
       }

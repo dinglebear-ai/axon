@@ -104,7 +104,7 @@ const chatToolRun: RunState = {
         "### Crawl queued",
         "",
         "- Command: `/crawl https://developers.openai.com/codex`",
-        "- Request: `POST /v1/crawl`",
+        "- Request: `POST /v1/sources`",
         "- HTTP: 202",
         "- Job id: `crawl_01JZ0PALETTE`",
         "- Status: queued",
