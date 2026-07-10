@@ -51,7 +51,7 @@ pub struct RegistrySourceIndexInput {
     pub auth_snapshot: Option<AuthSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegistrySourceIndexOutput {
     pub job_id: JobId,
     pub source_id: SourceId,
@@ -60,6 +60,11 @@ pub struct RegistrySourceIndexOutput {
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
     pub removed_versions: u64,
+    /// Parser-produced graph candidates from every prepared document in
+    /// this generation, carried up for the `graphing` stage
+    /// (`source::graph::write_baseline_graph`) to write. Empty on the
+    /// unchanged-refresh path, since it prepares no documents.
+    pub graph_candidates: Vec<GraphCandidate>,
 }
 
 #[cfg(test)]
@@ -229,6 +234,7 @@ async fn index_registry_source_with_lease(
         chunks_prepared: vectorized.stats.chunks_prepared,
         vector_points_written: publish_stats.total_points_written(),
         removed_versions: diff.counts.removed,
+        graph_candidates: vectorized.graph_candidates,
     })
 }
 
@@ -262,6 +268,7 @@ async fn unchanged_refresh_output(
         chunks_prepared: 0,
         vector_points_written: 0,
         removed_versions: 0,
+        graph_candidates: Vec::new(),
     }))
 }
 

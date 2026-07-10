@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime::ServiceJobRuntime;
 use crate::source::classify::SourceInputKind;
 use crate::types::ServiceJob;
+use axon_api::source::{LifecycleStatus, SourceKind};
 use axon_core::config::Config;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
 use std::error::Error as StdError;

@@ -1,35 +1,47 @@
-//! Baseline SourceGraph write for `index_source`.
+//! SourceGraph write for `index_source` — the `graphing` stage.
 //!
-//! After a source is acquired and indexed, this module upserts the minimal
-//! *source graph skeleton* into the durable [`SqliteGraphStore`]:
+//! After a source is acquired and indexed, this module upserts two kinds of
+//! [`GraphCandidate`] into the durable [`SqliteGraphStore`]:
 //!
-//! 1. one **container node** for the source itself (kind chosen per family from
-//!    the closed registry, keyed by the source's canonical URI);
-//! 2. one **document node** per indexed manifest item (kind derived from the
-//!    item's [`ItemKind`], keyed by the item's canonical URI);
-//! 3. one **containment edge** (container → document) using the family's
-//!    natural containment edge kind, each backed by a `text_mention` evidence
-//!    record so the candidate validates.
+//! 1. the **baseline skeleton**: one container node for the source itself
+//!    (kind chosen per family from the closed registry, keyed by the source's
+//!    canonical URI), one document node per indexed manifest item (kind
+//!    derived from the item's [`ItemKind`]), and one containment edge
+//!    (container → document) per item, each backed by a `text_mention`
+//!    evidence record so the candidate validates;
+//! 2. the **real parser-produced candidates** carried up from every prepared
+//!    document in this generation (`source-pipeline.md`'s `parsing` stage
+//!    output — repo→package edges, compose topology, session tool calls, …),
+//!    collected during vectorization and forwarded here via
+//!    [`IndexCounts::graph_candidates`] instead of being dropped after
+//!    preparation.
 //!
-//! This is the baseline skeleton only — deep entity/dependency-manifest
-//! candidate extraction (repo→package edges, compose topology, session tool
-//! calls, …) is a later bead. The goal here is a genuinely non-empty, correct
-//! graph at runtime, built from the real per-document manifest the ledger
-//! already stored during indexing.
+//! Every candidate — baseline or parser-produced — is individually
+//! re-validated against `axon-graph`'s closed kind registry
+//! ([`axon_graph::candidate::validate_candidate`]) before the batch write:
+//! `SqliteGraphStore::upsert_candidates` fails the *whole* transaction on the
+//! first invalid candidate, so a single malformed candidate from a parser must
+//! not be allowed to also block a source's valid baseline skeleton from
+//! landing. Invalid candidates are dropped with a warning (fail-closed at the
+//! candidate level), not published.
 //!
-//! Per the crate-ownership rule, `axon-graph` owns the store and the closed kind
-//! registry; this module only assembles [`GraphCandidate`] values and calls
-//! `upsert_candidates`. When no target pool is available (no unified SQLite
-//! runtime), the write is skipped and a degraded [`GraphWriteSummary`] with zero
-//! counts is returned — acquisition never crashes because of the graph write.
+//! Per the crate-ownership rule, `axon-graph` owns the store, the closed kind
+//! registry, and candidate/merge-key/authority validation; this module only
+//! assembles and filters [`GraphCandidate`] values and calls
+//! `upsert_candidates` once per index. When no target pool is available (no
+//! unified SQLite runtime), the write is skipped and a degraded
+//! [`GraphWriteSummary`] with zero counts is returned — acquisition never
+//! crashes because of the graph write.
 
 use std::sync::Arc;
 
 use axon_api::source::{
-    GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate, GraphEvidence, GraphNodeCandidate,
-    GraphWriteSummary, ItemKind, ManifestItem, MetadataMap, SourceId, SourceItemKey,
-    SourceManifest,
+    EnrichmentKind, EnrichmentStatus, GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate,
+    GraphEvidence, GraphNodeCandidate, GraphWriteSummary, ItemKind, ManifestItem, MetadataMap,
+    ParserHint, PipelinePhase, SourceEnrichment, SourceId, SourceItemKey, SourceManifest,
+    StageCounts, StageId, StageResultHeader, Timestamp,
 };
+use axon_graph::candidate::validate_candidate;
 use axon_graph::sqlite::SqliteGraphStore;
 use axon_graph::store::GraphStore;
 use axon_ledger::store::LedgerStore;
@@ -46,12 +58,15 @@ const BASELINE_CONFIDENCE: f32 = 0.95;
 /// Producer version reported on every baseline candidate.
 const PRODUCER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Build and persist the baseline source graph for a completed index.
+/// Build and persist the source graph for a completed index: the baseline
+/// skeleton plus every parser-produced candidate from this generation.
 ///
 /// Reads the just-published manifest for `counts.source_id`/`counts.generation`
 /// from the ledger, assembles one container node + one node/edge per document,
-/// and upserts them into the durable graph on the unified pool. Returns the real
-/// [`GraphWriteSummary`] from the store result.
+/// unions in `extra_candidates` (already individually validated here so one bad
+/// candidate cannot sink the baseline write), runs the minimal `enriching`
+/// stage over the valid extras, and upserts everything into the durable graph
+/// in one batch. Returns the real [`GraphWriteSummary`] from the store result.
 ///
 /// A missing pool, a missing manifest, or a store error degrades to a zero-count
 /// summary (with `degraded = true`) rather than failing the index — the source
@@ -62,6 +77,7 @@ pub async fn write_baseline_graph(
     ledger: &dyn LedgerStore,
     counts: &IndexCounts,
     canonical_uri: &str,
+    extra_candidates: Vec<GraphCandidate>,
 ) -> GraphWriteSummary {
     let Some(pool) = pool else {
         tracing::debug!("no unified sqlite pool; skipping baseline graph write");
@@ -91,9 +107,27 @@ pub async fn write_baseline_graph(
         }
     };
 
-    let candidate = build_candidate(kind, counts, canonical_uri, &manifest);
+    // Enriching stage (source-pipeline.md: "fetched/acquired items + source
+    // metadata" -> `SourceEnrichment[]`). This is a minimal but real
+    // producer: it derives an enrichment record from the parser-produced
+    // candidates actually extracted for this generation (not a stub), and
+    // must not itself persist graph data — only the store write below does.
+    let valid_extras = filter_valid_candidates(extra_candidates, &counts.source_id);
+    let enrichment = build_enrichment(counts, canonical_uri, &valid_extras);
+    tracing::info!(
+        source_id = %counts.source_id.0,
+        enrichment_kind = ?enrichment.enrichment_kind,
+        enrichment_status = ?enrichment.status,
+        parse_hints = enrichment.parse_hints.len(),
+        graph_candidates = enrichment.graph_candidates.len(),
+        "enriching stage produced source enrichment record"
+    );
+
+    let mut candidates = vec![build_candidate(kind, counts, canonical_uri, &manifest)];
+    candidates.extend(valid_extras);
+
     let store = SqliteGraphStore::from_pool((*pool).clone());
-    match store.upsert_candidates(vec![candidate]).await {
+    match store.upsert_candidates(candidates).await {
         Ok(result) => GraphWriteSummary {
             nodes_upserted: result.nodes_upserted,
             edges_upserted: result.edges_upserted,
@@ -108,6 +142,101 @@ pub async fn write_baseline_graph(
             );
             degraded_summary()
         }
+    }
+}
+
+/// Re-validate every extra (parser-produced) candidate against `axon-graph`'s
+/// closed kind registry before it enters the write batch. `upsert_candidates`
+/// fails the whole batch on the first invalid candidate, so filtering here —
+/// fail-closed at the *candidate* level, not the whole index — keeps one
+/// malformed parser candidate from also blocking the baseline skeleton write.
+/// axon-parse already sanitizes at parse time (`validate::sanitize_result`);
+/// this is the write path's own gate, so it never trusts an upstream caller to
+/// have done so.
+fn filter_valid_candidates(
+    candidates: Vec<GraphCandidate>,
+    source_id: &SourceId,
+) -> Vec<GraphCandidate> {
+    candidates
+        .into_iter()
+        .filter(|candidate| match validate_candidate(candidate) {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::warn!(
+                    source_id = %source_id.0,
+                    candidate_id = %candidate.candidate_id,
+                    error = %err.message,
+                    "dropping invalid graph candidate before write"
+                );
+                false
+            }
+        })
+        .collect()
+}
+
+/// Build the minimal `enriching`-stage output for this generation.
+/// `EnrichmentKind::Extraction`/`Completed` when the generation produced at
+/// least one validated graph candidate; `EnrichmentKind::None`/`NotNeeded`
+/// when it produced none. Parse hints are derived from the real parser ids
+/// recorded on each candidate's producer, not fabricated.
+fn build_enrichment(
+    counts: &IndexCounts,
+    canonical_uri: &str,
+    candidates: &[GraphCandidate],
+) -> SourceEnrichment {
+    let now = Timestamp(chrono::Utc::now().to_rfc3339());
+    let mut parser_ids: Vec<String> = candidates
+        .iter()
+        .filter_map(|candidate| candidate.producer.parser.clone())
+        .collect();
+    parser_ids.sort();
+    parser_ids.dedup();
+    let parse_hints = parser_ids
+        .into_iter()
+        .map(|parser_id| ParserHint {
+            parser_id,
+            reason: "graph candidate producer observed during parsing".to_string(),
+            options: MetadataMap::new(),
+        })
+        .collect();
+
+    let (enrichment_kind, status) = if candidates.is_empty() {
+        (EnrichmentKind::None, EnrichmentStatus::NotNeeded)
+    } else {
+        (EnrichmentKind::Extraction, EnrichmentStatus::Completed)
+    };
+
+    SourceEnrichment {
+        header: StageResultHeader {
+            job_id: counts.job_id,
+            stage_id: StageId::new(counts.job_id.0),
+            phase: PipelinePhase::Preparing,
+            status: axon_api::source::LifecycleStatus::Completed,
+            started_at: now.clone(),
+            completed_at: Some(now),
+            counts: StageCounts {
+                items_total: Some(candidates.len() as u64),
+                items_done: candidates.len() as u64,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            warnings: Vec::new(),
+            error: None,
+        },
+        source_id: counts.source_id.clone(),
+        source_item_key: SourceItemKey::new(canonical_uri),
+        enrichment_kind,
+        status,
+        metadata: MetadataMap::new(),
+        parse_hints,
+        chunk_hints: Vec::new(),
+        graph_candidates: candidates.to_vec(),
+        artifacts: Vec::new(),
+        warnings: Vec::new(),
     }
 }
 

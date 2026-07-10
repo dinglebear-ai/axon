@@ -48,7 +48,7 @@ pub struct WebSourceIndexInput {
     pub embed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WebSourceIndexOutput {
     pub job_id: JobId,
     pub source_id: SourceId,
@@ -57,6 +57,11 @@ pub struct WebSourceIndexOutput {
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
     pub removed_pages: u64,
+    /// Parser-produced graph candidates from every prepared document in this
+    /// generation, carried up for the `graphing` stage
+    /// (`source::graph::write_baseline_graph`) to write. Empty on the
+    /// unchanged-refresh and map-only paths, since neither prepares documents.
+    pub graph_candidates: Vec<GraphCandidate>,
 }
 
 pub async fn index_web_source(
@@ -183,6 +188,7 @@ async fn publish_map_generation(
         chunks_prepared: 0,
         vector_points_written: 0,
         removed_pages: diff.counts.removed,
+        graph_candidates: Vec::new(),
     })
 }
 
@@ -361,6 +367,7 @@ async fn record_published_vector_generation(
         chunks_prepared: vectorized.chunks_prepared,
         vector_points_written: points_written,
         removed_pages: diff.counts.removed,
+        graph_candidates: vectorized.graph_candidates,
     })
 }
 
