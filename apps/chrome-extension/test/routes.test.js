@@ -22,7 +22,13 @@ function mockFetch(calls, response) {
 test("scrapeWithAxon submits a POST /v1/sources page-scope request", async () => {
   const calls = [];
   const ctx = buildContext({ fetch: mockFetch(calls, { canonical_uri: "https://example.com" }) });
-  loadFiles(ctx, ["capture-redaction.js", "popup-state.js", "popup-actions.js", "popup-api.js", "popup-format.js"]);
+  loadFiles(ctx, [
+    "src/redaction/capture-redaction.js",
+    "src/popup/popup-state.js",
+    "src/popup/popup-actions.js",
+    "src/popup/popup-api.js",
+    "src/popup/popup-format.js"
+  ]);
 
   await ctx.scrapeWithAxon(["https://example.com"]);
 
@@ -39,7 +45,13 @@ test("scrapeWithAxon submits a POST /v1/sources page-scope request", async () =>
 test("startCrawlWithAxon submits a POST /v1/sources site-scope request per URL", async () => {
   const calls = [];
   const ctx = buildContext({ fetch: mockFetch(calls, { job_id: "job-1" }) });
-  loadFiles(ctx, ["capture-redaction.js", "popup-state.js", "popup-actions.js", "popup-api.js", "popup-format.js"]);
+  loadFiles(ctx, [
+    "src/redaction/capture-redaction.js",
+    "src/popup/popup-state.js",
+    "src/popup/popup-actions.js",
+    "src/popup/popup-api.js",
+    "src/popup/popup-format.js"
+  ]);
 
   await ctx.startCrawlWithAxon(["https://example.com"], {});
 
@@ -52,7 +64,13 @@ test("startCrawlWithAxon submits a POST /v1/sources site-scope request per URL",
 test("rememberWithAxon submits a POST /v1/memories request matching RestMemoryRequest shape", async () => {
   const calls = [];
   const ctx = buildContext({ fetch: mockFetch(calls, { memory_id: "mem-1" }) });
-  loadFiles(ctx, ["capture-redaction.js", "popup-state.js", "popup-actions.js", "popup-api.js", "popup-format.js"]);
+  loadFiles(ctx, [
+    "src/redaction/capture-redaction.js",
+    "src/popup/popup-state.js",
+    "src/popup/popup-actions.js",
+    "src/popup/popup-api.js",
+    "src/popup/popup-format.js"
+  ]);
 
   const tab = { url: "https://example.com/page", title: "Example Page" };
   await ctx.rememberWithAxon(["decision", "ship", "it"], tab);
@@ -72,7 +90,13 @@ test("rememberWithAxon submits a POST /v1/memories request matching RestMemoryRe
 test("rememberWithAxon refuses to capture a blocked-scheme tab URL", async () => {
   const calls = [];
   const ctx = buildContext({ fetch: mockFetch(calls, {}) });
-  loadFiles(ctx, ["capture-redaction.js", "popup-state.js", "popup-actions.js", "popup-api.js", "popup-format.js"]);
+  loadFiles(ctx, [
+    "src/redaction/capture-redaction.js",
+    "src/popup/popup-state.js",
+    "src/popup/popup-actions.js",
+    "src/popup/popup-api.js",
+    "src/popup/popup-format.js"
+  ]);
 
   const tab = { url: "chrome://extensions", title: "Extensions" };
   await assert.rejects(() => ctx.rememberWithAxon([], tab), /can't capture/);
@@ -101,22 +125,36 @@ test("removed legacy routes never appear as a live reference in any shipped exte
     /\/v1\/suggest\b/,
     /\/v1\/extract\b/
   ];
-  const jsFiles = fs
-    .readdirSync(EXT_ROOT)
-    .filter((f) => f.endsWith(".js") && fs.statSync(path.join(EXT_ROOT, f)).isFile());
+  const jsFiles = listShippedJsFiles(path.join(EXT_ROOT, "src"));
 
-  assert.ok(jsFiles.length > 0, "expected to find shipped .js files in apps/chrome-extension");
+  assert.ok(jsFiles.length > 0, "expected to find shipped .js files under apps/chrome-extension/src");
 
   for (const file of jsFiles) {
-    const code = stripComments(fs.readFileSync(path.join(EXT_ROOT, file), "utf8"));
+    const code = stripComments(fs.readFileSync(path.join(EXT_ROOT, "src", file), "utf8"));
     for (const pattern of forbidden) {
-      assert.doesNotMatch(code, pattern, `${file} must not reference the removed route ${pattern}`);
+      assert.doesNotMatch(code, pattern, `src/${file} must not reference the removed route ${pattern}`);
     }
   }
 });
 
+// Recursively lists .js files under `srcRoot`, returned as paths relative to
+// `srcRoot` (posix-style, since these are used to build require/read paths).
+function listShippedJsFiles(srcRoot, prefix = "") {
+  const entries = fs.readdirSync(path.join(srcRoot, prefix), { withFileTypes: true });
+  const out = [];
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...listShippedJsFiles(srcRoot, rel));
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
 test("popup.html only wires the current source-request pipeline (sanity check for the loader's file list)", () => {
-  const html = fs.readFileSync(path.join(EXT_ROOT, "popup.html"), "utf8");
+  const html = fs.readFileSync(path.join(EXT_ROOT, "src", "popup", "popup.html"), "utf8");
   assert.match(html, /popup-api\.js/);
   assert.match(html, /capture-redaction\.js/);
 });

@@ -37,9 +37,9 @@ test("manifest.json never requests <all_urls> literally", () => {
 
 test("manifest.json wires the expected background/side-panel/options entry points", () => {
   const manifest = readManifest();
-  assert.equal(manifest.background?.service_worker, "background.js");
-  assert.equal(manifest.side_panel?.default_path, "sidepanel.html");
-  assert.equal(manifest.options_page, "options.html");
+  assert.equal(manifest.background?.service_worker, "src/background/background.js");
+  assert.equal(manifest.side_panel?.default_path, "src/sidepanel/sidepanel.html");
+  assert.equal(manifest.options_page, "src/options/options.html");
 });
 
 // chrome-extension-contract.md "Permission Contract": "request host

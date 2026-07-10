@@ -189,7 +189,7 @@ function openOptions() {
     return;
   }
 
-  window.open(chrome.runtime.getURL("options.html"));
+  window.open(chrome.runtime.getURL("src/options/options.html"));
 }
 
 async function cancelCurrentCrawl() {

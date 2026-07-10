@@ -1,13 +1,13 @@
 // Client-side pre-redaction + blocked-capture-scheme guard shared with the
-// popup (see capture-redaction.js — AxonRedact.redactText/redactUrl/
-// isBlockedCaptureUrl/blockedCaptureReason).
-// Optional host-permission helper (see host-permissions.js —
+// popup (see src/redaction/capture-redaction.js — AxonRedact.redactText/
+// redactUrl/isBlockedCaptureUrl/blockedCaptureReason).
+// Optional host-permission helper (see src/auth/host-permissions.js —
 // AxonHostPermissions.hasAxonHostPermission/requestAxonHostPermission).
 // manifest.json declares the Axon server origins as
 // `optional_host_permissions`, not a blanket `host_permissions` grant, so
 // every fetch path here must check (or, for a real user gesture, request)
 // the grant first.
-importScripts("capture-redaction.js", "host-permissions.js");
+importScripts("../redaction/capture-redaction.js", "../auth/host-permissions.js");
 
 const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
 const AUTO_SCRAPE_HISTORY_KEY = "autoScrapeHistory";
@@ -393,7 +393,7 @@ async function copyTextOffscreen(text) {
   if (!chrome.offscreen.hasDocument || !(await chrome.offscreen.hasDocument())) {
     try {
       await chrome.offscreen.createDocument({
-        url: chrome.runtime.getURL("offscreen.html"),
+        url: chrome.runtime.getURL("src/background/offscreen.html"),
         reasons: [chrome.offscreen.Reason.CLIPBOARD],
         justification: "Copy scraped markdown from the context menu."
       });
