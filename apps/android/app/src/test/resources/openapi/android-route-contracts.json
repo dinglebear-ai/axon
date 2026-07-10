@@ -336,12 +336,12 @@
   },
   {
     "method": "POST",
-    "path": "/v1/dedupe",
+    "path": "/v1/prune/dedupe",
     "requiresAuth": true
   },
   {
     "method": "POST",
-    "path": "/v1/purge",
+    "path": "/v1/prune/purge",
     "requiresAuth": true
   },
   {
