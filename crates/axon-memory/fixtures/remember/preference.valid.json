@@ -1,0 +1,21 @@
+{
+  "memory_type": "preference",
+  "body": "Jacob prefers cargo xtask verify (fmt-check + clippy + check + test) before any PR is opened.",
+  "confidence": 0.95,
+  "salience": 0.9,
+  "scope": {
+    "kind": "user",
+    "value": "jmagar"
+  },
+  "title": "Pre-PR verification preference",
+  "tags": ["workflow", "preference"],
+  "links": [],
+  "decay": {
+    "profile": "very_slow",
+    "half_life_days": 730,
+    "reinforcement_count": 0,
+    "pinned": false
+  },
+  "embed": true,
+  "visibility": "internal"
+}

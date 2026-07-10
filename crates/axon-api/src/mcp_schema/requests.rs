@@ -233,6 +233,9 @@ pub struct MemoryRequest {
     pub export_scope: Option<crate::source::MemoryScope>,
     /// `export` — include archived memories in the export.
     pub include_archived: Option<bool>,
+    /// `export` — include `working`-status memories in the export (excluded
+    /// by default per contract "Type rules").
+    pub include_working: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]

@@ -68,6 +68,7 @@ pub(super) async fn run_export(
     let mut output: Option<String> = None;
     let mut scope: Option<MemoryScope> = None;
     let mut include_archived = false;
+    let mut include_working = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -97,16 +98,25 @@ pub(super) async fn run_export(
                 include_archived = true;
                 i += 1;
             }
+            "--include-working" => {
+                include_working = true;
+                i += 1;
+            }
             other => return Err(format!("unknown memory export option: {other}").into()),
         }
     }
 
+    // CLI is a local-trust transport (matching `run_import`'s rationale
+    // above): admin visibility so a local export is never silently missing
+    // `sensitive` records the operator asked for.
     let result = memory_svc::export(
         service_context,
         MemoryExportRequest {
             scope,
             include_archived,
+            include_working,
         },
+        &memory_svc::MemoryAuthz::admin(),
     )
     .await
     .map_err(|err| format!("memory export failed: {err}"))?;

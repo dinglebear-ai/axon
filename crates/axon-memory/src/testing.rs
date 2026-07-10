@@ -1,9 +1,14 @@
-//! Test fixtures for the memory crate: a mutable, deterministic clock.
+//! Test fixtures for the memory crate: a mutable, deterministic clock and a
+//! fake [`CompactionSynthesizer`] for the `semantic_summary` strategy.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use async_trait::async_trait;
+use axon_api::source::MemoryRecord;
+
 use crate::record::{Clock, format_rfc3339};
+use crate::sqlite::compact::CompactionSynthesizer;
 
 /// A clock whose "now" can be pinned and advanced, for deterministic decay
 /// tests. Epoch seconds are the single source of truth; the RFC3339 form is
@@ -48,5 +53,50 @@ impl Clock for FixedClock {
 
     fn now_rfc3339(&self) -> String {
         format_rfc3339(self.now_epoch_secs())
+    }
+}
+
+/// Deterministic fake [`CompactionSynthesizer`] for tests exercising the
+/// `semantic_summary` compaction strategy without a real LLM backend. Joins
+/// source bodies with a `[synthesized]` marker so tests can assert the LLM
+/// path (not `concatenate`'s `[memory_id] body` format) actually ran.
+#[derive(Debug, Default)]
+pub struct FakeCompactionSynthesizer {
+    /// When set, `synthesize` returns this error instead of a summary
+    /// (exercises the fail-closed path).
+    pub fail_with: Option<String>,
+}
+
+impl FakeCompactionSynthesizer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn failing(message: impl Into<String>) -> Self {
+        Self {
+            fail_with: Some(message.into()),
+        }
+    }
+}
+
+#[async_trait]
+impl CompactionSynthesizer for FakeCompactionSynthesizer {
+    async fn synthesize(
+        &self,
+        sources: &[MemoryRecord],
+        instructions: Option<&str>,
+    ) -> Result<String, String> {
+        if let Some(message) = &self.fail_with {
+            return Err(message.clone());
+        }
+        let joined = sources
+            .iter()
+            .map(|record| record.body.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        Ok(match instructions {
+            Some(instructions) => format!("[synthesized:{instructions}] {joined}"),
+            None => format!("[synthesized] {joined}"),
+        })
     }
 }

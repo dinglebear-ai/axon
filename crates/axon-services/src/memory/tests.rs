@@ -33,6 +33,7 @@ fn remember_req(body: &str) -> MemoryRequest {
         dry_run: None,
         export_scope: None,
         include_archived: None,
+        include_working: None,
     }
 }
 
@@ -95,6 +96,7 @@ fn facet_links_round_trip_through_item() {
     memory.file = Some("src/lib.rs".to_string());
     let links = facet_links(&memory);
     let record = axon_api::source::MemoryRecord {
+        visibility: axon_api::source::Visibility::Internal,
         memory_id: axon_api::source::MemoryId::new("mem_1"),
         memory_type: axon_api::source::MemoryType::Fact,
         status: axon_api::source::MemoryStatus::Active,
@@ -241,6 +243,7 @@ async fn remember_search_show_round_trip_through_sqlite() {
 
     let search = store
         .search(axon_api::source::MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "hybrid retrieval".to_string(),
             limit: 10,
             filters: Default::default(),
@@ -424,6 +427,7 @@ async fn dispatch_covers_full_lifecycle_surface() {
 
 fn import_record(body: &str) -> axon_api::source::MemoryRecord {
     axon_api::source::MemoryRecord {
+        visibility: axon_api::source::Visibility::Internal,
         memory_id: axon_api::source::MemoryId::new(format!("mem_{}", Uuid::new_v4())),
         memory_type: axon_api::source::MemoryType::Fact,
         status: axon_api::source::MemoryStatus::Active,

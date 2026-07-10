@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axon_api::source::{
     MemoryContextRequest, MemoryContextResult, MemoryId, MemoryLinkRequest, MemoryRecord,
-    MemoryRequest, MemoryResult, MemorySearchRequest, MemorySearchResult,
+    MemoryRequest, MemoryResult, MemorySearchRequest, MemorySearchResult, Visibility,
 };
 
 use crate::context::ServiceContext;
@@ -86,6 +86,7 @@ fn fake_record(memory_id: MemoryId, request: &MemoryRequest) -> MemoryRecord {
         salience: request.salience,
         scope: request.scope.clone(),
         history: Vec::new(),
+        visibility: request.visibility.unwrap_or(Visibility::Internal),
         title: request.title.clone(),
         links: request.links.clone(),
         decay: request.decay.clone(),

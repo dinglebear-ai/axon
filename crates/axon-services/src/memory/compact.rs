@@ -3,30 +3,24 @@
 
 use super::*;
 
-pub async fn compact(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryItem> {
-    let request_json = json!({
-        "operation": "memory_compaction",
-        "memory_ids": req.memory_ids,
-        "strategy": req.strategy,
-    });
-    job_tracking::track_operation_job(
-        ctx,
-        axon_api::source::OperationKind::MemoryCompaction,
-        request_json,
-        || compact_inner(ctx, req),
-    )
-    .await
-}
-
-async fn compact_inner(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryItem> {
-    let store = memory_store(ctx).await?;
+/// Build the typed [`MemoryCompactRequest`] from the flat CLI/MCP
+/// [`MemoryRequest`] shape. Split out from [`compact`] so the fully-built
+/// domain request can be embedded verbatim in the tracked job's
+/// `request_json` (`"payload"` field) — the detached unified-worker runner
+/// (`crate::runtime::job_runners::MemoryCompactionRunner`) deserializes that
+/// same shape to execute a `memory_compaction` job it claims independently
+/// of this foreground call.
+pub(super) async fn build_compact_request(
+    store: &dyn MemoryStore,
+    req: &MemoryRequest,
+) -> Result<MemoryCompactRequest> {
     let memory_ids = req
         .memory_ids
         .clone()
         .filter(|ids| !ids.is_empty())
         .context("compact requires memory_ids (at least 2)")?;
     for id in &memory_ids {
-        ensure_exists(store.as_ref(), id).await?;
+        ensure_exists(store, id).await?;
     }
     let strategy = req
         .strategy
@@ -57,19 +51,39 @@ async fn compact_inner(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memor
             value: String::new(),
         }
     };
-    let result = store
-        .compact(MemoryCompactRequest {
-            memory_ids: memory_ids.into_iter().map(MemoryId::new).collect(),
-            strategy,
-            result_type,
-            title: req.title.clone(),
-            scope,
-            archive_sources: req.archive_sources.unwrap_or(false),
-            instructions: None,
-            timestamp: Timestamp(SystemClock.now_rfc3339()),
-        })
-        .await
-        .map_err(store_err)?;
+    Ok(MemoryCompactRequest {
+        memory_ids: memory_ids.into_iter().map(MemoryId::new).collect(),
+        strategy,
+        result_type,
+        title: req.title.clone(),
+        scope,
+        archive_sources: req.archive_sources.unwrap_or(false),
+        instructions: None,
+        timestamp: Timestamp(SystemClock.now_rfc3339()),
+    })
+}
+
+pub async fn compact(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryItem> {
+    let store = memory_store(ctx).await?;
+    let request = build_compact_request(store.as_ref(), &req).await?;
+    let request_json = json!({
+        "operation": "memory_compaction",
+        "payload": serde_json::to_value(&request).context("serialize compact request")?,
+    });
+    job_tracking::track_operation_job(
+        ctx,
+        axon_api::source::OperationKind::MemoryCompaction,
+        request_json,
+        || compact_with_store(store, request),
+    )
+    .await
+}
+
+async fn compact_with_store(
+    store: Arc<dyn MemoryStore>,
+    request: MemoryCompactRequest,
+) -> Result<MemoryItem> {
+    let result = store.compact(request).await.map_err(store_err)?;
     let record = store
         .get(result.memory_id.clone())
         .await

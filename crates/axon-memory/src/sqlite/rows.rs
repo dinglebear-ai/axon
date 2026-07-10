@@ -5,7 +5,7 @@
 
 use axon_api::source::{
     MemoryDecayPolicy, MemoryHistoryEvent, MemoryId, MemoryLink, MemoryRecord, MemoryScope,
-    MemoryStatus, MemoryType, VectorPointId,
+    MemoryStatus, MemoryType, VectorPointId, Visibility,
 };
 use rusqlite::Row;
 
@@ -72,6 +72,29 @@ pub fn status_from_str(s: &str) -> Result<MemoryStatus> {
     })
 }
 
+/// Serialize a visibility classification to its snake_case wire string.
+pub fn visibility_to_str(v: Visibility) -> &'static str {
+    match v {
+        Visibility::Public => "public",
+        Visibility::Internal => "internal",
+        Visibility::Sensitive => "sensitive",
+        Visibility::Redacted => "redacted",
+        Visibility::Derived => "derived",
+    }
+}
+
+/// Parse a visibility classification from its wire string.
+pub fn visibility_from_str(s: &str) -> Result<Visibility> {
+    Ok(match s {
+        "public" => Visibility::Public,
+        "internal" => Visibility::Internal,
+        "sensitive" => Visibility::Sensitive,
+        "redacted" => Visibility::Redacted,
+        "derived" => Visibility::Derived,
+        other => return Err(store_error(format!("unknown visibility {other}"))),
+    })
+}
+
 /// Build a `MemoryRecord` from a `memory_records` row joined with its links.
 pub fn record_from_row(row: &Row, links: Vec<MemoryLink>) -> Result<MemoryRecord> {
     let memory_id: String = row.get("memory_id").map_err(map_sql)?;
@@ -79,6 +102,7 @@ pub fn record_from_row(row: &Row, links: Vec<MemoryLink>) -> Result<MemoryRecord
     let status_str: String = row.get("status").map_err(map_sql)?;
     let body: String = row.get("body").map_err(map_sql)?;
     let title: Option<String> = row.get("title").map_err(map_sql)?;
+    let visibility_str: String = row.get("visibility").map_err(map_sql)?;
     let confidence: f64 = row.get("confidence").map_err(map_sql)?;
     let salience: f64 = row.get("salience").map_err(map_sql)?;
     let scope_kind: String = row.get("scope_kind").map_err(map_sql)?;
@@ -109,6 +133,7 @@ pub fn record_from_row(row: &Row, links: Vec<MemoryLink>) -> Result<MemoryRecord
             value: scope_value,
         },
         history,
+        visibility: visibility_from_str(&visibility_str)?,
         title,
         links,
         decay,

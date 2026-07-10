@@ -127,6 +127,7 @@ async fn forgotten_memory_is_not_recalled_from_vector_namespace() {
 
     let hits = service
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "durable".to_string(),
             limit: 10,
             filters: Default::default(),
@@ -178,6 +179,7 @@ impl axon_embedding::provider::EmbeddingProvider for FlakyEmbeddingProvider {
 
 fn record_for_import(memory_id: &str, body: &str) -> MemoryRecord {
     MemoryRecord {
+        visibility: Visibility::Internal,
         memory_id: MemoryId::new(memory_id),
         memory_type: MemoryType::Fact,
         status: MemoryStatus::Active,

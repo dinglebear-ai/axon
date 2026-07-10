@@ -95,12 +95,23 @@ pub async fn reinforce(
 
     let now = signal.timestamp.0.clone();
     update_record(&conn, &record, &now)?;
+    drop(conn);
 
     // Age is measured from last_reinforced_at, so a fresh reinforcement gives
     // age 0 -> full decay multiplier.
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
     let (_, created, _) = age_and_bounds(&record, now_secs);
+    crate::observe::emit(
+        store.sink(),
+        crate::observe::MemoryPhase::Reinforcing,
+        &record,
+        Severity::Info,
+        None,
+        Some(score),
+        None,
+    )
+    .await;
     Ok(result_from_record(&record, score, &created, &now))
 }
 
@@ -181,10 +192,23 @@ pub async fn contradict(
         update_record(&conn, rec, &now)?;
         enqueue_review(&conn, &rec.memory_id.0, Some(&reason), &now)?;
     }
+    drop(conn);
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
     let (_, created, _) = age_and_bounds(&record, now_secs);
+    for rec in [&record, &other] {
+        crate::observe::emit(
+            store.sink(),
+            crate::observe::MemoryPhase::Reviewing,
+            rec,
+            Severity::Warning,
+            None,
+            None,
+            Some(reason.as_str()),
+        )
+        .await;
+    }
     Ok(result_from_record(&record, score, &created, &now))
 }
 
@@ -215,10 +239,27 @@ pub async fn set_status(
         timestamp: request.timestamp,
     });
     update_record(&conn, &record, &now)?;
+    drop(conn);
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
     let (_, created, _) = age_and_bounds(&record, now_secs);
+    if let Some(phase) = match request.status {
+        MemoryStatus::Forgotten => Some(crate::observe::MemoryPhase::Forgetting),
+        MemoryStatus::Review => Some(crate::observe::MemoryPhase::Reviewing),
+        _ => None,
+    } {
+        crate::observe::emit(
+            store.sink(),
+            phase,
+            &record,
+            Severity::Info,
+            None,
+            Some(score),
+            None,
+        )
+        .await;
+    }
     Ok(result_from_record(&record, score, &created, &now))
 }
 

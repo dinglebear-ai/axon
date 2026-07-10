@@ -1,7 +1,7 @@
 use super::*;
 use axon_api::source::{
     DecayProfile, MemoryDecayPolicy, MemoryHistoryEvent, MemoryId, MemoryRecord, MemoryScope,
-    MemoryStatus, MemoryType, Timestamp,
+    MemoryStatus, MemoryType, Timestamp, Visibility,
 };
 
 fn record(memory_type: MemoryType, status: MemoryStatus) -> MemoryRecord {
@@ -21,6 +21,7 @@ fn record(memory_type: MemoryType, status: MemoryStatus) -> MemoryRecord {
             message: "created".to_string(),
             timestamp: Timestamp("2026-01-01T00:00:00Z".to_string()),
         }],
+        visibility: Visibility::Internal,
         title: None,
         links: Vec::new(),
         decay: None,
