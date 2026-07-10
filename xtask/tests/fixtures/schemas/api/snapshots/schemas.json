@@ -5823,6 +5823,13 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "actor": {
+          "description": "User/system identity requesting the cancellation, echoed back on\n`JobCancelResult::canceled_by`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "force_after_ms": {
           "format": "uint64",
           "minimum": 0,
@@ -5851,14 +5858,46 @@
             "null"
           ]
         },
+        "canceled_by": {
+          "description": "User/system identity that requested the cancellation.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Cancellation\".",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cleanup_debt_ids": {
+          "description": "Cleanup work created for any published partial side effect.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "job_id": {
           "$ref": "#/$defs/JobCancelResult_JobId"
+        },
+        "last_safe_stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCancelResult_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Last completed safe point (stage phase) before cancellation unwound."
         },
         "reason": {
           "type": [
             "string",
             "null"
           ]
+        },
+        "side_effects": {
+          "description": "Published/written side effects that survived the cooperative unwind.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "status": {
           "$ref": "#/$defs/JobCancelResult_LifecycleStatus"
@@ -5889,6 +5928,38 @@
         "canceled",
         "expired",
         "skipped"
+      ],
+      "type": "string"
+    },
+    "JobCancelResult_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
       ],
       "type": "string"
     },
@@ -6314,6 +6385,13 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "deadline_at": {
+          "description": "Optional cancellation deadline. Past-deadline `running` attempts are\ntransitioned to `expired` by the worker claim/heartbeat path.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Required Job\nFields\" (`deadline_at`).",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "error": {
@@ -6823,19 +6901,38 @@
       "type": "string"
     },
     "JobCreateRequest_JobIntent": {
-      "enum": [
-        "run",
-        "acquire",
-        "refresh",
-        "watch",
-        "exec",
-        "retry",
-        "recover",
-        "cleanup",
-        "probe",
-        "reset"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "run",
+            "acquire",
+            "refresh",
+            "watch",
+            "exec",
+            "retry",
+            "recover",
+            "cleanup",
+            "probe",
+            "reset"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "index",
+          "description": "Initial index/acquire submission for a legacy per-family job\n(crawl/embed/ingest) that predates the unified `source` pipeline's\n`Acquire` intent.",
+          "type": "string"
+        },
+        {
+          "const": "map",
+          "description": "Discover items without embedding (`JobKind::Map`).",
+          "type": "string"
+        },
+        {
+          "const": "extract",
+          "description": "Structured LLM extraction (`JobKind::Extract`).",
+          "type": "string"
+        }
+      ]
     },
     "JobCreateRequest_JobKind": {
       "oneOf": [
@@ -28362,7 +28459,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:332eea1ef49efdc49c71d325796571d48a36e79739e99f1aec75d0e74d3396f9",
+        "checksum": "sha256:372466d1aedf5632d7af89b9562ec6e2820eb8fcea83f8182b064b6c46492c93",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
@@ -28377,7 +28474,7 @@
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:2961915f909b586de38a198accde542f386fb14745504bf7bde3e1d30223ee2e",
+        "checksum": "sha256:0266cb19a5aecea9c85aec5723ce33d2f882dc449c543b4fa57e9880a34d8d24",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job.rs"
       },
