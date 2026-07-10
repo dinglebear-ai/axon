@@ -10,23 +10,31 @@ render observed state; they do not invent alternate status models. Full contract
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/observability-contract.md](../../../docs/pipeline-unification/runtime/observability-contract.md).
 
-## Status — live crate, Phase 8 landed
-`SourceProgressEvent`/event registry and provider reservation tracking
-(`reservation.rs`) are real and tested, not markers. Do not add durable job
-storage, worker scheduling, or transport-specific status rendering here.
+## Status — live crate, Phase 8+9 landed
+`SourceProgressEvent`/event registry, provider reservation tracking
+(`reservation.rs`), the structured log/span field registries (`log.rs`,
+`span.rs`), typed progress-update helpers (`progress.rs`), and the
+`PipelinePhase` descriptor registry (`phase.rs`) are all real and tested, not
+markers. Do not add durable job storage, worker scheduling, or
+transport-specific status rendering here.
 
 ## Module map
 | File | Owns |
 |---|---|
-| `event.rs` | `ObserveEvent` — observable event schema + stable event names |
-| `phase.rs` | `ObservePhase` — pipeline phase enum (start/progress/complete/fail/degrade) |
-| `heartbeat.rs` | `Heartbeat` — heartbeat emission helpers + stream builders |
-| `progress.rs` | `ProgressUpdate` — progress emission helpers |
-| `metric.rs` | `MetricSample` — metric names, units, labels, bounded-cardinality rules |
-| `span.rs` | `SpanFields` — tracing span-field conventions |
-| `log.rs` | structured log context + redaction hooks |
-| `collector.rs` | `EventEmitter`, `ObserveCollector`, `NoopEmitter`, `TestEmitter` — emit boundary + test collectors |
-| `testing.rs` | in-memory collector, heartbeat/degraded/cooling event fixtures |
+| `event.rs` | Pure `SourceProgressEvent` builders (`stage_started`/`stage_completed`/`stage_degraded`/`stage_failed`/`provider_waiting`) — terminal + start lifecycle events. `sequence` is left at the `0` sentinel; the emitting sink stamps the real value (see `sequence.rs`). |
+| `progress.rs` | `ProgressUpdate` — typed builder for in-flight `status=running` progress ticks, materialized via `into_event()` onto the same base envelope `event.rs` uses |
+| `phase.rs` | `PhaseDescriptor`/`PHASE_REGISTRY` — applies-to scope + human meaning for every canonical `PipelinePhase` (the enum itself is owned by `axon-api`); `label`/`meaning`/`applies_to`/`is_terminal` helpers. Does not redefine the enum. |
+| `heartbeat.rs` | `heartbeat()` builder + `JobHeartbeatExt` — heartbeat construction, foreground/background interval constants |
+| `metric.rs` | `MetricSample` — metric sample shape (name/value/unit/labels/timestamp) |
+| `span.rs` | `SpanFieldSet` — bounded tracing span/log field set (`job_id`, `source_id`, `adapter`, `scope`, `phase`, `provider_id`, counts, error code/severity), built from an event or heartbeat via `from_event`/`from_heartbeat`. Consumed by `sink/tracing_sink.rs` instead of ad hoc hardcoded fields. |
+| `log.rs` | `LogFieldSet`/`LogLevel` — structured log field set (timestamp/level/target/message + correlation ids); `message` is redacted through `axon_core::redact::redact_secrets` at construction (the redaction hook point) |
+| `sequence.rs` | `SequenceRegistry` — monotonic per-`job_id` sequence assignment, applied by sinks at emit time |
+| `reservation.rs` | provider reservation/cooling tracking |
+| `collector.rs` | `ObservabilitySink` trait (`emit`/`heartbeat`/`metric`/`flush`) — the shared emit boundary |
+| `sink.rs` + `sink/sqlite.rs` + `sink/tracing_sink.rs` | production `ObservabilitySink` impls: `SqliteObservabilitySink` (durable event/heartbeat/provider-health rows, owns an in-crate migration) and `TracingObservabilitySink` (forwards to the `tracing` subscriber via `SpanFieldSet`) |
+| `migration.rs` | `MIGRATIONS`/`migration_set()` — this crate's SQL migration set, composed into the shared cross-crate SQLite runner (see `axon-jobs`) rather than run standalone in production |
+| `schema_registry.rs` | `EventSpec`/`event_registry()` — runtime event name/phase/status registry consumed by schema-contract generation |
+| `testing.rs` | `InMemoryObservabilitySink` + `InMemoryObservabilitySnapshot` — in-memory `ObservabilitySink` fixture for tests, plus `test_error()` |
 
 ## Boundary — keep OUT of this crate
 - durable job rows, job scheduling, worker orchestration.

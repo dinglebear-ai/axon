@@ -14,6 +14,7 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
+| `crates/axon-observe/src/metric.rs` | `sha256:0431ae0e49e02633f95b0abbe54dcf0b20b5a4367e0fd4ca2dc1cf3ce3a06342` |
 | `crates/axon-observe/src/schema_registry.rs` | `sha256:bdd484ac24fd7b662c75b8917981f8a6ebfe07b5dc59e7f4c518be69de22c046` |
 | `docs/pipeline-unification/schemas/event-schema.md` | `sha256:11698f7a5004224ceac5d1697af2f880ab9676cfa89e2e25a4cfd2f2308b7596` |
 

@@ -96,6 +96,7 @@ fn events_spec() -> FamilySpec {
         owner_crates: &["axon-observe"],
         source_paths: &[
             "crates/axon-observe/src/schema_registry.rs",
+            "crates/axon-observe/src/metric.rs",
             "docs/pipeline-unification/schemas/event-schema.md",
         ],
         json_path: "docs/reference/runtime/events.schema.json",

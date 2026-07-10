@@ -6,8 +6,22 @@
 //! extraction inventory, §5.4 "Authz scope constants"). Do not alter the
 //! literal values.
 
+pub mod affinity;
+pub mod caller;
+pub mod decision;
 pub mod http;
 pub mod policy;
+pub mod visibility;
+
+pub use affinity::{AffinityPolicy, required_scope_for_safety_class};
+pub use caller::{anonymous_caller, scoped_caller, system_caller, trusted_local_caller};
+pub use decision::{FakePolicyEvaluator, FakePolicyMode, PolicyEvaluator, ScopePolicyEvaluator};
+pub use visibility::VisibilityPolicy;
+
+// DTOs owned by `axon-api`, re-exported for ergonomic access to this crate's
+// public policy-evaluation API surface (auth-contract "Public API" list) —
+// this crate evaluates policy over these shapes, it does not redefine them.
+pub use axon_api::source::{AuthScope, CallerContext, ExecutionAffinity, SecurityDecision};
 
 /// OAuth scope granting read access to Axon read/RAG routes.
 pub const AXON_READ_SCOPE: &str = "axon:read";

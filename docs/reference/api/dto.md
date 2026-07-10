@@ -15,15 +15,15 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/schema_registry.rs` | `sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f` |
-| `crates/axon-api/src/source.rs` | `sha256:c42fb950da36e92ea3c39b7bf27166d791017079b5742f7ca3919afb06f538a6` |
+| `crates/axon-api/src/source.rs` | `sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362` |
 | `crates/axon-api/src/source/boundary.rs` | `sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e` |
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
-| `crates/axon-api/src/source/common.rs` | `sha256:46f8c247ec7d77b72d37b08913526403eac035156733e4d779308700edcd6fb5` |
+| `crates/axon-api/src/source/common.rs` | `sha256:a3253862cbc0c49a223cbb94fe21fdacb0b9ac5c1557f635833093284e5996b1` |
 | `crates/axon-api/src/source/document.rs` | `sha256:0395b09638d4265bc795fa64409dfaee4df517883d6e62b909889e3537a78f1c` |
 | `crates/axon-api/src/source/enums.rs` | `sha256:6a0ebcea59dc81c31a30069cadafe39f0e60dbdc914d4aad55334e5e5b8265a2` |
 | `crates/axon-api/src/source/graph.rs` | `sha256:d96090e8b5089f0d19f68e755eeee577e86961a46269ad98c7de1548ba0558f0` |
 | `crates/axon-api/src/source/ids.rs` | `sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17` |
-| `crates/axon-api/src/source/job.rs` | `sha256:819cc30c3ef16d34581c838b775ac5eab8cc5e3aa622df40bdd1989662c7236d` |
+| `crates/axon-api/src/source/job.rs` | `sha256:2961915f909b586de38a198accde542f386fb14745504bf7bde3e1d30223ee2e` |
 | `crates/axon-api/src/source/job_listing.rs` | `sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271` |
 | `crates/axon-api/src/source/lifecycle.rs` | `sha256:04755fecf0a574f9d07bbe72c6053592703a07ab14de3d4c28dd5083f7219828` |
 | `crates/axon-api/src/source/listing.rs` | `sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb` |
@@ -31,12 +31,12 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/prune.rs` | `sha256:5f98e4a52fe7dd507955161917635f3c1bcaf7839737ea03c3c0378551e26233` |
 | `crates/axon-api/src/source/stage.rs` | `sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8` |
 | `crates/axon-api/src/source/state.rs` | `sha256:9c7d65b7d3a4e163d2f3e8c60806713466909fef2822b79566eda77575faf63b` |
-| `crates/axon-api/src/source/status.rs` | `sha256:75d4a2a43c699a17343689d6d57c0f4e3eb2c254718ae5f31f9b5fe1f5111616` |
+| `crates/axon-api/src/source/status.rs` | `sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea` |
 | `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
 | `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:1b30e91ddefd5596315b1a6e90c7f216fc7debbe92b3fff48c39c6525d0f38c4` |
 | `xtask/src/schemas/api_defs.rs` | `sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a` |
-| `xtask/src/schemas/registry.rs` | `sha256:2a71db7eaeb8c352eb999213a9706479f93f358d0b0cbe6d411c6ae58abc80e6` |
+| `xtask/src/schemas/registry.rs` | `sha256:c019075a04ea3f40060a54488c65e2184c6a65055a9a237ef420df0e101433e9` |
 
 ## Root Shape
 

@@ -269,7 +269,7 @@
         "500",
         "502"
       ],
-      "result_dto": "AskStreamEvent",
+      "result_dto": "StreamEvent",
       "streaming": true
     },
     {
@@ -307,7 +307,7 @@
         "500",
         "502"
       ],
-      "result_dto": "ChatStreamEvent",
+      "result_dto": "StreamEvent",
       "streaming": true
     },
     {
@@ -583,7 +583,7 @@
         "500",
         "502"
       ],
-      "result_dto": "SummarizeStreamEvent",
+      "result_dto": "StreamEvent",
       "streaming": true
     },
     {
@@ -602,7 +602,7 @@
         "500",
         "502"
       ],
-      "result_dto": "ResearchStreamEvent",
+      "result_dto": "StreamEvent",
       "streaming": true
     },
     {
@@ -1447,7 +1447,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:3bb4a23e6fe0d604be5e0e79612f12eab6cfdc31bb8b33046549f2ab7515692d",
+        "checksum": "sha256:f1dcd3723715023e7507385915a79d313318808e2cb1c4601fc849f1d05fa9dd",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

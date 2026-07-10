@@ -39,6 +39,7 @@ pub use ssrf::validate_resolved_ips;
 #[cfg(any(test, feature = "test-util"))]
 pub use ssrf::{get_allow_loopback, set_allow_loopback};
 pub use ssrf::{ssrf_blacklist_compact_strings, ssrf_blacklist_patterns};
+pub use ssrf::{validate_resolved_ips_with_audit, validate_url_with_audit};
 pub use ssrf::{validate_url, validate_url_with_dns};
 pub use ua::{AXON_API_UA, DEFAULT_UA, axon_api_ua, axon_ua};
 pub use url_path::with_path;

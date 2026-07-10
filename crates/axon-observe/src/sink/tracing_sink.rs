@@ -10,6 +10,7 @@ use axon_api::source::{JobHeartbeat, SourceProgressEvent};
 use crate::collector::{ObservabilitySink, Result};
 use crate::metric::MetricSample;
 use crate::sequence::SequenceRegistry;
+use crate::span::SpanFieldSet;
 
 /// Emits the shared event model to the `tracing` subscriber as structured,
 /// redaction-safe fields. It carries only bounded/identifier fields (never raw
@@ -39,13 +40,22 @@ impl TracingObservabilitySink {
 impl ObservabilitySink for TracingObservabilitySink {
     async fn emit(&self, mut event: SourceProgressEvent) -> Result<()> {
         event.sequence = self.sequences.next(event.job_id);
+        // Bounded identifier/count/severity fields come from the shared
+        // `SpanFieldSet` convention (see `crate::span`) instead of being
+        // hardcoded here; only transport-envelope fields (status, visibility,
+        // event_id, message) are read straight off the event.
+        let fields = SpanFieldSet::from_event(&event);
         tracing::info!(
-            job_id = %event.job_id.0,
+            job_id = fields.job_id.map(|id| id.0.to_string()).unwrap_or_default(),
             sequence = event.sequence,
-            phase = enum_str(&event.phase),
+            phase = fields.phase.map(crate::phase::label).unwrap_or_default(),
             status = enum_str(&event.status),
-            severity = enum_str(&event.severity),
+            severity = fields.severity.map(|s| enum_str(&s)).unwrap_or_default(),
             visibility = enum_str(&event.visibility),
+            source_id = fields.source_id.map(|id| id.0).unwrap_or_default(),
+            adapter = fields.adapter.unwrap_or_default(),
+            provider_id = fields.provider_id.map(|id| id.0).unwrap_or_default(),
+            error_code = fields.error_code.unwrap_or_default(),
             event_id = %event.event_id,
             message = %event.message,
             "observe.event"
@@ -57,10 +67,11 @@ impl ObservabilitySink for TracingObservabilitySink {
         if heartbeat.last_event_sequence.is_none() {
             heartbeat.last_event_sequence = self.sequences.last(heartbeat.job_id);
         }
+        let fields = SpanFieldSet::from_heartbeat(&heartbeat);
         tracing::debug!(
-            job_id = %heartbeat.job_id.0,
+            job_id = fields.job_id.map(|id| id.0.to_string()).unwrap_or_default(),
             attempt = heartbeat.attempt,
-            phase = enum_str(&heartbeat.phase),
+            phase = fields.phase.map(crate::phase::label).unwrap_or_default(),
             status = enum_str(&heartbeat.status),
             last_event_sequence = heartbeat.last_event_sequence,
             "observe.heartbeat"

@@ -34,6 +34,10 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/api_error.rs",
         "crates/axon-error/src/code.rs",
         "crates/axon-error/src/stage.rs",
+        "crates/axon-error/src/retry.rs",
+        "crates/axon-error/src/degradation.rs",
+        "crates/axon-error/src/cooling.rs",
+        "crates/axon-error/src/context.rs",
         "crates/axon-cli/src/schema_registry.rs",
         "crates/axon-core/src/config/schema_registry.rs",
         "crates/axon-core/src/boundary.rs",
@@ -53,6 +57,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-web/src/schema_registry.rs",
         "crates/axon-mcp/src/schema_registry.rs",
         "crates/axon-observe/src/schema_registry.rs",
+        "crates/axon-observe/src/metric.rs",
         "crates/axon-graph/src/schema_registry.rs",
         "crates/axon-vectors/src/schema_registry.rs",
         "crates/axon-vectors/src/lib.rs",
@@ -1744,6 +1749,31 @@ fn enum_projection_drift_is_scoped_to_each_enum_array() {
         .expect_err("missing enum value should fail even when value appears elsewhere");
     assert!(err.to_string().contains("SourceKind"));
     assert!(err.to_string().contains("web"));
+}
+
+#[test]
+fn enum_projection_drift_rejects_non_canonical_extra_values() {
+    let mut enums = serde_json::Map::new();
+    for (name, values) in registry::CANONICAL_ENUMS {
+        let mut values = values
+            .iter()
+            .copied()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        if *name == "SourceIntent" {
+            values.push("bogus_extra_variant".to_string());
+        }
+        enums.insert((*name).to_string(), serde_json::json!({ "enum": values }));
+    }
+    let artifact = artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({ "$defs": { "enums": enums } }).to_string(),
+    );
+
+    let err = registry::check_enum_projection_drift(&[artifact])
+        .expect_err("extra non-canonical enum value should fail the bidirectional check");
+    assert!(err.to_string().contains("SourceIntent"));
+    assert!(err.to_string().contains("bogus_extra_variant"));
 }
 
 #[test]

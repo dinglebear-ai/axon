@@ -35,6 +35,8 @@ pub enum ErrorStage {
     Fetching,
     /// Browser/CDP/render provider.
     Rendering,
+    /// Enrichment (metadata/classification/summary/extraction/authority).
+    Enriching,
     /// SourceDocument creation.
     Normalizing,
     /// Parser facts/chunk parser (serialized as `parsing_content`).
@@ -43,8 +45,12 @@ pub enum ErrorStage {
     Graphing,
     /// Chunking/PreparedDocument.
     Preparing,
+    /// Batch assembly for embedding/vectorizing.
+    Batching,
     /// Embedding provider/batch.
     Embedding,
+    /// Vector point construction/payload build.
+    Vectorizing,
     /// VectorStore writes.
     Upserting,
     /// Generation publish.
@@ -55,8 +61,18 @@ pub enum ErrorStage {
     Retrieving,
     /// LLM synthesis.
     Synthesizing,
+    /// RAG/evaluation scoring.
+    Evaluating,
     /// Progress/log/status emit.
     Observing,
+    /// Storage boundary (ledger/artifact/job store), phase-contextual.
+    Storage,
+    /// Provider boundary (embedding/llm/render/search), phase-contextual.
+    Provider,
+    /// Transport boundary (CLI/REST/MCP dispatch), phase-contextual.
+    Transport,
+    /// Internal/unclassified failure within the active operation phase.
+    Internal,
 }
 
 #[cfg(test)]

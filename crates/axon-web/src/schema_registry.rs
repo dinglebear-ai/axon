@@ -97,7 +97,7 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         "/v1/ask/stream",
         "ask_stream",
         Some("AskRequest"),
-        "AskStreamEvent",
+        "StreamEvent",
     ),
     RestRouteSpec {
         method: "POST",
@@ -115,7 +115,7 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         "/v1/chat/stream",
         "chat_stream",
         Some("ChatRequest"),
-        "ChatStreamEvent",
+        "StreamEvent",
     ),
     RestRouteSpec {
         method: "POST",
@@ -233,14 +233,14 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         "/v1/summarize/stream",
         "summarize_stream",
         Some("SummarizeRequest"),
-        "SummarizeStreamEvent",
+        "StreamEvent",
     ),
     stream(
         "POST",
         "/v1/research/stream",
         "research_stream",
         Some("ResearchRequest"),
-        "ResearchStreamEvent",
+        "StreamEvent",
     ),
 ];
 

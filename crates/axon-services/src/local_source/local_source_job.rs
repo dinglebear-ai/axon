@@ -242,6 +242,8 @@ impl LocalSourceProgress for JobProgressSink<'_> {
                 status,
                 stage_id: None,
                 heartbeat_at: timestamp(),
+                sequence: 0,
+                last_progress_at: None,
                 last_event_sequence: Some(sequence),
                 counts,
                 provider_reservations,

@@ -4,7 +4,7 @@ use crate::runtime::ServiceJobRuntime;
 use crate::types::StartDisposition;
 use async_trait::async_trait;
 use axon_api::mcp_schema::{IngestRequest, IngestSourceType};
-use axon_api::source::{AuthSnapshot, CallerContext, TransportKind, Visibility};
+use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_core::config::Config;
 use axon_ingest as ingest;
 use axon_jobs::backend::{BackendResult, JobKind as LegacyJobKind, JobPayload, JobSidecarPayload};
@@ -448,10 +448,14 @@ async fn ingest_start_with_context_enqueues_sessions_source_on_unified_job_store
     };
     let caller = AuthSnapshot::from_caller(
         &CallerContext {
-            actor: Some("user_1".to_string()),
+            caller_id: Some("user_1".to_string()),
             transport: TransportKind::Cli,
+            trusted_local: true,
             scopes: vec!["axon:read".to_string(), "axon:write".to_string()],
             visibility_ceiling: Visibility::Internal,
+            auth_mode: AuthMode::Test,
+            token_id: None,
+            display_name: None,
         },
         Visibility::Internal,
         "test",

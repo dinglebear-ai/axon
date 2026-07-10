@@ -14,11 +14,16 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
+| `crates/axon-api/src/source/status.rs` | `sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea` |
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
 | `crates/axon-error/src/code.rs` | `sha256:abf9bc24f7596983e5fc8bd1228156b8360be4ea20b4d48ceb3e8ed5dd974929` |
+| `crates/axon-error/src/context.rs` | `sha256:ca9e67a1ed3feb4dbfc66e4ae0717e5254ffeb81b00cff0dde74d37dcd125755` |
+| `crates/axon-error/src/cooling.rs` | `sha256:2da7a16ea5064986b853f7380acd6b66d03137ba8eeba72fedd7493c238df900` |
+| `crates/axon-error/src/degradation.rs` | `sha256:b054137819cb965bb929515d48a412a11f74222e61599d22e0ab211e07dafeec` |
 | `crates/axon-error/src/lib.rs` | `sha256:4498c249c8c1476db9c365d0b097fa35e8db871672f40208787bbb4afcd353a1` |
+| `crates/axon-error/src/retry.rs` | `sha256:e5ccc139cf2de5b797cf37d842690176ab57896b4f3954e0e90e75dcd79e50db` |
 | `crates/axon-error/src/schema_registry.rs` | `sha256:7e1f574864bbbe1c71622b9a6a2677c14213f45333990916c6b601b508a36f99` |
-| `crates/axon-error/src/stage.rs` | `sha256:e52da99d501094079edd9f9e24b806fb6b7b32307eea546a63ae461e82cacb6c` |
+| `crates/axon-error/src/stage.rs` | `sha256:afee6d711302dd5b0d8b1d2868f8cab3b50c90534b781773287f7dc6d5e15471` |
 | `docs/pipeline-unification/schemas/error-schema.md` | `sha256:e922cf9a9275494393949f37a1ff3325234e7a874bf5a78425eb5c16fc2a6c46` |
 
 ## Root Shape

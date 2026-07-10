@@ -60,21 +60,119 @@ pub struct PageInfo {
 // `SourceProgressEvent.error`, `capability.rs`) embed the one shared shape.
 pub use axon_error::{ApiError, ErrorSeverity, ErrorStage, ErrorVisibility};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum StreamEvent {
-    Progress { event: SourceProgressEvent },
-    Result { result: SourceResultRef },
-    Error { error: ApiError },
-    Heartbeat { timestamp: Timestamp },
+/// `StreamEvent.kind` — the flat set of streaming event kinds shared by SSE
+/// and MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`
+/// ("StreamEvent Shape").
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamKind {
+    Progress,
+    Token,
+    Citation,
+    Artifact,
+    Warning,
+    Error,
+    Final,
 }
 
+/// The contracted flat SSE/MCP streaming envelope. `data` carries the
+/// kind-specific payload (a `SourceProgressEvent` for `progress`, the
+/// route-specific result DTO for `final`, a `{ "text": ... }` object for
+/// `token`, etc.) — see the contract doc for the per-kind validation rules.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct SourceResultRef {
-    pub job_id: JobId,
-    pub source_id: SourceId,
-    pub status: LifecycleStatus,
+pub struct StreamEvent {
+    pub event_id: String,
+    pub kind: StreamKind,
+    pub sequence: u64,
+    pub timestamp: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<JobId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    #[serde(default = "default_stream_data")]
+    pub data: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<SourceWarning>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ApiError>,
+}
+
+fn default_stream_data() -> serde_json::Value {
+    serde_json::json!({})
+}
+
+impl StreamEvent {
+    /// Builds a new envelope of `kind` with a fresh `evt_`-prefixed
+    /// `event_id` and the current time as `timestamp`. Callers own
+    /// `sequence` (monotonic per stream) and `data` (kind-specific payload).
+    pub fn new(kind: StreamKind, sequence: u64, data: serde_json::Value) -> Self {
+        Self {
+            event_id: format!("evt_{}", uuid::Uuid::new_v4()),
+            kind,
+            sequence,
+            timestamp: Timestamp::from(chrono::Utc::now()),
+            job_id: None,
+            request_id: None,
+            data,
+            warning: None,
+            error: None,
+        }
+    }
+
+    pub fn with_job_id(mut self, job_id: JobId) -> Self {
+        self.job_id = Some(job_id);
+        self
+    }
+
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+
+    /// `progress` kind carrying a `SourceProgressEvent` as `data`.
+    pub fn progress(sequence: u64, event: &SourceProgressEvent) -> Self {
+        Self::new(
+            StreamKind::Progress,
+            sequence,
+            serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({})),
+        )
+    }
+
+    /// `token` kind carrying `{ "text": <text> }` as `data`.
+    pub fn token(sequence: u64, text: impl Into<String>) -> Self {
+        Self::new(
+            StreamKind::Token,
+            sequence,
+            serde_json::json!({ "text": text.into() }),
+        )
+    }
+
+    /// `final` kind carrying the route-specific result DTO as `data`.
+    pub fn final_event<T: Serialize>(sequence: u64, result: &T) -> Self {
+        Self::new(
+            StreamKind::Final,
+            sequence,
+            serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({})),
+        )
+    }
+
+    /// `error` kind. `data` carries only transport-safe diagnostic metadata
+    /// per the contract; the full `ApiError` lives in `error`.
+    pub fn error_event(sequence: u64, error: ApiError) -> Self {
+        let mut event = Self::new(StreamKind::Error, sequence, serde_json::json!({}));
+        event.error = Some(error);
+        event
+    }
+
+    /// `warning` kind.
+    pub fn warning_event(sequence: u64, warning: SourceWarning) -> Self {
+        let mut event = Self::new(StreamKind::Warning, sequence, serde_json::json!({}));
+        event.warning = Some(warning);
+        event
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -142,6 +240,59 @@ pub struct SourceProgressEvent {
     pub warning: Option<SourceWarning>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<ApiError>,
+}
+
+impl SourceProgressEvent {
+    /// Builds a minimal, otherwise-empty progress event for callers that
+    /// only need phase/status/severity/message — e.g. non-job-backed
+    /// synchronous streaming routes (`ask`/`chat`/`summarize`/`research`).
+    pub fn minimal(
+        job_id: JobId,
+        sequence: u64,
+        phase: PipelinePhase,
+        status: LifecycleStatus,
+        severity: Severity,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            event_id: format!("evt_{}", uuid::Uuid::new_v4()),
+            sequence,
+            job_id,
+            attempt: 0,
+            stage_id: None,
+            batch_id: None,
+            reservation_id: None,
+            checkpoint_id: None,
+            dedupe_key: None,
+            phase,
+            status,
+            severity,
+            visibility: Visibility::Public,
+            message: message.into(),
+            timestamp: Timestamp::from(chrono::Utc::now()),
+            source_id: None,
+            canonical_uri: None,
+            adapter: None,
+            scope: None,
+            generation: None,
+            counts: StageCounts {
+                items_total: None,
+                items_done: 0,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            timing: None,
+            current: None,
+            throughput: None,
+            retry: None,
+            warning: None,
+            error: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

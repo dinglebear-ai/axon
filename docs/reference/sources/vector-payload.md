@@ -78,7 +78,7 @@ Payload validation applies metadata and locator guardrails before vector writes.
 |---|---|
 | Forbidden field fragments | `raw_auth`, `auth_header`, `authorization`, `cookie`, `api_key`, `apikey`, `secret`, `raw_env`, `env_value`, `absolute_home`, `home_path`, `raw_html`, `html_blob`, `adapter_response`, `response_blob` |
 | Forbidden value fragments | `authorization:`, `proxy-authorization:`, `bearer `, `cookie:`, `set-cookie:`, `api_key=`, `apikey=`, `api-key:`, `x-api-key:`, `access_token=`, `refresh_token=`, `secret_key=`, `token=` |
-| Bare token prefixes | `sk-proj-`, `github_pat_`, `sk-`, `sk_`, `ghp_`, `xoxb-`, `xoxp-`, `glpat-` |
+| Bare token prefixes | `sk-proj-`, `github_pat_`, `sk-`, `sk_`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `xoxb-`, `xoxp-`, `glpat-` |
 
 ## Enum Tables
 
