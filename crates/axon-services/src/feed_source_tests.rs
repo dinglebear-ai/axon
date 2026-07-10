@@ -50,6 +50,8 @@ fn input(feed_path: std::path::PathBuf) -> FeedSourceIndexInput {
         embedding_dimensions: 8,
         embedding_reservations: None,
         vector_reservations: None,
+        embed: true,
+        max_items: None,
     }
 }
 
@@ -297,4 +299,62 @@ fn progress_reservation_id(event: &JobEvent) -> Option<&str> {
         .get("source_progress_event")?
         .get("reservation_id")?
         .as_str()
+}
+
+/// `embed = false` (source-pipeline.md Validation Checklist: "`embed=false`
+/// never writes vectors"): entries are still discovered/prepared
+/// (documents_prepared stays non-zero) but neither the embedding provider
+/// nor `vector_store.upsert` may be called.
+#[tokio::test]
+async fn embed_false_prepares_entries_but_writes_no_vectors() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = fixture_feed_path(dir.path(), RSS_TWO_ITEMS).await;
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+
+    let mut no_embed_input = input(path);
+    no_embed_input.embed = false;
+
+    let output = index_feed_source(no_embed_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        ledger.committed_generation(&output.source_id).await,
+        Some(output.generation.clone())
+    );
+    assert_eq!(
+        embedder.calls().await.len(),
+        0,
+        "embed=false must not call the embedding provider"
+    );
+    assert!(
+        !vectors.calls().await.contains(&"upsert"),
+        "embed=false must not call vector_store.upsert"
+    );
+    assert_eq!(output.vector_points_written, 0);
+    assert_eq!(output.documents_prepared, 2);
+    assert!(vectors.points("axon-test").await.is_empty());
+}
+
+/// `SourceRequest.limits.max_items` caps the number of feed entries
+/// considered before diffing, so only the first `max_items` entries are
+/// prepared/vectorized even though the feed itself has more.
+#[tokio::test]
+async fn max_items_limit_caps_entries_prepared() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = fixture_feed_path(dir.path(), RSS_TWO_ITEMS).await;
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+
+    let mut capped_input = input(path);
+    capped_input.max_items = Some(1);
+
+    let output = index_feed_source(capped_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+
+    assert_eq!(output.documents_prepared, 1);
 }
