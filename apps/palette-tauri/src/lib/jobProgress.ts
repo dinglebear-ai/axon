@@ -191,3 +191,73 @@ export function summarizeJob(
 export function pendingJobSnapshot(family: AsyncJobFamily, label: string): JobSnapshot {
   return summarizeJob(family, { job: { status: "pending" } }, { jobId: "", label });
 }
+
+// --- Unified job-API adapter (bead axon_rust-ruzox.9) ----------------------
+//
+// The per-family status routes `summarizeJob` above was written for
+// (`GET /v1/{family}/{id}` → `{ job, progress }`) were removed for embed and
+// ingest (only `/v1/extract/{id}` still exists) in favor of the unified
+// `GET /v1/jobs/{id}` route, which returns a flat `JobSummary`
+// (`{ job_id, kind, status, phase, counts?, last_error?, ... }`) — not the old
+// envelope. `summarizeUnifiedJob` adapts that flatter shape for the polling
+// hooks. `JobSummary` does not carry per-family `result_json` counters (the
+// axon-api `JobProgress.metrics` block), nor a wire `started_at` (marked
+// `#[serde(skip)]` server-side), so `metrics` is always empty and
+// `startedAtMs` falls back to `created_at` here. TODO(axon_rust-ruzox.9): once
+// the unified job contract exposes per-family metrics/percent, wire them
+// through instead of leaving this a status-only view.
+const LIFECYCLE_STATUS_PHASE: Record<string, JobPhase> = {
+  queued: "pending",
+  pending: "pending",
+  waiting: "pending",
+  blocked: "pending",
+  running: "running",
+  canceling: "running",
+  completed: "done",
+  completed_degraded: "done",
+  failed: "failed",
+  canceled: "canceled",
+  expired: "failed",
+  skipped: "canceled",
+};
+
+function phaseForLifecycleStatus(status: string): JobPhase {
+  return LIFECYCLE_STATUS_PHASE[status] ?? "running";
+}
+
+function unifiedPercent(counts: JsonRecord): number | null {
+  const total = typeof counts.items_total === "number" ? counts.items_total : null;
+  const done = typeof counts.items_done === "number" ? counts.items_done : null;
+  if (total == null || total <= 0 || done == null) return null;
+  return Math.max(0, Math.min(100, (done / total) * 100));
+}
+
+/**
+ * Assemble a `JobSnapshot` from a polled unified `GET /v1/jobs/{id}` payload
+ * (`components["schemas"]["JobSummary"]`). Sibling of `summarizeJob` for the
+ * routes that no longer have a per-family status endpoint.
+ */
+export function summarizeUnifiedJob(
+  family: AsyncJobFamily,
+  payload: unknown,
+  input: JobSummaryInput,
+): JobSnapshot {
+  const job = asRecord(payload) ?? {};
+  const status = str(job.status) ?? "pending";
+  const counts = asRecord(job.counts);
+  const lastError = asRecord(job.last_error);
+  return {
+    family,
+    jobId: input.jobId,
+    label: input.label,
+    status,
+    phase: phaseForLifecycleStatus(status),
+    percent: counts ? unifiedPercent(counts) : null,
+    metrics: [],
+    errorText: str(lastError?.message),
+    updatedAtMs: parseTimestamp(job.updated_at),
+    // No wire `started_at` on JobSummary (server-side `#[serde(skip)]`) — TODO
+    // (axon_rust-ruzox.9). `created_at` is the closest available proxy.
+    startedAtMs: parseTimestamp(job.created_at),
+  };
+}

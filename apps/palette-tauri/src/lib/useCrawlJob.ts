@@ -1,10 +1,68 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
-import { extractEmbedJobId } from "@/lib/appHelpers";
 import { summarizeCrawl } from "@/lib/crawlJob";
 import { formatPayload } from "@/lib/format";
 import { invoke } from "@/lib/invoke";
 import type { RunState } from "@/lib/runState";
+
+// Bead axon_rust-ruzox.9: `GET /v1/crawl/{id}` and `GET /v1/embed/{id}` were
+// removed in favor of the unified `GET /v1/jobs/{id}` route, which returns a
+// flat `JobSummary` (`{ status, phase, counts?, last_error?, ... }`), not the
+// crawl/embed job's old `result_json` shape (`pages_crawled`, `md_created`,
+// `events`, `rate_limited`, `embed_job_id`, ...). None of that per-crawl
+// telemetry — nor the crawl→embed handoff via `embed_job_id` — has a unified
+// equivalent yet, so this adapter degrades gracefully: it maps what IS
+// available (status/counts/last_error) into the legacy shape `summarizeCrawl`
+// expects and leaves the rest at `summarizeCrawl`'s zero/empty defaults. The
+// two-phase crawl→embed progress fold-in is disabled until the unified job
+// contract exposes a parent/child job link on the wire.
+const LIFECYCLE_TO_LEGACY_STATUS: Record<string, string> = {
+  queued: "pending",
+  pending: "pending",
+  waiting: "pending",
+  blocked: "pending",
+  running: "running",
+  canceling: "running",
+  completed: "completed",
+  completed_degraded: "completed",
+  failed: "failed",
+  expired: "failed",
+  canceled: "canceled",
+  skipped: "canceled",
+};
+
+interface JsonRecord {
+  [key: string]: unknown;
+}
+
+function asRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
+}
+
+/** Adapt a unified `GET /v1/jobs/{id}` `JobSummary` payload into the legacy
+ * `{ job: { status, result_json, updated_at, started_at, error_text } }`
+ * shape `summarizeCrawl` expects. See the module-level TODO above. */
+function adaptUnifiedCrawlPayload(payload: unknown): unknown {
+  const root = asRecord(payload) ?? {};
+  const counts = asRecord(root.counts);
+  const lastError = asRecord(root.last_error);
+  const status = typeof root.status === "string" ? root.status : undefined;
+  return {
+    job: {
+      status: status ? (LIFECYCLE_TO_LEGACY_STATUS[status] ?? "running") : "running",
+      result_json: {
+        pages_crawled: counts?.items_done ?? 0,
+        md_created: counts?.documents_done ?? 0,
+        error_pages: 0,
+      },
+      updated_at: root.updated_at ?? null,
+      // No wire `started_at` on JobSummary (server-side `#[serde(skip)]`) —
+      // `created_at` is the closest available proxy.
+      started_at: root.created_at ?? null,
+      error_text: typeof lastError?.message === "string" ? lastError.message : null,
+    },
+  };
+}
 
 interface UseCrawlJobArgs {
   run: RunState;
@@ -55,28 +113,24 @@ export function useCrawlJob({
       });
     const tick = async () => {
       try {
-        const crawlRes = await getJson(`/v1/crawl/${jobId}`);
+        // Unified route (bead axon_rust-ruzox.9) — see `adaptUnifiedCrawlPayload`
+        // above for the shape gap this accepts. The crawl→embed handoff has no
+        // unified equivalent yet, so `embedPayload` is always undefined here.
+        const crawlRes = await getJson(`/v1/jobs/${jobId}`);
         if (!active) return;
-        const crawlPayload = crawlRes.payload;
-        const embedId = extractEmbedJobId(crawlPayload);
-        let embedPayload: unknown;
-        if (embedId) {
-          try {
-            embedPayload = (await getJson(`/v1/embed/${embedId}`)).payload;
-          } catch {
-            /* embed row not visible yet — keep crawl in the embedding phase */
-          }
-        }
+        const crawlPayload = adaptUnifiedCrawlPayload(crawlRes.payload);
         if (!active) return;
         setNowMs(Date.now());
         setRun((current) => {
           if (current.kind !== "job" || current.jobId !== jobId) return current;
           const elapsedSec = Math.max(0, (Date.now() - current.startedAtMs) / 1000);
-          const snapshot = summarizeCrawl(
-            crawlPayload,
-            { jobId, url: current.url, elapsedSec, maxPages: current.maxPages, maxDepth: current.maxDepth },
-            embedPayload,
-          );
+          const snapshot = summarizeCrawl(crawlPayload, {
+            jobId,
+            url: current.url,
+            elapsedSec,
+            maxPages: current.maxPages,
+            maxDepth: current.maxDepth,
+          });
           return { ...current, snapshot, subtitle: `job ${jobId}` };
         });
         consecutiveFailures = 0;
@@ -126,8 +180,11 @@ export function useCrawlJob({
     const id = run.jobId;
     setCanceling(true);
     try {
+      // Unified `POST /v1/jobs/{id}/cancel` takes a `JobCancelRequest` body
+      // (all fields optional) — send `{}` rather than `null`, which the JSON
+      // extractor would reject as not-an-object.
       await invoke("axon_http_request", {
-        request: { method: "POST", path: `/v1/crawl/${id}/cancel`, body: null },
+        request: { method: "POST", path: `/v1/jobs/${id}/cancel`, body: {} },
       });
     } catch {
       /* the poll will surface the canceled row state */
@@ -142,7 +199,7 @@ export function useCrawlJob({
     const host = run.snapshot.host;
     try {
       const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
-        request: { method: "GET", path: `/v1/crawl/${id}`, body: null },
+        request: { method: "GET", path: `/v1/jobs/${id}`, body: null },
       });
       setRun({
         kind: "success",
@@ -150,7 +207,7 @@ export function useCrawlJob({
         subtitle: `job ${id}`,
         text: formatPayload("crawl", res.payload),
         outputKind: "code",
-        result: { ok: res.ok, status: res.status, path: `/v1/crawl/${id}`, method: "GET", payload: res.payload },
+        result: { ok: res.ok, status: res.status, path: `/v1/jobs/${id}`, method: "GET", payload: res.payload },
       });
     } catch {
       /* keep the live view if the fetch fails */

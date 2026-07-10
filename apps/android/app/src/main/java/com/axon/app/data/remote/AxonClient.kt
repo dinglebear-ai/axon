@@ -31,6 +31,8 @@ import com.axon.app.data.remote.models.ExtractRequest
 import com.axon.app.data.remote.models.IngestRequest
 import com.axon.app.data.remote.models.JobDetailResponse
 import com.axon.app.data.remote.models.JobListResponse
+import com.axon.app.data.remote.models.JobStreamEventDto
+import com.axon.app.data.remote.models.MemoryRequestDto
 import com.axon.app.data.remote.models.MobileSessionDto
 import com.axon.app.data.remote.models.PanelConfigResponse
 import com.axon.app.data.remote.models.PanelCollectionsResponse
@@ -407,6 +409,105 @@ class AxonClient(
     suspend fun listWatches(limit: Int = 25): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
         get<WatchListResponse>(openApiRoute("GET", "/v1/watch", "/v1/watch?limit=$limit")).map { it.watches }
     }
+
+    // ── Memory ────────────────────────────────────────────────────────────────
+    // android-contract.md "Required API Surface" — memory row. Response shapes
+    // are dispatched server-side as untyped `serde_json::Value` (see
+    // `handlers::memory_routes`), so results decode generically as
+    // [JsonElement] rather than binding to one Kotlin shape per subaction.
+
+    /** POST /v1/memories — create a durable memory (`memory.remember`). */
+    suspend fun rememberMemory(req: MemoryRequestDto): Result<JsonElement> = withContext(Dispatchers.IO) {
+        post(openApiRoute("POST", "/v1/memories"), req)
+    }
+
+    /** POST /v1/memories/search — semantic memory recall (`memory.search`). */
+    suspend fun searchMemories(req: MemoryRequestDto): Result<JsonElement> = withContext(Dispatchers.IO) {
+        post(openApiRoute("POST", "/v1/memories/search"), req)
+    }
+
+    /** GET /v1/memories — list memories, optionally filtered by facet/type/status. */
+    suspend fun listMemories(
+        project: String? = null,
+        repo: String? = null,
+        file: String? = null,
+        type: String? = null,
+        status: String? = null,
+        limit: Int? = null,
+    ): Result<JsonElement> = withContext(Dispatchers.IO) {
+        val params = buildList {
+            project?.let { add("project=${queryEncode(it)}") }
+            repo?.let { add("repo=${queryEncode(it)}") }
+            file?.let { add("file=${queryEncode(it)}") }
+            type?.let { add("type=${queryEncode(it)}") }
+            status?.let { add("status=${queryEncode(it)}") }
+            limit?.let { add("limit=$it") }
+        }.joinToString("&")
+        val resolved = if (params.isEmpty()) "/v1/memories" else "/v1/memories?$params"
+        get(openApiRoute("GET", "/v1/memories", resolved))
+    }
+
+    // ── Job events stream ────────────────────────────────────────────────────
+
+    /**
+     * Streams unified job events via SSE from GET /v1/jobs/{id}/stream
+     * (android-contract.md `AxonApiClient.streamJobEvents`). Uses the
+     * dedicated [httpStream] client for the same idle-timeout isolation
+     * reason documented on [askStream].
+     */
+    fun streamJobEvents(jobId: String): Flow<JobStreamEventDto> = flow {
+        val path = openApiRoute(
+            "GET",
+            "/v1/jobs/{id}/stream",
+            "/v1/jobs/${encodePathSegment(jobId)}/stream",
+        )
+        val requestBuilder = runCatching {
+            authRequest(Request.Builder().url("${baseUrl()}$path").get())
+        }.getOrElse {
+            Log.w(TAG, "streamJobEvents: no Axon authentication configured", it)
+            return@flow
+        }
+        val req = requestBuilder.build()
+        val call = httpStream.newCall(req)
+        val cancelHandle = currentCoroutineContext().job.invokeOnCompletion {
+            runCatching { call.cancel() }
+        }
+        val resp = try {
+            call.execute()
+        } catch (t: Throwable) {
+            cancelHandle.dispose()
+            if (t is CancellationException) throw t
+            Log.w(TAG, "streamJobEvents: connect failed", t)
+            return@flow
+        }
+        try {
+            if (!resp.isSuccessful) {
+                Log.w(TAG, "streamJobEvents: ${httpErrorMessage(resp.code, resp.body?.string(), resp.message)}")
+                return@flow
+            }
+            val reader = resp.body?.byteStream()?.bufferedReader() ?: return@flow
+            try {
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val l = line ?: break
+                    if (!l.startsWith("data: ")) continue
+                    val data = l.removePrefix("data: ").trim()
+                    if (data.isEmpty()) continue
+                    val event = runCatching { json.decodeFromString<JobStreamEventDto>(data) }.getOrNull() ?: continue
+                    emit(event)
+                    if (event.kind == "final" || event.kind == "error") break
+                }
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                Log.w(TAG, "streamJobEvents: read failed mid-stream", t)
+            } finally {
+                runCatching { reader.close() }
+            }
+        } finally {
+            runCatching { resp.close() }
+            cancelHandle.dispose()
+        }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun listMobileSessions(): Result<List<MobileSessionDto>> = withContext(Dispatchers.IO) {
         generatedApi.listMobileSessions()

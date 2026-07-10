@@ -24,6 +24,20 @@ data class MobileSessionDto(
     @SerialName("updated_at") val updatedAt: Long,
     @SerialName("pinned_at") val pinnedAt: Long? = null,
     val items: List<MobileChatItemDto> = emptyList(),
+    /**
+     * Mobile Session Model fields from android-contract.md (`id` above
+     * already serves as the contract's `session_id`). The server's
+     * `MobileSession` DTO (`crates/axon-services/src/mobile_sessions.rs`) and
+     * the generated OpenAPI `MobileSession` model do not carry these fields
+     * yet, so a round trip through `upsertMobileSession`/`listMobileSessions`
+     * (which go through the generated client) drops them — they only survive
+     * in the local Room cache today (see `Session.kt`). Wiring server
+     * persistence is a joint deferred item pending the axon-api model update.
+     */
+    val status: String = "active",
+    @SerialName("source_refs") val sourceRefs: List<String> = emptyList(),
+    val draft: String? = null,
+    @SerialName("sync_version") val syncVersion: Long? = null,
 )
 
 @Serializable

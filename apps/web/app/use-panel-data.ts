@@ -79,7 +79,17 @@ export function usePanelData() {
   const doctorSummary = useMemo(() => doctorCheckSummary(doctorServices), [doctorServices]);
 
   useEffect(() => {
-    setToken(window.localStorage.getItem(TOKEN_KEY) ?? '');
+    // Security Contract (web-contract.md): "avoid storing bearer tokens in
+    // insecure browser storage when safer auth is available". The panel auth
+    // route (crates/axon-web/src/server/handlers/auth.rs) only issues a raw
+    // token compared against `x-axon-panel-token` — there is no httpOnly-cookie
+    // session path server-side, so a cookie flow isn't available here. As a
+    // partial mitigation we use sessionStorage (cleared on tab close, not
+    // shared cross-tab/cross-origin like localStorage) instead of localStorage.
+    // sessionStorage is still readable by any script on the page (XSS-exposed);
+    // adding a real httpOnly-cookie session is tracked as a deferred
+    // cross-cutting server-side item, not solvable from this app alone.
+    setToken(window.sessionStorage.getItem(TOKEN_KEY) ?? '');
     fetch('/api/panel/state')
       .then((res) => res.json())
       .then(setPanelState)
@@ -214,7 +224,7 @@ export function usePanelData() {
       setMessage('Password rejected');
       return;
     }
-    window.localStorage.setItem(TOKEN_KEY, body.token);
+    window.sessionStorage.setItem(TOKEN_KEY, body.token);
     setToken(body.token);
     setPassword('');
     setMessage('');
