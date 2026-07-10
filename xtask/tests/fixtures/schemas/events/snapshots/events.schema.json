@@ -360,6 +360,13 @@
             "null"
           ]
         },
+        "last_progress_at": {
+          "description": "Timestamp of the last progress-bearing event observed for this job\n(distinct from `heartbeat_at`, which is just the liveness ping time).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "phase": {
           "$ref": "#/$defs/JobHeartbeat_PipelinePhase"
         },
@@ -368,6 +375,13 @@
             "$ref": "#/$defs/JobHeartbeat_ProviderReservationSnapshot"
           },
           "type": "array"
+        },
+        "sequence": {
+          "default": 0,
+          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
         "stage_id": {
           "anyOf": [
@@ -673,6 +687,39 @@
     "JobHeartbeat_StageId": {
       "format": "uuid",
       "type": "string"
+    },
+    "MetricSample": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "labels": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "labels",
+        "timestamp"
+      ],
+      "title": "MetricSample",
+      "type": "object"
     },
     "ProgressCurrent": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1215,6 +1262,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -1235,8 +1287,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -1265,8 +1327,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -1911,6 +1998,11 @@
       "axon-observe"
     ],
     "source_inputs": [
+      {
+        "checksum": "sha256:0431ae0e49e02633f95b0abbe54dcf0b20b5a4367e0fd4ca2dc1cf3ce3a06342",
+        "kind": "rust_module",
+        "path": "crates/axon-observe/src/metric.rs"
+      },
       {
         "checksum": "sha256:bdd484ac24fd7b662c75b8917981f8a6ebfe07b5dc59e7f4c518be69de22c046",
         "kind": "rust_module",

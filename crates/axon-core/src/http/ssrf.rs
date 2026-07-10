@@ -1,5 +1,9 @@
 //! SSRF protection: URL validation and IP range blocking.
 
+mod audit;
+
+pub use audit::{validate_resolved_ips_with_audit, validate_url_with_audit};
+
 use spider::url::Url;
 use std::net::IpAddr;
 
@@ -268,12 +272,20 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
                 .map_err(|e| Box::new(e) as DnsError)?
                 .collect();
 
-            let allowed: Vec<std::net::SocketAddr> = addrs
+            let (allowed, blocked): (Vec<_>, Vec<_>) = addrs
                 .into_iter()
-                .filter(|addr| check_ip(addr.ip()).is_ok())
-                .collect();
+                .partition(|addr| check_ip(addr.ip()).is_ok());
 
             if allowed.is_empty() {
+                // This is the connect-time SSRF enforcement point for every
+                // fetch made through the shared reqwest client (see the
+                // module doc on `validate_url`). Record the denial per the
+                // security contract's "SSRF Policy" audit requirement before
+                // failing the connection.
+                audit::record_resolver_denial(
+                    &host,
+                    blocked.iter().map(|addr| addr.ip()).collect(),
+                );
                 let err: DnsError = Box::new(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     format!("SSRF: all resolved IPs for '{host}' are in blocked ranges"),

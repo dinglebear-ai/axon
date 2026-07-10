@@ -254,10 +254,14 @@ fn concrete_stage_results_round_trip() {
             warnings: Vec::new(),
         },
         caller: CallerContext {
-            actor: Some("cli".to_string()),
+            caller_id: Some("cli".to_string()),
             transport: TransportKind::Cli,
+            trusted_local: true,
             scopes: vec!["source:write".to_string()],
             visibility_ceiling: Visibility::Internal,
+            auth_mode: AuthMode::Test,
+            token_id: None,
+            display_name: None,
         },
     };
     let write = VectorStoreWriteResult {

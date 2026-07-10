@@ -184,6 +184,11 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-error/src/api_error.rs",
             "crates/axon-error/src/code.rs",
             "crates/axon-error/src/stage.rs",
+            "crates/axon-error/src/retry.rs",
+            "crates/axon-error/src/degradation.rs",
+            "crates/axon-error/src/cooling.rs",
+            "crates/axon-error/src/context.rs",
+            "crates/axon-api/src/source/status.rs",
             "docs/pipeline-unification/schemas/error-schema.md",
         ],
     )?;
@@ -205,6 +210,26 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
                 "ErrorSeverity",
                 schemars::schema_for!(axon_error::ErrorSeverity).into(),
             ),
+            (
+                "RetryPolicy",
+                schemars::schema_for!(axon_error::RetryPolicy).into(),
+            ),
+            (
+                "DegradationPolicy",
+                schemars::schema_for!(axon_error::DegradationPolicy).into(),
+            ),
+            (
+                "ProviderCooling",
+                schemars::schema_for!(axon_error::ProviderCooling).into(),
+            ),
+            (
+                "ErrorContext",
+                schemars::schema_for!(axon_error::ErrorContext).into(),
+            ),
+            (
+                "ErrorEnvelope",
+                schemars::schema_for!(axon_api::source::ErrorEnvelope).into(),
+            ),
         ],
         None,
     );
@@ -212,7 +237,7 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         "https://axon.local/schemas/errors/errors.schema.json",
         "AxonErrorSchemas",
         "cargo xtask schemas errors",
-        &["axon-error"],
+        &["axon-error", "axon-api"],
         &inputs,
         defs,
     );

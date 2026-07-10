@@ -200,6 +200,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -220,8 +225,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -250,8 +265,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -4039,6 +4079,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -4059,8 +4104,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -4089,8 +4144,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -5606,6 +5686,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -5626,8 +5711,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -5656,8 +5751,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -6582,6 +6702,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -6602,8 +6727,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -6632,8 +6767,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -7474,6 +7634,13 @@
             "null"
           ]
         },
+        "last_progress_at": {
+          "description": "Timestamp of the last progress-bearing event observed for this job\n(distinct from `heartbeat_at`, which is just the liveness ping time).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "phase": {
           "$ref": "#/$defs/JobHeartbeat_PipelinePhase"
         },
@@ -7482,6 +7649,13 @@
             "$ref": "#/$defs/JobHeartbeat_ProviderReservationSnapshot"
           },
           "type": "array"
+        },
+        "sequence": {
+          "default": 0,
+          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
         "stage_id": {
           "anyOf": [
@@ -8621,6 +8795,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -8641,8 +8820,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -8671,8 +8860,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -12270,6 +12484,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -12290,8 +12509,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -12320,8 +12549,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -18972,6 +19226,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -18992,8 +19251,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -19022,8 +19291,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -22755,6 +23049,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -22775,8 +23074,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -22805,8 +23114,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -27631,7 +27965,7 @@
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:c42fb950da36e92ea3c39b7bf27166d791017079b5742f7ca3919afb06f538a6",
+        "checksum": "sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -27646,7 +27980,7 @@
         "path": "crates/axon-api/src/source/capability.rs"
       },
       {
-        "checksum": "sha256:46f8c247ec7d77b72d37b08913526403eac035156733e4d779308700edcd6fb5",
+        "checksum": "sha256:a3253862cbc0c49a223cbb94fe21fdacb0b9ac5c1557f635833093284e5996b1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/common.rs"
       },
@@ -27671,7 +28005,7 @@
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:819cc30c3ef16d34581c838b775ac5eab8cc5e3aa622df40bdd1989662c7236d",
+        "checksum": "sha256:2961915f909b586de38a198accde542f386fb14745504bf7bde3e1d30223ee2e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job.rs"
       },
@@ -27711,7 +28045,7 @@
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:75d4a2a43c699a17343689d6d57c0f4e3eb2c254718ae5f31f9b5fe1f5111616",
+        "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },
@@ -27736,7 +28070,7 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:2a71db7eaeb8c352eb999213a9706479f93f358d0b0cbe6d411c6ae58abc80e6",
+        "checksum": "sha256:c019075a04ea3f40060a54488c65e2184c6a65055a9a237ef420df0e101433e9",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       }

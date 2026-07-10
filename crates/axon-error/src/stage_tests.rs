@@ -14,19 +14,27 @@ fn stage_json_names_are_snake_case_and_stable() {
         (ErrorStage::Diffing, "diffing"),
         (ErrorStage::Fetching, "fetching"),
         (ErrorStage::Rendering, "rendering"),
+        (ErrorStage::Enriching, "enriching"),
         (ErrorStage::Normalizing, "normalizing"),
         (ErrorStage::ParsingContent, "parsing_content"),
         (ErrorStage::Graphing, "graphing"),
         (ErrorStage::Preparing, "preparing"),
+        (ErrorStage::Batching, "batching"),
         (ErrorStage::Embedding, "embedding"),
+        (ErrorStage::Vectorizing, "vectorizing"),
         (ErrorStage::Upserting, "upserting"),
         (ErrorStage::Publishing, "publishing"),
         (ErrorStage::Cleaning, "cleaning"),
         (ErrorStage::Retrieving, "retrieving"),
         (ErrorStage::Synthesizing, "synthesizing"),
+        (ErrorStage::Evaluating, "evaluating"),
         (ErrorStage::Observing, "observing"),
+        (ErrorStage::Storage, "storage"),
+        (ErrorStage::Provider, "provider"),
+        (ErrorStage::Transport, "transport"),
+        (ErrorStage::Internal, "internal"),
     ];
-    assert_eq!(cases.len(), 22, "expected 22 stage variants covered");
+    assert_eq!(cases.len(), 30, "expected 30 stage variants covered");
     for (stage, name) in cases {
         assert_eq!(serde_json::to_value(stage).unwrap(), name);
         let back: ErrorStage = serde_json::from_value(serde_json::json!(name)).unwrap();

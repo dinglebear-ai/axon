@@ -118,6 +118,8 @@ fn target_job_management_dtos_round_trip() {
         status: LifecycleStatus::Running,
         stage_id: Some(stage_id),
         heartbeat_at: created_at.clone(),
+        sequence: 0,
+        last_progress_at: None,
         last_event_sequence: Some(12),
         counts: Some(counts()),
         provider_reservations: vec![ProviderReservationSnapshot {

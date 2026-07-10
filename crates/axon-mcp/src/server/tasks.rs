@@ -202,12 +202,21 @@ fn authorize_task_tool_call<'a>(
 fn caller_auth_snapshot_from_auth_context(
     auth_ctx: &lab_auth::AuthContext,
 ) -> axon_api::source::AuthSnapshot {
+    let auth_mode = if auth_ctx.sub == "static-bearer" {
+        axon_api::source::AuthMode::StaticToken
+    } else {
+        axon_api::source::AuthMode::Oauth
+    };
     axon_api::source::AuthSnapshot::from_caller(
         &axon_api::source::CallerContext {
-            actor: Some(auth_ctx.sub.clone()),
+            caller_id: Some(auth_ctx.sub.clone()),
             transport: axon_api::source::TransportKind::Mcp,
+            trusted_local: false,
             scopes: auth_ctx.scopes.clone(),
             visibility_ceiling: axon_api::source::Visibility::Internal,
+            auth_mode,
+            token_id: None,
+            display_name: None,
         },
         axon_api::source::Visibility::Internal,
         "runtime",

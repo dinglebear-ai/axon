@@ -1,6 +1,10 @@
+use axon_api::source::{
+    ApiError, ErrorStage, JobId, LifecycleStatus, PipelinePhase, Severity, SourceProgressEvent,
+    StreamEvent,
+};
 use axon_core::config::Config;
 use axon_llm::{self as llm, CompletionRequest, CompletionResponse};
-use axon_services::client_contract::RestChatRequest;
+use axon_services::client_contract::{RestChatRequest, RestChatResponse};
 use axum::{
     Extension, Json,
     response::{
@@ -9,7 +13,6 @@ use axum::{
     },
 };
 use futures_util::Stream;
-use serde::Serialize;
 use std::{
     convert::Infallible,
     error::Error as StdError,
@@ -17,13 +20,51 @@ use std::{
     pin::Pin,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     task::{Context, Poll},
 };
 use tokio::{sync::mpsc, task::JoinHandle};
 
 const SSE_EVENT_BUFFER: usize = 32;
+
+/// Per-stream monotonic sequence counter, per the `StreamEvent.sequence`
+/// contract ("event sequence is monotonic per job").
+#[derive(Default)]
+struct SequenceCounter(AtomicU64);
+
+impl SequenceCounter {
+    fn next(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+fn chat_progress_event(
+    job_id: JobId,
+    sequence: u64,
+    message: impl Into<String>,
+) -> SourceProgressEvent {
+    SourceProgressEvent::minimal(
+        job_id,
+        sequence,
+        PipelinePhase::Synthesizing,
+        LifecycleStatus::Running,
+        Severity::Info,
+        message,
+    )
+}
+
+fn event_name(event: &StreamEvent) -> &'static str {
+    match event.kind {
+        axon_api::source::StreamKind::Progress => "progress",
+        axon_api::source::StreamKind::Token => "delta",
+        axon_api::source::StreamKind::Citation => "citation",
+        axon_api::source::StreamKind::Artifact => "artifact",
+        axon_api::source::StreamKind::Warning => "warning",
+        axon_api::source::StreamKind::Error => "error",
+        axon_api::source::StreamKind::Final => "done",
+    }
+}
 
 type CompletionError = Box<dyn StdError + Send + Sync>;
 type DeltaHandler = Box<dyn FnMut(&str) -> Result<(), CompletionError> + Send>;
@@ -51,23 +92,14 @@ impl Drop for AbortOnDropStream {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum ChatStreamEvent {
-    Meta { phase: &'static str },
-    Delta { text: String },
-    Done { answer: String },
-    Error { message: String },
-}
-
-fn sse_json(event_name: &'static str, value: &ChatStreamEvent) -> Event {
+fn sse_json(event: &StreamEvent) -> Event {
     Event::default()
-        .event(event_name)
-        .json_data(value)
+        .event(event_name(event))
+        .json_data(event)
         .unwrap_or_else(|_| {
             Event::default()
                 .event("error")
-                .data("{\"type\":\"error\",\"message\":\"encode failed\"}")
+                .data("{\"kind\":\"error\",\"data\":{},\"message\":\"encode failed\"}")
         })
 }
 
@@ -102,12 +134,14 @@ fn v1_chat_stream_response(
 ) -> Response {
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
     let disconnected = Arc::new(AtomicBool::new(false));
+    let job_id = JobId::new(uuid::Uuid::new_v4());
+    let sequence = Arc::new(SequenceCounter::default());
 
     let handle = tokio::spawn(async move {
+        let meta = chat_progress_event(job_id, sequence.next(), "chatting");
         if tx
             .send(Ok(sse_json(
-                "meta",
-                &ChatStreamEvent::Meta { phase: "chatting" },
+                &StreamEvent::progress(meta.sequence, &meta).with_job_id(job_id),
             )))
             .await
             .is_err()
@@ -118,17 +152,16 @@ fn v1_chat_stream_response(
 
         let delta_disconnected = Arc::clone(&disconnected);
         let delta_tx = tx.clone();
+        let delta_sequence = Arc::clone(&sequence);
         let request = super::chat::completion_request(&req_cfg, &req.message, true);
+        let model = request.model.clone();
+        let message = req.message.clone();
         let on_delta: DeltaHandler = Box::new(move |text| {
             if delta_disconnected.load(Ordering::Relaxed) {
                 return Ok(());
             }
-            match delta_tx.try_send(Ok(sse_json(
-                "delta",
-                &ChatStreamEvent::Delta {
-                    text: text.to_string(),
-                },
-            ))) {
+            let event = StreamEvent::token(delta_sequence.next(), text).with_job_id(job_id);
+            match delta_tx.try_send(Ok(sse_json(&event))) {
                 Ok(()) => {}
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     return Err("stream backpressure exceeded".into());
@@ -149,25 +182,21 @@ fn v1_chat_stream_response(
 
         match result {
             Ok(completion) => {
-                if tx
-                    .send(Ok(sse_json(
-                        "done",
-                        &ChatStreamEvent::Done {
-                            answer: completion.text,
-                        },
-                    )))
-                    .await
-                    .is_err()
-                {
+                let response = RestChatResponse {
+                    message,
+                    answer: completion.text,
+                    model,
+                };
+                let event =
+                    StreamEvent::final_event(sequence.next(), &response).with_job_id(job_id);
+                if tx.send(Ok(sse_json(&event))).await.is_err() {
                     disconnected.store(true, Ordering::Relaxed);
                 }
             }
             Err(message) => {
-                if tx
-                    .send(Ok(sse_json("error", &ChatStreamEvent::Error { message })))
-                    .await
-                    .is_err()
-                {
+                let error = ApiError::new("chat.stream_failed", ErrorStage::Synthesizing, message);
+                let event = StreamEvent::error_event(sequence.next(), error).with_job_id(job_id);
+                if tx.send(Ok(sse_json(&event))).await.is_err() {
                     disconnected.store(true, Ordering::Relaxed);
                 }
             }

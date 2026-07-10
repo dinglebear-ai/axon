@@ -30,6 +30,8 @@ pub fn heartbeat(
         status,
         stage_id: None,
         heartbeat_at: Timestamp::from(Utc::now()),
+        sequence: 0,
+        last_progress_at: None,
         last_event_sequence: None,
         counts: None,
         provider_reservations: Vec::new(),

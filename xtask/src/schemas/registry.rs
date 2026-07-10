@@ -295,6 +295,17 @@ pub fn check_enum_projection_drift(artifacts: &[SchemaArtifact]) -> Result<()> {
                 bail!("api schema enum {name} is missing value {value}");
             }
         }
+        // Bidirectional: the generated enum must not carry values beyond the
+        // canonical contract set either. A subset-only check lets a stray
+        // non-canonical variant pass silently.
+        for enum_value in enum_values {
+            let Some(enum_value) = enum_value.as_str() else {
+                continue;
+            };
+            if !values.contains(&enum_value) {
+                bail!("api schema enum {name} has non-canonical value {enum_value}");
+            }
+        }
     }
     Ok(())
 }

@@ -31,9 +31,10 @@
 
 use axon_api::ApiError;
 use axon_api::source::{
-    AuthSnapshot, CallerContext, SafetyClass, SecurityPolicyRequest, SourceRequest, SourceResult,
-    TransportKind, Visibility,
+    AuthMode, AuthSnapshot, CallerContext, SafetyClass, SecurityPolicyRequest, SourceRequest,
+    SourceResult, TransportKind, Visibility,
 };
+use axon_authz::VisibilityPolicy;
 use axon_authz::policy::{ScopeSecurityPolicy, SecurityPolicy};
 use axon_error::ErrorStage;
 use axon_services::source::classify::{SourceInputKind, classify_source_input};
@@ -162,12 +163,23 @@ async fn authorize_source_request(
 }
 
 fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
-    CallerContext {
-        actor: Some(auth.sub.clone()),
+    let auth_mode = if auth.sub == "static-bearer" {
+        AuthMode::StaticToken
+    } else {
+        AuthMode::Oauth
+    };
+    let mut caller = CallerContext {
+        caller_id: Some(auth.sub.clone()),
         transport: TransportKind::Rest,
+        trusted_local: false,
         scopes: auth.scopes.clone(),
-        visibility_ceiling: Visibility::Internal,
-    }
+        visibility_ceiling: Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    caller.visibility_ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+    caller
 }
 
 /// Map a classified source input to its [`SafetyClass`].

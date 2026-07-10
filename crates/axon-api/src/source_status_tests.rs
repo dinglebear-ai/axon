@@ -96,6 +96,48 @@ fn status_envelope_and_progress_event_round_trip() {
 }
 
 #[test]
+fn stream_event_is_a_flat_envelope_with_kind_sequence_and_data() {
+    let job_id = JobId(uuid::Uuid::new_v4());
+    let progress = SourceProgressEvent::minimal(
+        job_id,
+        0,
+        PipelinePhase::Synthesizing,
+        LifecycleStatus::Running,
+        Severity::Info,
+        "retrieving",
+    );
+    let event = StreamEvent::progress(1, &progress).with_job_id(job_id);
+    assert_eq!(event.kind, StreamKind::Progress);
+    assert_eq!(event.sequence, 1);
+    assert!(event.event_id.starts_with("evt_"));
+    assert_eq!(event.job_id, Some(job_id));
+
+    let value = serde_json::to_value(&event).expect("stream event");
+    assert_eq!(value["kind"], "progress");
+    assert_eq!(value["data"]["phase"], "synthesizing");
+    assert!(
+        value.get("event").is_none(),
+        "no legacy tagged variant field"
+    );
+    assert!(
+        value.get("result").is_none(),
+        "no legacy tagged variant field"
+    );
+    assert_eq!(serde_json::from_value::<StreamEvent>(value).unwrap(), event);
+
+    let token = StreamEvent::token(2, "hello");
+    assert_eq!(token.kind, StreamKind::Token);
+    assert_eq!(token.data["text"], "hello");
+
+    let error = StreamEvent::error_event(
+        3,
+        ApiError::new("stream.failed", ErrorStage::Synthesizing, "boom"),
+    );
+    assert_eq!(error.kind, StreamKind::Error);
+    assert!(error.error.is_some());
+}
+
+#[test]
 fn common_contract_enums_and_ranges_are_schema_aligned() {
     let fetch = FetchPlan {
         uri: "https://example.com".to_string(),
@@ -125,10 +167,14 @@ fn common_contract_enums_and_ranges_are_schema_aligned() {
         turn_end: None,
     };
     let caller = CallerContext {
-        actor: Some("cli".to_string()),
+        caller_id: Some("cli".to_string()),
         transport: TransportKind::Worker,
+        trusted_local: false,
         scopes: vec!["axon:read".to_string()],
         visibility_ceiling: Visibility::Internal,
+        auth_mode: AuthMode::Test,
+        token_id: None,
+        display_name: None,
     };
 
     assert_eq!(

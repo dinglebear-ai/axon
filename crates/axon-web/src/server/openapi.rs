@@ -199,6 +199,7 @@ use super::{handlers, openapi_jobs, routing};
         axon_api::source::JobRetryResult,
         axon_api::source::JobSummary,
         axon_api::source::StreamEvent,
+        axon_api::source::StreamKind,
         axon_api::source::JobDescriptor,
         axon_api::source::JobArtifactListResult,
         axon_api::job_progress::JobProgress,

@@ -80,6 +80,14 @@ pub struct JobHeartbeat {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage_id: Option<StageId>,
     pub heartbeat_at: Timestamp,
+    /// Monotonic heartbeat sequence number for this job, per
+    /// `docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.
+    #[serde(default)]
+    pub sequence: u64,
+    /// Timestamp of the last progress-bearing event observed for this job
+    /// (distinct from `heartbeat_at`, which is just the liveness ping time).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_progress_at: Option<Timestamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_event_sequence: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

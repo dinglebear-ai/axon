@@ -22,6 +22,7 @@ pub fn events_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             schema_def::<axon_api::source::ProgressCurrent>("ProgressCurrent"),
             schema_def::<axon_api::source::ProgressTiming>("ProgressTiming"),
             schema_def::<axon_api::source::StageCounts>("StageCounts"),
+            schema_def::<axon_observe::metric::MetricSample>("MetricSample"),
         ],
         Some(enum_defs("axon-api")),
     );
