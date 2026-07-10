@@ -6,7 +6,7 @@ const { buildContext, loadFiles } = require("./helpers/load-extension");
 
 function loadAxonRedact() {
   const ctx = buildContext();
-  loadFiles(ctx, ["capture-redaction.js"]);
+  loadFiles(ctx, ["src/redaction/capture-redaction.js"]);
   return ctx.AxonRedact;
 }
 

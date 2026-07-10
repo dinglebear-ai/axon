@@ -144,14 +144,17 @@ the Chrome Web Store, and some browser-owned pages.
 | File | Purpose |
 |---|---|
 | `manifest.json` | MV3 manifest (side panel, options, background, context menus, command) |
-| `background.js` | service worker — side-panel behavior, context menus, auto-scrape |
-| `sidepanel.html` | side-panel launcher entry |
-| `aurora.css` | Aurora design tokens (dark-first, `.light` remap) |
-| `launcher.css` | launcher layout + the `ext-*` styles from the design |
-| `launcher-icons.js` | lucide-style icon set + the Axon neuron mark |
-| `launcher-data.js` | the action catalog + tone helpers |
-| `launcher-render.js` | DOM renders for each action result + response normalizers |
-| `launcher.js` | controller — config, `/v1/*` requests, browse → run → doc flow |
-| `popup.html` + `popup-*.js` | toolbar popup (command chat) |
-| `options.html` + `options.js` | server URL + token settings |
+| `src/background/background.js` | service worker — side-panel behavior, context menus, auto-scrape |
+| `src/background/offscreen.html` + `offscreen.js` | offscreen document for clipboard writes |
+| `src/auth/host-permissions.js` | per-origin optional host permission helper |
+| `src/redaction/capture-redaction.js` | client-side pre-redaction + blocked-scheme guard |
+| `src/sidepanel/sidepanel.html` | side-panel launcher entry |
+| `src/styles/aurora.css` | Aurora design tokens (dark-first, `.light` remap) |
+| `src/sidepanel/launcher.css` | launcher layout + the `ext-*` styles from the design |
+| `src/sidepanel/launcher-icons.js` | lucide-style icon set + the Axon neuron mark |
+| `src/sidepanel/launcher-data.js` | the action catalog + tone helpers |
+| `src/sidepanel/launcher-render.js` | DOM renders for each action result + response normalizers |
+| `src/sidepanel/launcher.js` | controller — config, `/v1/*` requests, browse → run → doc flow |
+| `src/popup/popup.html` + `popup-*.js` | toolbar popup (command chat) |
+| `src/options/options.html` + `options.js` | server URL + token settings |
 | `package.sh` | build a distributable zip — see [Package It](#package-it) |

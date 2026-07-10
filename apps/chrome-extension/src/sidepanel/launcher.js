@@ -381,7 +381,7 @@
   }
   function openOptions() {
     if (chrome.runtime && chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
-    else window.open(chrome.runtime.getURL("options.html"));
+    else window.open(chrome.runtime.getURL("src/options/options.html"));
   }
 
   /* ── server status dot ── */

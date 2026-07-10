@@ -29,9 +29,16 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
 # Runtime files that ship in the extension (everything except dev-only files).
+# manifest.json/README/etc. live at the extension root; all HTML/JS/CSS
+# module code lives under src/ (see chrome-extension-contract.md's
+# "Required Extension Modules").
 for f in manifest.json *.html *.js *.css; do
   [[ -e "$f" ]] && cp "$f" "$stage/"
 done
+if [[ -d src ]]; then
+  mkdir -p "$stage/src"
+  cp -R src/. "$stage/src/"
+fi
 
 # Discover the assets actually referenced, then copy each into the stage,
 # preserving its relative path under the stage.
@@ -41,7 +48,7 @@ while IFS= read -r ref; do
   refs+=("$ref")
 done < <(
   grep -rhoE "assets/[A-Za-z0-9_./-]+\.(png|svg|jpg|jpeg|webp|ico|gif)" \
-    manifest.json ./*.html ./*.js ./*.css 2>/dev/null | sort -u
+    manifest.json ./*.html ./*.js ./*.css src 2>/dev/null | sort -u
 )
 if [[ ${#refs[@]} -eq 0 ]]; then
   echo "error: no asset references found — refusing to ship without icons" >&2
