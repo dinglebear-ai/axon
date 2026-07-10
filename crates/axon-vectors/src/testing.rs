@@ -99,6 +99,9 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
         json!(format!("doc-{}", spec.chunk_id)),
     );
     payload.insert("chunk_id".to_string(), json!(spec.chunk_id));
+    payload.insert("chunk_index".to_string(), json!(0));
+    payload.insert("chunking_profile".to_string(), json!("markdown_sections"));
+    payload.insert("chunking_method".to_string(), json!("heading_sections"));
     payload.insert("chunk_text".to_string(), json!(spec.text));
     payload.insert(
         "chunk_locator".to_string(),

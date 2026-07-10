@@ -4,6 +4,7 @@ use axon_api::source::{
 };
 use serde_json::json;
 
+use crate::chunk_router::decision_for_profile;
 use crate::{ChunkRouter, ChunkingProfile, chunk_router::public_profiles};
 
 #[test]
@@ -249,4 +250,124 @@ fn route_for_path(path: &str) -> ChunkingProfile {
     ChunkRouter::default()
         .route(&source_doc(ContentKind::PlainText, "body").with_path(path))
         .unwrap()
+}
+
+// -- ChunkRouter full decision: method/parser_family/fallback_chain/limits,
+// and adapter/scope/size-aware routing (S2-19). --------------------------
+
+#[test]
+fn large_document_falls_back_to_second_chain_step_for_wired_profiles() {
+    let large = 200_001;
+    let small = 199_999;
+
+    for profile in [
+        ChunkingProfile::CodeSymbol,
+        ChunkingProfile::MarkdownSections,
+        ChunkingProfile::HtmlArticle,
+    ] {
+        let small_decision = decision_for_profile(profile, small, None, None);
+        assert_eq!(
+            small_decision.method, small_decision.fallback_chain[0],
+            "{profile:?} under the size threshold should use its primary method"
+        );
+
+        let large_decision = decision_for_profile(profile, large, None, None);
+        assert_eq!(
+            large_decision.method, large_decision.fallback_chain[1],
+            "{profile:?} over the size threshold should report its wired fallback method"
+        );
+    }
+}
+
+#[test]
+fn large_document_does_not_override_method_for_unwired_profiles() {
+    // These profiles' fallback_chain[1] is never actually dispatched to by
+    // `preparer::build_chunks` for a size trigger (structured profiles run
+    // their own parse-failure fallback; the rest are already line/turn-based
+    // regardless of size), so the router must not claim it ran.
+    for profile in [
+        ChunkingProfile::CodeManifest,
+        ChunkingProfile::PlainTextWindows,
+        ChunkingProfile::TranscriptSegments,
+        ChunkingProfile::StructuredRecords,
+        ChunkingProfile::ApiSchema,
+        ChunkingProfile::ToolOutput,
+        ChunkingProfile::SessionTurns,
+        ChunkingProfile::AtomicMetadata,
+    ] {
+        let decision = decision_for_profile(profile, 500_000, None, None);
+        assert_eq!(
+            decision.method, decision.fallback_chain[0],
+            "{profile:?} has no wired size fallback; method must stay the primary"
+        );
+    }
+}
+
+#[test]
+fn fragment_prone_adapter_forces_fallback_method_even_for_small_documents() {
+    let decision = decision_for_profile(
+        ChunkingProfile::CodeSymbol,
+        200, // tiny -- well under the size threshold
+        Some("web_scrape"),
+        None,
+    );
+    assert_eq!(decision.method, decision.fallback_chain[1]);
+
+    let decision = decision_for_profile(ChunkingProfile::MarkdownSections, 200, Some("chat"), None);
+    assert_eq!(decision.method, decision.fallback_chain[1]);
+}
+
+#[test]
+fn trusted_adapter_keeps_primary_method_for_small_documents() {
+    let decision = decision_for_profile(ChunkingProfile::CodeSymbol, 200, Some("filesystem"), None);
+    assert_eq!(decision.method, decision.fallback_chain[0]);
+}
+
+#[test]
+fn partial_scope_halves_the_chunk_token_budget() {
+    let full = decision_for_profile(ChunkingProfile::MarkdownSections, 500, None, None);
+    let partial = decision_for_profile(ChunkingProfile::MarkdownSections, 500, None, Some("diff"));
+
+    assert_eq!(
+        partial.limits.max_chunk_tokens,
+        full.limits.max_chunk_tokens / 2
+    );
+    assert_eq!(
+        partial.limits.overlap_tokens,
+        full.limits.overlap_tokens / 2
+    );
+    // Unaffected fields stay identical.
+    assert_eq!(partial.method, full.method);
+    assert_eq!(partial.parser_family, full.parser_family);
+}
+
+#[test]
+fn partial_scope_never_drops_the_token_budget_below_the_floor() {
+    // AtomicMetadata's overlap is already 0 and its ceiling (1600) is well
+    // above the floor, but this pins the floor behavior generically in case
+    // any profile's ceiling is ever tuned down near it.
+    let decision =
+        decision_for_profile(ChunkingProfile::AtomicMetadata, 500, None, Some("fragment"));
+    assert!(decision.limits.max_chunk_tokens >= 200);
+}
+
+#[test]
+fn route_decision_reads_adapter_and_scope_from_document_metadata() {
+    let mut doc = source_doc(ContentKind::Code, "xxxxxxxxxx").with_path("snippet.rs");
+    doc.metadata = metadata([
+        ("source_adapter", json!("web_scrape")),
+        ("source_scope", json!("diff")),
+    ]);
+
+    let decision = ChunkRouter::default().route_decision(&doc).unwrap();
+    assert_eq!(decision.profile, ChunkingProfile::CodeSymbol);
+    // Fragment-prone adapter forces the fallback method even though the
+    // document is tiny.
+    assert_eq!(decision.method, decision.fallback_chain[1]);
+    // Partial scope halves the limits relative to the untagged decision.
+    let baseline = decision_for_profile(ChunkingProfile::CodeSymbol, 10, None, None);
+    assert_eq!(
+        decision.limits.max_chunk_tokens,
+        baseline.limits.max_chunk_tokens / 2
+    );
 }

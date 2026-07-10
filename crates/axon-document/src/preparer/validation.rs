@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use axon_api::source::{PreparedDocument, SourceRange};
+use axon_core::redact::forbidden_field_name;
 
 use crate::source_range::{SourceRangeBounds, validate_source_range};
 
@@ -26,11 +27,38 @@ fn validate_prepared_document_inner(
     let mut chunk_ids = HashSet::new();
     let mut chunk_keys = HashSet::new();
 
+    // Reject empty required identifiers up front -- an empty id can still
+    // collide/upsert unpredictably downstream even though it "looks" valid
+    // to the type system (these are newtype wrappers around `String`).
+    if document.document_id.0.trim().is_empty() {
+        errors.push("document_id is empty".to_string());
+    }
+    if document.source_id.0.trim().is_empty() {
+        errors.push("source_id is empty".to_string());
+    }
+    if document.source_item_key.0.trim().is_empty() {
+        errors.push("source_item_key is empty".to_string());
+    }
+
+    for field in document.metadata.keys() {
+        if forbidden_field_name(field) {
+            errors.push(format!("sensitive document metadata field: {field}"));
+        }
+    }
+
     if document.chunks.is_empty() {
         errors.push("prepared document has no chunks".to_string());
     }
 
     for chunk in &document.chunks {
+        for field in chunk.metadata.keys() {
+            if forbidden_field_name(field) {
+                errors.push(format!(
+                    "sensitive chunk metadata field: {field} (chunk {})",
+                    chunk.chunk_id.0
+                ));
+            }
+        }
         if !chunk_ids.insert(chunk.chunk_id.clone()) {
             errors.push(format!("duplicate chunk id: {}", chunk.chunk_id.0));
         }
