@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use axon_api::source::*;
 
 pub use crate::fake_store::FakeJobWatchStore;
+pub use crate::watch_store::SqliteWatchStore;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 

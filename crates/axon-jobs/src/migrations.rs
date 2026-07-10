@@ -146,6 +146,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0022_add_job_cooldown_until",
         sql: include_str!("migrations/0022_add_job_cooldown_until.sql"),
     },
+    SqlMigration {
+        version: 23,
+        name: "0023_create_source_watch_store",
+        sql: include_str!("migrations/0023_create_source_watch_store.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and
