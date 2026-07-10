@@ -1,5 +1,10 @@
 //! REST route registry used by schema-contract generation.
 
+mod extract_routes;
+mod memory_routes;
+
+use std::sync::OnceLock;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RestRouteSpec {
     pub method: &'static str,
@@ -14,10 +19,25 @@ pub struct RestRouteSpec {
 }
 
 pub fn rest_route_registry() -> &'static [RestRouteSpec] {
-    REST_ROUTES
+    static ROUTES: OnceLock<Vec<RestRouteSpec>> = OnceLock::new();
+    ROUTES.get_or_init(|| {
+        let mut routes = Vec::with_capacity(
+            PRE_MEMORY_ROUTES.len()
+                + memory_routes::MEMORY_ROUTES.len()
+                + POST_MEMORY_ROUTES.len()
+                + extract_routes::EXTRACT_ROUTES.len()
+                + ADMIN_WATCH_ROUTES.len(),
+        );
+        routes.extend_from_slice(PRE_MEMORY_ROUTES);
+        routes.extend_from_slice(memory_routes::MEMORY_ROUTES);
+        routes.extend_from_slice(POST_MEMORY_ROUTES);
+        routes.extend_from_slice(extract_routes::EXTRACT_ROUTES);
+        routes.extend_from_slice(ADMIN_WATCH_ROUTES);
+        routes
+    })
 }
 
-static REST_ROUTES: &[RestRouteSpec] = &[
+static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
     read(
         "GET",
         "/v1/capabilities",
@@ -222,13 +242,9 @@ static REST_ROUTES: &[RestRouteSpec] = &[
         Some("ResearchRequest"),
         "ResearchStreamEvent",
     ),
-    write(
-        "POST",
-        "/v1/memory",
-        "memory",
-        Some("MemoryRequest"),
-        "MemoryResponse",
-    ),
+];
+
+static POST_MEMORY_ROUTES: &[RestRouteSpec] = &[
     read("GET", "/v1/artifacts", "artifacts", "ArtifactQueryResponse"),
     job_read("GET", "/v1/jobs", "jobs_list", "JobListPage"),
     job_read("GET", "/v1/jobs/{id}", "jobs_status", "JobSummary"),
@@ -285,48 +301,9 @@ static REST_ROUTES: &[RestRouteSpec] = &[
         Some("JobCleanupRequest"),
         "JobCleanupResult",
     ),
-    job_read("GET", "/v1/extract", "extract_list", "JobListResponse"),
-    job_write(
-        "POST",
-        "/v1/extract",
-        "extract",
-        Some("ExtractRequest"),
-        "JobDescriptor",
-    ),
-    job_write(
-        "DELETE",
-        "/v1/extract",
-        "extract_clear",
-        None,
-        "JobCleanupResponse",
-    ),
-    job_write(
-        "POST",
-        "/v1/extract/cleanup",
-        "extract_cleanup",
-        None,
-        "JobCleanupResponse",
-    ),
-    job_write(
-        "POST",
-        "/v1/extract/recover",
-        "extract_recover",
-        None,
-        "JobRecoveryResponse",
-    ),
-    job_read(
-        "GET",
-        "/v1/extract/{id}",
-        "extract_status",
-        "JobStatusResponse",
-    ),
-    job_write(
-        "POST",
-        "/v1/extract/{id}/cancel",
-        "extract_cancel",
-        None,
-        "JobCancelResponse",
-    ),
+];
+
+static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
     write(
         "POST",
         "/v1/dedupe",
@@ -340,6 +317,20 @@ static REST_ROUTES: &[RestRouteSpec] = &[
         "purge",
         Some("PurgeRequest"),
         "PurgeResult",
+    ),
+    job_admin(
+        "POST",
+        "/v1/prune/plan",
+        "prune_plan",
+        Some("PrunePlanRequest"),
+        "PrunePlan",
+    ),
+    job_admin(
+        "POST",
+        "/v1/prune/exec",
+        "prune_exec",
+        Some("PruneExecRequest"),
+        "PruneResult",
     ),
     read("GET", "/v1/watch", "watch_list", "WatchListResponse"),
     write(

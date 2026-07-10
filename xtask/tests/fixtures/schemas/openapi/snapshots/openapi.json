@@ -626,6 +626,325 @@
       "streaming": false
     },
     {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "remember_memory",
+      "path": "/v1/memories",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "search_memories",
+      "path": "/v1/memories/search",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "memory_context",
+      "path": "/v1/memories/context",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "review_memories",
+      "path": "/v1/memories/review",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "compact_memories",
+      "path": "/v1/memories/compact",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "show_memory",
+      "path": "/v1/memories/{memory_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "link_memory",
+      "path": "/v1/memories/{memory_id}/link",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "supersede_memory",
+      "path": "/v1/memories/{memory_id}/supersede",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "reinforce_memory",
+      "path": "/v1/memories/{memory_id}/reinforce",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "contradict_memory",
+      "path": "/v1/memories/{memory_id}/contradict",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "pin_memory",
+      "path": "/v1/memories/{memory_id}/pin",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "archive_memory",
+      "path": "/v1/memories/{memory_id}/archive",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "compact_one_memory",
+      "path": "/v1/memories/{memory_id}/compact",
+      "request_dto": "MemoryRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "DELETE",
+      "mutates": true,
+      "operation_id": "forget_memory",
+      "path": "/v1/memories/{memory_id}",
+      "request_dto": null,
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "import_memories",
+      "path": "/v1/memories/import",
+      "request_dto": "MemoryImportRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryImportResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "export_memories",
+      "path": "/v1/memories/export",
+      "request_dto": "MemoryExportRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "MemoryExportResult",
+      "streaming": false
+    },
+    {
       "method": "GET",
       "mutates": false,
       "operation_id": "artifacts",
@@ -1018,6 +1337,46 @@
       "streaming": false
     },
     {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "prune_plan",
+      "path": "/v1/prune/plan",
+      "request_dto": "PrunePlanRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "PrunePlan",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "prune_exec",
+      "path": "/v1/prune/exec",
+      "request_dto": "PruneExecRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "PruneResult",
+      "streaming": false
+    },
+    {
       "method": "GET",
       "mutates": false,
       "operation_id": "watch_list",
@@ -1088,7 +1447,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:3ee650190465380695d49c6a15ba21ca529b1933d6174e47d5241aa92ffeb8f3",
+        "checksum": "sha256:3bb4a23e6fe0d604be5e0e79612f12eab6cfdc31bb8b33046549f2ab7515692d",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },
