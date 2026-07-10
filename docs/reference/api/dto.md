@@ -36,7 +36,7 @@ See the family contract for declared output paths.
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
 | `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:1b30e91ddefd5596315b1a6e90c7f216fc7debbe92b3fff48c39c6525d0f38c4` |
 | `xtask/src/schemas/api_defs.rs` | `sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a` |
-| `xtask/src/schemas/registry.rs` | `sha256:a1687592b6996d6283939eb69d7f9c740185628e3f30d899978deca92c612b17` |
+| `xtask/src/schemas/registry.rs` | `sha256:9019aca90671d373722f9c1692a68edd5198c2c7374e12aaaa6cb74af1964673` |
 
 ## Root Shape
 

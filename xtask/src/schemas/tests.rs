@@ -39,6 +39,15 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/cooling.rs",
         "crates/axon-error/src/context.rs",
         "crates/axon-cli/src/schema_registry.rs",
+        "crates/axon-core/src/config/cli.rs",
+        "crates/axon-core/src/config/cli/config_args.rs",
+        "crates/axon-core/src/config/cli/setup_args.rs",
+        "xtask/src/schemas/cli_registry.rs",
+        "xtask/src/schemas/cli_registry/part1.rs",
+        "xtask/src/schemas/cli_registry/part2.rs",
+        "xtask/src/schemas/cli_registry/part3.rs",
+        "xtask/src/schemas/database_defs.rs",
+        "xtask/src/schemas/database_defs/parser.rs",
         "crates/axon-core/src/config/schema_registry.rs",
         "xtask/src/schemas/config_schema_registry.rs",
         "crates/axon-core/src/boundary.rs",
@@ -103,6 +112,16 @@ pub(super) fn fixture_repo() -> TempDir {
         tmp.path(),
         "crates/axon-ledger/src/migrations/0001.sql",
         "create table sources(source_id text);",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-graph/src/migrations/0001.sql",
+        "create table graph_nodes(node_id text primary key);",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-memory/src/migrations/0001.sql",
+        "create table memory_records(memory_id text primary key);",
     );
     seed_schema_fixtures(tmp.path());
     tmp
