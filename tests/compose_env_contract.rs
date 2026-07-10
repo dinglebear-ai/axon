@@ -277,8 +277,21 @@ fn services_up_starts_only_infrastructure_services() {
             && justfile.contains("--profile local-qdrant up -d axon-qdrant"),
         "local qdrant should stay behind the explicit qdrant-up recipe"
     );
+    // Scope the "no full teardown" check to the services-down recipe body. A
+    // whole-file grep would false-positive on the separate `prod-down` recipe,
+    // which legitimately runs `docker compose -f docker-compose.prod.yaml down`.
+    let services_down_body = justfile
+        .split_once("\nservices-down:")
+        .map(|(_, rest)| {
+            rest.lines()
+                .skip(1)
+                .take_while(|line| line.is_empty() || line.starts_with(char::is_whitespace))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .expect("Justfile should define a services-down recipe");
     assert!(
-        !justfile.contains("-f docker-compose.prod.yaml down"),
+        !services_down_body.contains("-f docker-compose.prod.yaml down"),
         "just services-down must not tear down the whole compose project"
     );
 }
@@ -429,17 +442,16 @@ fn env_example_only_contains_production_runtime_keys() {
         "TEI_URL",
         "TEI_HTTP_PORT",
         "TEI_EMBEDDING_MODEL",
-        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
-        // Qdrant host port mappings + TEI container launch flags — interpolated
-        // as ${VAR:-default} in docker-compose.prod.yaml, so they are compose
-        // runtime config, not application tuning knobs.
+        // Qdrant host port mappings + GPU device selection — structural compose
+        // runtime config that is part of the minimal boot shape. TEI server
+        // performance-tuning flags (client/server batch size, batch tokens,
+        // concurrency, pooling, tokenization workers) are intentionally NOT
+        // here: they interpolate as ${VAR:-default} inline in
+        // docker-compose.prod.yaml and are documented there as optional
+        // overrides, so they live in config.toml/compose-inline, not
+        // .env.example's minimal boot surface.
         "QDRANT_HTTP_PORT",
         "QDRANT_GRPC_PORT",
-        "TEI_MAX_CONCURRENT_REQUESTS",
-        "TEI_MAX_BATCH_TOKENS",
-        "TEI_MAX_BATCH_REQUESTS",
-        "TEI_POOLING",
-        "TEI_TOKENIZATION_WORKERS",
         "NVIDIA_VISIBLE_DEVICES",
         "CUDA_VISIBLE_DEVICES",
         // Chrome + scrape stack
@@ -459,22 +471,27 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_SYNTHESIS_CODEX_MODEL",
         "AXON_CODEX_COMPLETION_CONCURRENCY",
         "AXON_CODEX_LOAD_USER_CONFIG",
-        "AXON_CODEX_POOL_IDLE_TTL_SECS",
+        // AXON_CODEX_POOL_IDLE_TTL_SECS + AXON_LLM_COMPLETION_{CONCURRENCY,
+        // TIMEOUT_SECS} are application tuning knobs (providers.llm.* in
+        // config.toml) documented as env-override comments in .env.example, not
+        // bare boot keys.
         "AXON_LLM_BACKEND",
-        "AXON_LLM_COMPLETION_CONCURRENCY",
-        "AXON_LLM_COMPLETION_TIMEOUT_SECS",
         "AXON_OPENAI_BASE_URL",
         "AXON_OPENAI_MODEL",
         "AXON_SYNTHESIS_OPENAI_MODEL",
         "AXON_CHAT_OPENAI_MODEL",
         "AXON_OPENAI_API_KEY",
-        // Logging
+        // Logging + bootstrap overrides
         "AXON_LOG_PATH",
+        "RUST_LOG",
+        "NO_COLOR",
         // Ingest + search creds
         "HF_TOKEN",
         "TAVILY_API_KEY",
         "AXON_SEARXNG_URL",
-        "AXON_RESEARCH_FULL_CONTENT",
+        // AXON_RESEARCH_FULL_CONTENT is a tuning knob
+        // (providers.search.research-full-content in config.toml), documented as
+        // an env-override comment in .env.example rather than a bare boot key.
         "GITHUB_TOKEN",
         "GITLAB_TOKEN",
         "GITEA_TOKEN",

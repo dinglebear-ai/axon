@@ -12,6 +12,7 @@ struct TargetChunkFields<'a> {
     source_id: String,
     source_item_key: String,
     chunk_id: String,
+    chunk_index: usize,
     chunk_key: String,
     content_hash: String,
     chunk_locator: String,
@@ -73,6 +74,7 @@ fn derive_target_chunk_fields<'a>(
         source_id,
         source_item_key,
         chunk_id,
+        chunk_index,
         chunk_key,
         content_hash,
         chunk_locator,
@@ -140,6 +142,9 @@ fn build_target_payload(
         format!("legacy-vector:{}", fnv1a64(&doc.url)).into(),
     );
     payload.insert("chunk_id".to_string(), f.chunk_id.into());
+    payload.insert("chunk_index".to_string(), (f.chunk_index as i64).into());
+    payload.insert("chunking_profile".to_string(), "markdown_sections".into());
+    payload.insert("chunking_method".to_string(), "heading_sections".into());
     payload.insert("chunk_text".to_string(), f.chunk.into());
     payload.insert("chunk_key".to_string(), f.chunk_key.clone().into());
     payload.insert("content_hash".to_string(), f.content_hash.clone().into());
