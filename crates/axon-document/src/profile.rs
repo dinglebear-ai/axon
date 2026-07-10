@@ -38,6 +38,28 @@ impl From<ChunkProfile> for ChunkingProfile {
     }
 }
 
+/// Promoted from the former `#[cfg(test)]`-only `chunk_router::public_profiles()`
+/// mapping — all 11 variants line up 1:1 with `axon_api::source::ChunkProfile`.
+/// Used by `crate::boundary::ChunkRouter` to map the internal profile enum
+/// back onto the contract's transport-neutral `ChunkProfile`.
+impl From<ChunkingProfile> for ChunkProfile {
+    fn from(value: ChunkingProfile) -> Self {
+        match value {
+            ChunkingProfile::CodeSymbol => Self::CodeSymbol,
+            ChunkingProfile::CodeManifest => Self::CodeManifest,
+            ChunkingProfile::MarkdownSections => Self::MarkdownSections,
+            ChunkingProfile::HtmlArticle => Self::HtmlArticle,
+            ChunkingProfile::PlainTextWindows => Self::PlainTextWindows,
+            ChunkingProfile::TranscriptSegments => Self::TranscriptSegments,
+            ChunkingProfile::StructuredRecords => Self::StructuredRecords,
+            ChunkingProfile::ApiSchema => Self::ApiSchema,
+            ChunkingProfile::ToolOutput => Self::ToolOutput,
+            ChunkingProfile::SessionTurns => Self::SessionTurns,
+            ChunkingProfile::AtomicMetadata => Self::AtomicMetadata,
+        }
+    }
+}
+
 impl ChunkingProfile {
     pub fn as_str(self) -> &'static str {
         match self {

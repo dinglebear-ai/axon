@@ -1,12 +1,14 @@
 //! Source resolver boundary.
 
 use axon_api::{
-    AdapterCandidate, AdapterRef, AuthorityLevel, MetadataMap, ResolvedSource, Severity,
-    SourceKind, SourceRequest, SourceScope, SourceWarning,
+    AdapterCandidate, AdapterRef, AuthorityLevel, CapabilityBase, HealthStatus, MetadataMap,
+    ResolvedSource, Severity, SourceKind, SourceRequest, SourceResolverCapability, SourceScope,
+    SourceWarning,
 };
 use axon_error::{ApiError, ErrorStage};
 
 use crate::authority::InMemoryAuthorityRegistry;
+use crate::boundary;
 use crate::canonical;
 use crate::capability::AdapterRegistry;
 use crate::source_id::source_id;
@@ -243,6 +245,34 @@ impl SourceResolver {
             }
         }
         Ok(())
+    }
+}
+
+/// `boundary::SourceResolver` trait implementation for the concrete
+/// `SourceResolver` struct.
+///
+/// `self.resolve(request)` below resolves to the pre-existing inherent sync
+/// method (`impl SourceResolver { pub fn resolve(...) }` above) because
+/// inherent methods always shadow same-named trait methods for direct
+/// dot-call resolution in Rust — this is NOT recursion.
+#[async_trait::async_trait]
+impl boundary::SourceResolver for SourceResolver {
+    async fn resolve(&self, request: &SourceRequest) -> boundary::Result<ResolvedSource> {
+        self.resolve(request)
+    }
+
+    async fn capabilities(&self) -> boundary::Result<SourceResolverCapability> {
+        Ok(SourceResolverCapability::from(CapabilityBase {
+            name: "axon-route-resolver".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            owner_crate: "axon-route".to_string(),
+            health: HealthStatus::Healthy,
+            features: vec![
+                "authority-registry".to_string(),
+                "adapter-candidates".to_string(),
+            ],
+            limits: MetadataMap::new(),
+        }))
     }
 }
 

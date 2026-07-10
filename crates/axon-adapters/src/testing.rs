@@ -1,5 +1,7 @@
 //! Adapter fakes used by contract tests.
 
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use axon_api::source::*;
 use uuid::Uuid;
@@ -8,10 +10,34 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
+/// Deterministic response mode for [`FakeSourceAdapter`].
+///
+/// Satisfies the trait-contract "Fake Requirements": deterministic success,
+/// deterministic failure, and a degraded/warning mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FakeSourceAdapterMode {
+    #[default]
+    Success,
+    Failure,
+    Degraded,
+}
+
 #[derive(Debug, Clone)]
 pub struct FakeSourceAdapter {
     capability: AdapterCapability,
+    /// Leaked `'static` copies of `capability.adapter.{name,version}`.
+    ///
+    /// `SourceAdapter::name`/`version` return `&'static str` per the trait
+    /// contract, but `AdapterCapability::adapter` carries per-test owned
+    /// `String`s (tests construct arbitrary adapter names/versions). Leaking
+    /// is scoped to this test fake only — acceptable for the lifetime of a
+    /// test process.
+    name_static: &'static str,
+    version_static: &'static str,
     items: Vec<FakeSourceItem>,
+    mode: FakeSourceAdapterMode,
+    capability_override: Option<AdapterCapability>,
+    calls: Arc<Mutex<Vec<&'static str>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -24,9 +50,16 @@ struct FakeSourceItem {
 impl FakeSourceAdapter {
     pub fn new(adapter: AdapterRef) -> Self {
         let (source_kind, default_scope) = source_defaults(&adapter.name);
+        let name_static: &'static str = Box::leak(adapter.name.clone().into_boxed_str());
+        let version_static: &'static str = Box::leak(adapter.version.clone().into_boxed_str());
         Self {
             capability: AdapterCapability::new(adapter, source_kind, default_scope),
+            name_static,
+            version_static,
             items: Vec::new(),
+            mode: FakeSourceAdapterMode::Success,
+            capability_override: None,
+            calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -48,23 +81,84 @@ impl FakeSourceAdapter {
         });
         self
     }
+
+    /// Sets the deterministic response mode (success/failure/degraded).
+    pub fn with_mode(mut self, mode: FakeSourceAdapterMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Overrides the [`AdapterCapability`] returned by `capabilities()`
+    /// without affecting `discover`/`acquire`/`normalize` behavior (those
+    /// still validate scope against the adapter's own configured
+    /// capability).
+    pub fn with_capability_override(mut self, capability: AdapterCapability) -> Self {
+        self.capability_override = Some(capability);
+        self
+    }
+
+    /// Returns the ordered list of trait methods invoked on this fake, for
+    /// call-count/order assertions.
+    pub fn calls(&self) -> Vec<&'static str> {
+        self.calls
+            .lock()
+            .expect("fake source adapter call log mutex poisoned")
+            .clone()
+    }
+
+    fn record(&self, call: &'static str) {
+        self.calls
+            .lock()
+            .expect("fake source adapter call log mutex poisoned")
+            .push(call);
+    }
+
+    fn failure_error(&self, stage: axon_error::ErrorStage, call: &'static str) -> Option<ApiError> {
+        match self.mode {
+            FakeSourceAdapterMode::Failure => Some(ApiError::new(
+                "adapter.fake.failure",
+                stage,
+                format!("fake source adapter configured to fail on {call}"),
+            )),
+            FakeSourceAdapterMode::Success | FakeSourceAdapterMode::Degraded => None,
+        }
+    }
+
+    fn degraded_warning(&self, call: &'static str) -> Vec<SourceWarning> {
+        if self.mode != FakeSourceAdapterMode::Degraded {
+            return Vec::new();
+        }
+        vec![SourceWarning {
+            code: "adapter.fake.degraded".to_string(),
+            severity: Severity::Degraded,
+            message: format!("fake source adapter running in degraded mode during {call}"),
+            source_item_key: None,
+            retryable: true,
+        }]
+    }
 }
 
 #[async_trait]
 impl SourceAdapter for FakeSourceAdapter {
-    fn name(&self) -> &str {
-        &self.capability.adapter.name
+    fn name(&self) -> &'static str {
+        self.name_static
     }
 
-    fn version(&self) -> &str {
-        &self.capability.adapter.version
+    fn version(&self) -> &'static str {
+        self.version_static
     }
 
-    async fn capabilities(&self) -> Result<AdapterCapability> {
-        Ok(self.capability.clone())
+    async fn capabilities(&self) -> Result<SourceAdapterCapability> {
+        self.record("capabilities");
+        let capability = self
+            .capability_override
+            .clone()
+            .unwrap_or_else(|| self.capability.clone());
+        Ok(capability.into())
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
+        self.record("discover");
         if plan.route.adapter.name != self.capability.adapter.name {
             return Err(ApiError::new(
                 "adapter.mismatch",
@@ -73,6 +167,9 @@ impl SourceAdapter for FakeSourceAdapter {
             ));
         }
         self.capability.validate_scope(plan.route.scope)?;
+        if let Some(err) = self.failure_error(axon_error::ErrorStage::Discovering, "discover") {
+            return Err(err);
+        }
 
         let mut manifest_items = Vec::new();
         for item in &self.items {
@@ -116,7 +213,11 @@ impl SourceAdapter for FakeSourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition> {
+        self.record("acquire");
         self.capability.validate_scope(plan.route.scope)?;
+        if let Some(err) = self.failure_error(axon_error::ErrorStage::Fetching, "acquire") {
+            return Err(err);
+        }
 
         let manifest_items = diff
             .added
@@ -181,7 +282,7 @@ impl SourceAdapter for FakeSourceAdapter {
                     bytes_total: None,
                     bytes_done: 0,
                 },
-                warnings: Vec::new(),
+                warnings: self.degraded_warning("acquire"),
                 error: None,
             },
             source_id: manifest.source_id.clone(),
@@ -199,6 +300,10 @@ impl SourceAdapter for FakeSourceAdapter {
         plan: &SourcePlan,
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
+        self.record("normalize");
+        if let Some(err) = self.failure_error(axon_error::ErrorStage::Normalizing, "normalize") {
+            return Err(err);
+        }
         let documents = acquisition
             .fetched_items
             .iter()
@@ -246,7 +351,7 @@ impl SourceAdapter for FakeSourceAdapter {
                     bytes_total: None,
                     bytes_done: 0,
                 },
-                warnings: Vec::new(),
+                warnings: self.degraded_warning("normalize"),
                 error: None,
             },
             data: documents,
@@ -300,3 +405,6 @@ fn timestamp() -> Timestamp {
 fn stage_id(value: u128) -> StageId {
     StageId::new(Uuid::from_u128(value))
 }
+
+mod enricher;
+pub use enricher::{FakeSourceEnricher, FakeSourceEnricherMode};

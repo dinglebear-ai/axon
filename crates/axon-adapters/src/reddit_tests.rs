@@ -148,9 +148,9 @@ fn diff_from(plan: &SourcePlan, items: Vec<ManifestItem>) -> SourceManifestDiff 
 #[tokio::test]
 async fn capabilities_advertise_subreddit_and_thread_scopes() {
     let cap = RedditSourceAdapter::new().capabilities().await.unwrap();
-    assert!(cap.validate_scope(SourceScope::Subreddit).is_ok());
-    assert!(cap.validate_scope(SourceScope::Thread).is_ok());
-    assert!(cap.validate_scope(SourceScope::Page).is_err());
+    assert!(cap.0.features.contains(&"scope:subreddit".to_string()));
+    assert!(cap.0.features.contains(&"scope:thread".to_string()));
+    assert!(!cap.0.features.contains(&"scope:page".to_string()));
 }
 
 #[tokio::test]

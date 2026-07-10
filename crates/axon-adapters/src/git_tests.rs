@@ -100,9 +100,9 @@ fn diff_from(plan: &SourcePlan, items: Vec<ManifestItem>) -> SourceManifestDiff 
 #[tokio::test]
 async fn capabilities_advertise_git_repo_scope() {
     let cap = GitSourceAdapter::new().capabilities().await.unwrap();
-    assert!(cap.validate_scope(SourceScope::Repo).is_ok());
-    assert!(cap.validate_scope(SourceScope::Directory).is_ok());
-    assert!(cap.validate_scope(SourceScope::Page).is_err());
+    assert!(cap.0.features.contains(&"scope:repo".to_string()));
+    assert!(cap.0.features.contains(&"scope:directory".to_string()));
+    assert!(!cap.0.features.contains(&"scope:page".to_string()));
 }
 
 #[tokio::test]

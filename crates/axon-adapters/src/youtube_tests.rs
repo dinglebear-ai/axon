@@ -129,9 +129,9 @@ fn diff_from(plan: &SourcePlan, items: Vec<ManifestItem>) -> SourceManifestDiff 
 #[tokio::test]
 async fn capabilities_advertise_video_and_channel_scope() {
     let cap = YoutubeSourceAdapter::new().capabilities().await.unwrap();
-    assert!(cap.validate_scope(SourceScope::Video).is_ok());
-    assert!(cap.validate_scope(SourceScope::Channel).is_ok());
-    assert!(cap.validate_scope(SourceScope::Page).is_err());
+    assert!(cap.0.features.contains(&"scope:video".to_string()));
+    assert!(cap.0.features.contains(&"scope:channel".to_string()));
+    assert!(!cap.0.features.contains(&"scope:page".to_string()));
 }
 
 #[tokio::test]
