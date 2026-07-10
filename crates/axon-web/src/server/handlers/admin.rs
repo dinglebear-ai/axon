@@ -138,14 +138,17 @@ pub(crate) struct PruneExecRequest {
     tag = "admin"
 )]
 pub(crate) async fn prune_plan(
-    State((_state, _cfg)): State<WebState>,
+    State((state, _cfg)): State<WebState>,
     Json(req): Json<PrunePlanRequest>,
 ) -> Result<Json<axon_api::source::prune::PrunePlan>, HttpError> {
     let selector = prune_selector_from_body(&req.target, req.generation.as_deref())?;
     let request = ApiPruneRequest::dry_run(selector, "rest prune plan");
     // Dry-run planning never mutates state and never checks authz — mirrors
-    // `axon_services::prune::prune_plan`'s own contract.
-    let plan = services::prune::prune_plan(&request);
+    // `axon_services::prune::prune_plan`'s own contract. Uses the real,
+    // ledger-backed estimate (`prune_plan_estimated`) rather than the
+    // always-zero `NullScopeSource` fallback, since a `ServiceContext` (and
+    // therefore a ledger handle) is available here.
+    let plan = services::prune::prune_plan_estimated(&state.service_context, &request).await;
     Ok(Json(plan))
 }
 
