@@ -8,10 +8,14 @@
 (function () {
   const { el, Icon, ActionBody, RetrieveDocFromRaw } = window.AxonRender;
   const { iconSvg, axonMark } = window.AxonIcons;
-  const { OPS_BY_CATEGORY, OP_BY_ID, toneOf, tint, hostOf, detectIngestSource } = window.AxonData;
+  const { OPS_BY_CATEGORY, OP_BY_ID, toneOf, tint, hostOf } = window.AxonData;
 
   const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
   const COLOR_CODE = true; // color-code actions by family (design default on)
+  // `SourceRequest.execution` has no per-field defaults once the key is
+  // present, so a synchronous ("foreground") request must spell out the
+  // whole policy rather than just `{ mode: "foreground" }`.
+  const FOREGROUND_EXECUTION = { mode: "foreground", priority: "normal", detached: false, heartbeat_interval_secs: 5 };
 
   const state = { view: "browse", tab: null, online: null, host: "", op: null, lastStatus: 200, bodyEl: null };
   // config is read once from storage and refreshed on change (see storage.onChanged),
@@ -84,17 +88,17 @@
   /* ── API dispatch per action ── */
   function callApi(op, arg) {
     switch (op.id) {
-      case "scrape": return requestAxon("POST", "/v1/scrape", { url: arg, embed: true });
+      case "scrape": return requestAxon("POST", "/v1/sources", { source: arg, scope: "page", embed: true, execution: FOREGROUND_EXECUTION });
       case "map": return requestAxon("POST", "/v1/map", { url: arg });
       case "retrieve": return requestAxon("POST", "/v1/retrieve", { url: arg });
       case "screenshot": return requestAxon("POST", "/v1/screenshot", { url: arg, full_page: true });
       case "brand": return requestAxon("POST", "/v1/brand", { url: arg });
       case "endpoints": return requestAxon("POST", "/v1/endpoints", { url: arg });
       case "diff": { const u = splitUrls(arg); if (u.length < 2) { const e = new Error("Diff needs two URLs — “URL A  URL B”."); e.status = 400; throw e; } return requestAxon("POST", "/v1/diff", { url_a: u[0], url_b: u[1] }); }
-      case "crawl": return requestAxon("POST", "/v1/crawl", { urls: [arg] });
+      case "crawl": return requestAxon("POST", "/v1/sources", { source: arg, scope: "site" });
       case "extract": return requestAxon("POST", "/v1/extract", { urls: [arg] });
-      case "embed": return requestAxon("POST", "/v1/embed", { input: arg });
-      case "ingest": return requestAxon("POST", "/v1/ingest", { source_type: detectIngestSource(arg), target: arg });
+      case "embed": return requestAxon("POST", "/v1/sources", { source: arg });
+      case "ingest": return requestAxon("POST", "/v1/sources", { source: arg });
       case "search": return requestAxon("POST", "/v1/search", { query: arg, limit: 10 });
       case "research": return requestAxon("POST", "/v1/research", { query: arg, limit: 10 });
       case "query": return requestAxon("POST", "/v1/query", { query: arg, limit: 10 });
@@ -267,6 +271,8 @@
     }
   }
   function scrapeMarkdownFromRaw(raw) {
+    const content = raw && typeof raw === "object" ? raw.inline?.content : null;
+    if (content && content.kind === "inline_text") return content.text;
     const payload = raw && typeof raw === "object" && raw.payload && typeof raw.payload === "object" ? raw.payload : {};
     return raw?.markdown || payload.markdown || raw?.content || payload.content || raw?.output || "";
   }

@@ -68,24 +68,55 @@ function mostRecentWebTab(tabs) {
     .sort((left, right) => (right.lastAccessed || 0) - (left.lastAccessed || 0))[0];
 }
 
+// The extension submits sources to the unified `/v1/sources` pipeline rather
+// than orchestrating scrape/crawl/embed/ingest itself — those legacy routes
+// were removed server-side and fold into source requests (see
+// docs/pipeline-unification/surfaces/chrome-extension-contract.md).
+//
+// `SourceRequest.execution` has no per-field defaults once the key is
+// present, so a synchronous ("foreground") request must spell out the whole
+// policy rather than just `{ mode: "foreground" }`.
+const FOREGROUND_EXECUTION = { mode: "foreground", priority: "normal", detached: false, heartbeat_interval_secs: 5 };
+
+function markdownFromSourceResult(raw, fallbackUrl) {
+  const content = raw && typeof raw === "object" ? raw.inline?.content : null;
+  const markdown = content && content.kind === "inline_text" ? content.text : "";
+  return { markdown, url: raw?.canonical_uri || fallbackUrl, job_id: raw?.job_id, source_id: raw?.source_id };
+}
+
 async function scrapeWithAxon(urls) {
   const targets = Array.isArray(urls) ? urls : [urls];
-  const results = await Promise.all(targets.map((url) => postAxon("/v1/scrape", { url })));
+  const results = await Promise.all(targets.map(async (url) => {
+    const raw = await postAxon("/v1/sources", { source: url, scope: "page", execution: FOREGROUND_EXECUTION });
+    return markdownFromSourceResult(raw, url);
+  }));
   return results.length === 1 ? results[0] : { results, urls: targets };
 }
 
 async function startCrawlWithAxon(urls, flags = {}) {
-  return postAxon("/v1/crawl", {
-    urls,
-    max_pages: flags.maxPages,
-    max_depth: flags.maxDepth,
-    include_subdomains: flags.includeSubdomains,
-    respect_robots: flags.respectRobots,
-    discover_sitemaps: flags.discoverSitemaps,
-    sitemap_since_days: flags.sitemapSinceDays,
-    render_mode: flags.renderMode,
-    delay_ms: flags.delayMs
-  });
+  const targets = Array.isArray(urls) ? urls : [urls];
+  const limits = {};
+  if (flags.maxPages !== undefined) limits.max_pages = flags.maxPages;
+  if (flags.maxDepth !== undefined) limits.max_depth = flags.maxDepth;
+  const values = {};
+  if (flags.includeSubdomains !== undefined) values.include_subdomains = String(flags.includeSubdomains);
+  if (flags.respectRobots !== undefined) values.respect_robots = String(flags.respectRobots);
+  if (flags.discoverSitemaps !== undefined) values.discover_sitemaps = String(flags.discoverSitemaps);
+  if (flags.sitemapSinceDays !== undefined) values.sitemap_since_days = String(flags.sitemapSinceDays);
+  if (flags.renderMode !== undefined) values.render_mode = String(flags.renderMode);
+  if (flags.delayMs !== undefined) values.delay_ms = String(flags.delayMs);
+
+  // The removed `/v1/crawl` route accepted one batch job for many URLs; the
+  // unified source pipeline is one job per source. Fire one request per URL
+  // and surface the first job for progress tracking (matches prior UI, which
+  // only ever tracked a single crawl job at a time).
+  const results = await Promise.all(targets.map((url) => postAxon("/v1/sources", {
+    source: url,
+    scope: "site",
+    limits,
+    options: { values }
+  })));
+  return results.length === 1 ? results[0] : { ...results[0], results };
 }
 
 async function startExtractWithAxon(urls, flags = {}) {
@@ -97,7 +128,7 @@ async function startExtractWithAxon(urls, flags = {}) {
 }
 
 async function startEmbedWithAxon(input) {
-  return postAxon("/v1/embed", { input });
+  return postAxon("/v1/sources", { source: input });
 }
 
 async function startIngestWithAxon(args) {
@@ -106,28 +137,23 @@ async function startIngestWithAxon(args) {
   if (!target) {
     throw new Error("ingest requires a target.");
   }
-  return postAxon("/v1/ingest", {
-    source_type: parsed.flags.sourceType || parsed.flags.type,
-    target,
-    include_source: parsed.flags.includeSource !== false
-  });
-}
-
-async function startSessionsWithAxon(args) {
-  const parsed = parseCliArgs(args);
-  return postAxon("/v1/ingest", {
-    source_type: "sessions",
-    sessions: {
-      claude: parsed.flags.claude !== false,
-      codex: parsed.flags.codex !== false,
-      gemini: parsed.flags.gemini === true,
-      project: parsed.flags.project || parsed.positionals.join(" ").trim() || undefined
-    }
-  });
+  // IngestRequest.source_type is adapter-selected server-side — there is no
+  // client-settable override, so a `--type`/`--sourceType` flag is dropped
+  // rather than sent as a dead option key (matches launcher.js's ingest case).
+  const values = {};
+  values.include_source = String(parsed.flags.includeSource !== false);
+  return postAxon("/v1/sources", { source: target, options: { values } });
 }
 
 async function cancelCrawlWithAxon(jobId) {
-  return postAxon(`/v1/crawl/${encodeURIComponent(jobId)}/cancel`, {});
+  const result = await postAxon(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {});
+  // JobCancelResult (crates/axon-api/src/source/job.rs) has no `canceled`
+  // boolean field — derive it from the LifecycleStatus the cancel landed on.
+  // "canceling" means the cancel was accepted for a running job (it finishes
+  // asynchronously); "canceled" means it was already terminal (queued/pending).
+  const status = result?.status ?? result?.payload?.status;
+  const canceled = status === "canceled" || status === "canceling";
+  return { ...result, canceled };
 }
 
 async function summarizeWithAxon(urls) {
@@ -212,13 +238,13 @@ async function probeAxonAuth() {
     throw new Error("Missing bearer token. Open Settings or run `auth` to check extension config.");
   }
 
-  const response = await fetch(`${server}/v1/scrape`, {
+  const response = await fetch(`${server}/v1/sources`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ url: "" })
+    body: JSON.stringify({ source: "" })
   });
   const body = await response.text();
-  if (isExpectedScrapeProbeResponse(response, body)) {
+  if (isExpectedSourceProbeResponse(response, body)) {
     return;
   }
   throw new Error(`${response.status} ${response.statusText}${body ? `: ${body}` : ""}`);
@@ -290,13 +316,13 @@ function isLoopbackServer(server) {
   }
 }
 
-function isExpectedScrapeProbeResponse(response, body) {
+function isExpectedSourceProbeResponse(response, body) {
   if (response.status !== 400) {
     return false;
   }
   try {
     const payload = JSON.parse(body);
-    return payload?.kind === "bad_request" && payload?.message === "url or urls is required";
+    return payload?.error?.code === "route.validation.missing_field" && payload?.error?.message === "source is required";
   } catch {
     return false;
   }
@@ -311,7 +337,7 @@ async function pollCrawlStatus(jobId, pollRun) {
     }
 
     try {
-      const result = await getAxon(`/v1/crawl/${encodeURIComponent(jobId)}`);
+      const result = await getAxon(`/v1/jobs/${encodeURIComponent(jobId)}`);
       const status = crawlStatus(result);
       setCrawlStatus(status.label, jobId, status.tone);
       if (currentCrawlOutputMessage) {
@@ -342,7 +368,7 @@ function crawlStatus(result) {
   const errors = resultJson.error_count || resultJson.errors_count || resultJson.errors?.length;
   const suffix = pages ? ` (${pages} pages)` : "";
 
-  if (["completed", "failed", "canceled", "cancelled"].includes(status)) {
+  if (["completed", "completed_degraded", "failed", "canceled", "cancelled", "expired"].includes(status)) {
     return { label: `${capitalize(status)}${suffix}`, detail: crawlDetail(result, status, pages, errors), tone: statusTone(status), done: true };
   }
 

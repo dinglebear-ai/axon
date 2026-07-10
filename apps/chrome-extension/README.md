@@ -113,10 +113,10 @@ background handlers that the context menu dispatches.
 
 The popup chat still supports inline Axon commands and auto-scrape:
 
-- **Scrape + crawl** (current pre-cutover routes): `POST /v1/scrape`, then `POST /v1/crawl`, polling
-  `GET /v1/crawl/{job_id}`.
+- **Scrape + crawl**: `POST /v1/sources` (`scope: "page"` for scrape,
+  `scope: "site"` for crawl), polling `GET /v1/jobs/{job_id}`.
 - **Auto-scrape visited pages**: optional background mode (Options). Sends
-  completed `http(s)` navigations to `POST /v1/scrape`, at most once per URL
+  completed `http(s)` navigations to `POST /v1/sources`, at most once per URL
   every 24 hours.
 - **Cancel crawl**, **Summarize**, **Map**, **Ask**, and the full set of CLI-style
   commands typed into the composer.

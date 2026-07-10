@@ -72,8 +72,10 @@ async function executeCommand(command, tab) {
   }
 
   if (command.name === "sessions") {
-    const result = await startSessionsWithAxon(command.args);
-    return acceptedJobResult("Sessions ingest queued", result, "sessions");
+    // `session:<provider>:<path>` selectors require a local path on the Axon
+    // host — the browser has no way to supply one, so this can't be migrated
+    // to a `/v1/sources` request the way scrape/crawl/embed/ingest were.
+    return unsupportedCliCommand(command.name);
   }
 
   if (command.name === "retrieve") {
@@ -194,7 +196,7 @@ async function executeCommand(command, tab) {
       return { output: "No crawl job is active.", doneMessage: "No crawl job is active." };
     }
 
-    const result = await getAxon(`/v1/crawl/${encodeURIComponent(jobId)}`);
+    const result = await getAxon(`/v1/jobs/${encodeURIComponent(jobId)}`);
     const status = crawlStatus(result);
     setCrawlStatus(status.label, jobId, status.tone);
     return {
