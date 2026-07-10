@@ -10,6 +10,32 @@ pub use axon_jobs::watch::{
     WatchDef, WatchDefCreate, WatchDefCreateRequest, WatchRun, WatchRunArtifact,
 };
 
+// Source-request-backed watch store (WS-B / audit C4-04, issue #298). This is
+// a thin facade over `axon_jobs::watch_store::SqliteWatchStore` — the real
+// `WatchStore` implementation — kept deliberately separate from the
+// task_type/task_payload facade above (see `watch_store.rs` module docs for
+// why the two models are not unified in this slice).
+pub use axon_api::source::{
+    WatchId, WatchListRequest, WatchRequest, WatchResult, WatchSummary, WatchUpdateRequest,
+};
+pub use axon_jobs::boundary::WatchStore as SourceWatchStoreTrait;
+pub use axon_jobs::watch_store::SqliteWatchStore;
+
+/// Open a [`SqliteWatchStore`] against the given pool, or against a freshly
+/// opened config-derived pool when no shared pool is available (mirrors the
+/// `shared_pool`/`cfg` fallback pattern used by the legacy watch facade
+/// above).
+pub async fn open_source_watch_store(
+    cfg: &Config,
+    pool: Option<&SqlitePool>,
+) -> Result<SqliteWatchStore, Box<dyn Error>> {
+    let pool = match pool {
+        Some(pool) => pool.clone(),
+        None => axon_jobs::store::open_config_pool(cfg).await?,
+    };
+    Ok(SqliteWatchStore::new(pool))
+}
+
 pub async fn list_watch_defs(cfg: &Config, limit: i64) -> Result<Vec<WatchDef>, Box<dyn Error>> {
     watch::list_watch_defs(cfg, limit).await
 }

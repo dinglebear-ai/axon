@@ -23,6 +23,7 @@ pub(crate) mod tx;
 pub mod unified;
 pub(crate) mod unified_codec;
 pub mod watch;
+pub mod watch_store;
 pub mod workers;
 
 pub use runtime::SqliteJobBackend;
