@@ -6,6 +6,15 @@ use tempfile::NamedTempFile;
 #[test]
 fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
     let sqlite = NamedTempFile::new().expect("temp sqlite path");
+    // Isolate from the developer's real ~/.axon/config.toml, which may still use
+    // pre-contract-rewrite section names and would hard-fail config parse before
+    // the query path runs. An empty temp config parses as defaults. (An explicit
+    // AXON_CONFIG_PATH pointing at a *missing* file hard-fails, so it must exist,
+    // and the loader requires a `.toml` suffix.)
+    let config = tempfile::Builder::new()
+        .suffix(".toml")
+        .tempfile()
+        .expect("temp config path");
     let tei = MockServer::start();
     tei.mock(|when, then| {
         when.method(POST).path("/embed");
@@ -37,6 +46,7 @@ fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .env("AXON_SQLITE_PATH", sqlite.path())
         .env("AXON_ENV_FILE", &no_env_file)
+        .env("AXON_CONFIG_PATH", config.path())
         // Clear any inherited service-URL env vars so CLI flags are authoritative.
         .env_remove("QDRANT_URL")
         .env_remove("TEI_URL")
