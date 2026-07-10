@@ -121,27 +121,33 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "Plan (dry-run) or execute (destructive) a prune of a source, generation, or collection",
         cost: "write",
     },
+    // U2-20/C6-20: ask/evaluate/suggest/research/summarize default to
+    // `axon:read` — they're query-shaped surfaces, even though research (and
+    // occasionally ask/summarize) may enqueue a background crawl/index job as
+    // a side effect. No `mutates_if`/conditional-upgrade metadata exists yet
+    // (tracked as a follow-up); until it lands these stay read-gated rather
+    // than write-gated, matching the contract's stated default.
     McpActionSpec {
         name: "ask",
-        scope: ActionScope::Write,
+        scope: ActionScope::Read,
         description: "Answer a question with RAG over indexed content",
         cost: "moderate",
     },
     McpActionSpec {
         name: "evaluate",
-        scope: ActionScope::Write,
+        scope: ActionScope::Read,
         description: "Evaluate RAG quality against a baseline and judge diagnostics",
         cost: "expensive",
     },
     McpActionSpec {
         name: "suggest",
-        scope: ActionScope::Write,
+        scope: ActionScope::Read,
         description: "Suggest new documentation URLs to crawl",
         cost: "moderate",
     },
     McpActionSpec {
         name: "research",
-        scope: ActionScope::Write,
+        scope: ActionScope::Read,
         description: "Run SearXNG/Tavily research with synthesis and auto-indexing",
         cost: "expensive",
     },
@@ -177,7 +183,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     },
     McpActionSpec {
         name: "summarize",
-        scope: ActionScope::Write,
+        scope: ActionScope::Read,
         description: "Scrape URL context and summarize it with the configured LLM",
         cost: "write",
     },
@@ -264,6 +270,17 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
             "cancel" | "retry" => Some("axon:write"),
             "recover" | "cleanup" | "clear" => Some("axon:admin"),
             _ => Some("__deny__"),
+        };
+    }
+    // U2-20/C6-20: `memory search`/`memory show`/`memory context` are pure
+    // retrieval and default to `axon:read`; every other memory subaction
+    // (remember/link/supersede/forget/import/replace-scope/…) mutates state
+    // and stays `axon:write` (or `axon:admin` for the replace-scope import,
+    // enforced separately by `memory_authz` in `server.rs`).
+    if action == "memory" {
+        return match subaction {
+            "search" | "show" | "context" => Some("axon:read"),
+            _ => Some("axon:write"),
         };
     }
     MCP_ACTION_SPECS

@@ -552,7 +552,7 @@ async fn admin_routes_accept_valid_bearer() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .header("authorization", "Bearer secret")
         .json(&serde_json::json!({ "collection": "invalid/name" }))
         .send()
@@ -585,7 +585,7 @@ async fn admin_dedupe_rejects_body_without_json_content_type() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .header("authorization", "Bearer secret")
         .body(r#"{"collection":"invalid/name"}"#)
         .send()
@@ -600,7 +600,7 @@ async fn admin_dedupe_rejects_body_without_json_content_type() {
     assert_eq!(body["error"]["code"], "route.validation.unsupported_media");
 }
 
-/// F4: POST /v1/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
+/// F4: POST /v1/prune/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
 /// Migrate is intentionally not exposed as REST.
 #[tokio::test]
 #[serial]
@@ -610,7 +610,7 @@ async fn admin_routes_require_auth_in_loopback_dev() {
     let client = reqwest::Client::new();
 
     let dedupe = client
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .send()
         .await
         .expect("dedupe request");
