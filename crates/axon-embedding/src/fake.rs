@@ -28,6 +28,7 @@ pub struct FakeEmbeddingProvider {
     health: HealthStatus,
     health_override: Option<HealthStatus>,
     mode: FakeEmbeddingMode,
+    cooldown_until_override: Option<Timestamp>,
     calls: Arc<Mutex<Vec<EmbeddingBatch>>>,
 }
 
@@ -39,6 +40,7 @@ impl FakeEmbeddingProvider {
             health: HealthStatus::Healthy,
             health_override: None,
             mode: FakeEmbeddingMode::Success,
+            cooldown_until_override: None,
             calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -51,6 +53,15 @@ impl FakeEmbeddingProvider {
 
     pub fn with_mode(mut self, mode: FakeEmbeddingMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Override `capabilities().cooldown_until`, taking precedence over the
+    /// fixed timestamp [`FakeEmbeddingMode::RateLimited`] otherwise reports.
+    /// Lets tests simulate a live, "now"-relative cooldown window instead of
+    /// a mode-derived fixed instant.
+    pub fn with_cooldown_until(mut self, cooldown_until: Timestamp) -> Self {
+        self.cooldown_until_override = Some(cooldown_until);
         self
     }
 
@@ -98,6 +109,9 @@ impl FakeEmbeddingProvider {
                 "provider.invalid_dimensions",
                 "embedding provider dimensions must be greater than zero",
             ));
+        }
+        if let Some(cooldown_until) = self.cooldown_until_override.clone() {
+            state.cooldown_until = Some(cooldown_until);
         }
         state
     }

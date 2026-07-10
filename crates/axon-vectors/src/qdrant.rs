@@ -17,6 +17,7 @@ mod search;
 mod store_impl;
 
 use axon_api::source::*;
+use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
 
 // Re-export the request-shape conversion helpers exercised by the crate's
 // contract tests and any transport that needs the typed builders.
@@ -28,6 +29,15 @@ pub use convert::{
 #[allow(dead_code)]
 pub const MODULE_NAME: &str = "qdrant";
 
+/// Self-tracked health/cooldown capacity, independent of any scheduler-side
+/// reservation pool a caller may layer on top (mirrors
+/// `axon_embedding::tei::TeiEmbeddingProvider`'s `health` field). Sized
+/// generously — it exists purely to fold live write/delete/search outcomes
+/// into `capabilities()`, not to gate concurrency.
+const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
+const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
+const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
+
 /// Qdrant-backed [`VectorStore`](crate::store::VectorStore).
 ///
 /// The `url` is stored verbatim and parsed (with credentials stripped) per
@@ -36,14 +46,25 @@ pub const MODULE_NAME: &str = "qdrant";
 pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
+    health: ProviderReservationManager,
 }
 
 impl QdrantVectorStore {
     /// Build a store for the Qdrant instance at `url`.
     pub fn new(url: impl Into<String>, provider_id: impl Into<String>) -> Self {
+        let provider_id = ProviderId::new(provider_id);
+        let health = ProviderReservationManager::new(ProviderReservationConfig {
+            provider_id: provider_id.clone(),
+            provider_kind: ProviderKind::Vector,
+            capacity: HEALTH_TRACKER_CAPACITY,
+            interactive_reserve: 0,
+            cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
+            cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
+        });
         Self {
             url: url.into(),
-            provider_id: ProviderId::new(provider_id),
+            provider_id,
+            health,
         }
     }
 
@@ -56,14 +77,61 @@ impl QdrantVectorStore {
     pub fn provider_id(&self) -> &ProviderId {
         &self.provider_id
     }
+
+    /// Fold a fallible operation's outcome into the live health tracker,
+    /// returning the result unchanged. Every [`crate::store::VectorStore`]
+    /// trait method routes its result through this so `capabilities()`
+    /// reflects real write/delete/search failures instead of only the
+    /// separate root-liveness probe in [`capability_snapshot`].
+    pub(crate) async fn track<T>(&self, result: Result<T, ApiError>) -> Result<T, ApiError> {
+        match &result {
+            Ok(_) => self.health.record_success().await,
+            Err(err) => {
+                self.health
+                    .record_failure(err.code.0.clone(), err.retryable)
+                    .await;
+            }
+        }
+        result
+    }
 }
 
 /// Build the capability snapshot for this store.
 ///
-/// Reports live health by probing the Qdrant root endpoint; declares dense +
-/// sparse + hybrid + generation-publish support.
+/// Reports live health from two sources folded together: a root-liveness
+/// probe (unreachable server → `Unavailable`) and the store's own
+/// `record_success`/`record_failure` tracker fed by every
+/// [`VectorStore`](crate::store::VectorStore) call via
+/// [`QdrantVectorStore::track`] (repeated write/delete/search failures →
+/// `Cooling`, with a live `cooldown_until`). The tracker wins when it reports
+/// `Cooling` or `Unavailable` — those reflect *our own* scheduling decision
+/// even if a fresh probe happens to succeed. Declares dense + sparse + hybrid
+/// + generation-publish support.
 pub(crate) async fn capability_snapshot(store: &QdrantVectorStore) -> ProviderCapability {
-    let (health, last_error) = probe_health(store).await;
+    let (probed_health, probe_error) = probe_health(store).await;
+    let tracked_health = store.health.health().await;
+    let cooldown_until = store.health.cooldown_until().await;
+    let (health, last_error) = if matches!(
+        tracked_health,
+        HealthStatus::Cooling | HealthStatus::Unavailable
+    ) {
+        let last_error = store
+            .health
+            .cooling_snapshot()
+            .await
+            .map(|cooling| {
+                ApiError::new(
+                    "provider.cooling",
+                    axon_error::ErrorStage::Observing,
+                    cooling.reason,
+                )
+                .with_provider_id(store.provider_id().0.clone())
+            })
+            .or(probe_error);
+        (tracked_health, last_error)
+    } else {
+        (probed_health, probe_error)
+    };
     ProviderCapability {
         provider_id: store.provider_id().clone(),
         provider_kind: ProviderKind::Vector,
@@ -79,14 +147,14 @@ pub(crate) async fn capability_snapshot(store: &QdrantVectorStore) -> ProviderCa
             "payload_indexes".to_string(),
             "generation_publish".to_string(),
         ],
-        cooldown_until: None,
+        cooldown_until,
         last_error,
         reservation_policy: ReservationPolicy {
             supports_reservations: false,
             queue_policy: QueuePolicy::Fifo,
             interactive_reserve: 0,
-            cooldown_after_failures: 1,
-            cooldown_secs: 30,
+            cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
+            cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
             retry_backoff_ms: None,
         },
         reservation_state: ReservationStateSnapshot {

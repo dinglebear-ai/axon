@@ -58,7 +58,70 @@ impl QdrantVectorStore {
 
 #[async_trait]
 impl VectorStore for QdrantVectorStore {
+    // Every fallible method below routes its result through `self.track(..)`
+    // so `capabilities()` (via `capability_snapshot`) reflects live
+    // write/delete/search health/cooldown, not just a separate root-liveness
+    // probe — see `QdrantVectorStore::track`.
     async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()> {
+        self.track(self.ensure_collection_inner(spec).await).await
+    }
+
+    async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
+        self.track(self.upsert_inner(batch).await).await
+    }
+
+    async fn mark_generation_committed(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        let http = self.http()?;
+        self.track(
+            mark_generation_committed_rest(self, &http, collection, source_id, generation).await,
+        )
+        .await
+    }
+
+    async fn mark_unchanged_items_committed(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        previous_generation: SourceGenerationId,
+        committed_generation: SourceGenerationId,
+        source_item_keys: Vec<SourceItemKey>,
+    ) -> Result<VectorStoreWriteResult> {
+        let http = self.http()?;
+        self.track(
+            mark_unchanged_items_committed_rest(
+                self,
+                &http,
+                collection,
+                source_id,
+                previous_generation,
+                committed_generation,
+                source_item_keys,
+            )
+            .await,
+        )
+        .await
+    }
+
+    async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
+        self.track(self.delete_inner(selector).await).await
+    }
+
+    async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
+        self.track(self.search_inner(request).await).await
+    }
+
+    async fn capabilities(&self) -> Result<ProviderCapability> {
+        Ok(capability_snapshot(self).await)
+    }
+}
+
+impl QdrantVectorStore {
+    async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
         let stage = axon_error::ErrorStage::Upserting;
         let http = self.http()?;
         let spec = normalize_collection_spec(spec);
@@ -86,7 +149,7 @@ impl VectorStore for QdrantVectorStore {
         Ok(())
     }
 
-    async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
+    async fn upsert_inner(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         let stage = axon_error::ErrorStage::Upserting;
         let http = self.http()?;
         let spec = self
@@ -112,38 +175,10 @@ impl VectorStore for QdrantVectorStore {
         })
     }
 
-    async fn mark_generation_committed(
+    async fn delete_inner(
         &self,
-        collection: String,
-        source_id: SourceId,
-        generation: SourceGenerationId,
-    ) -> Result<VectorStoreWriteResult> {
-        let http = self.http()?;
-        mark_generation_committed_rest(self, &http, collection, source_id, generation).await
-    }
-
-    async fn mark_unchanged_items_committed(
-        &self,
-        collection: String,
-        source_id: SourceId,
-        previous_generation: SourceGenerationId,
-        committed_generation: SourceGenerationId,
-        source_item_keys: Vec<SourceItemKey>,
-    ) -> Result<VectorStoreWriteResult> {
-        let http = self.http()?;
-        mark_unchanged_items_committed_rest(
-            self,
-            &http,
-            collection,
-            source_id,
-            previous_generation,
-            committed_generation,
-            source_item_keys,
-        )
-        .await
-    }
-
-    async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
+        selector: VectorDeleteSelector,
+    ) -> Result<VectorStoreDeleteResult> {
         let stage = axon_error::ErrorStage::Cleaning;
         let http = self.http()?;
         validate_delete_selector(&selector)?;
@@ -164,17 +199,13 @@ impl VectorStore for QdrantVectorStore {
         Ok(delete_result(collection, 0))
     }
 
-    async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
+    async fn search_inner(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
         let stage = axon_error::ErrorStage::Retrieving;
         let http = self.http()?;
         let spec = self
             .require_collection_spec(&http, &request.collection, stage)
             .await?;
         qdrant_search(&http, &spec, &request).await
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(capability_snapshot(self).await)
     }
 }
 
