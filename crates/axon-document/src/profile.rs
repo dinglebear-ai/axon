@@ -76,6 +76,19 @@ impl ChunkingProfile {
             Self::AtomicMetadata => "atomic_metadata",
         }
     }
+
+    /// True for profiles where `preparer::build_chunks` actually dispatches to
+    /// a distinct windowed-text implementation when the router flags a
+    /// size/adapter fallback, instead of always running the primary
+    /// structural chunker regardless of the router's decision. Used to gate
+    /// `chunk_router::decision_for_profile`'s reported fallback method so it
+    /// never claims a method that no code path executes.
+    pub(crate) fn has_wired_structural_fallback(self) -> bool {
+        matches!(
+            self,
+            Self::CodeSymbol | Self::MarkdownSections | Self::HtmlArticle
+        )
+    }
 }
 
 impl fmt::Display for ChunkingProfile {

@@ -21,6 +21,7 @@ pub mod profile;
 pub mod schema;
 pub mod session;
 pub mod source_range;
+pub mod structured_formats;
 pub mod testing;
 pub mod text;
 pub mod transcript;

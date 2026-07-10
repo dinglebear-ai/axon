@@ -2,18 +2,19 @@
 
 use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
-    Severity, SourceItemKey, SourceWarning,
+    SourceItemKey, SourceWarning,
 };
 
 use crate::chunk::DocumentChunk;
-use crate::chunk_router::ChunkRouter;
+use crate::chunk_router::{ChunkRouter, decision_for_profile, source_adapter, source_scope};
 use crate::parse::{DocumentParse, parse_document};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use crate::profile::ChunkingProfile;
 use crate::source_range::bounds_for_text;
-use crate::{code, markdown, metadata, schema, session, text, transcript};
 
+mod chunk_build;
 mod validation;
+use chunk_build::{build_chunks, warning};
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document;
 #[cfg(test)]
@@ -48,18 +49,55 @@ impl DocumentPreparer {
                 .map(Ok)
                 .unwrap_or_else(|| self.router.route(&request.document))?,
         };
-        let content = content_text(&request.document);
+        // Pass 1 of 2: pre-chunk redaction. `axon-vectors` runs the second
+        // (final, authoritative) pass at vector-payload build time; scrubbing
+        // here as well keeps secrets out of the chunk boundaries, chunk
+        // hashes, and any parse facts/graph candidates derived from the raw
+        // text, not just the eventual payload.
+        let content = redact_pre_chunk(
+            content_text(&request.document),
+            &request.document.source_item_key,
+        );
         let bounds = bounds_for_text(&content.text);
         let effective_profile = content.force_profile.unwrap_or(profile);
+        // Concrete method distinct from the profile name: routes through the
+        // same size/adapter/scope-aware decision `ChunkRouter::route_decision`
+        // uses (adapter/scope read from the same shared metadata envelope),
+        // keyed off the *effective* profile (which may differ from the
+        // router's raw pick when the content ref forces atomic metadata) and
+        // the post-redaction content length actually handed to the chunker.
+        let decision = decision_for_profile(
+            effective_profile,
+            content.text.len(),
+            source_adapter(&request.document),
+            source_scope(&request.document),
+        );
+        // The decision's method is only reported truthfully when the actual
+        // chunk-building dispatch below honors it: a size/adapter-triggered
+        // fallback swaps the structural chunker for a generic windowed split
+        // so `chunking_method` never claims a method that did not run.
+        let use_size_or_adapter_fallback = decision.method != decision.fallback_chain[0];
         let build = build_chunks(
             effective_profile,
             &content.text,
             request.document.structured_payload.as_ref(),
             &request.document.source_item_key,
+            request.document.path.as_deref(),
+            request.document.language.as_deref(),
+            request.document.content_kind,
+            use_size_or_adapter_fallback,
         );
         let chunks = build.chunks;
         let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
             .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
+        let chunking_method = if content.force_profile.is_some() {
+            "atomic_metadata"
+        } else if !build.warnings.is_empty() {
+            // `structured_or_fallback` degraded to atomic text.
+            "atomic_fallback"
+        } else {
+            decision.method
+        };
         let prepared_chunks = prepare_chunks(&request, effective_profile, chunks, parser_stamp);
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
@@ -73,7 +111,7 @@ impl DocumentPreparer {
             canonical_uri: request.document.canonical_uri,
             prepare_version: "axon-document-pr8".to_string(),
             chunking_profile: effective_profile.as_str().to_string(),
-            chunking_method: effective_profile.as_str().to_string(),
+            chunking_method: chunking_method.to_string(),
             chunks: prepared_chunks,
             metadata: document_metadata,
             cleanup_keys: Vec::<CleanupKey>::new(),
@@ -106,6 +144,34 @@ struct PreparedContentText {
     text: String,
     warnings: Vec<SourceWarning>,
     force_profile: Option<ChunkingProfile>,
+}
+
+/// Redaction pass 1 of 2: scrubs sensitive values out of the normalized
+/// content *before* chunking, so chunk boundaries/hashes/derived parse facts
+/// never see raw secrets. Pass 2 (authoritative, fail-closed) runs at
+/// vector-payload build time in `axon-vectors`.
+fn redact_pre_chunk(
+    content: PreparedContentText,
+    source_item_key: &SourceItemKey,
+) -> PreparedContentText {
+    use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
+
+    let redacted =
+        DefaultRedactor.redact_text(&content.text, &RedactionContext::vector_payload(None));
+    if redacted == content.text {
+        return content;
+    }
+    let mut warnings = content.warnings;
+    warnings.push(warning(
+        "document.content.pre_chunk_redacted",
+        "pre-chunk redaction pass scrubbed sensitive values before chunking",
+        source_item_key,
+    ));
+    PreparedContentText {
+        text: redacted,
+        warnings,
+        force_profile: content.force_profile,
+    }
 }
 
 fn content_text(document: &axon_api::source::SourceDocument) -> PreparedContentText {
@@ -151,97 +217,6 @@ fn content_text(document: &axon_api::source::SourceDocument) -> PreparedContentT
             )],
             force_profile: Some(ChunkingProfile::AtomicMetadata),
         },
-    }
-}
-
-struct ChunkBuild {
-    chunks: Vec<DocumentChunk>,
-    warnings: Vec<SourceWarning>,
-}
-
-fn build_chunks(
-    profile: ChunkingProfile,
-    text: &str,
-    structured_payload: Option<&serde_json::Value>,
-    source_item_key: &SourceItemKey,
-) -> ChunkBuild {
-    let chunks = match profile {
-        ChunkingProfile::CodeSymbol => code::code_symbols(text),
-        ChunkingProfile::CodeManifest => code::code_manifest(text),
-        ChunkingProfile::MarkdownSections => markdown::markdown_sections(text),
-        ChunkingProfile::HtmlArticle => markdown::html_article(text),
-        ChunkingProfile::PlainTextWindows => text::plain_text_windows(text),
-        ChunkingProfile::TranscriptSegments => transcript::transcript_segments(text),
-        ChunkingProfile::StructuredRecords => {
-            return structured_or_fallback(
-                profile,
-                metadata::structured_records(text, structured_payload),
-                text,
-                source_item_key,
-            );
-        }
-        ChunkingProfile::ApiSchema => {
-            return structured_or_fallback(
-                profile,
-                schema::api_schema(text, structured_payload),
-                text,
-                source_item_key,
-            );
-        }
-        ChunkingProfile::ToolOutput => transcript::split_on_nonempty_lines(text, "tool_output"),
-        ChunkingProfile::SessionTurns => session::session_turns(text),
-        ChunkingProfile::AtomicMetadata => metadata::atomic_metadata(text),
-    };
-    ChunkBuild {
-        chunks,
-        warnings: Vec::new(),
-    }
-}
-
-fn structured_or_fallback(
-    profile: ChunkingProfile,
-    result: Result<Vec<DocumentChunk>, String>,
-    text: &str,
-    source_item_key: &SourceItemKey,
-) -> ChunkBuild {
-    match result {
-        Ok(chunks) => ChunkBuild {
-            chunks,
-            warnings: Vec::new(),
-        },
-        Err(error) => ChunkBuild {
-            chunks: metadata::atomic_metadata(text)
-                .into_iter()
-                .map(|chunk| {
-                    chunk
-                        .with_metadata("chunking_fallback", "atomic_text".into())
-                        .with_metadata("chunking_fallback_from", profile.as_str().into())
-                        .with_metadata("structured_parse_error", error.clone().into())
-                })
-                .collect(),
-            warnings: vec![warning(
-                "chunk.structured_parse_failed",
-                format!(
-                    "structured chunk parse failed for {}: {error}",
-                    profile.as_str()
-                ),
-                source_item_key,
-            )],
-        },
-    }
-}
-
-fn warning(
-    code: impl Into<String>,
-    message: impl Into<String>,
-    source_item_key: &SourceItemKey,
-) -> SourceWarning {
-    SourceWarning {
-        code: code.into(),
-        severity: Severity::Warning,
-        message: message.into(),
-        source_item_key: Some(source_item_key.clone()),
-        retryable: false,
     }
 }
 

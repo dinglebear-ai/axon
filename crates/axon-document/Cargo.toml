@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
+axon-core = { path = "../axon-core" }
 axon-parse = { path = "../axon-parse" }
 serde_json = "1"
 tracing = "0.1"

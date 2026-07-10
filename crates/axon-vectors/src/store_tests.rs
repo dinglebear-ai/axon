@@ -117,6 +117,9 @@ fn payload(
             ("committed_generation".to_string(), json!(generation)),
             ("document_id".to_string(), json!(document_id)),
             ("chunk_id".to_string(), json!(chunk_id)),
+            ("chunk_index".to_string(), json!(0)),
+            ("chunking_profile".to_string(), json!("markdown_sections")),
+            ("chunking_method".to_string(), json!("heading_sections")),
             ("chunk_text".to_string(), json!(format!("{chunk_id} body"))),
             (
                 "chunk_locator".to_string(),
