@@ -8,9 +8,9 @@ use super::super::*;
 #[serial_test::serial]
 #[test]
 fn toml_tei_max_retries_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-retries = 3").unwrap();
+    writeln!(f, "[providers.embedding]\nmax-retries = 3").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_mr = env::var("TEI_MAX_RETRIES").ok();
@@ -40,9 +40,9 @@ fn toml_tei_max_retries_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_tei_max_retries() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-retries = 3").unwrap();
+    writeln!(f, "[providers.embedding]\nmax-retries = 3").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_mr = env::var("TEI_MAX_RETRIES").ok();
@@ -72,9 +72,9 @@ fn env_wins_over_toml_for_tei_max_retries() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_max_retries_clamps_out_of_range() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-retries = 999").unwrap();
+    writeln!(f, "[providers.embedding]\nmax-retries = 999").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_mr = env::var("TEI_MAX_RETRIES").ok();
@@ -104,9 +104,9 @@ fn toml_tei_max_retries_clamps_out_of_range() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_request_timeout_ms_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nrequest-timeout-ms = 45000").unwrap();
+    writeln!(f, "[providers.embedding]\nrequest-timeout-ms = 45000").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_to = env::var("TEI_REQUEST_TIMEOUT_MS").ok();
@@ -136,9 +136,9 @@ fn toml_tei_request_timeout_ms_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_tei_request_timeout_ms() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nrequest-timeout-ms = 45000").unwrap();
+    writeln!(f, "[providers.embedding]\nrequest-timeout-ms = 45000").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_to = env::var("TEI_REQUEST_TIMEOUT_MS").ok();
@@ -168,10 +168,10 @@ fn env_wins_over_toml_for_tei_request_timeout_ms() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_request_timeout_ms_clamps_out_of_range() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     // Below the 1000 lower bound — should clamp UP.
-    writeln!(f, "[tei]\nrequest-timeout-ms = 50").unwrap();
+    writeln!(f, "[providers.embedding]\nrequest-timeout-ms = 50").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_to = env::var("TEI_REQUEST_TIMEOUT_MS").ok();
@@ -201,9 +201,9 @@ fn toml_tei_request_timeout_ms_clamps_out_of_range() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_max_client_batch_size_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-client-batch-size = 96").unwrap();
+    writeln!(f, "[providers.embedding]\nbatch-size = 96").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_bs = env::var("TEI_MAX_CLIENT_BATCH_SIZE").ok();
@@ -233,9 +233,9 @@ fn toml_tei_max_client_batch_size_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_request_timeout_ms_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nrequest-timeout-ms = 999999").unwrap();
+    writeln!(f, "[providers.embedding]\nrequest-timeout-ms = 999999").unwrap();
     let mut got = 0u64;
     with_env_saved(&["AXON_CONFIG_PATH", "TEI_REQUEST_TIMEOUT_MS"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -251,9 +251,9 @@ fn toml_tei_request_timeout_ms_clamps_upper_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_max_client_batch_size_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-client-batch-size = 0").unwrap();
+    writeln!(f, "[providers.embedding]\nbatch-size = 0").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "TEI_MAX_CLIENT_BATCH_SIZE"],
@@ -272,9 +272,9 @@ fn toml_tei_max_client_batch_size_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn env_out_of_range_tei_max_retries_shadows_toml_and_clamps() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-retries = 3").unwrap();
+    writeln!(f, "[providers.embedding]\nmax-retries = 3").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "TEI_MAX_RETRIES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -288,9 +288,9 @@ fn env_out_of_range_tei_max_retries_shadows_toml_and_clamps() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_tei_max_client_batch_size() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-client-batch-size = 96").unwrap();
+    writeln!(f, "[providers.embedding]\nbatch-size = 96").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_bs = env::var("TEI_MAX_CLIENT_BATCH_SIZE").ok();
@@ -320,9 +320,9 @@ fn env_wins_over_toml_for_tei_max_client_batch_size() {
 #[serial_test::serial]
 #[test]
 fn toml_tei_max_client_batch_size_clamps_out_of_range() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[tei]\nmax-client-batch-size = 500").unwrap();
+    writeln!(f, "[providers.embedding]\nbatch-size = 500").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_bs = env::var("TEI_MAX_CLIENT_BATCH_SIZE").ok();

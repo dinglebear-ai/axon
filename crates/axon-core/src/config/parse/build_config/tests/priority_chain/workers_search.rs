@@ -8,9 +8,9 @@ use super::super::*;
 #[serial_test::serial]
 #[test]
 fn toml_workers_ingest_lanes_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\ningest-lanes = 7").unwrap();
+    writeln!(f, "[pipeline]\ningest-lanes = 7").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -24,9 +24,9 @@ fn toml_workers_ingest_lanes_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_ingest_lanes_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\ningest-lanes = 0").unwrap();
+    writeln!(f, "[pipeline]\ningest-lanes = 0").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -40,9 +40,9 @@ fn toml_workers_ingest_lanes_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_ingest_lanes_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\ningest-lanes = 999").unwrap();
+    writeln!(f, "[pipeline]\ningest-lanes = 999").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -56,9 +56,9 @@ fn toml_workers_ingest_lanes_clamps_upper_bound() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_workers_ingest_lanes() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\ningest-lanes = 7").unwrap();
+    writeln!(f, "[pipeline]\ningest-lanes = 7").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -72,11 +72,11 @@ fn env_wins_over_toml_for_workers_ingest_lanes() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_adaptive_concurrency_parses_min_and_max() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[workers.adaptive-concurrency]\nenabled = true\nmin = 2\nmax = 32"
+        "[crawl.adaptive-concurrency]\nenabled = true\nmin = 2\nmax = 32"
     )
     .unwrap();
     let mut got = None;
@@ -98,11 +98,11 @@ fn toml_workers_adaptive_concurrency_parses_min_and_max() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_adaptive_concurrency_normalizes_min_and_default_max() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[workers]\ncrawl-concurrency-limit = 12\n\n[workers.adaptive-concurrency]\nenabled = true\nmin = 0"
+        "[crawl]\ncrawl-concurrency-limit = 12\n\n[crawl.adaptive-concurrency]\nenabled = true\nmin = 0"
     )
     .unwrap();
     let mut got = None;
@@ -124,9 +124,9 @@ fn toml_workers_adaptive_concurrency_normalizes_min_and_default_max() {
 #[serial_test::serial]
 #[test]
 fn toml_chrome_remote_local_policy_parses() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[chrome]\nremote-local-policy = true").unwrap();
+    writeln!(f, "[providers.render]\nremote-local-policy = true").unwrap();
     let mut got = false;
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -141,11 +141,11 @@ fn toml_chrome_remote_local_policy_parses() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_adaptive_concurrency_rejects_min_greater_than_max() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[workers.adaptive-concurrency]\nenabled = true\nmin = 33\nmax = 32"
+        "[crawl.adaptive-concurrency]\nenabled = true\nmin = 33\nmax = 32"
     )
     .unwrap();
     let mut err_msg = String::new();
@@ -163,11 +163,11 @@ fn toml_workers_adaptive_concurrency_rejects_min_greater_than_max() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_adaptive_concurrency_rejects_max_above_broadcast_cap() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[workers.adaptive-concurrency]\nenabled = true\nmin = 1\nmax = 1025"
+        "[crawl.adaptive-concurrency]\nenabled = true\nmin = 1\nmax = 1025"
     )
     .unwrap();
     let mut err_msg = String::new();
@@ -187,7 +187,7 @@ fn toml_workers_adaptive_concurrency_rejects_max_above_broadcast_cap() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_adaptive_concurrency_rejects_unsupported_knobs() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cases = [
         "decrease-factor = 0.25",
         "initial = 8",
@@ -195,7 +195,7 @@ fn toml_workers_adaptive_concurrency_rejects_unsupported_knobs() {
     ];
     for extra in cases {
         let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-        writeln!(f, "[workers.adaptive-concurrency]\nenabled = true\n{extra}").unwrap();
+        writeln!(f, "[crawl.adaptive-concurrency]\nenabled = true\n{extra}").unwrap();
         let mut err_msg = String::new();
         with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
@@ -212,9 +212,9 @@ fn toml_workers_adaptive_concurrency_rejects_unsupported_knobs() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_embed_lanes_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nembed-lanes = 6").unwrap();
+    writeln!(f, "[pipeline]\nembed-lanes = 6").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -228,9 +228,9 @@ fn toml_workers_embed_lanes_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_workers_embed_lanes() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nembed-lanes = 6").unwrap();
+    writeln!(f, "[pipeline]\nembed-lanes = 6").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -244,11 +244,11 @@ fn env_wins_over_toml_for_workers_embed_lanes() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_embed_lanes_clamps_bounds() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut low = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     let mut high = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(low, "[workers]\nembed-lanes = 0").unwrap();
-    writeln!(high, "[workers]\nembed-lanes = 999").unwrap();
+    writeln!(low, "[pipeline]\nembed-lanes = 0").unwrap();
+    writeln!(high, "[pipeline]\nembed-lanes = 999").unwrap();
     let mut got_low = 0usize;
     let mut got_high = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
@@ -266,9 +266,9 @@ fn toml_workers_embed_lanes_clamps_bounds() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_queue_summary_secs_allows_disable_and_env_override() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nqueue-summary-secs = 0").unwrap();
+    writeln!(f, "[pipeline]\nqueue-summary-secs = 0").unwrap();
     let mut got = 999u64;
     let mut env_got = 0u64;
     with_env_saved(
@@ -293,11 +293,11 @@ fn toml_workers_queue_summary_secs_allows_disable_and_env_override() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_qdrant_point_buffer_wins_and_clamps() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     let mut high = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nqdrant-point-buffer = 1024").unwrap();
-    writeln!(high, "[workers]\nqdrant-point-buffer = 999999").unwrap();
+    writeln!(f, "[pipeline]\nqdrant-point-buffer = 1024").unwrap();
+    writeln!(high, "[pipeline]\nqdrant-point-buffer = 999999").unwrap();
     let mut got = 0usize;
     let mut env_got = 0usize;
     let mut high_got = 0usize;
@@ -329,9 +329,9 @@ fn toml_workers_qdrant_point_buffer_wins_and_clamps() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_max_pending_crawl_clamps_out_of_range() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nmax-pending-crawl-jobs = 99999999").unwrap();
+    writeln!(f, "[pipeline]\nmax-pending-crawl-jobs = 99999999").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_CRAWL_JOBS"],
@@ -350,9 +350,9 @@ fn toml_workers_max_pending_crawl_clamps_out_of_range() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_max_pending_embed_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nmax-pending-embed-jobs = 25").unwrap();
+    writeln!(f, "[pipeline]\nmax-pending-embed-jobs = 25").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_EMBED_JOBS"],
@@ -371,9 +371,9 @@ fn toml_workers_max_pending_embed_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_max_pending_extract_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nmax-pending-extract-jobs = 11").unwrap();
+    writeln!(f, "[pipeline]\nmax-pending-extract-jobs = 11").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_EXTRACT_JOBS"],
@@ -392,9 +392,9 @@ fn toml_workers_max_pending_extract_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_max_pending_ingest_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nmax-pending-ingest-jobs = 13").unwrap();
+    writeln!(f, "[pipeline]\nmax-pending-ingest-jobs = 13").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_INGEST_JOBS"],
@@ -413,9 +413,9 @@ fn toml_workers_max_pending_ingest_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_embed_doc_timeout_secs_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nembed-doc-timeout-secs = 600").unwrap();
+    writeln!(f, "[pipeline]\nembed-doc-timeout-secs = 600").unwrap();
     let mut got = 0u64;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_EMBED_DOC_TIMEOUT_SECS"],
@@ -434,9 +434,9 @@ fn toml_workers_embed_doc_timeout_secs_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_embed_doc_timeout_secs_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nembed-doc-timeout-secs = 1").unwrap();
+    writeln!(f, "[pipeline]\nembed-doc-timeout-secs = 1").unwrap();
     let mut got = 0u64;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_EMBED_DOC_TIMEOUT_SECS"],
@@ -455,9 +455,9 @@ fn toml_workers_embed_doc_timeout_secs_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_workers_embed_doc_timeout_secs_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[workers]\nembed-doc-timeout-secs = 99999").unwrap();
+    writeln!(f, "[pipeline]\nembed-doc-timeout-secs = 99999").unwrap();
     let mut got = 0u64;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_EMBED_DOC_TIMEOUT_SECS"],
@@ -476,9 +476,9 @@ fn toml_workers_embed_doc_timeout_secs_clamps_upper_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_search_hnsw_ef_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef = 256").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef = 256").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -492,9 +492,9 @@ fn toml_search_hnsw_ef_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_search_hnsw_ef() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef = 256").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef = 256").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -508,9 +508,9 @@ fn env_wins_over_toml_for_search_hnsw_ef() {
 #[serial_test::serial]
 #[test]
 fn toml_search_hnsw_ef_clamps_out_of_range() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef = 9999").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef = 9999").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -527,9 +527,9 @@ fn toml_search_hnsw_ef_clamps_out_of_range() {
 #[serial_test::serial]
 #[test]
 fn toml_search_hnsw_ef_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef = 1").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef = 1").unwrap();
     let mut got = 0usize;
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -543,9 +543,9 @@ fn toml_search_hnsw_ef_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_search_hnsw_ef_legacy_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef-legacy = 200").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef-legacy = 200").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH_LEGACY"],
@@ -564,9 +564,9 @@ fn toml_search_hnsw_ef_legacy_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_search_hnsw_ef_legacy_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef-legacy = 1").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef-legacy = 1").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH_LEGACY"],
@@ -585,9 +585,9 @@ fn toml_search_hnsw_ef_legacy_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_search_hnsw_ef_legacy_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhnsw-ef-legacy = 999").unwrap();
+    writeln!(f, "[providers.vector]\nhnsw-ef-legacy = 999").unwrap();
     let mut got = 0usize;
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH_LEGACY"],
@@ -606,9 +606,9 @@ fn toml_search_hnsw_ef_legacy_clamps_upper_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_search_collection_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\ncollection = \"toml_col\"").unwrap();
+    writeln!(f, "[server]\ndefault-collection = \"toml_col\"").unwrap();
     let mut got = String::new();
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -622,9 +622,9 @@ fn toml_search_collection_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_search_collection() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\ncollection = \"toml_col\"").unwrap();
+    writeln!(f, "[server]\ndefault-collection = \"toml_col\"").unwrap();
     let mut got = String::new();
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -638,9 +638,9 @@ fn env_wins_over_toml_for_search_collection() {
 #[serial_test::serial]
 #[test]
 fn cli_wins_over_env_and_toml_for_collection() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\ncollection = \"toml_col\"").unwrap();
+    writeln!(f, "[server]\ndefault-collection = \"toml_col\"").unwrap();
     let mut got = String::new();
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
@@ -656,9 +656,9 @@ fn cli_wins_over_env_and_toml_for_collection() {
 #[serial_test::serial]
 #[test]
 fn toml_search_collection_invalid_returns_err() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\ncollection = \"evil; DROP\"").unwrap();
+    writeln!(f, "[server]\ndefault-collection = \"evil; DROP\"").unwrap();
     let mut err_msg = String::new();
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());

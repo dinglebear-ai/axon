@@ -23,650 +23,428 @@
 # Priority (highest to lowest):
 #   CLI flags for command inputs > environment variables > this file > built-in defaults
 #
-# Every key below is wired through either runtime Config or the Rust build
-# script: setting it in this file takes effect. The env var shown next to each
-# key still overrides the TOML value at the same priority described above.
+# Shape: this file follows the 20-section config contract
+# (docs/pipeline-unification/configuration/config-contract.md). Unknown keys
+# and stale pre-contract section names (e.g. old top-level [llm]/[tei]/
+# [scrape]/[workers]) fail with a clear deprecation error naming the new
+# section instead of being silently ignored.
 
-[build]
+[server]
+# Default vector collection. Env: AXON_COLLECTION (or --collection flag).
+# default-collection = "axon"
+
 # Development-only compile-time escape hatch: allow `cargo build`/`cargo test`
 # to embed the fallback web panel when apps/web/out is absent or contains only
-# fallback marker assets. Release builds should keep this false and build the
-# real web panel first.
+# fallback marker assets. Release builds should keep this false.
 # Env override: AXON_ALLOW_FALLBACK_WEB_ASSETS
 # allow-fallback-web-assets = false
 
+[server.mcp]
+# Timeout for MCP task-result waits.
+# Env: AXON_TASK_RESULT_WAIT_TIMEOUT_SECS
+# task-result-wait-timeout-secs = 300
+
+[server.mcp.embed]
+# Local filesystem embed guards for MCP-triggered embed actions.
+# Env: AXON_MCP_EMBED_MAX_LOCAL_BYTES
+# max-local-bytes = 10485760
+# Env: AXON_MCP_EMBED_MAX_LOCAL_DEPTH
+# max-local-depth = 16
+# Env: AXON_MCP_EMBED_MAX_LOCAL_ENTRIES
+# max-local-entries = 10000
+
 # Service endpoint URLs are intentionally not configured here.
-# Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL
-# in ~/.axon/.env. QDRANT_URL and TEI_URL also have temporary CLI overrides.
+# Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL in ~/.axon/.env.
 
-[llm]
-# Non-secret model names can be set here. Env vars still win.
-# Existing AXON_OPENAI_MODEL and AXON_HEADLESS_GEMINI_MODEL are treated as
-# synthesis-model aliases for backwards compatibility.
-#
-# Env: AXON_SYNTHESIS_OPENAI_MODEL or AXON_OPENAI_MODEL
-# synthesis-openai-model = ""
-#
-# Env: AXON_CHAT_OPENAI_MODEL
-# chat-openai-model = ""
-#
-# Env: AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL or AXON_HEADLESS_GEMINI_MODEL
-# synthesis-gemini-model = ""
-#
-# Env: AXON_CHAT_HEADLESS_GEMINI_MODEL
-# chat-gemini-model = ""
-#
-# Optional override for whether the synthesis model should be treated as
-# high-context by the adaptive ask context builder. Leave unset to infer from
-# the active model name.
-# Env: AXON_SYNTHESIS_HIGH_CONTEXT
-# synthesis-high-context = true
-#
-# Codex app-server settings are runtime/bootstrap env-only in this slice:
-# AXON_CODEX_CMD, AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL
-# (legacy alias AXON_CODEX_MODEL), and AXON_CODEX_COMPLETION_CONCURRENCY.
-# Command/home are intentionally not TOML keys because they depend on the host
-# runtime and auth location.
-#
-# Max concurrent LLM completion requests across the selected backend
-# (clamped 1-64).
-# Env: AXON_LLM_COMPLETION_CONCURRENCY
-# completion-concurrency = 4
-#
-# Timeout in seconds for each LLM completion request (clamped 10-1800).
-# Env: AXON_LLM_COMPLETION_TIMEOUT_SECS
-# completion-timeout-secs = 300
-#
-# How long (seconds) an idle pooled `codex app-server` child may sit unused
-# before the pool discards it on next checkout (clamped 0-3600; 0 disables
-# TTL eviction).
-# Env: AXON_CODEX_POOL_IDLE_TTL_SECS
-# codex-pool-idle-ttl-secs = 300
+[sources.code-search]
+# Foreground freshness TTL before checking whether a Git checkout changed.
+# Env: AXON_CODE_SEARCH_FRESHNESS_TTL_SECS
+# freshness-ttl-secs = 30
+# Timeout for a foreground code-search reindex.
+# Env: AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS
+# reindex-timeout-secs = 300
+# Skip files larger than this many bytes during local code indexing.
+# Env: AXON_CODE_SEARCH_MAX_FILE_BYTES
+# max-file-bytes = 10485760
+# Number of changed files processed per foreground refresh batch.
+# Env: AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE
+# changed-file-batch-size = 64
 
-[search]
+[pipeline]
+# Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
+# Env: AXON_INGEST_LANES
+# ingest-lanes = 2
+# Parallel embed worker lanes (clamped 1-32).
+# Env: AXON_EMBED_LANES
+# embed-lanes = 2
+# Maximum concurrent jobs the unified job-store worker runs at once (clamped 1-64).
+# Env: AXON_UNIFIED_WORKER_CONCURRENCY
+# unified-worker-concurrency = 8
+# Per-document embed timeout in seconds.
+# Env: AXON_EMBED_DOC_TIMEOUT_SECS
+# embed-doc-timeout-secs = 300
+# Queue summary interval in seconds (0 = disabled, clamped 0-3600).
+# Env: AXON_QUEUE_SUMMARY_SECS
+# queue-summary-secs = 30
+# Buffered Qdrant points before pipeline flush (clamped 128-16384).
+# Env: AXON_QDRANT_POINT_BUFFER
+# qdrant-point-buffer = 1024
+# Timeout in seconds for --wait true job polling (clamped 30-3600).
+# Env: AXON_JOB_WAIT_TIMEOUT_SECS
+# job-wait-timeout-secs = 300
+# Queue caps — reject new jobs above these counts (0 = unlimited).
+# Env: AXON_MAX_PENDING_CRAWL_JOBS / _EMBED_ / _EXTRACT_ / _INGEST_JOBS
+# max-pending-crawl-jobs = 100
+# max-pending-embed-jobs = 50
+# max-pending-extract-jobs = 50
+# max-pending-ingest-jobs = 50
+
+[pipeline.chunking]
+# Markdown chunk target maximum. Env still wins for ad hoc overrides.
+# Env: AXON_MARKDOWN_CHUNK_MAX_CHARS
+# markdown-max-chars = 2000
+# Markdown chunk minimum before tiny chunk merge/padding behavior.
+# Env: AXON_MARKDOWN_CHUNK_MIN_CHARS
+# markdown-min-chars = 500
+# Character overlap between neighboring markdown chunks.
+# Env: AXON_CHUNK_OVERLAP_CHARS
+# overlap-chars = 200
+
+[pipeline.endpoints]
+# Concurrency limits for endpoint map/verification helpers.
+# Env: AXON_ENDPOINT_BUNDLE_CONCURRENCY
+# bundle-concurrency = 8
+# Env: AXON_ENDPOINT_CHROME_CONCURRENCY
+# chrome-concurrency = 1
+# Env: AXON_ENDPOINT_VERIFY_CONCURRENCY
+# verify-concurrency = 16
+# Env: AXON_ENDPOINT_PROBE_CONCURRENCY
+# probe-concurrency = 4
+
+[jobs]
+# Seconds before a running job is considered stale. Env still overrides TOML.
+# Env: AXON_JOB_STALE_TIMEOUT_SECS
+# stale-after-secs = 300
+# Additional grace period before stale reclaim. Env still overrides TOML.
+# Env: AXON_JOB_STALE_CONFIRM_SECS
+# stale-grace-secs = 60
+# Seconds between watchdog sweeps. Env still overrides TOML.
+# Env: AXON_WATCHDOG_SWEEP_SECS
+# watchdog-sweep-secs = 15
+# Seconds a kind's queue may hold pending jobs with zero running workers
+# before the liveness watchdog kicks the lane. 0 disables.
+# Env: AXON_WORKER_STARVATION_SECS
+# worker-starvation-secs = 120
+# Maximum wall-clock seconds a single crawl job may run before abort. 0 disables.
+# Env: AXON_CRAWL_JOB_TIMEOUT_SECS
+# crawl-job-timeout-secs = 7200
+# Maximum reclaim attempts before a stale job is dead-lettered. 0 = unlimited.
+# Env: AXON_MAX_JOB_ATTEMPTS
+# max-job-attempts = 5
+
+[jobs.freshness]
+# CLI-only `--fresh <Nd>` schedules on scrape/crawl/embed/ingest, run from
+# long-lived `axon serve` / `axon mcp` processes.
+# Env: AXON_FRESHNESS_TICK_SECS
+# tick-secs = 60
+# Env: AXON_FRESHNESS_LEASE_SECS
+# lease-secs = 1800
+# Env: AXON_FRESHNESS_MAX_DUE_PER_TICK
+# max-due-per-tick = 4
+# Env: AXON_FRESHNESS_MAX_CONCURRENT_RUNS
+# max-concurrent-runs = 2
+# Env: AXON_FRESHNESS_RUN_RETENTION_DAYS
+# run-retention-days = 90
+
+[providers.embedding]
+# This section is critical for avoiding embedding-pipeline bottlenecks.
+# Env: TEI_MAX_CLIENT_BATCH_SIZE
+# batch-size = 128
+# Process-wide max concurrent Axon client requests to native TEI `/embed`.
+# Env: AXON_TEI_MAX_CONCURRENT
+# max-concurrent-requests = 8
+# Weighted cap on total input chunks concurrently submitted to native TEI.
+# Env: AXON_TEI_MAX_IN_FLIGHT_INPUTS
+# max-in-flight-inputs = 320
+# Per-attempt timeout in milliseconds. Env: TEI_REQUEST_TIMEOUT_MS
+# request-timeout-ms = 30000
+# Max retry attempts after the initial TEI request. Env: TEI_MAX_RETRIES
+# max-retries = 5
+# Max chunk inputs pooled into one native TEI embedding wave.
+# Env: AXON_EMBED_POOL_MAX_INPUTS
+# pool-max-inputs = 512
+# Concurrent source-document preparation tasks before embedding.
+# Env: AXON_EMBED_PREP_CONCURRENCY
+# prep-concurrency = 8
+# Optional circuit breakers after exact dedupe. `0` / unset disables the cap.
+# Env: AXON_EMBED_MAX_CHUNKS_PER_DOC, AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC
+# max-chunks-per-doc = 0
+# max-source-chunks-per-doc = 0
+# Drop exact duplicate chunks within one logical document before embedding.
+# Env: AXON_EMBED_DEDUPE_EXACT_CHUNKS
+# dedupe-exact-chunks = true
+# OpenAI-compatible embedding endpoints (e.g. vLLM at a `/v1` TEI_URL) use
+# separate client-side defaults so native TEI tuning isn't overloaded.
+# Env: AXON_OPENAI_EMBEDDING_MODEL, fallback VLLM_SERVED_MODEL_NAME
+# openai-model = "axon-qwen3-embedding"
+# Env: AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE
+# openai-max-client-batch-size = 32
+# Env: AXON_OPENAI_EMBED_MAX_CONCURRENT
+# openai-max-concurrent = 32
+# Env: AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS
+# openai-max-in-flight-inputs = 512
+# Env: AXON_OPENAI_EMBED_POOL_MAX_INPUTS
+# openai-pool-max-inputs = 1024
+
+[providers.vector]
+# Upsert request batch size and request parallelism.
+# Env: AXON_QDRANT_UPSERT_BATCH_SIZE
+# upsert-batch-points = 1024
+# Env: AXON_QDRANT_UPSERT_PARALLELISM
+# write-concurrency = 1
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
-# Disable if your collection is legacy unnamed-mode.
 # Env: AXON_HYBRID_SEARCH
 # hybrid-enabled = true
-
-# Candidates per prefetch arm before RRF fusion (clamped 10–500).
-# Higher = better recall, slower query.
-# Env: AXON_HYBRID_CANDIDATES
-# hybrid-candidates = 100
-
-# Hybrid prefetch window for the ask pipeline (clamped 10–500).
-# Wider than hybrid-candidates to give reranking more material.
-# Env: AXON_ASK_HYBRID_CANDIDATES
-# ask-hybrid-candidates = 150
-
 # HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
-# Higher = better recall, more RAM/CPU.
 # Env: AXON_HNSW_EF_SEARCH
 # hnsw-ef = 128
-
 # HNSW ef for legacy unnamed-mode collections (clamped 16–256).
 # Env: AXON_HNSW_EF_SEARCH_LEGACY
 # hnsw-ef-legacy = 64
+# Maximum bytes stored in Qdrant `structured_blob` payload per chunk.
+# Env: AXON_STRUCTURED_DATA_MAX_BYTES. Default: 65536. Clamped 1024–16777216.
+# structured-data-max-bytes = 65536
+# Bulk-load mode and collection indexing thresholds for newly created collections.
+# Env: AXON_QDRANT_BULK_LOAD
+# bulk-load = false
+# Env: AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB
+# bulk-indexing-threshold-kb = 10485760
+# Env: AXON_QDRANT_INDEXING_THRESHOLD_KB
+# indexing-threshold-kb = 20000
+# HNSW construction params for newly created collections.
+# Env: AXON_QDRANT_HNSW_M
+# hnsw-m = 32
+# Env: AXON_QDRANT_HNSW_EF_CONSTRUCT
+# hnsw-ef-construct = 256
+# Payload index creation profile and fanout.
+# Env: AXON_QDRANT_PAYLOAD_INDEX_PROFILE
+# payload-index-profile = "full"
+# Env: AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM
+# payload-index-parallelism = 16
+# Collection memory/latency tradeoffs for newly created collections.
+# Env: AXON_QDRANT_HNSW_ON_DISK
+# hnsw-on-disk = false
+# Env: AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
+# quantization-always-ram = true
 
-# Default Qdrant collection name.
-# Env: AXON_COLLECTION (or --collection flag)
-# collection = "axon"
+[providers.llm]
+# Non-secret model names. Env vars still win.
+# Env: AXON_SYNTHESIS_OPENAI_MODEL or AXON_OPENAI_MODEL
+# synthesis-openai-model = ""
+# Env: AXON_CHAT_OPENAI_MODEL
+# chat-openai-model = ""
+# Env: AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL or AXON_HEADLESS_GEMINI_MODEL
+# synthesis-gemini-model = ""
+# Env: AXON_CHAT_HEADLESS_GEMINI_MODEL
+# chat-gemini-model = ""
+# Optional override for whether the synthesis model should be treated as
+# high-context by the adaptive ask context builder. Env: AXON_SYNTHESIS_HIGH_CONTEXT
+# high-context = true
+# Max concurrent LLM completion requests across the selected backend (clamped 1-64).
+# Env: AXON_LLM_COMPLETION_CONCURRENCY
+# completion-concurrency = 4
+# Timeout in seconds for each LLM completion request (clamped 10-1800).
+# Env: AXON_LLM_COMPLETION_TIMEOUT_SECS
+# completion-timeout-secs = 300
+# Idle pooled `codex app-server` child TTL (clamped 0-3600; 0 disables).
+# Env: AXON_CODEX_POOL_IDLE_TTL_SECS
+# codex-pool-idle-ttl-secs = 300
+#
+# Codex app-server command/home stay runtime/bootstrap env-only:
+# AXON_CODEX_CMD, AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL,
+# AXON_CODEX_COMPLETION_CONCURRENCY.
 
+[providers.search]
 # `research` fetches each top source's full page and synthesizes over it by
 # default; set false for snippet-only/fast synthesis.
 # Env: AXON_RESEARCH_FULL_CONTENT
 # research-full-content = true
 
-[ask]
-# LLM synthesis defaults to Gemini headless. Configure AXON_LLM_BACKEND
-# (gemini-headless, openai-compat, or codex-app-server) and backend-specific
-# runtime variables in the env layer rather than config.toml.
+[providers.fetch]
+# Delay between requests in milliseconds.
+# delay-ms = 0
+# Per-request HTTP timeout. Unset to use performance-profile default.
+# request-timeout-ms = 20000
+# End-to-end timeout for one service-level scrape batch.
+# Env: AXON_SCRAPE_BATCH_TIMEOUT_SECS
+# batch-timeout-secs = 120
+# Fetch retry count. Unset to use performance-profile default.
+# retries = 2
+# Retry backoff in milliseconds. Unset to use performance-profile default.
+# retry-backoff-ms = 250
 
+[providers.render]
+# Custom User-Agent header sent by Chrome. Env: AXON_CHROME_USER_AGENT
+# user-agent = "Mozilla/5.0 (compatible; Axon/1.0)"
+# bypass-csp = false
+# accept-invalid-certs = false
+# Seconds to wait for Chrome network idle before page capture.
+# network-idle-timeout-secs = 15
+# Remote Chrome bootstrap probe timeout (clamped to at least 250ms).
+# bootstrap-timeout-ms = 3000
+# Remote Chrome bootstrap probe retries (clamped 0-10).
+# bootstrap-retries = 2
+# Push Spider/Chromey's local policy to capable remote Chrome engines.
+remote-local-policy = false
+
+[retrieval]
+# Candidates per prefetch arm before RRF fusion (clamped 10–500).
+# Env: AXON_HYBRID_CANDIDATES
+# hybrid-candidates = 100
+# Hybrid prefetch window for the ask pipeline (clamped 10–500).
+# Env: AXON_ASK_HYBRID_CANDIDATES
+# ask-hybrid-candidates = 150
+
+[ask]
+# LLM synthesis defaults to Gemini headless. Configure AXON_LLM_BACKEND and
+# backend-specific runtime variables in the env layer rather than config.toml.
 # Max context characters passed to the LLM (clamped 20_000–1_000_000).
 # Env: AXON_ASK_MAX_CONTEXT_CHARS
 # max-context-chars = 300000
-
-# Max chunks returned per ask query (clamped 3–64). When unset, the effective
-# value is model-tier-derived (Large 50 / Medium 28 / LocalGemma 20 / Small 10);
-# the static struct default is 24.
+# Max chunks returned per ask query (clamped 3–64); static default 24.
 # Env: AXON_ASK_CHUNK_LIMIT
 # chunk-limit = 24
-
 # Max candidate chunks fetched before scoring (clamped 8–300).
 # Env: AXON_ASK_CANDIDATE_LIMIT
 # candidate-limit = 250
-
 # Max full documents included in context (clamped 1–20).
 # Env: AXON_ASK_FULL_DOCS
 # full-docs = 6
-
 # Backfill chunks from top documents to pad context (clamped 0–20).
 # Env: AXON_ASK_BACKFILL_CHUNKS
 # backfill-chunks = 5
-
 # Concurrent document fetches during context build (clamped 1–16).
 # Env: AXON_ASK_DOC_FETCH_CONCURRENCY
 # doc-fetch-concurrency = 4
-
 # Max chunks per document in context (clamped 8–2000).
 # Env: AXON_ASK_DOC_CHUNK_LIMIT
 # doc-chunk-limit = 96
-
 # Minimum relevance score to include a chunk (clamped -1.0–2.0).
-# Lower = more results, more noise. Higher = stricter but may miss relevant chunks.
 # Env: AXON_ASK_MIN_RELEVANCE_SCORE
 # min-relevance-score = 0.45
-
-# Domains treated as authoritative during reranking. Matches exact hosts and
-# subdomains. Default: empty. Example value: ["code.claude.com", "docs.rs"].
+# Domains treated as authoritative during reranking.
 # Env override: AXON_ASK_AUTHORITATIVE_DOMAINS=code.claude.com,docs.rs
 # authoritative-domains = []
-
-# Boost weight for authoritative domains (clamped 0.0–0.5). Default: 0.0 (off).
+# Boost weight for authoritative domains (clamped 0.0–0.5).
 # Env: AXON_ASK_AUTHORITATIVE_BOOST
 # authoritative-boost = 0.0
-
 # Min unique citations for non-trivial answers (clamped 1–5).
 # Env: AXON_ASK_MIN_CITATIONS_NONTRIVIAL
 # min-citations-nontrivial = 2
 
 [ask.cache]
-# [wired] In-process document-chunk cache for the ask full-doc fetch path.
-# Process-local: only useful in long-lived parents (`axon serve`, `axon mcp`).
-# CLI one-shots see zero hit rate by definition. Default: disabled.
-# (bd axon_rust-pmc)
+# In-process document-chunk cache for the ask full-doc fetch path. Only
+# useful in long-lived parents (`axon serve`, `axon mcp`). Default: disabled.
 # enabled = false
-
-# [wired] Max bytes (summed `chunk_text` length across cached entries).
-# Default: 268_435_456 (256 MiB).
 # max-capacity-bytes = 268435456
-
-# [wired] Time-to-live for cached entries, in seconds. Hard-capped at 300s
-# (security primitive bounding staleness of deleted content). Default: 300.
 # ttl-secs = 300
 
 [ask.adaptive]
-# Adaptive ask heuristics. (bd axon_rust-30y)
-#
-# Full-doc fetch skip gate: when the reranked top-K already covers enough
-# unique URLs, chunk bytes, and quality, the full-doc backfill stage is
-# elided entirely. `ask` normally runs as a Gemini-backed one-shot prompt with
-# a large context window, so the default favors recall and keeps this disabled.
-#
-# Mode-aware quality floor (per crates/vector/CLAUDE.md Ranking Pipeline):
-#  - Cosine paths (Unnamed / dense-only Named): every top-K score must
-#    satisfy `>= ask_min_relevance_score + fulldoc-skip-score-delta`.
-#  - RRF path (Named + hybrid + non-empty sparse): every top-K score must
-#    sit in the top quartile (P75) of all reranked candidates. The
-#    `score-delta` knob is intentionally ignored because rank-fusion
-#    output is unitless.
-#
-# Diagnostics surface the result as `full_doc_fetch_skipped: bool` and
-# `full_doc_fetch_skip_reason: "ok_skip" | "disabled" | "insufficient_urls" |
-# "insufficient_chars" | "low_top_scores" | "empty_top_k"`.
-#
-# Default: disabled (false). Enable only if `axon evaluate` shows no quality
-# regression for your corpus and you need to reduce context assembly cost.
+# Full-doc fetch skip gate: elides full-doc backfill when reranked top-K
+# already covers enough unique URLs, chunk bytes, and quality. Default: disabled.
 # fulldoc-skip-enabled = false
-
-# [wired] Minimum unique URLs required in reranked top-K (clamped 1–50).
-# Default: 3.
 # fulldoc-skip-min-urls = 3
-
-# [wired] Minimum total chunk_text bytes summed across reranked top-K
-# (clamped 500–200_000). Default: 4000.
 # fulldoc-skip-min-chars = 4000
-
-# [wired] Cosine-mode score floor offset on top of `ask_min_relevance_score`
-# (clamped 0.0–1.0). Default: 0.15. Ignored on the RRF path.
 # fulldoc-skip-score-delta = 0.15
 
-[tei]
-# Max retry attempts after the initial TEI request.
-# Env: TEI_MAX_RETRIES
-# max-retries = 5
-
-# Per-attempt timeout in milliseconds.
-# Env: TEI_REQUEST_TIMEOUT_MS
-# request-timeout-ms = 30000
-
-# Default batch size sent to TEI; auto-splits on HTTP 413.
-# For Qwen3-Embedding-0.6B on a 12GB RTX 4070, measured docs chunks worked best
-# around 128 inputs/request with AXON_TEI_MAX_IN_FLIGHT_INPUTS=320. Larger
-# 192/256-item batches reduced request count but gave back the wall-time win to
-# heavier per-batch inference shape.
-# Env: TEI_MAX_CLIENT_BATCH_SIZE
-# max-client-batch-size = 128
-
-[embed]
-# Client-side embed throughput/volume controls. Env vars still override these
-# keys for compatibility, but durable tuning belongs here instead of `.env`.
-#
-# Process-wide max concurrent Axon client requests to native TEI `/embed`.
-# Env: AXON_TEI_MAX_CONCURRENT
-# tei-max-concurrent = 8
-#
-# Weighted cap on total input chunks concurrently submitted to native TEI.
-# Env: AXON_TEI_MAX_IN_FLIGHT_INPUTS
-# tei-max-in-flight-inputs = 320
-#
-# Max chunk inputs pooled into one native TEI embedding wave.
-# Env: AXON_EMBED_POOL_MAX_INPUTS
-# pool-max-inputs = 512
-#
-# Concurrent source-document preparation tasks before embedding.
-# Env: AXON_EMBED_PREP_CONCURRENCY
-# prep-concurrency = 8
-#
-# Optional circuit breakers after exact dedupe. `0` / unset disables the cap.
-# Env: AXON_EMBED_MAX_CHUNKS_PER_DOC, AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC
-# max-chunks-per-doc = 0
-# max-source-chunks-per-doc = 0
-#
-# Drop exact duplicate chunks within one logical document before embedding.
-# Env: AXON_EMBED_DEDUPE_EXACT_CHUNKS
-# dedupe-exact-chunks = true
-#
-# OpenAI-compatible embedding endpoints, including vLLM served at a `/v1`
-# TEI_URL, use separate client-side defaults so native TEI tuning is not
-# overloaded for a different scheduler shape.
-#
-# Model sent in OpenAI-compatible `/v1/embeddings` payloads.
-# Env: AXON_OPENAI_EMBEDDING_MODEL, fallback VLLM_SERVED_MODEL_NAME
-# openai-model = "axon-qwen3-embedding"
-#
-# Client batch size for OpenAI-compatible `/v1/embeddings` endpoints.
-# Env: AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE
-# openai-max-client-batch-size = 32
-#
-# Process-wide max concurrent client requests to OpenAI-compatible embedding endpoints.
-# Env: AXON_OPENAI_EMBED_MAX_CONCURRENT
-# openai-max-concurrent = 32
-#
-# Weighted cap on total input chunks currently submitted to OpenAI-compatible endpoints.
-# Env: AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS
-# openai-max-in-flight-inputs = 512
-#
-# Cross-document pool size for one OpenAI-compatible embedding wave.
-# Env: AXON_OPENAI_EMBED_POOL_MAX_INPUTS
-# openai-pool-max-inputs = 1024
-
-[chunking]
-# Markdown chunk target maximum. Env still wins for ad hoc overrides.
-# Env: AXON_MARKDOWN_CHUNK_MAX_CHARS
-# markdown-max-chars = 2000
-
-# Markdown chunk minimum before tiny chunk merge/padding behavior.
-# Env: AXON_MARKDOWN_CHUNK_MIN_CHARS
-# markdown-min-chars = 500
-
-# Character overlap between neighboring markdown chunks.
-# Env: AXON_CHUNK_OVERLAP_CHARS
-# overlap-chars = 200
-
-[qdrant]
-# Upsert request batch size and request parallelism.
-# Env: AXON_QDRANT_UPSERT_BATCH_SIZE
-# upsert-batch-size = 1024
-#
-# Env: AXON_QDRANT_UPSERT_PARALLELISM
-# upsert-parallelism = 1
-
-# Bulk-load mode and collection indexing thresholds for newly created
-# collections.
-# Env: AXON_QDRANT_BULK_LOAD
-# bulk-load = false
-#
-# Env: AXON_QDRANT_BULK_INDEXING_THRESHOLD_KB
-# bulk-indexing-threshold-kb = 10485760
-#
-# Env: AXON_QDRANT_INDEXING_THRESHOLD_KB
-# indexing-threshold-kb = 20000
-
-# HNSW construction params for newly created collections.
-# Env: AXON_QDRANT_HNSW_M
-# hnsw-m = 32
-#
-# Env: AXON_QDRANT_HNSW_EF_CONSTRUCT
-# hnsw-ef-construct = 256
-
-# Payload index creation profile and fanout.
-# Env: AXON_QDRANT_PAYLOAD_INDEX_PROFILE
-# payload-index-profile = "full"
-#
-# Env: AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM
-# payload-index-parallelism = 16
-
-# Collection memory/latency tradeoffs for newly created collections.
-# Env: AXON_QDRANT_HNSW_ON_DISK
-# hnsw-on-disk = false
-#
-# Env: AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
-# quantization-always-ram = true
-
-[code-search]
-# Foreground freshness TTL before checking whether a Git checkout changed.
-# Env: AXON_CODE_SEARCH_FRESHNESS_TTL_SECS
-# freshness-ttl-secs = 30
-
-# Timeout for a foreground code-search reindex.
-# Env: AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS
-# reindex-timeout-secs = 300
-
-# Skip files larger than this many bytes during local code indexing.
-# Env: AXON_CODE_SEARCH_MAX_FILE_BYTES
-# max-file-bytes = 10485760
-
-# Number of changed files processed per foreground refresh batch.
-# Env: AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE
-# changed-file-batch-size = 64
-
-[watch]
-# Recurring watch scheduler sweep interval and lease TTL.
-# Env: AXON_WATCH_TICK_SECS
-# tick-secs = 15
-#
-# Env: AXON_WATCH_LEASE_SECS
-# lease-secs = 300
-
-[endpoints]
-# Concurrency limits for endpoint map/verification helpers.
-# Env: AXON_ENDPOINT_BUNDLE_CONCURRENCY
-# bundle-concurrency = 8
-#
-# Env: AXON_ENDPOINT_CHROME_CONCURRENCY
-# chrome-concurrency = 1
-#
-# Env: AXON_ENDPOINT_VERIFY_CONCURRENCY
-# verify-concurrency = 16
-#
-# Env: AXON_ENDPOINT_PROBE_CONCURRENCY
-# probe-concurrency = 4
-
-[mcp]
-# Timeout for MCP task-result waits.
-# Env: AXON_TASK_RESULT_WAIT_TIMEOUT_SECS
-# task-result-wait-timeout-secs = 300
-
-[mcp.embed]
-# Local filesystem embed guards for MCP-triggered embed actions.
-# Env: AXON_MCP_EMBED_MAX_LOCAL_BYTES
-# max-local-bytes = 10485760
-#
-# Env: AXON_MCP_EMBED_MAX_LOCAL_DEPTH
-# max-local-depth = 16
-#
-# Env: AXON_MCP_EMBED_MAX_LOCAL_ENTRIES
-# max-local-entries = 10000
-
-[workers]
-# Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
-# Env: AXON_INGEST_LANES
-# ingest-lanes = 2
-
-# Parallel embed worker lanes (clamped 1-32).
-# Env: AXON_EMBED_LANES
-# embed-lanes = 2
-
-# Maximum concurrent jobs the unified job-store worker runs at once (clamped 1-64).
-# Env: AXON_UNIFIED_WORKER_CONCURRENCY
-# unified-worker-concurrency = 8
-
-# Per-document embed timeout in seconds.
-# Env: AXON_EMBED_DOC_TIMEOUT_SECS
-# embed-doc-timeout-secs = 300
-
-# Queue summary interval in seconds (0 = disabled, clamped 0-3600).
-# Env: AXON_QUEUE_SUMMARY_SECS
-# queue-summary-secs = 30
-
-# Buffered Qdrant points before pipeline flush (clamped 128-16384). Each flush
-# is still split into AXON_QDRANT_UPSERT_BATCH_SIZE requests and sent with
-# AXON_QDRANT_UPSERT_PARALLELISM.
-# Env: AXON_QDRANT_POINT_BUFFER
-# qdrant-point-buffer = 1024
-
-# Crawl queue cap — reject new jobs above this count (0 = unlimited).
-# Env: AXON_MAX_PENDING_CRAWL_JOBS
-# max-pending-crawl-jobs = 100
-
-# Embed queue cap — reject new jobs above this count (0 = unlimited).
-# Env: AXON_MAX_PENDING_EMBED_JOBS
-# max-pending-embed-jobs = 50
-
-# Extract queue cap — reject new jobs above this count (0 = unlimited).
-# Env: AXON_MAX_PENDING_EXTRACT_JOBS
-# max-pending-extract-jobs = 50
-
-# Ingest queue cap — reject new jobs above this count (0 = unlimited).
-# Env: AXON_MAX_PENDING_INGEST_JOBS
-# max-pending-ingest-jobs = 50
-
-# Timeout in seconds for --wait true job polling (clamped 30-3600).
-# Env: AXON_JOB_WAIT_TIMEOUT_SECS
-# job-wait-timeout-secs = 300
-
-# Override crawl and backfill concurrency at once. Default comes from
-# performance-profile.
-# concurrency-limit = 128
-
-# Override crawl concurrency. Default comes from performance-profile.
-# crawl-concurrency-limit = 128
-
-# Override sitemap backfill concurrency. Default comes from performance-profile.
-# backfill-concurrency-limit = 64
-
-# Seconds before a running job is considered stale. Env still overrides TOML.
-# Env: AXON_JOB_STALE_TIMEOUT_SECS
-# watchdog-stale-timeout-secs = 300
-
-# Additional grace period before stale reclaim. Env still overrides TOML.
-# Env: AXON_JOB_STALE_CONFIRM_SECS
-# watchdog-confirm-secs = 60
-
-# Seconds between watchdog sweeps. Env still overrides TOML.
-# Env: AXON_WATCHDOG_SWEEP_SECS
-# watchdog-sweep-secs = 15
-
-# Seconds a kind's queue may hold pending jobs with zero running workers before
-# the liveness watchdog declares worker starvation, logs loudly, and kicks the
-# lane. Detects a worker lane that has silently stopped claiming. 0 disables.
-# Env: AXON_WORKER_STARVATION_SECS
-# worker-starvation-secs = 120
-
-# Maximum wall-clock seconds a single crawl job may run before the worker aborts
-# it (guards against a wedged crawl engine future parking the lane). 0 disables.
-# Env: AXON_CRAWL_JOB_TIMEOUT_SECS
-# crawl-job-timeout-secs = 7200
-
-# Maximum times a stale job may be reclaimed out of `running` before the watchdog
-# dead-letters it (marks it failed) instead of re-queueing — bounds a job that
-# crashes or hangs on every attempt from cycling forever. 0 = unlimited.
-# Env: AXON_MAX_JOB_ATTEMPTS
-# max-job-attempts = 5
-
-[freshness]
-# Scheduler sweep interval in seconds. Freshness schedules are created by
-# CLI-only `--fresh <Nd>` on scrape/crawl/embed/ingest and run from long-lived
-# `axon serve` / `axon mcp` processes.
-# Env: AXON_FRESHNESS_TICK_SECS
-# tick-secs = 60
-
-# Lease TTL in seconds for claimed schedules. The scheduler heartbeats during
-# long runs; stale leases are reclaimed on startup/sweep.
-# Env: AXON_FRESHNESS_LEASE_SECS
-# lease-secs = 1800
-
-# Max due schedules leased per sweep. Kept intentionally small to avoid restart
-# catch-up bursts.
-# Env: AXON_FRESHNESS_MAX_DUE_PER_TICK
-# max-due-per-tick = 4
-
-# Process-wide concurrent freshness dispatches. Scheduled scrape runs inline
-# under this semaphore; crawl/embed/ingest enqueue normal jobs.
-# Env: AXON_FRESHNESS_MAX_CONCURRENT_RUNS
-# max-concurrent-runs = 2
-
-# Retain freshness run history for this many days.
-# Env: AXON_FRESHNESS_RUN_RETENTION_DAYS
-# run-retention-days = 90
-
-[workers.adaptive-concurrency]
-# Off by default. When enabled, Axon replaces the fixed crawl semaphore with
-# Spider's adaptive semaphore for the main Spider crawl path.
-# Failure decrease is fixed at 0.5 in Spider 2.52.0.
-enabled = false
-min = 1
-# max defaults to the resolved crawl concurrency limit. Explicit values are
-# capped by min(crawl-broadcast-buffer-max, 1024).
-# max = 64
-
-[chrome]
-# Custom User-Agent header sent by Chrome. Leave unset to use Spider's default.
-# Env: AXON_CHROME_USER_AGENT
-# user-agent = "Mozilla/5.0 (compatible; Axon/1.0)"
-
-# Bypass Content Security Policy in Chrome.
-# bypass-csp = false
-
-# Accept invalid or self-signed TLS certificates in Chrome.
-# accept-invalid-certs = false
-
-# Seconds to wait for Chrome network idle before page capture.
-# network-idle-timeout-secs = 15
-
-# Remote Chrome bootstrap probe timeout in milliseconds (clamped to at least 250).
-# bootstrap-timeout-ms = 3000
-
-# Remote Chrome bootstrap probe retries (clamped 0-10).
-# bootstrap-retries = 2
-
-# Push Spider/Chromey's local policy to capable remote Chrome engines.
-# Generic CDP proxies may reject this command.
-remote-local-policy = false
-
-# Log rotation is configured via env var only (not TOML), because
-# init_tracing() runs before Config is built.
-# Env: AXON_LOG_MAX_BYTES (default: 10485760 = 10 MiB; 0 = disable rotation)
-
-# ─── Webclaw Port (axon_rust-zehr) ───────────────────────────────────────────
-
-[scrape]
+[crawl]
 # Respect robots.txt directives.
 # respect-robots = false
-
-# Thin-page threshold in markdown characters.
-# min-markdown-chars = 200
-
-# Skip thin pages instead of saving or embedding them.
-# drop-thin-markdown = true
-
 # Discover and backfill URLs from sitemap.xml after crawl.
 # discover-sitemaps = true
-
-# Only backfill sitemap URLs with a <lastmod> date within the last N days.
-# 0 disables the age filter.
+# Thin-page threshold in markdown characters.
+# min-markdown-chars = 200
+# Skip thin pages instead of saving or embedding them.
+# drop-thin-markdown = true
+# Abort an in-process crawl when RSS reaches this percent of host/cgroup
+# memory. 0 disables the guard. Env: AXON_CRAWL_MEMORY_ABORT_PERCENT
+# memory-abort-percent = 85.0
+# Only backfill sitemap URLs with a <lastmod> within the last N days. 0 disables.
 # sitemap-since-days = 0
-
 # Maximum number of sitemap documents to parse. 0 = unlimited.
 # max-sitemaps = 512
-
-# Probe /llms.txt at the site root, parse its markdown links, and merge them into
-# the sitemap-backfill candidate set (and into `map` discovery).
+# Probe /llms.txt at the site root and merge its links into backfill/map.
 # discover-llms-txt = true
-
-# Maximum number of URLs to take from a single /llms.txt after scope filtering.
-# 0 = unlimited.
+# Maximum number of URLs to take from a single /llms.txt. 0 = unlimited.
 # max-llms-txt-urls = 512
-
-# Delay between requests in milliseconds.
-# delay-ms = 0
-
-# Per-request HTTP timeout. Unset to use performance-profile default.
-# request-timeout-ms = 20000
-
-# End-to-end timeout for one service-level scrape batch.
-# Env: AXON_SCRAPE_BATCH_TIMEOUT_SECS
-# batch-timeout-secs = 120
-
-# Fetch retry count. Unset to use performance-profile default.
-# fetch-retries = 2
-
-# Retry backoff in milliseconds. Unset to use performance-profile default.
-# retry-backoff-ms = 250
-
 # Thin-page ratio that triggers auto-switch to Chrome.
 # auto-switch-thin-ratio = 0.60
-
 # Minimum page count before auto-switch eligibility check.
 # auto-switch-min-pages = 10
-
 # Only crawl URLs matching these regex patterns.
 # url-whitelist = ["^https://example\\.com/docs/"]
-
-# Allow explicitly uncapped broad-domain crawls without a path budget or URL whitelist.
+# Allow explicitly uncapped broad-domain crawls without a path budget/whitelist.
 # Env: AXON_ALLOW_UNBOUNDED_BROAD_CRAWL
 # allow-unbounded-broad-crawl = false
-
 # Maximum response size per page in bytes. 0 = unlimited.
 # max-page-bytes = 4194304
-
-# Abort an in-process crawl when RSS reaches this percent of host/cgroup memory.
-# 0 disables the guard.
-# Env: AXON_CRAWL_MEMORY_ABORT_PERCENT
-# crawl-memory-abort-percent = 85.0
-
 # Only follow same-origin redirects.
 # redirect-policy-strict = false
-
-# DOM retry ladder Strategy 1 threshold (words). Re-run extraction with
-# `only_main_content=false` when scored extractor produces fewer words.
-# Env: AXON_LADDER_STRATEGY1_THRESHOLD. Default: 30. Clamped 1–1000.
+# DOM retry ladder thresholds (words) and body-fallback multiplier.
+# Env: AXON_LADDER_STRATEGY1_THRESHOLD / _STRATEGY2_THRESHOLD / _BODY_MULTIPLIER
 # ladder-strategy1-threshold = 30
-
-# DOM retry ladder Strategy 2 threshold (words). Re-run extraction with
-# `include_selectors=["body"]` when scored extractor produces fewer words
-# AND no user `include_selectors` were supplied.
-# Env: AXON_LADDER_STRATEGY2_THRESHOLD. Default: 200. Clamped 1–10000.
 # ladder-strategy2-threshold = 200
-
-# Body-fallback multiplier: body wins only if it produces N x scored words.
-# Env: AXON_LADDER_BODY_MULTIPLIER. Default: 2.0. Clamped 1.0–10.0.
 # ladder-body-multiplier = 2.0
+# Override crawl and backfill concurrency at once. Default from performance-profile.
+# concurrency-limit = 128
+# crawl-concurrency-limit = 128
+# backfill-concurrency-limit = 64
 
-[verticals]
+[crawl.adaptive-concurrency]
+# Off by default. When enabled, Axon replaces the fixed crawl semaphore with
+# Spider's adaptive semaphore for the main Spider crawl path.
+enabled = false
+min = 1
+# max defaults to the resolved crawl concurrency limit.
+# max = 64
+
+[crawl.verticals]
 # Enable per-site vertical extractors (GitHub, PyPI, Reddit, HN, etc.).
 # Env: AXON_ENABLE_VERTICALS. Default: true.
 # enabled = true
-
-# Vertical extractor names to SKIP in auto-dispatch (still available via
-# `--vertical <name>` or MCP `vertical_scrape`).
+# Vertical extractor names to SKIP in auto-dispatch.
 # Env: AXON_AUTO_DISPATCH_SKIP (comma-separated). Default: empty.
 # auto-dispatch-skip = ["amazon_product", "ebay_listing"]
-
-# Per-vertical cache TTL in seconds. Built-in defaults: github=86400,
-# reddit=3600, hn=21600. Override per-vertical via
-# AXON_VERTICAL_CACHE_TTL_<UPPER>=secs or this table:
-# [verticals.cache-ttl-secs]
+# Per-vertical cache TTL in seconds:
+# [crawl.verticals.cache-ttl-secs]
 # github = 86400
 # reddit = 3600
 # hn = 21600
 
-[antibot]
+[crawl.antibot]
 # Enable Akamai/Cloudflare cookie warmup retry on antibot challenge.
 # Env: AXON_CHALLENGE_WARMUP. Default: true.
 # cookie-warmup = true
-
 # Maximum bytes scanned for antibot challenge patterns (per-page).
 # Env: AXON_ANTIBOT_MAX_BODY_SCAN_BYTES. Default: 150000. Clamped 1000–10485760.
 # max-body-scan-bytes = 150000
 
-[payload]
-# Maximum bytes stored in Qdrant `structured_blob` payload per chunk.
-# Larger payloads (e.g. multi-MB __NEXT_DATA__) are dropped rather than
-# serialized.
-# Env: AXON_STRUCTURED_DATA_MAX_BYTES. Default: 65536 (64 KiB). Clamped 1024–16777216.
-# structured-data-max-bytes = 65536
+[watch]
+# Recurring URL-watch scheduler sweep interval and lease TTL.
+# Env: AXON_WATCH_TICK_SECS
+# tick-secs = 15
+# Env: AXON_WATCH_LEASE_SECS
+# lease-secs = 300
+
+[memory]
+[graph]
+[artifacts]
+[prune]
+[observability]
+[security]
+# Reserved for the remaining config-contract sections. No knob in this slice
+# reads these yet; kept present so `config.toml` files written against the
+# contract parse cleanly ahead of the runtime wiring landing.
 
 # ── Remaining advanced env-only overrides ───────────────────────────────────
 # These implemented values are still environment-only because they are host
@@ -682,3 +460,7 @@ remote-local-policy = false
 #   AXON_MAX_TREE_SITTER_FILE_BYTES
 #   AXON_RESIDUAL_GAP_FLOOR
 #   AXON_ETAG_MAX_MISS_RUNS
+#
+# Log rotation is configured via env var only (not TOML), because
+# init_tracing() runs before Config is built.
+#   AXON_LOG_MAX_BYTES (default: 10485760 = 10 MiB; 0 = disable rotation)

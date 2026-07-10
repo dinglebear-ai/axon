@@ -3,6 +3,9 @@ use serde::Deserialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod convert;
+mod raw;
+
 /// TOML configuration — tuning knobs only, safe to commit to source control.
 ///
 /// Phase 1 scope (~15 fields across 4 sections). All fields are `Option<T>`
@@ -604,12 +607,25 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
         }
     };
 
-    toml::from_str::<TomlConfig>(&contents).map_err(|e| {
-        format!(
-            "axon: error: config file '{}' has a parse error: {e}",
-            path.display()
-        )
-    })
+    parse_toml_config_str(&contents, Some(path))
+}
+
+/// Parse `config.toml` contents against the current 20-section contract
+/// shape ([`raw::RawTomlConfig`]), then fold the result onto the legacy flat
+/// [`TomlConfig`] every downstream consumer already reads. Deprecated
+/// pre-contract section names (`[llm]`, `[tei]`, `[scrape]`, ...) are
+/// detected before the typed parse so the error names the offending
+/// section(s) and their new home instead of a bare serde "unknown field".
+fn parse_toml_config_str(contents: &str, path: Option<&Path>) -> Result<TomlConfig, String> {
+    let where_clause = path
+        .map(|p| format!(" '{}'", p.display()))
+        .unwrap_or_default();
+    if let Some(msg) = convert::deprecated_section_error(contents) {
+        return Err(format!("axon: error: config file{where_clause} {msg}"));
+    }
+    let raw = toml::from_str::<raw::RawTomlConfig>(contents)
+        .map_err(|e| format!("axon: error: config file{where_clause} has a parse error: {e}"))?;
+    Ok(convert::into_legacy(raw))
 }
 
 #[cfg(unix)]
@@ -631,8 +647,8 @@ fn read_config_file_no_follow(path: &Path) -> Result<String, std::io::Error> {
 }
 
 #[cfg(test)]
-pub(super) fn load_toml_config_from_str(s: &str) -> Result<TomlConfig, toml::de::Error> {
-    toml::from_str(s)
+pub(super) fn load_toml_config_from_str(s: &str) -> Result<TomlConfig, String> {
+    parse_toml_config_str(s, None)
 }
 
 #[cfg(test)]

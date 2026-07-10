@@ -12,7 +12,7 @@ mod post_init;
 
 #[cfg(test)]
 #[path = "build_config_tests.rs"]
-pub(in crate::config::parse) mod tests;
+pub(crate) mod tests;
 
 use super::super::cli::{Cli, DEFAULT_OUTPUT_DIR};
 use super::super::types::{CommandKind, Config};

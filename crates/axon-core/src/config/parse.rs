@@ -1,4 +1,4 @@
-mod build_config;
+pub(crate) mod build_config;
 pub mod docker;
 pub mod env_registry;
 pub(crate) mod excludes;
