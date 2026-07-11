@@ -77,7 +77,11 @@ async fn reset_qdrant(
     if dropped {
         deleted.qdrant_collections.push(cfg.collection.clone());
     }
-    axon_vector::ops::tei::qdrant_store::clear_collection_mode_cache(&cfg.collection);
+    // No process-wide vector-mode cache to invalidate here: `axon-vectors`
+    // (the replacement for the legacy `axon-vector` crate) resolves a
+    // collection's vector mode per request rather than caching it in a
+    // process-wide static, so there is nothing stale left behind by the
+    // drop+recreate above.
     match qdrant::probe_tei_dim(cfg).await {
         Some(dim) => {
             qdrant::create_named_collection(cfg, dim).await?;
