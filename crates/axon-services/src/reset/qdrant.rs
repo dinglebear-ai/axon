@@ -1,12 +1,20 @@
 //! Qdrant side of `axon reset`: inventory (point count + payload-schema
 //! compatibility) and destructive drop + fresh named-mode recreation.
 
+use axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION;
 use axon_core::config::Config;
 use axon_core::http::http_client;
-use axon_vector::ops::qdrant::{PAYLOAD_SCHEMA_VERSION, qdrant_base};
 use reqwest::StatusCode;
 use serde_json::Value;
 use std::error::Error;
+
+/// Qdrant REST base URL derived from `cfg.qdrant_url` (trailing slash
+/// trimmed). Inlined here rather than pulled from the legacy `axon-vector`
+/// crate — `axon-vectors` has no equivalent free function, and this is a
+/// one-line derivation, not worth wrapping a whole `QdrantVectorStore` for.
+fn qdrant_base(cfg: &Config) -> &str {
+    cfg.qdrant_url.trim_end_matches('/')
+}
 
 /// Inventory of the configured Qdrant collection.
 #[derive(Debug, Clone, Default)]
@@ -139,7 +147,7 @@ async fn sample_schema_version(
             .unwrap_or(1); // absent field ⇒ implicit v1
         min_version = Some(min_version.map_or(version, |m| m.min(version)));
     }
-    let incompatible = min_version.is_some_and(|v| v < PAYLOAD_SCHEMA_VERSION);
+    let incompatible = min_version.is_some_and(|v| v < TARGET_PAYLOAD_SCHEMA_VERSION);
     (min_version, incompatible)
 }
 
