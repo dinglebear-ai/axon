@@ -21,10 +21,12 @@ pub mod plan;
 pub mod publish;
 pub mod query;
 pub mod rank;
+pub mod retrieve;
 pub mod service;
 pub mod testing;
 
 pub use publish::{GenerationPublisher, InMemoryGenerationPublisher};
+pub use retrieve::{RetrievedDocument, retrieve_document};
 pub use service::{QueryServiceHit, QueryServiceRequest, QueryServiceResult, run_query};
 pub use testing::{
     FakeGenerationPublisher, FakeGenerationPublisherMode, FakeRetrievalEngine, FakeRetrievalMode,
