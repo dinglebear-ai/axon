@@ -1,10 +1,11 @@
 package com.axon.app
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.axon.app.data.remote.AxonClient
-import com.axon.app.ui.ask.inferFabIngestSource
+import com.axon.app.core.api.AxonClient
+import com.axon.app.core.api.panelEnv
+import com.axon.app.feature.ask.inferFabIngestSource
 import com.axon.app.ui.ingest.IngestSource
-import com.axon.app.ui.settings.validateAxonServerUrl
+import com.axon.app.feature.settings.validateAxonServerUrl
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer

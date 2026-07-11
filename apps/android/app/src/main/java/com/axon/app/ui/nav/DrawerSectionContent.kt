@@ -2,10 +2,10 @@ package com.axon.app.ui.nav
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavController
-import com.axon.app.ui.jobs.ActivityHistoryScreen
-import com.axon.app.ui.jobs.JobsDrawerContent
-import com.axon.app.ui.knowledge.KnowledgeTab
-import com.axon.app.ui.knowledge.KnowledgeDrawerContent
+import com.axon.app.feature.jobs.ActivityHistoryScreen
+import com.axon.app.feature.jobs.JobsDrawerContent
+import com.axon.app.feature.memory.KnowledgeTab
+import com.axon.app.feature.memory.KnowledgeDrawerContent
 import com.axon.app.ui.sessions.SessionsDrawerContent
 
 @Composable

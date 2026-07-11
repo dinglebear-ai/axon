@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.data.local.AskHistoryEntry
 import com.axon.app.data.local.Session
-import com.axon.app.data.remote.models.MobileSessionDto
+import com.axon.app.core.api.models.MobileSessionDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

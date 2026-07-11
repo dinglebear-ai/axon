@@ -16,8 +16,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
-import com.axon.app.ui.ask.AskPromptBar
-import com.axon.app.ui.ask.ConversationMode
+import com.axon.app.feature.ask.AskPromptBar
+import com.axon.app.feature.ask.ConversationMode
 import com.axon.app.ui.common.AxonSensitiveTextField
 import com.axon.app.ui.common.AuroraStatusDot
 import com.axon.app.ui.common.DotState

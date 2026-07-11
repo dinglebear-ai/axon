@@ -1,13 +1,13 @@
 package com.axon.app.di
 
 import android.content.Context
-import com.axon.app.data.auth.AuthConfig
-import com.axon.app.data.auth.AuthMode
-import com.axon.app.data.auth.OAuthRepository
-import com.axon.app.data.auth.OAuthStateStore
-import com.axon.app.data.auth.OAuthTokenSource
+import com.axon.app.core.auth.AuthConfig
+import com.axon.app.core.auth.AuthMode
+import com.axon.app.core.auth.OAuthRepository
+import com.axon.app.core.auth.OAuthStateStore
+import com.axon.app.core.auth.OAuthTokenSource
 import com.axon.app.data.local.AppDatabase
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.core.api.AxonClient
 import com.axon.app.data.repository.AxonRepository
 import com.axon.app.data.repository.DEFAULT_SERVER_URL
 import com.axon.app.data.repository.EncryptedHeadersStore
