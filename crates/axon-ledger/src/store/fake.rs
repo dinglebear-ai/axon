@@ -12,7 +12,10 @@ mod lease;
 use super::util::*;
 use super::{LedgerStore, Result};
 use crate::validation::validate_manifest;
-use cleanup::record_removed_item_cleanup_debt;
+use cleanup::{
+    record_graph_prune_cleanup_debt, record_ledger_prune_cleanup_debt,
+    record_removed_item_cleanup_debt,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct FakeLedgerStore {
