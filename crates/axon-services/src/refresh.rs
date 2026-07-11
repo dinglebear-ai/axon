@@ -42,8 +42,9 @@ use crate::source::enqueue::enqueue_source;
 use crate::source::routing::resolve_source_route;
 use axon_api::source::{SourceKind, SourceListRequest, SourceRequest, SourceSummary};
 use axon_core::config::Config;
+use axon_core::env::env_usize_clamped;
 use axon_jobs::ingest::RE_INGESTABLE_SOURCE_TYPES;
-use axon_vector::ops::qdrant::{env_usize_clamped, qdrant_facet, qdrant_facet_filtered};
+use axon_vectors::qdrant::QdrantVectorStore;
 
 /// Page size used when paginating [`axon_ledger::store::LedgerStore::list_sources`]
 /// during ledger-driven discovery.
@@ -299,7 +300,9 @@ async fn facet_discovered_origins(
     filter: Option<&str>,
     service_context: Option<&ServiceContext>,
 ) -> Result<Vec<RefreshOrigin>, Box<dyn Error>> {
-    let source_types = qdrant_facet(cfg, "source_type", 256)
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let source_types = store
+        .facet(&cfg.collection, "source_type", None, 256)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("facet source_type: {e}").into() })?;
 
@@ -308,7 +311,8 @@ async fn facet_discovered_origins(
         let st_filter = serde_json::json!({
             "must": [{ "key": "source_type", "match": { "value": source_type } }]
         });
-        let seeds = qdrant_facet_filtered(cfg, "seed_url", cap, st_filter)
+        let seeds = store
+            .facet(&cfg.collection, "seed_url", Some(st_filter), cap)
             .await
             .map_err(|e| -> Box<dyn Error> {
                 format!("facet seed_url for source_type={source_type}: {e}").into()
@@ -322,7 +326,7 @@ async fn facet_discovered_origins(
             let origin = RefreshOrigin {
                 seed_url,
                 source_type: source_type.clone(),
-                chunks,
+                chunks: chunks as usize,
                 action,
                 ledger_source_id,
             };
