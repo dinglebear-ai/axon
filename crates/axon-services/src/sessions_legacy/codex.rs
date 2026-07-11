@@ -2,7 +2,6 @@ use super::{
     IngestResult, SessionDoc, flatten_session_result, matches_project_filter, resolve_collection,
 };
 use axon_core::config::Config;
-use axon_vector::ops::prepare_plain_text_source;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -255,19 +254,11 @@ async fn parse_codex_file(
         "tools_used": parsed.tools_used,
         "workspace_path": parsed.workspace_path,
     });
-    let doc = prepare_plain_text_source(
-        url.clone(),
-        "local".to_string(),
-        parsed.text.clone(),
-        "codex_session",
-        title,
-        Some(extra),
-    );
-    if doc.is_empty() {
-        return Ok(None);
-    }
     Ok(Some(SessionDoc {
-        doc,
+        url,
+        title,
+        source_type: "codex_session",
+        extra: Some(extra),
         collection: resolve_collection(cfg, &project_name),
         raw_text: parsed.text,
     }))

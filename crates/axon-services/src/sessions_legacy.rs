@@ -2,9 +2,7 @@ use crate::ingest::progress::PhaseReporter;
 use crate::sessions_legacy::watch::validate::{SessionProvider, ValidatedSessionPath};
 use axon_core::config::Config;
 use axon_core::logging::{log_done, log_info, log_warn};
-use axon_vector::ops::{PreparedDoc, embed_prepared_docs};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -18,22 +16,19 @@ const DEFAULT_SESSION_INGEST_MAX_BYTES: u64 = 20 * 1024 * 1024;
 pub mod checkpoint;
 mod claude;
 mod codex;
+mod embed_batch;
 mod gemini;
 mod prepared;
+mod session_doc;
 pub mod watch;
 
+use embed_batch::{embed_all_session_docs, embed_session_docs};
 #[cfg(test)]
 pub use prepared::MAX_PREPARED_SESSION_DOCS;
 pub use prepared::{IngestSessionsPreparedRequest, PreparedSessionDoc};
+pub(crate) use session_doc::SessionDoc;
 
 pub(crate) type IngestResult<T> = Result<T, anyhow::Error>;
-
-/// A parsed session document ready for embedding.
-pub(crate) struct SessionDoc {
-    pub(crate) doc: PreparedDoc,
-    pub(crate) collection: String,
-    pub(crate) raw_text: String,
-}
 
 pub(crate) fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/")
@@ -269,9 +264,15 @@ pub async fn prepare_sessions_request_batches(
 pub(crate) fn prepared_session_doc_from_session_doc(
     session_doc: SessionDoc,
 ) -> Result<PreparedSessionDoc, String> {
-    let text = session_doc.raw_text;
-    let (url, source_type, title, extra) = session_doc.doc.into_session_fields();
-    let platform = match source_type.as_str() {
+    let SessionDoc {
+        url,
+        title,
+        source_type,
+        extra,
+        raw_text: text,
+        ..
+    } = session_doc;
+    let platform = match source_type {
         "claude_session" => "claude",
         "codex_session" => "codex",
         "gemini_session" => "gemini",
@@ -310,71 +311,6 @@ pub(crate) fn prepared_session_doc_from_session_doc(
     })
 }
 
-/// Groups collected docs by collection and calls `embed_prepared_docs` once per collection.
-async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
-    match embed_session_docs(cfg, docs, false).await {
-        Ok(total) => total,
-        Err(error) => {
-            log_warn(&format!("sessions embed failed: {error}"));
-            0
-        }
-    }
-}
-
-async fn embed_session_docs(
-    cfg: &Config,
-    docs: Vec<SessionDoc>,
-    strict: bool,
-) -> Result<usize, Box<dyn Error>> {
-    let mut by_collection: HashMap<String, Vec<PreparedDoc>> = HashMap::new();
-    for sd in docs {
-        by_collection.entry(sd.collection).or_default().push(sd.doc);
-    }
-
-    let mut total = 0;
-    for (collection, prepared) in by_collection {
-        let doc_count = prepared.len();
-        let mut session_cfg = cfg.clone();
-        session_cfg.collection = collection;
-
-        match embed_prepared_docs(&session_cfg, prepared, None).await {
-            Ok(summary) => {
-                if summary.docs_failed > 0 {
-                    let message = format!(
-                        "sessions embed partial failure collection={} docs_failed={} docs_embedded={}",
-                        session_cfg.collection, summary.docs_failed, summary.docs_embedded
-                    );
-                    if strict {
-                        return Err(summary
-                            .require_success("sessions embed")
-                            .expect_err("docs_failed checked")
-                            .into());
-                    }
-                    log_warn(&message);
-                }
-                total += summary.chunks_embedded;
-                if strict && doc_count > 0 && summary.chunks_embedded == 0 {
-                    return Err(format!(
-                        "sessions embed produced zero chunks for nonempty collection={}",
-                        session_cfg.collection
-                    )
-                    .into());
-                }
-            }
-            Err(e) => {
-                let message = format!(
-                    "sessions embed failed collection={} error={e}",
-                    session_cfg.collection
-                );
-                if strict {
-                    return Err(message.into());
-                }
-                log_warn(&message);
-            }
-        }
-    }
-    Ok(total)
-}
 
 pub async fn ingest_prepared_sessions(
     cfg: &Config,
@@ -433,7 +369,7 @@ pub(crate) fn matches_project_filter(cfg: &Config, name: &str) -> bool {
 mod tests;
 
 /// Session-level metadata collected once per project directory, injected into
-/// every `PreparedDoc.extra` produced by that project's session files.
+/// every `SessionDoc.extra` produced by that project's session files.
 #[derive(Clone)]
 pub(crate) struct SessionMeta {
     pub(crate) agent: &'static str,
