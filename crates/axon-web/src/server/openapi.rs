@@ -99,6 +99,7 @@ use super::{handlers, openapi_jobs, routing};
         handlers::admin::list_watch,
         handlers::admin::create_watch,
         handlers::admin::run_watch,
+        handlers::source_watch::create_watch,
         handlers::source_watch::list_watches,
         handlers::source_watch::get_watch,
         handlers::source_watch::update_watch,

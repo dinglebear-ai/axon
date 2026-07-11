@@ -1207,6 +1207,15 @@ export type components = {
             "task_type": string;
         };
         "WatchId": string;
+        "WatchRequest": {
+            "collection"?: string | null;
+            "embed": boolean;
+            "enabled"?: boolean | null;
+            "options": components['schemas']['AdapterOptions'];
+            "schedule": components['schemas']['WatchSchedule'];
+            "scope"?: null | components['schemas']['SourceScope'];
+            "source": string;
+        };
         "WatchResult": {
             "adapter": components['schemas']['AdapterRef'];
             "canonical_uri": string;
@@ -1312,7 +1321,7 @@ export type paths = {
     "/v1/summarize/stream": { post: operations["summarize_stream"] };
     "/v1/watch": { get: operations["list_watch"]; post: operations["create_watch"] };
     "/v1/watch/{id}/run": { post: operations["run_watch"] };
-    "/v1/watches": { get: operations["list_watches"] };
+    "/v1/watches": { get: operations["list_watches"]; post: operations["create_watch"] };
     "/v1/watches/{watch_id}": { get: operations["get_watch"]; patch: operations["update_watch"]; delete: operations["delete_watch"] };
     "/v1/watches/{watch_id}/pause": { post: operations["pause_watch"] };
     "/v1/watches/{watch_id}/resume": { post: operations["resume_watch"] };
@@ -1405,6 +1414,7 @@ export type operations = {
     "create_watch": { method: "post"; path: "/v1/watch"; operationId: "create_watch"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['WatchDefCreateRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "run_watch": { method: "post"; path: "/v1/watch/{id}/run"; operationId: "run_watch"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_watches": { method: "get"; path: "/v1/watches"; operationId: "list_watches"; parameters: { query: { "enabled"?: boolean | null; "source_id"?: string | null; "adapter"?: string | null; "limit"?: number | null; "cursor"?: string | null }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "create_watch": { method: "post"; path: "/v1/watches"; operationId: "create_watch"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['WatchRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_watch": { method: "get"; path: "/v1/watches/{watch_id}"; operationId: "get_watch"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "update_watch": { method: "patch"; path: "/v1/watches/{watch_id}"; operationId: "update_watch"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: components['schemas']['WatchUpdateRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "delete_watch": { method: "delete"; path: "/v1/watches/{watch_id}"; operationId: "delete_watch"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

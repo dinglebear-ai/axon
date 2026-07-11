@@ -69,8 +69,8 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use serde_json::Value;
-pub use server_authz::required_scope_for;
 use server_authz::required_scope_for_tool;
+pub use server_authz::{mutates_if_upgrade, required_scope_for, required_scope_with_mutates_if};
 use std::{collections::HashMap, sync::Arc};
 pub use stdio_runner::run_stdio_server;
 use tokio::{
@@ -305,10 +305,18 @@ impl ServerHandler for AxonMcpServer {
         // Fail-closed auth check: require AuthContext when Mounted, then scope.
         // LoopbackDev returns None — no scope enforcement applies.
         let auth = server_authz::require_auth_context(&self.auth_policy, &context)?;
-        match (
-            auth,
-            required_scope_for_tool(request.name.as_ref(), &action, &subaction),
-        ) {
+        // mutates_if (axon #298 follow-up): actions such as `search`/
+        // `research` are documented as `axon:read` query surfaces but
+        // unconditionally enqueue a background job today — upgrade the
+        // dispatch-time requirement to `axon:write` regardless of what the
+        // nominal action-class lookup reports. See
+        // `server_authz::mutates_if_upgrade` for the predicate and why only
+        // these two actions are covered right now.
+        let base_required_scope =
+            required_scope_for_tool(request.name.as_ref(), &action, &subaction);
+        let required_scope =
+            server_authz::required_scope_with_mutates_if(&action, base_required_scope);
+        match (auth, required_scope) {
             // Deny: sentinel returned for unknown actions — even with a valid
             // token, we refuse rather than accidentally granting access.
             (Some(_), Some("__deny__")) => {

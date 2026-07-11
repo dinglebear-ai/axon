@@ -6,11 +6,13 @@
 
 pub mod chrome_fallback;
 mod for_source;
+mod for_source_page;
 
 pub use for_source::{
     CrawlForSourceResult, crawl_for_source, crawl_output_manifest_and_markdown,
     crawl_sync_output_dir,
 };
+pub use for_source_page::crawl_for_source_page;
 
 use crate::types::CrawlSyncResult;
 use axon_core::config::{Config, ScrapeFormat};

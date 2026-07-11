@@ -212,8 +212,15 @@ pub(super) fn bounded_stream_for_tests(
 )]
 pub(crate) async fn research_stream(
     State((state, cfg)): State<WebState>,
+    auth: Option<axum::Extension<lab_auth::AuthContext>>,
     Json(req): Json<ResearchRequest>,
 ) -> Response {
+    // mutates_if (axon #298 follow-up): same unconditional auto-crawl as
+    // `research` above — see `super::require_mutates_if_write_scope`'s doc
+    // comment.
+    if let Err(err) = super::require_mutates_if_write_scope(auth.as_ref()) {
+        return err.into_response();
+    }
     let query = match required_text(&req.query, "query") {
         Ok(query) => query.to_string(),
         Err(err) => return err.into_response(),

@@ -246,6 +246,7 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
             get(handlers::admin::list_watch).post(handlers::admin::create_watch),
         )
         .route("/v1/watch/{id}/run", post(handlers::admin::run_watch))
+        .route("/v1/watches", post(handlers::source_watch::create_watch))
         .route(
             "/v1/watches/{watch_id}",
             axum::routing::patch(handlers::source_watch::update_watch)

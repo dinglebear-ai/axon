@@ -1511,6 +1511,26 @@
       "streaming": false
     },
     {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "watches_create",
+      "path": "/v1/watches",
+      "request_dto": "WatchRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
       "method": "GET",
       "mutates": false,
       "operation_id": "watches_list",

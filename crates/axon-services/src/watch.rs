@@ -37,6 +37,59 @@ pub async fn open_source_watch_store(
     Ok(SqliteWatchStore::new(pool))
 }
 
+/// Create a source-request-backed watch (issue #298 WS-B `POST /v1/watches`).
+///
+/// Writes the canonical row via [`SqliteWatchStore`] — the store that
+/// `list`/`get`/`update`/`pause`/`resume`/`delete` act on — then best-effort
+/// dual-writes a legacy `axon_watch_defs` row so the still-live scheduler
+/// (`crates/axon-jobs/src/workers/watch_scheduler.rs`) actually ticks the
+/// watch. Mirrors the dual-write `axon watch create` performs in the opposite
+/// direction (`crates/axon-cli/src/commands/watch.rs::handle_watch_create`).
+/// The dual-write is additive: a failure there is logged and does not fail
+/// the request — the canonical watch was already persisted and remains fully
+/// functional through `get`/`update`/`pause`/`resume`/`delete`.
+pub async fn create_source_watch(
+    cfg: &Config,
+    pool: Option<&SqlitePool>,
+    request: WatchRequest,
+) -> Result<WatchResult, Box<dyn Error>> {
+    let store = open_source_watch_store(cfg, pool).await?;
+    let created = SourceWatchStoreTrait::create(&store, request.clone()).await?;
+
+    let legacy_input = WatchDefCreateRequest {
+        name: format!("watch-{}", created.watch_id.0),
+        task_type: "watch".to_string(),
+        task_payload: serde_json::json!({ "urls": [request.source] }),
+        every_seconds: request.schedule.every_seconds as i64,
+        enabled: request.enabled,
+        next_run_at: None,
+    }
+    .into_create();
+    match legacy_input {
+        Ok(input) => {
+            let legacy_result = match pool {
+                Some(pool) => create_watch_def_with_pool(pool, &input).await,
+                None => create_watch_def(cfg, &input).await,
+            };
+            if let Err(err) = legacy_result {
+                axon_core::logging::log_warn(&format!(
+                    "watch create: dual-write to legacy watch scheduler failed: {err} \
+                     (source watch {} was still created; the recurring scheduler will not tick it)",
+                    created.watch_id.0
+                ));
+            }
+        }
+        Err(msg) => {
+            axon_core::logging::log_warn(&format!(
+                "watch create: skipped legacy scheduler dual-write for source watch {} \
+                 ({msg}); the recurring scheduler will not tick it",
+                created.watch_id.0
+            ));
+        }
+    }
+    Ok(created)
+}
+
 pub async fn list_watch_defs(cfg: &Config, limit: i64) -> Result<Vec<WatchDef>, Box<dyn Error>> {
     watch::list_watch_defs(cfg, limit).await
 }

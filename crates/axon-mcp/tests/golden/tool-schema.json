@@ -3595,9 +3595,16 @@
       "additionalProperties": false,
       "properties": {
         "collection": {
-          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`). Unused by the legacy create/list/get/exec/history\nsubactions above.",
+          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`/`subaction=create`). Unused by the legacy\ncreate/list/get/exec/history subactions above.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "embed": {
+          "description": "Whether the source-request-backed watch (`subaction=create`) should\nembed content on each run. Defaults to `false` when omitted.",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -3641,6 +3648,13 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "source": {
+          "description": "Source URI to watch (issue #298 WS-B `subaction=create`), e.g.\n`https://example.com/docs` or `file:///path/to/repo`. Required for\n`subaction=create`; unused otherwise.",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "subaction": {
@@ -3790,7 +3804,7 @@
         "path": "crates/axon-api/src/mcp_schema/requests/graph.rs"
       },
       {
-        "checksum": "sha256:a0a51432e79374c5f68f2b8c38903c8b0c4a1bd78521d6ecf443d62fa70104ed",
+        "checksum": "sha256:5d651565b3ff61875b4dfb9e5f1a6c5aa17cb92b78f4f20f69ccd3d9d0ec4990",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
       },
@@ -3810,7 +3824,7 @@
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:55157fd62813f992834f2b80edb7992f793f2f3aa8fb68afa72fc477698d3136",
+        "checksum": "sha256:7bbca6eb5de1be94c1bc5e124fe27b0f452a3b67cdd83ae8c773bff8ffed480b",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },

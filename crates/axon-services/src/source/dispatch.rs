@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-use crate::crawl_sync::crawl_for_source;
+use crate::crawl_sync::{crawl_for_source, crawl_for_source_page};
 use crate::{
     FeedSourceIndexInput, GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy,
     RedditSourceIndexInput, RegistrySourceIndexInput, SessionSelector, SessionsSourceIndexInput,
@@ -428,12 +428,22 @@ pub async fn dispatch_web(
     max_pages: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=web embed={embed} max_pages={max_pages:?}"
+        "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?}"
     ));
-    let crawl = crawl_for_source(cfg, input, max_pages)
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("web crawl acquisition failed")?;
+    // `scope = Page` must acquire exactly the one URL — no link following, no
+    // sitemap/llms.txt backfill. Every other web scope (`Site`, `Docs`, `Map`)
+    // keeps the existing full-crawl acquisition.
+    let crawl = if scope == SourceScope::Page {
+        crawl_for_source_page(cfg, input)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .context("web single-page acquisition failed")?
+    } else {
+        crawl_for_source(cfg, input, max_pages)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .context("web crawl acquisition failed")?
+    };
     log_info(&format!(
         "command=source kind=web crawl_pages={} crawl_markdown={} output_dir={}",
         crawl.pages_seen,

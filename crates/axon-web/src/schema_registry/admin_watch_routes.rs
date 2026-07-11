@@ -59,8 +59,15 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
     // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
     // Routes). Distinct from the legacy `/v1/watch` task_type/task_payload
     // routes above — see `crates/axon-jobs/src/watch_store.rs` module docs.
-    // `POST /v1/watches` (create) and `POST /v1/watches/{id}/exec` are not
-    // yet implemented on this surface and are intentionally not registered.
+    // `POST /v1/watches/{id}/exec` is not yet implemented on this surface and
+    // is intentionally not registered.
+    write(
+        "POST",
+        "/v1/watches",
+        "watches_create",
+        Some("WatchRequest"),
+        "WatchResult",
+    ),
     read("GET", "/v1/watches", "watches_list", "Page<WatchSummary>"),
     read(
         "GET",

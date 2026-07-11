@@ -200,18 +200,18 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "Discover and optionally verify static site endpoints",
         cost: "write",
     },
-    // `watch` (issue #298 WS-B): `list`/`get`/`update`/`pause`/`resume`/
-    // `delete` subactions over the source-request-backed watch store, mirroring
-    // the REST `/v1/watches` surface. `list`/`get` are `axon:read` there and
-    // `update`/`pause`/`resume`/`delete` are `axon:write`; `ActionScope` has no
-    // per-subaction granularity (same simplification already used for `jobs`
-    // and `memory` above), so the action is gated at the broader `axon:write`
-    // requirement. `create`/`exec`/`history` subactions (the legacy
-    // task_type/task_payload model) remain HTTP-only.
+    // `watch` (issue #298 WS-B): `create`/`list`/`get`/`update`/`pause`/
+    // `resume`/`delete` subactions over the source-request-backed watch
+    // store, mirroring the REST `/v1/watches` surface. `list`/`get` are
+    // `axon:read` there and `create`/`update`/`pause`/`resume`/`delete` are
+    // `axon:write`; `ActionScope` has no per-subaction granularity (same
+    // simplification already used for `jobs` and `memory` above), so the
+    // action is gated at the broader `axon:write` requirement. `exec`/
+    // `history` subactions remain HTTP-only.
     McpActionSpec {
         name: "watch",
         scope: ActionScope::Write,
-        description: "List, inspect, update, pause, resume, or delete source-request-backed watches",
+        description: "Create, list, inspect, update, pause, resume, or delete source-request-backed watches",
         cost: "write",
     },
     // `graph` (issue #298 GQ): read-only SourceGraph query surface mirroring
@@ -334,5 +334,53 @@ pub(super) fn required_scope_for_tool(
     match tool_name {
         "axon_status_dashboard" => Some("axon:read"),
         _ => required_scope_for(action, subaction),
+    }
+}
+
+/// Conditional scope upgrade (`mutates_if`, axon #298 follow-up).
+///
+/// `docs/pipeline-unification/surfaces/tool-contract.md`'s Auth and
+/// Visibility table classifies `search`/`ask`/`research`/`summarize` as
+/// `axon:read` query-shaped surfaces — and `required_scope_for` above (and
+/// the tests locking it) intentionally keep reporting that nominal class, so
+/// `axon:capabilities`/schema consumers still see the documented default.
+/// But two of them do NOT have a non-mutating default form today: `search`
+/// (`handle_search` in `handlers_query.rs` always calls
+/// `axon_services::search_crawl::search_and_crawl`, which unconditionally
+/// enqueues one bounded crawl job per result URL) and `research`
+/// (`handle_research` always calls
+/// `axon_services::search::synthesis::research_with_context`, same
+/// unconditional auto-crawl). Neither request DTO (`SearchRequest`,
+/// `ResearchRequest` in `axon-api::mcp_schema`) exposes an opt-out field, so
+/// the predicate is unconditionally true for these two actions today. This
+/// function is the dispatch-time authority actually consulted by
+/// `call_tool`/`tasks.rs` — when it returns `Some`, the caller must upgrade
+/// the effective required scope regardless of what `required_scope_for`
+/// reports.
+///
+/// `ask`/`evaluate`/`suggest`/`summarize` are deliberately excluded: verified
+/// against their current handlers/services (`query_svc::ask`,
+/// `query_svc::evaluate` — whose `crawl_enqueue_outcomes` is always an empty
+/// `Vec::new()` stub — `query_svc::suggest`, `summarize_svc::summarize`),
+/// none of them enqueue a job in the current runtime, so there is nothing to
+/// upgrade yet. Extend this predicate (ideally to inspect the parsed request
+/// once a real per-call opt-out/opt-in option exists) if that changes.
+pub fn mutates_if_upgrade(action: &str) -> Option<&'static str> {
+    match action {
+        "search" | "research" => Some("axon:write"),
+        _ => None,
+    }
+}
+
+/// Apply [`mutates_if_upgrade`] on top of a base required-scope lookup.
+/// `__deny__`/`None` bases are left untouched — an upgrade is only applied
+/// when the base lookup already resolved to a real scope requirement.
+pub fn required_scope_with_mutates_if(
+    action: &str,
+    base: Option<&'static str>,
+) -> Option<&'static str> {
+    match base {
+        Some("__deny__") | None => base,
+        Some(_) => mutates_if_upgrade(action).or(base),
     }
 }

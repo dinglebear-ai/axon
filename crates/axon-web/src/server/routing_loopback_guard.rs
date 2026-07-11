@@ -36,6 +36,7 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
         && (path == "/v1/sources"
             || path == "/v1/watch"
+            || path == "/v1/watches"
             || path == "/v1/jobs/recover"
             || path == "/v1/jobs/cleanup"
             || path == "/v1/prune/plan"

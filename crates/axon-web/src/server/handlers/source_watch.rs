@@ -8,11 +8,11 @@
 //! (`axon_source_watches`/`axon_source_watch_runs`, migration `0023`), matching
 //! `axon_api::source::{WatchRequest, WatchResult}`. See
 //! `crates/axon-jobs/src/watch_store.rs` module docs for why the two models
-//! are not unified in this slice. `/v1/watches` does not yet expose
-//! `POST /v1/watches` (create) or `POST /v1/watches/{id}/exec` — those remain
-//! tracked follow-ups; this handler covers list/get/update/pause/resume/delete.
+//! are not unified in this slice. `/v1/watches` covers
+//! create/list/get/update/pause/resume/delete.
+//! `POST /v1/watches/{id}/exec` remains a tracked follow-up.
 
-use axon_api::source::{WatchId, WatchListRequest, WatchUpdateRequest};
+use axon_api::source::{WatchId, WatchListRequest, WatchRequest, WatchUpdateRequest};
 use axon_core::config::Config;
 use axon_services::watch as watch_svc;
 use axum::{
@@ -44,6 +44,27 @@ pub(crate) struct WatchListQuery {
     adapter: Option<String>,
     limit: Option<u32>,
     cursor: Option<String>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/watches",
+    request_body = WatchRequest,
+    responses(
+        (status = 200, description = "Created (or dual-write-ensured) watch detail", body = serde_json::Value),
+        (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
+pub(crate) async fn create_watch(
+    State((state, cfg)): State<WebState>,
+    Json(request): Json<WatchRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let pool = state.service_context.jobs.sqlite_pool();
+    let created = watch_svc::create_source_watch(&cfg, pool.as_deref(), request)
+        .await
+        .map_err(HttpError::from_box)?;
+    Ok(Json(json!(created)))
 }
 
 #[utoipa::path(
