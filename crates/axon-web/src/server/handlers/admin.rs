@@ -5,10 +5,9 @@ use axon_core::config::Config;
 use axon_services as services;
 use axon_services::prune::PruneAuthz;
 use axum::{
-    Extension, Json, Router,
+    Extension, Json,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
-    routing::post,
 };
 use lab_auth::AuthContext;
 use serde::Deserialize;
@@ -31,66 +30,20 @@ pub(crate) type WatchCreateRequest = services::watch::WatchDefCreateRequest;
 
 const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct MigrateRequest {
-    pub from: String,
-    pub to: String,
-}
-
 #[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DedupeRequest {
     collection: Option<String>,
 }
 
-// migrate_router is unused — migrate is wired directly in routing.rs
-#[allow(dead_code)]
-pub(crate) fn migrate_router<S: Clone + Send + Sync + 'static>() -> Router<S>
-where
-    (super::super::state::AppState, Arc<Config>): axum::extract::FromRef<S>,
-{
-    Router::new().route("/v1/migrate", post(migrate))
-}
-
-pub(crate) async fn migrate(
-    State((_state, cfg)): State<WebState>,
-    Json(req): Json<MigrateRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    if req.from.trim().is_empty() {
-        return Err(HttpError::bad_request("from is required"));
-    }
-    if req.to.trim().is_empty() {
-        return Err(HttpError::bad_request("to is required"));
-    }
-    if req.from == req.to {
-        return Err(HttpError::bad_request("from and to must be different"));
-    }
-    // Validate before Qdrant URL interpolation — migrate builds URLs like
-    // {qdrant_url}/collections/{from}/points/scroll without percent-encoding.
-    axon_core::config::validate_collection_name(&req.from)
-        .map_err(|e| HttpError::bad_request(format!("from: {e}").as_str()))?;
-    axon_core::config::validate_collection_name(&req.to)
-        .map_err(|e| HttpError::bad_request(format!("to: {e}").as_str()))?;
-    let mut req_cfg = (*cfg).clone();
-    req_cfg.positional = vec![req.from.clone(), req.to.clone()];
-    let result = services::migrate::migrate(&req_cfg)
-        .await
-        .map_err(HttpError::from_box)?;
-    Ok(Json(serde_json::json!({
-        "from": result.from,
-        "to": result.to,
-        "points_migrated": result.points_migrated,
-        "pages_processed": result.pages_processed,
-    })))
-}
-
 #[utoipa::path(
     post,
-    path = "/v1/dedupe",
+    path = "/v1/prune/dedupe",
     request_body(content = Option<DedupeRequest>, content_type = "application/json"),
     responses(
         (status = 200, description = "Dedupe result", body = serde_json::Value),
         (status = 400, description = "Invalid dedupe request", body = crate::server::error::ErrorBody),
+        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody),
         (status = 415, description = "Unsupported request body content type", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -117,11 +70,12 @@ pub(crate) async fn dedupe(
 
 #[utoipa::path(
     post,
-    path = "/v1/purge",
+    path = "/v1/prune/purge",
     request_body = PurgeRequest,
     responses(
         (status = 200, description = "Purge result (counts of points/URLs matched or deleted)", body = axon_api::PurgeResult),
         (status = 400, description = "Invalid purge request", body = crate::server::error::ErrorBody),
+        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "admin"
@@ -184,14 +138,17 @@ pub(crate) struct PruneExecRequest {
     tag = "admin"
 )]
 pub(crate) async fn prune_plan(
-    State((_state, _cfg)): State<WebState>,
+    State((state, _cfg)): State<WebState>,
     Json(req): Json<PrunePlanRequest>,
 ) -> Result<Json<axon_api::source::prune::PrunePlan>, HttpError> {
     let selector = prune_selector_from_body(&req.target, req.generation.as_deref())?;
     let request = ApiPruneRequest::dry_run(selector, "rest prune plan");
     // Dry-run planning never mutates state and never checks authz — mirrors
-    // `axon_services::prune::prune_plan`'s own contract.
-    let plan = services::prune::prune_plan(&request);
+    // `axon_services::prune::prune_plan`'s own contract. Uses the real,
+    // ledger-backed estimate (`prune_plan_estimated`) rather than the
+    // always-zero `NullScopeSource` fallback, since a `ServiceContext` (and
+    // therefore a ledger handle) is available here.
+    let plan = services::prune::prune_plan_estimated(&state.service_context, &request).await;
     Ok(Json(plan))
 }
 

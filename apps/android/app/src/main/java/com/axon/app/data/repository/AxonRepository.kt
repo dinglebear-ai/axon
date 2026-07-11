@@ -3,21 +3,28 @@ package com.axon.app.data.repository
 import androidx.compose.runtime.Stable
 import com.axon.app.data.local.AskHistoryDao
 import com.axon.app.data.local.AskHistoryEntry
-import com.axon.app.data.remote.AxonClient
-import com.axon.app.data.remote.AskRequest
-import com.axon.app.data.remote.AskStreamEvent
-import com.axon.app.data.remote.ChatRequest
-import com.axon.app.data.remote.CrawlRequest
-import com.axon.app.data.remote.MapRequest
-import com.axon.app.data.remote.QueryRequest
-import com.axon.app.data.remote.ResearchRequest
-import com.axon.app.data.remote.RetrieveRequest
-import com.axon.app.data.remote.ScrapeRequest
-import com.axon.app.data.remote.SourcesRequest
-import com.axon.app.data.remote.ResearchHit
-import com.axon.app.data.remote.models.EmbedRequest
-import com.axon.app.data.remote.models.ExtractRequest
-import com.axon.app.data.remote.models.MobileSessionDto
+import com.axon.app.core.api.AxonClient
+import com.axon.app.core.api.AskRequest
+import com.axon.app.core.api.AskStreamEvent
+import com.axon.app.core.api.ChatRequest
+import com.axon.app.core.api.CrawlRequest
+import com.axon.app.core.api.MapRequest
+import com.axon.app.core.api.QueryRequest
+import com.axon.app.core.api.ResearchRequest
+import com.axon.app.core.api.RetrieveRequest
+import com.axon.app.core.api.ScrapeRequest
+import com.axon.app.core.api.SourcesRequest
+import com.axon.app.core.api.ResearchHit
+import com.axon.app.core.api.artifactText
+import com.axon.app.core.api.askStream
+import com.axon.app.core.api.chatStream
+import com.axon.app.core.api.deleteMobileSession
+import com.axon.app.core.api.getMobileSession
+import com.axon.app.core.api.listMobileSessions
+import com.axon.app.core.api.upsertMobileSession
+import com.axon.app.core.api.models.EmbedRequest
+import com.axon.app.core.api.models.ExtractRequest
+import com.axon.app.core.api.models.MobileSessionDto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -309,13 +316,13 @@ class AxonRepository(
 
     suspend fun summarize(urls: List<String>, collection: String? = null): Result<SummarizeResultUi> = withAuth {
         val req = applicator.apply(
-            com.axon.app.data.remote.models.SummarizeRequest(urls = urls, collection = collection)
+            com.axon.app.core.api.models.SummarizeRequest(urls = urls, collection = collection)
         )
         client.summarize(req).map { r -> SummarizeResultUi(r.urls, r.summary, r.contextChars, r.contextTruncated) }
     }
 
     suspend fun searchWeb(query: String): Result<SearchWebResultUi> = withAuth {
-        val req = applicator.apply(com.axon.app.data.remote.models.SearchWebRequest(query = query))
+        val req = applicator.apply(com.axon.app.core.api.models.SearchWebRequest(query = query))
         client.searchWeb(req).map { r ->
             val statusObject = runCatching { r.autoCrawlStatus?.jsonObject }.getOrNull()
             val statusText = runCatching { r.autoCrawlStatus?.jsonPrimitive?.content }.getOrNull()

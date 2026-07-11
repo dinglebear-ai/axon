@@ -79,125 +79,8 @@ const fn config(token: &'static str) -> RemovedSurfaceRule {
     }
 }
 
-pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
-    ("SourceIntent", &["acquire", "refresh", "watch", "map"]),
-    (
-        "SourceKind",
-        &[
-            "web", "local", "git", "registry", "feed", "reddit", "youtube", "session", "cli_tool",
-            "mcp_tool", "memory", "upload",
-        ],
-    ),
-    (
-        "PipelinePhase",
-        &[
-            "queued",
-            "requested",
-            "resolving",
-            "routing",
-            "authorizing",
-            "planning",
-            "leasing",
-            "discovering",
-            "diffing",
-            "fetching",
-            "rendering",
-            "enriching",
-            "normalizing",
-            "parsing",
-            "graphing",
-            "preparing",
-            "batching",
-            "embedding",
-            "vectorizing",
-            "upserting",
-            "retrieving",
-            "synthesizing",
-            "evaluating",
-            "publishing",
-            "cleaning",
-            "complete",
-            "canceled",
-        ],
-    ),
-    (
-        "JobKind",
-        &[
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-        ],
-    ),
-    (
-        "LifecycleStatus",
-        &[
-            "queued",
-            "pending",
-            "running",
-            "waiting",
-            "blocked",
-            "canceling",
-            "completed",
-            "completed_degraded",
-            "failed",
-            "canceled",
-            "expired",
-            "skipped",
-        ],
-    ),
-    (
-        "PublishState",
-        &[
-            "planning",
-            "writing",
-            "publishing",
-            "committed",
-            "cleanup_pending",
-            "cleaning",
-            "cleaned",
-        ],
-    ),
-    (
-        "DocumentLifecycleStatus",
-        &[
-            "discovered",
-            "fetched",
-            "normalized",
-            "enriched",
-            "parsed",
-            "prepared",
-            "embedded",
-            "vectorized",
-            "published",
-            "cleaned",
-            "degraded",
-            "failed",
-            "skipped",
-        ],
-    ),
-    (
-        "CleanupDebtKind",
-        &[
-            "vector_delete",
-            "artifact_delete",
-            "ledger_prune",
-            "graph_prune",
-            "memory_prune",
-            "job_retention",
-            "cache_prune",
-        ],
-    ),
-];
+mod canonical_enums;
+pub use canonical_enums::CANONICAL_ENUMS;
 
 pub fn check_removed_surface_drift(artifacts: &[SchemaArtifact]) -> Result<()> {
     for artifact in artifacts {
@@ -293,6 +176,17 @@ pub fn check_enum_projection_drift(artifacts: &[SchemaArtifact]) -> Result<()> {
                 .any(|enum_value| enum_value.as_str() == Some(value))
             {
                 bail!("api schema enum {name} is missing value {value}");
+            }
+        }
+        // Bidirectional: the generated enum must not carry values beyond the
+        // canonical contract set either. A subset-only check lets a stray
+        // non-canonical variant pass silently.
+        for enum_value in enum_values {
+            let Some(enum_value) = enum_value.as_str() else {
+                continue;
+            };
+            if !values.contains(&enum_value) {
+                bail!("api schema enum {name} has non-canonical value {enum_value}");
             }
         }
     }

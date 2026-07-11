@@ -87,7 +87,7 @@ describe("OperationResultView routing", () => {
     const run = buildHelpRun(action("scrape"));
     render(<OperationResultView payload={run.result.payload} subcommand="help" />);
     expect(screen.getByRole("heading", { name: "Scrape URL" })).toBeInTheDocument();
-    expect(screen.getByText("POST /v1/scrape")).toBeInTheDocument();
+    expect(screen.getByText("POST /v1/sources")).toBeInTheDocument();
     expect(screen.getByText("Parameters")).toBeInTheDocument();
   });
 

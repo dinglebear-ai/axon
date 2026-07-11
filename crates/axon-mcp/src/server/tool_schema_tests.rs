@@ -54,7 +54,10 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         .collect::<Vec<_>>();
     assert_eq!(actual, expected);
     assert!(!actual.contains(&"debug"));
-    assert!(!actual.contains(&"watch"));
+    // `watch` (issue #298 WS-B) is now a real dispatched MCP action —
+    // `list`/`get`/`update`/`pause`/`resume`/`delete` over the source-request-
+    // backed watch store. See `handlers_watch.rs`.
+    assert!(actual.contains(&"watch"));
 }
 
 #[test]

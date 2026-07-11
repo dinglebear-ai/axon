@@ -21,6 +21,15 @@ security decisions that must be shared across CLI, REST, MCP, jobs, and apps.
 - source acquisition, SSRF HTTP implementation, or redaction detectors
 - persistence of user accounts or secrets
 
+**Decision (F5-14/C1-15, 2026-07-09 audit):** the crate currently violates
+this rule — `crates/axon-authz/src/http.rs` owns OAuth/bearer HTTP middleware
+and depends on `axum` + `lab-auth`, contradicting both this section and
+"Dependencies Forbidden" below. Resolution: this contract's separation
+stands as written — `http.rs` must move to `axon-web` (the transport crate
+that already owns REST routing), not be grandfathered in here. See
+`code_followups` for the code-side move; do not implement this in the
+docs-only workstream.
+
 ## Public Modules
 
 ```text

@@ -395,6 +395,21 @@ async fn fake_embedding_provider_capabilities_reflect_failure_mode() {
 }
 
 #[tokio::test]
+async fn fake_embedding_provider_with_cooldown_until_overrides_the_mode_derived_timestamp() {
+    // `with_cooldown_until` lets a test simulate a live, "now"-relative
+    // cooldown window instead of `FakeEmbeddingMode::RateLimited`'s fixed
+    // timestamp.
+    let cooldown_until = Timestamp::from(chrono::Utc::now() + chrono::Duration::seconds(45));
+    let provider = FakeEmbeddingProvider::new("fake-embedding", 8)
+        .with_mode(FakeEmbeddingMode::RateLimited)
+        .with_cooldown_until(cooldown_until.clone());
+
+    let capability = provider.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert_eq!(capability.cooldown_until, Some(cooldown_until));
+}
+
+#[tokio::test]
 async fn fake_embedding_health_override_cannot_hide_failure_mode() {
     let provider = FakeEmbeddingProvider::new("fake-embedding", 8)
         .with_health(HealthStatus::Healthy)

@@ -148,6 +148,7 @@ impl fmt::Debug for Config {
                 "llm_completion_timeout_secs",
                 &self.llm_completion_timeout_secs,
             )
+            .field("codex_pool_idle_ttl_secs", &self.codex_pool_idle_ttl_secs)
             .field("tavily_api_key", &"[REDACTED]")
             .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)

@@ -170,7 +170,7 @@ The resolver canonicalizes identity and chooses an adapter.
 | `source_adapter` | string | yes | public | Adapter name that will acquire source items. |
 | `source_adapter_version` | string | yes | public | Adapter contract/schema version. |
 | `source_canonical_uri` | string | yes | public | Canonical URI selected by resolver for the source identity. |
-| `source_authority` | string | yes | public | `official`, `user_pinned`, `inferred`, `community`, `mirror`, or `unknown`. |
+| `source_authority` | string | yes | public | `official`, `verified`, `user_pinned`, `inferred`, `community`, `mirror`, `conflicting`, or `unknown`. |
 | `authority_evidence` | string[] | no | public | Evidence URIs or graph ids used to choose authority. |
 | `source_display_name` | string | no | public | Human-friendly label. |
 | `source_domain` | string | when URL-like | public | Normalized registrable domain or host. |
@@ -425,7 +425,7 @@ payloads, and status events when a document or chunk produced graph facts.
 | `graph_evidence_id` | string | yes | Evidence row id. |
 | `graph_evidence_kind` | string | yes | `manifest`, `schema`, `source_code`, `session`, `crawler`, `tool_output`, etc. |
 | `graph_evidence_locator` | string | yes | URL, file path, line range, selector, transcript turn, or artifact locator. |
-| `graph_authority` | string | yes | `official`, `user_pinned`, `inferred`, `community`, `mirror`, `unknown`. |
+| `graph_authority` | string | yes | `official`, `verified`, `user_pinned`, `inferred`, `community`, `mirror`, `conflicting`, `unknown`. |
 | `graph_confidence` | number | yes | 0.0 to 1.0 confidence score. |
 | `graph_merge_key` | string | no | Stable merge key for equivalent nodes. |
 | `graph_extraction_method` | string | yes | Parser/extractor method. |

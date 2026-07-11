@@ -510,24 +510,88 @@ fn endpoints_action_scope_is_write_not_read() {
     );
 }
 
-/// Active LLM, browser, and outbound network side-effect actions require
-/// axon:write in REST, action API, and MCP metadata so read-only tokens cannot
-/// use Axon as a hosted network/LLM executor.
+/// Active browser / outbound-network *fetch* actions require axon:write so a
+/// read-only token cannot use Axon as a hosted network scanner/executor.
+///
+/// Per the tool-contract Auth & Visibility table
+/// (docs/pipeline-unification/surfaces/tool-contract.md): LLM *query surfaces*
+/// (query/retrieve/ask/evaluate/suggest/research/summarize) are `axon:read`
+/// even though they invoke the LLM — only actions that fetch arbitrary external
+/// URLs (screenshot/brand/diff, like `endpoints`) or mutate sources stay
+/// `axon:write`. Note: `search`/`research` unconditionally enqueue a
+/// background index job as a side effect; the nominal class stays read here
+/// (matching the contract's documented default), but `mutates_if_upgrade`
+/// (see the dedicated test below) upgrades the actual dispatch-time
+/// requirement to write for both. `ask`/`evaluate`/`suggest`/`summarize`
+/// don't enqueue jobs in the current runtime and remain plain read with no
+/// upgrade.
 #[test]
-fn active_llm_browser_and_network_actions_require_write_scope() {
+fn active_browser_and_network_fetch_actions_require_write_scope() {
+    for action in ["screenshot", "brand", "diff"] {
+        assert_eq!(
+            required_scope_for(action, ""),
+            Some("axon:write"),
+            "{action} must require axon:write — it fetches arbitrary external URLs"
+        );
+    }
+    // Contract boundary guard: LLM query surfaces are read-scoped. This locks
+    // the boundary in both directions — regressing any of these back to write
+    // would over-gate ordinary RAG reads, contradicting tool-contract.md:974.
     for action in [
         "ask",
         "evaluate",
         "suggest",
         "research",
-        "screenshot",
-        "brand",
-        "diff",
+        "search",
+        "summarize",
     ] {
         assert_eq!(
             required_scope_for(action, ""),
-            Some("axon:write"),
-            "{action} must require axon:write"
+            Some("axon:read"),
+            "{action} is a query-shaped surface and must be axon:read per the tool contract"
         );
     }
+}
+
+/// `mutates_if` (axon #298 follow-up): `search`/`research` unconditionally
+/// enqueue a background crawl/index job today (no request-level opt-out on
+/// `SearchRequest`/`ResearchRequest`), so the dispatch-time requirement must
+/// upgrade to `axon:write` even though `required_scope_for` keeps reporting
+/// the nominal `axon:read` class above. `ask`/`evaluate`/`suggest`/
+/// `summarize` do not enqueue jobs in the current runtime and must NOT be
+/// upgraded — regressing them to write would over-gate ordinary RAG reads.
+#[test]
+fn mutates_if_upgrades_search_and_research_to_write_only() {
+    use axon_mcp::server::{mutates_if_upgrade, required_scope_with_mutates_if};
+
+    for action in ["search", "research"] {
+        assert_eq!(
+            mutates_if_upgrade(action),
+            Some("axon:write"),
+            "{action} unconditionally enqueues a job and must upgrade to axon:write"
+        );
+        assert_eq!(
+            required_scope_with_mutates_if(action, required_scope_for(action, "")),
+            Some("axon:write"),
+            "{action}'s effective dispatch-time scope must be axon:write despite its read nominal class"
+        );
+    }
+    for action in ["ask", "evaluate", "suggest", "summarize"] {
+        assert_eq!(
+            mutates_if_upgrade(action),
+            None,
+            "{action} does not enqueue a job in the current runtime and must not be upgraded"
+        );
+        assert_eq!(
+            required_scope_with_mutates_if(action, required_scope_for(action, "")),
+            Some("axon:read"),
+            "{action}'s effective dispatch-time scope must stay axon:read"
+        );
+    }
+    // Deny sentinels and None bases must pass through untouched.
+    assert_eq!(
+        required_scope_with_mutates_if("search", Some("__deny__")),
+        Some("__deny__")
+    );
+    assert_eq!(required_scope_with_mutates_if("search", None), None);
 }

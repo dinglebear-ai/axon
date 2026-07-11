@@ -26,6 +26,8 @@ fn input(root: std::path::PathBuf) -> LocalSourceIndexInput {
         selection_policy: LocalSourceSelectionPolicy::Permissive,
         embedding_reservations: None,
         vector_reservations: None,
+        embed: true,
+        route: None,
     }
 }
 
@@ -208,7 +210,11 @@ async fn refresh_vectorizes_added_and_modified_docs_and_debts_removed_and_replac
             .count(),
         1
     );
-    assert_eq!(ledger.cleanup_debt_count().await, 2);
+    // 2 VectorDelete debts (old.rs removed, keep.rs modified) plus 1
+    // auto-emitted GraphPrune debt for the genuinely-removed old.rs (a
+    // modified item like keep.rs keeps its stable key, so it never gets a
+    // GraphPrune debt — see `record_graph_prune_cleanup_debt`).
+    assert_eq!(ledger.cleanup_debt_count().await, 3);
     assert_eq!(
         ledger.committed_generation(&second.source_id).await,
         Some(second.generation.clone())

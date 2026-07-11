@@ -117,6 +117,9 @@ fn payload(
             ("committed_generation".to_string(), json!(generation)),
             ("document_id".to_string(), json!(document_id)),
             ("chunk_id".to_string(), json!(chunk_id)),
+            ("chunk_index".to_string(), json!(0)),
+            ("chunking_profile".to_string(), json!("markdown_sections")),
+            ("chunking_method".to_string(), json!("heading_sections")),
             ("chunk_text".to_string(), json!(format!("{chunk_id} body"))),
             (
                 "chunk_locator".to_string(),
@@ -794,6 +797,21 @@ async fn fake_vector_store_capabilities_reflect_failure_mode() {
     assert_eq!(error.code.to_string(), "provider.fatal");
     assert_eq!(error.provider_id, Some("fake-vector".to_string()));
     assert!(!error.retryable);
+}
+
+#[tokio::test]
+async fn fake_vector_store_with_cooldown_until_overrides_the_mode_derived_timestamp() {
+    // `with_cooldown_until` lets a test simulate a live, "now"-relative
+    // cooldown window instead of `FakeVectorMode::RateLimited`'s fixed
+    // timestamp.
+    let cooldown_until = Timestamp::from(chrono::Utc::now() + chrono::Duration::seconds(45));
+    let store = FakeVectorStore::new("fake-vector")
+        .with_mode(FakeVectorMode::RateLimited)
+        .with_cooldown_until(cooldown_until.clone());
+
+    let capability = store.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert_eq!(capability.cooldown_until, Some(cooldown_until));
 }
 
 #[tokio::test]

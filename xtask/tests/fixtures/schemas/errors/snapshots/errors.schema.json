@@ -200,6 +200,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -220,8 +225,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -250,8 +265,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -276,11 +316,464 @@
         }
       ]
     },
+    "DegradationPolicy": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Whether an error path can degrade rather than fail, and why.",
+      "properties": {
+        "degradable": {
+          "description": "Whether the pipeline may degrade (continue with reduced behavior).",
+          "type": "boolean"
+        },
+        "reason": {
+          "description": "Human-readable reason for the degradation decision.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "degradable"
+      ],
+      "title": "DegradationPolicy",
+      "type": "object"
+    },
     "ErrorCode": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
       "title": "ErrorCode",
       "type": "string"
+    },
+    "ErrorContext": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": {
+        "$ref": "#/$defs/ErrorContext_ErrorContextEntry"
+      },
+      "description": "Redacted key/value error details with per-entry visibility + secret hints.",
+      "title": "ErrorContext",
+      "type": "object"
+    },
+    "ErrorContext_ErrorContextEntry": {
+      "description": "A single redaction-aware context detail.\n\nThe `value` is a redaction *hint*, not necessarily a redacted value — the\nrenderer decides what to emit based on `visibility` and `secret_class`. When\n`visibility` is not `Public`, callers must not surface `value` to public\noutput.",
+      "properties": {
+        "secret_class": {
+          "description": "Optional secret-class hint (e.g. `api_key`, `local_path`, `token`).\n\nA hint only — `axon-error` does not classify or redact; downstream\ncrates use it to pick the correct redaction policy.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "description": "Detail value (a redaction hint; may be a placeholder for sensitive data).",
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/ErrorContext_ErrorVisibility",
+          "description": "Where this entry may be surfaced."
+        }
+      },
+      "required": [
+        "value",
+        "visibility"
+      ],
+      "type": "object"
+    },
+    "ErrorContext_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorEnvelope": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "error": {
+          "$ref": "#/$defs/ErrorEnvelope_ApiError"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "trace": {
+          "$ref": "#/$defs/ErrorEnvelope_TraceContext"
+        }
+      },
+      "required": [
+        "ok",
+        "contract_version",
+        "error",
+        "request_id",
+        "trace"
+      ],
+      "title": "ErrorEnvelope",
+      "type": "object"
+    },
+    "ErrorEnvelope_ApiError": {
+      "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
+      "properties": {
+        "chunk_id": {
+          "description": "Chunk id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "$ref": "#/$defs/ErrorEnvelope_ErrorCode",
+          "description": "Stable machine code (e.g. `provider.unavailable`)."
+        },
+        "cooldown_until": {
+          "description": "Provider/job cooling timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Redacted structured context (safe key/value pairs only).",
+          "type": "object"
+        },
+        "document_id": {
+          "description": "Document id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "description": "Job correlation id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Redacted human-readable message.",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider that failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Suggested retry delay, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/ErrorEnvelope_ErrorSeverity",
+          "description": "Severity classification."
+        },
+        "source_id": {
+          "description": "Source id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_item_key": {
+          "description": "Item/file/page key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/ErrorEnvelope_ErrorStage",
+          "description": "Pipeline/transport stage."
+        },
+        "visibility": {
+          "$ref": "#/$defs/ErrorEnvelope_ErrorVisibility",
+          "description": "Where this error may be surfaced."
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "retryable",
+        "severity",
+        "visibility",
+        "details"
+      ],
+      "type": "object"
+    },
+    "ErrorEnvelope_ErrorCode": {
+      "description": "A stable, machine-readable error code (e.g. `provider.unavailable`).",
+      "type": "string"
+    },
+    "ErrorEnvelope_ErrorSeverity": {
+      "description": "How severe an error is and whether it terminates the item/job.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "Informational event; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "warning",
+          "description": "Non-fatal issue, full behavior preserved; not terminal.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Behavior reduced but acceptable by policy; may or may not be terminal.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Required work failed; terminal for the affected item/job.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "Cannot continue safely; terminal.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorEnvelope_ErrorStage": {
+      "description": "Pipeline/transport stage an error is attributed to.",
+      "oneOf": [
+        {
+          "const": "parsing",
+          "description": "CLI/MCP/REST request parse, removed command/action.",
+          "type": "string"
+        },
+        {
+          "const": "validation",
+          "description": "Missing fields, bad types, unsupported flags.",
+          "type": "string"
+        },
+        {
+          "const": "resolving",
+          "description": "Source resolution, canonical URI, authority.",
+          "type": "string"
+        },
+        {
+          "const": "routing",
+          "description": "Adapter/scope/provider selection.",
+          "type": "string"
+        },
+        {
+          "const": "authorizing",
+          "description": "Auth, credentials, execution policy.",
+          "type": "string"
+        },
+        {
+          "const": "planning",
+          "description": "Source plan, prune plan.",
+          "type": "string"
+        },
+        {
+          "const": "leasing",
+          "description": "Job/watch/source lease.",
+          "type": "string"
+        },
+        {
+          "const": "discovering",
+          "description": "Manifest/map discovery.",
+          "type": "string"
+        },
+        {
+          "const": "diffing",
+          "description": "Manifest diff.",
+          "type": "string"
+        },
+        {
+          "const": "fetching",
+          "description": "HTTP/git/package/local/MCP/CLI fetch.",
+          "type": "string"
+        },
+        {
+          "const": "rendering",
+          "description": "Browser/CDP/render provider.",
+          "type": "string"
+        },
+        {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
+          "const": "normalizing",
+          "description": "SourceDocument creation.",
+          "type": "string"
+        },
+        {
+          "const": "parsing_content",
+          "description": "Parser facts/chunk parser (serialized as `parsing_content`).",
+          "type": "string"
+        },
+        {
+          "const": "graphing",
+          "description": "Graph writes/merge/conflict.",
+          "type": "string"
+        },
+        {
+          "const": "preparing",
+          "description": "Chunking/PreparedDocument.",
+          "type": "string"
+        },
+        {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
+          "const": "embedding",
+          "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
+          "type": "string"
+        },
+        {
+          "const": "upserting",
+          "description": "VectorStore writes.",
+          "type": "string"
+        },
+        {
+          "const": "publishing",
+          "description": "Generation publish.",
+          "type": "string"
+        },
+        {
+          "const": "cleaning",
+          "description": "Cleanup/prune/dedupe.",
+          "type": "string"
+        },
+        {
+          "const": "retrieving",
+          "description": "Query/retrieve context.",
+          "type": "string"
+        },
+        {
+          "const": "synthesizing",
+          "description": "LLM synthesis.",
+          "type": "string"
+        },
+        {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
+          "const": "observing",
+          "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorEnvelope_ErrorVisibility": {
+      "description": "Where a context entry (or error) may be surfaced.\n\nFrom the \"visibility\" field in the error shape: `public`, `internal`,\n`sensitive`.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Safe to render to any caller, including remote/unauthenticated.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal diagnostics; render only to internal/admin surfaces.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive",
+          "description": "Sensitive/secret-adjacent; never render raw, redaction required.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorEnvelope_TraceContext": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parent_span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sampled": {
+          "type": "boolean"
+        },
+        "span_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "trace_id",
+        "sampled",
+        "attributes"
+      ],
+      "type": "object"
     },
     "ErrorSeverity": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -374,6 +867,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -394,8 +892,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -424,12 +932,159 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ],
       "title": "ErrorStage"
+    },
+    "ProviderCooling": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A provider cooling window that prevents tight retry loops.",
+      "properties": {
+        "cooldown_until": {
+          "description": "When the cooling window ends.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "The provider that is cooling, if known.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Human-readable reason for the cooling window.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cooldown_until"
+      ],
+      "title": "ProviderCooling",
+      "type": "object"
+    },
+    "RetryPolicy": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Machine-readable retry policy for an error.",
+      "properties": {
+        "attempt": {
+          "description": "Current attempt number.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "backoff_ms": {
+          "description": "Next backoff duration, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "cooldown_until": {
+          "description": "Provider/source cooling window, if active.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_attempts": {
+          "description": "Configured max attempts, if bounded.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retry_after_ms": {
+          "description": "Minimum delay before a retry, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retry_scope": {
+          "$ref": "#/$defs/RetryPolicy_RetryScope",
+          "description": "The scope this retry decision applies to."
+        },
+        "retryable": {
+          "description": "Whether retry may succeed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "retryable",
+        "attempt",
+        "retry_scope"
+      ],
+      "title": "RetryPolicy",
+      "type": "object"
+    },
+    "RetryPolicy_RetryScope": {
+      "description": "The scope a retry decision applies to.",
+      "oneOf": [
+        {
+          "const": "item",
+          "description": "A single source item.",
+          "type": "string"
+        },
+        {
+          "const": "document",
+          "description": "A single document.",
+          "type": "string"
+        },
+        {
+          "const": "phase",
+          "description": "A pipeline phase.",
+          "type": "string"
+        },
+        {
+          "const": "job",
+          "description": "The whole job.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "A provider (cooling window applies).",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://axon.local/schemas/errors/errors.schema.json",
@@ -443,9 +1098,15 @@
     "contract_version": "2026-06-30",
     "generated_by": "cargo xtask schemas errors",
     "owner_crates": [
-      "axon-error"
+      "axon-error",
+      "axon-api"
     ],
     "source_inputs": [
+      {
+        "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/status.rs"
+      },
       {
         "checksum": "sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57",
         "kind": "rust_module",
@@ -457,9 +1118,29 @@
         "path": "crates/axon-error/src/code.rs"
       },
       {
+        "checksum": "sha256:ca9e67a1ed3feb4dbfc66e4ae0717e5254ffeb81b00cff0dde74d37dcd125755",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/context.rs"
+      },
+      {
+        "checksum": "sha256:2da7a16ea5064986b853f7380acd6b66d03137ba8eeba72fedd7493c238df900",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/cooling.rs"
+      },
+      {
+        "checksum": "sha256:b054137819cb965bb929515d48a412a11f74222e61599d22e0ab211e07dafeec",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/degradation.rs"
+      },
+      {
         "checksum": "sha256:4498c249c8c1476db9c365d0b097fa35e8db871672f40208787bbb4afcd353a1",
         "kind": "rust_module",
         "path": "crates/axon-error/src/lib.rs"
+      },
+      {
+        "checksum": "sha256:e5ccc139cf2de5b797cf37d842690176ab57896b4f3954e0e90e75dcd79e50db",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/retry.rs"
       },
       {
         "checksum": "sha256:7e1f574864bbbe1c71622b9a6a2677c14213f45333990916c6b601b508a36f99",
@@ -467,7 +1148,7 @@
         "path": "crates/axon-error/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:e52da99d501094079edd9f9e24b806fb6b7b32307eea546a63ae461e82cacb6c",
+        "checksum": "sha256:afee6d711302dd5b0d8b1d2868f8cab3b50c90534b781773287f7dc6d5e15471",
         "kind": "rust_module",
         "path": "crates/axon-error/src/stage.rs"
       },

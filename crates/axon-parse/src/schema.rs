@@ -1,11 +1,13 @@
 use axon_api::source::{GraphCandidate, SourceParseFacts};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::facts::{inline_text, source_fact};
 use crate::graph_candidate::graph_candidate;
 use crate::parser::ParseInput;
 
 pub const MODULE_NAME: &str = "schema";
+
+const HTTP_METHODS: [&str; 5] = ["get", "post", "put", "patch", "delete"];
 
 pub fn api_schema_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let path = input.document.path.as_deref().unwrap_or_default();
@@ -18,44 +20,184 @@ pub fn api_schema_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<Graph
     }
 }
 
+/// Line/indentation heuristic OpenAPI walker. Extracts endpoints (path +
+/// method), `operationId` operations, `components.schemas` definitions, and
+/// auth requirements from both `components.securitySchemes` and `security:`
+/// requirement lists — the full "endpoints, methods, schemas, operations,
+/// auth requirements" fact set required by the API Schema parser family row
+/// in the parsing contract. Regex/line-based, not a real YAML AST, so
+/// `parser_method` stays "yaml_heuristic" (confidence 0.7).
 fn openapi_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let mut facts = Vec::new();
     let mut candidates = Vec::new();
     let mut current_path: Option<String> = None;
+    let mut current_endpoint: Option<String> = None;
+    let mut stack: Vec<(usize, String)> = Vec::new();
+
     for (idx, line) in inline_text(input).lines().enumerate() {
+        let line_no = idx as u32 + 1;
         let trimmed = line.trim();
-        if trimmed.starts_with('/') && trimmed.ends_with(':') {
-            current_path = Some(trimmed.trim_end_matches(':').to_string());
+        if trimmed.is_empty() {
             continue;
         }
+        let indent = line.len() - line.trim_start().len();
+        while stack.last().is_some_and(|(depth, _)| *depth >= indent) {
+            stack.pop();
+        }
+
+        if trimmed.starts_with('/') && trimmed.ends_with(':') {
+            current_path = Some(trimmed.trim_end_matches(':').to_string());
+            current_endpoint = None;
+            stack.push((indent, "path".to_string()));
+            continue;
+        }
+
         if let Some(method) = trimmed
             .strip_suffix(':')
-            .filter(|method| ["get", "post", "put", "patch", "delete"].contains(method))
+            .filter(|method| HTTP_METHODS.contains(method))
         {
-            let Some(path) = current_path.as_deref() else {
-                continue;
-            };
-            let name = format!("{} {path}", method.to_ascii_uppercase());
-            facts.push(source_fact(
+            if let Some(path) = current_path.as_deref() {
+                let name = format!("{} {path}", method.to_ascii_uppercase());
+                push_item(
+                    input,
+                    &mut facts,
+                    &mut candidates,
+                    "api_endpoint",
+                    &name,
+                    json!({ "method": method, "path": path }),
+                    line_no,
+                );
+                current_endpoint = Some(name);
+            }
+            stack.push((indent, "method".to_string()));
+            continue;
+        }
+
+        if let Some(raw) = trimmed.strip_prefix("operationId:") {
+            push_operation(
                 input,
-                "openapi_schema",
-                "yaml_heuristic",
-                "api_endpoint",
-                name.clone(),
-                json!({ "method": method, "path": path }),
-                Some(idx as u32 + 1),
-            ));
-            candidates.push(graph_candidate(
-                input,
-                "openapi_schema",
-                "api_endpoint",
-                &name,
-                Some(idx as u32 + 1),
-                Some(trimmed.to_string()),
-            ));
+                &mut facts,
+                &mut candidates,
+                current_endpoint.as_deref(),
+                raw,
+                line_no,
+            );
+            continue;
+        }
+
+        if let Some(raw_scheme) = trimmed
+            .strip_prefix("- ")
+            .filter(|_| stack_ends_with(&stack, &["security"]))
+        {
+            push_auth_requirement(input, &mut facts, &mut candidates, raw_scheme, line_no);
+            continue;
+        }
+
+        if let Some(name) = trimmed.strip_suffix(':') {
+            if stack_ends_with(&stack, &["components", "schemas"]) {
+                push_item(
+                    input,
+                    &mut facts,
+                    &mut candidates,
+                    "api_schema",
+                    name,
+                    json!({ "schema_name": name }),
+                    line_no,
+                );
+            } else if stack_ends_with(&stack, &["components", "securityschemes"]) {
+                push_auth_requirement(input, &mut facts, &mut candidates, name, line_no);
+            }
+            stack.push((indent, name.to_ascii_lowercase()));
         }
     }
     (facts, candidates)
+}
+
+fn push_item(
+    input: &ParseInput,
+    facts: &mut Vec<SourceParseFacts>,
+    candidates: &mut Vec<GraphCandidate>,
+    fact_kind: &str,
+    name: &str,
+    value: Value,
+    line_no: u32,
+) {
+    facts.push(source_fact(
+        input,
+        "openapi_schema",
+        "yaml_heuristic",
+        fact_kind,
+        name,
+        value,
+        Some(line_no),
+    ));
+    candidates.push(graph_candidate(
+        input,
+        "openapi_schema",
+        fact_kind,
+        name,
+        Some(line_no),
+        Some(name.to_string()),
+    ));
+}
+
+fn push_operation(
+    input: &ParseInput,
+    facts: &mut Vec<SourceParseFacts>,
+    candidates: &mut Vec<GraphCandidate>,
+    endpoint: Option<&str>,
+    raw: &str,
+    line_no: u32,
+) {
+    let op_id = raw.trim().trim_matches('"').trim_matches('\'');
+    if op_id.is_empty() {
+        return;
+    }
+    let name = match endpoint {
+        Some(endpoint) => format!("{endpoint} #{op_id}"),
+        None => op_id.to_string(),
+    };
+    push_item(
+        input,
+        facts,
+        candidates,
+        "api_operation",
+        &name,
+        json!({ "operation_id": op_id, "endpoint": endpoint }),
+        line_no,
+    );
+}
+
+fn push_auth_requirement(
+    input: &ParseInput,
+    facts: &mut Vec<SourceParseFacts>,
+    candidates: &mut Vec<GraphCandidate>,
+    raw_scheme: &str,
+    line_no: u32,
+) {
+    let scheme = raw_scheme.split(':').next().unwrap_or(raw_scheme).trim();
+    if scheme.is_empty() {
+        return;
+    }
+    push_item(
+        input,
+        facts,
+        candidates,
+        "api_auth_requirement",
+        scheme,
+        json!({ "scheme_name": scheme }),
+        line_no,
+    );
+}
+
+fn stack_ends_with(stack: &[(usize, String)], segments: &[&str]) -> bool {
+    if stack.len() < segments.len() {
+        return false;
+    }
+    stack[stack.len() - segments.len()..]
+        .iter()
+        .map(|(_, key)| key.as_str())
+        .eq(segments.iter().copied())
 }
 
 fn graphql_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {

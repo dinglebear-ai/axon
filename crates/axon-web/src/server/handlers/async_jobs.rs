@@ -1,4 +1,5 @@
-use axon_api::source::{AuthSnapshot, CallerContext, TransportKind, Visibility};
+use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
+use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
 use axon_jobs::backend::JobKind;
 use axon_services as services;
@@ -93,16 +94,24 @@ pub(crate) async fn start_extract(
     // caller_context_from_auth): absent only in LoopbackDev mode, where the
     // loopback bind itself is the trust boundary.
     let caller_snapshot = auth.map(|Extension(auth)| {
-        AuthSnapshot::from_caller(
-            &CallerContext {
-                actor: Some(auth.sub.clone()),
-                transport: TransportKind::Rest,
-                scopes: auth.scopes.clone(),
-                visibility_ceiling: Visibility::Internal,
-            },
-            Visibility::Internal,
-            "runtime",
-        )
+        let auth_mode = if auth.sub == "static-bearer" {
+            AuthMode::StaticToken
+        } else {
+            AuthMode::Oauth
+        };
+        let mut caller = CallerContext {
+            caller_id: Some(auth.sub.clone()),
+            transport: TransportKind::Rest,
+            trusted_local: false,
+            scopes: auth.scopes.clone(),
+            visibility_ceiling: Visibility::Public,
+            auth_mode,
+            token_id: None,
+            display_name: None,
+        };
+        let ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+        caller.visibility_ceiling = ceiling;
+        AuthSnapshot::from_caller(&caller, ceiling, "runtime")
     });
     let outcome = services::extract::extract_start_with_context(
         &cfg,

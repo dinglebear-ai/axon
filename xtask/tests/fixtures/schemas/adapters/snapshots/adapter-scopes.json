@@ -708,6 +708,74 @@
         "watch_supported": true
       },
       {
+        "credential_requirements": [],
+        "default_scope": "file",
+        "degraded_modes": [
+          "permission-denied",
+          "file-too-large",
+          "symlink-outside-root"
+        ],
+        "family": "upload",
+        "integration": "upload",
+        "is_source_adapter": false,
+        "may_access_local_paths": true,
+        "may_call_render_provider": false,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": false,
+        "metadata_families": [
+          "upload",
+          "filesystem",
+          "security"
+        ],
+        "option_schema": "upload-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "symbol",
+          "dependency"
+        ],
+        "parser_families": [
+          "markdown",
+          "code",
+          "manifest",
+          "session"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "document",
+          "filesystem_path"
+        ],
+        "scopes": [
+          {
+            "notes": "single uploaded file",
+            "required": true,
+            "scope": "file"
+          },
+          {
+            "notes": "unpacked archive or repomix bundle",
+            "required": true,
+            "scope": "directory"
+          },
+          {
+            "notes": "staged content discovery without embedding",
+            "required": false,
+            "scope": "map"
+          }
+        ],
+        "shorthand_patterns": [
+          "upload:<staged-id>"
+        ],
+        "source_kinds": [
+          "upload",
+          "session",
+          "local"
+        ],
+        "supported_schemes": [
+          "upload"
+        ],
+        "vector_namespace": "source:upload",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
         "adapter": "git",
         "credential_requirements": [],
         "default_scope": "repo",
@@ -840,6 +908,72 @@
           "https"
         ],
         "vector_namespace": "source:web",
+        "version": "1",
+        "watch_supported": true
+      },
+      {
+        "credential_requirements": [],
+        "default_scope": "repo",
+        "degraded_modes": [
+          "http-only",
+          "render-unavailable",
+          "rate-limited"
+        ],
+        "family": "deepwiki",
+        "integration": "deepwiki",
+        "is_source_adapter": false,
+        "may_access_local_paths": false,
+        "may_call_render_provider": true,
+        "may_execute_tools": false,
+        "may_perform_network_fetches": true,
+        "metadata_families": [
+          "deepwiki",
+          "web",
+          "git",
+          "security"
+        ],
+        "option_schema": "git-source-options/v1",
+        "optional_graph_fact_kinds": [
+          "web_page",
+          "link"
+        ],
+        "parser_families": [
+          "markdown",
+          "html"
+        ],
+        "refresh_supported": true,
+        "required_graph_fact_kinds": [
+          "repository"
+        ],
+        "scopes": [
+          {
+            "notes": "repository snapshot",
+            "required": true,
+            "scope": "repo"
+          },
+          {
+            "notes": "branch-specific snapshot",
+            "required": false,
+            "scope": "branch"
+          },
+          {
+            "notes": "provider-specific hardening",
+            "required": false,
+            "scope": "org"
+          }
+        ],
+        "shorthand_patterns": [
+          "deepwiki:owner/repo",
+          "https://deepwiki.com/owner/repo"
+        ],
+        "source_kinds": [
+          "web",
+          "git"
+        ],
+        "supported_schemes": [
+          "https"
+        ],
+        "vector_namespace": "source:deepwiki",
         "version": "1",
         "watch_supported": true
       },
@@ -1152,7 +1286,17 @@
         "shorthand_patterns": [
           "pkg:npm/<name>",
           "pkg:pypi/<name>",
-          "pkg:crates/<name>"
+          "pkg:crates/<name>",
+          "pkg:docker/<image>",
+          "pkg:maven/<group>/<artifact>",
+          "pkg:nuget/<name>",
+          "pkg:rubygems/<name>",
+          "pkg:packagist/<vendor>/<name>",
+          "pkg:hex/<name>",
+          "pkg:pub/<name>",
+          "pkg:terraform/<namespace>/<name>/<provider>",
+          "pkg:helm/<repository>/<chart>",
+          "pkg:huggingface/<org>/<model>"
         ],
         "source_kinds": [
           "registry"
@@ -1162,7 +1306,16 @@
           "npm",
           "pypi",
           "crates",
-          "docker"
+          "docker",
+          "maven",
+          "nuget",
+          "rubygems",
+          "packagist",
+          "hex",
+          "pub",
+          "terraform",
+          "helm",
+          "huggingface"
         ],
         "vector_namespace": "source:registry",
         "version": "1",
@@ -1210,6 +1363,11 @@
             "notes": "explicit script source class",
             "required": false,
             "scope": "script"
+          },
+          {
+            "notes": "execute an allowlisted command (contract scope: run)",
+            "required": false,
+            "scope": "api"
           }
         ],
         "shorthand_patterns": [
@@ -1266,7 +1424,7 @@
             "scope": "tool"
           },
           {
-            "notes": "MCP call result with explicit execution scope",
+            "notes": "MCP call result with explicit execution scope (contract scope: call)",
             "required": false,
             "scope": "api"
           }
@@ -1334,7 +1492,7 @@
         "path": "crates/axon-adapters/fixtures/provider-variant-exceptions.json"
       },
       {
-        "checksum": "sha256:34295db024f83f0d751e4de8291d108843caf94516f9ef55c07f00da47f1a958",
+        "checksum": "sha256:b8e0ffebe9f034ae083acd658eab03d99edda8720d8b4c47c7b7a2183d638801",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/family_matrix.rs"
       },
@@ -1344,12 +1502,12 @@
         "path": "crates/axon-adapters/src/onboarding.rs"
       },
       {
-        "checksum": "sha256:6110d29e7beb92a64de3c9db9264103d86728e6b32dc04a3b15a1e1981d074ef",
+        "checksum": "sha256:5f9e6da4d9d3fb6870c95818425fdfef853edf3f9525b036d50f4fe4a7308e71",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/spec.rs"
       },
       {
-        "checksum": "sha256:3fdc258530a45c6390485434dae01058d641424b7cbb9a49a54503fb63846c07",
+        "checksum": "sha256:594d57f321084553f23892265588f84713d43d8cb6ea1750a076797a924152da",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/web.rs"
       },

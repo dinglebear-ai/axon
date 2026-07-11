@@ -8,6 +8,7 @@ use crate::commands::job_progress::{
 };
 use axon_core::config::Config;
 use axon_core::logging::log_info;
+use axon_core::redact::redact_secrets;
 use axon_core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
 use axon_jobs::store::{RECLAIMED_ERROR_TEXT, sqlite_diagnostics};
 use axon_services::context::ServiceContext;
@@ -247,7 +248,11 @@ fn write_status_section(
         let status = human_status_text(&job.status);
         let prefix = format!("  {} {} ", symbol_for_status(&job.status), status);
         let label_limit = STATUS_TEXT_DISPLAY_LIMIT.saturating_sub(prefix.chars().count());
-        let label = truncate_status_text_to(&label_for(job), label_limit);
+        // D1-09: job labels/targets and error text are DB-persisted strings
+        // that may embed URL credentials or upstream error bodies with
+        // tokens — redact before display, same boundary the doctor renderer
+        // uses (see doctor/render.rs::report_text).
+        let label = truncate_status_text_to(&redact_secrets(&label_for(job)), label_limit);
         let _ = writeln!(out, "{prefix}{label}");
         let _ = writeln!(out, "    {}", muted(&format!("id {}", job.id)));
         if let Some(p) = progress_for(job) {
@@ -258,6 +263,7 @@ fn write_status_section(
             .as_deref()
             .and_then(|err| job_error_hint(&job.status, err))
         {
+            let err = redact_secrets(&err);
             let _ = writeln!(out, "    {}", muted(&truncate_status_continuation(&err)));
         }
     }

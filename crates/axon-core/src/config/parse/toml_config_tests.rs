@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::parse::build_config::tests::{ENV_LOCK, with_env_saved};
+use crate::config::parse::build_config::tests::{env_guard, with_env_saved};
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -17,7 +17,7 @@ fn load_from_path_rejects_symlinked_config() {
     // Plant a symlink at a config path pointing at a real TOML file.
     // load_from_path must refuse to follow the symlink even though
     // the target parses cleanly — a symlink under ~/.axon/ would let
-    // a local attacker redirect [services] URLs / adapter cmds.
+    // a local attacker redirect adapter cmds via config.toml.
     let target = NamedTempFile::new().unwrap();
     writeln!(target.as_file(), "[ask]\nchunk-limit = 5").unwrap();
     let link = std::env::temp_dir().join(format!("axon-symlink-test-{}.toml", std::process::id()));
@@ -40,7 +40,7 @@ fn valid_toml_parses_search_section() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(
         f,
-        "[search]\nhybrid-enabled = false\nhybrid-candidates = 200"
+        "[providers.vector]\nhybrid-enabled = false\n[retrieval]\nhybrid-candidates = 200"
     )
     .unwrap();
     let cfg = load_from_path(f.path(), false).unwrap();
@@ -65,7 +65,11 @@ fn valid_toml_parses_ask_section() {
 #[test]
 fn valid_toml_parses_tei_and_workers() {
     let mut f = NamedTempFile::new().unwrap();
-    writeln!(f, "[tei]\nmax-retries = 3\n[workers]\ningest-lanes = 4").unwrap();
+    writeln!(
+        f,
+        "[providers.embedding]\nmax-retries = 3\n[pipeline]\ningest-lanes = 4"
+    )
+    .unwrap();
     let cfg = load_from_path(f.path(), false).unwrap();
     assert_eq!(cfg.tei.max_retries, Some(3));
     assert_eq!(cfg.workers.ingest_lanes, Some(4));
@@ -75,7 +79,7 @@ fn valid_toml_parses_tei_and_workers() {
 fn valid_toml_parses_embed_openai_compat_section() {
     let cfg = load_toml_config_from_str(
         r#"
-[embed]
+[providers.embedding]
 openai-model = "qwen3-openai"
 openai-max-client-batch-size = 24
 openai-max-concurrent = 12
@@ -97,7 +101,7 @@ fn valid_toml_parses_chrome_bootstrap_section() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(
         f,
-        "[chrome]\nbootstrap-timeout-ms = 1500\nbootstrap-retries = 4"
+        "[providers.render]\nbootstrap-timeout-ms = 1500\nbootstrap-retries = 4"
     )
     .unwrap();
     let cfg = load_from_path(f.path(), false).unwrap();
@@ -108,9 +112,9 @@ fn valid_toml_parses_chrome_bootstrap_section() {
 #[test]
 fn extended_toml_tuning_sections_parse() {
     let raw = r#"
-[embed]
-tei-max-concurrent = 8
-tei-max-in-flight-inputs = 512
+[providers.embedding]
+max-concurrent-requests = 8
+max-in-flight-inputs = 512
 pool-max-inputs = 1024
 prep-concurrency = 12
 max-chunks-per-doc = 0
@@ -121,14 +125,14 @@ openai-max-concurrent = 32
 openai-max-in-flight-inputs = 512
 openai-pool-max-inputs = 1024
 
-[chunking]
+[pipeline.chunking]
 markdown-min-chars = 500
 markdown-max-chars = 2000
 overlap-chars = 200
 
-[qdrant]
-upsert-batch-size = 1024
-upsert-parallelism = 1
+[providers.vector]
+upsert-batch-points = 1024
+write-concurrency = 1
 bulk-load = false
 bulk-indexing-threshold-kb = 10485760
 indexing-threshold-kb = 20000
@@ -139,7 +143,7 @@ payload-index-parallelism = 16
 hnsw-on-disk = false
 quantization-always-ram = true
 
-[code-search]
+[sources.code-search]
 freshness-ttl-secs = 30
 reindex-timeout-secs = 15
 max-file-bytes = 10485760
@@ -149,16 +153,16 @@ changed-file-batch-size = 50
 tick-secs = 15
 lease-secs = 300
 
-[endpoints]
+[pipeline.endpoints]
 bundle-concurrency = 8
 chrome-concurrency = 2
 verify-concurrency = 16
 probe-concurrency = 16
 
-[mcp]
+[server.mcp]
 task-result-wait-timeout-secs = 300
 
-[mcp.embed]
+[server.mcp.embed]
 max-local-bytes = 10485760
 max-local-depth = 16
 max-local-entries = 10000
@@ -180,8 +184,8 @@ fn root_config_example_parses() {
 
 #[test]
 fn valid_toml_parses_build_section() {
-    let cfg = load_toml_config_from_str("[build]\nallow-fallback-web-assets = true\n")
-        .expect("build section should parse");
+    let cfg = load_toml_config_from_str("[server]\nallow-fallback-web-assets = true\n")
+        .expect("server allow-fallback-web-assets should parse");
 
     assert_eq!(cfg.build.allow_fallback_web_assets, Some(true));
 }
@@ -189,7 +193,7 @@ fn valid_toml_parses_build_section() {
 #[test]
 fn malformed_toml_returns_err() {
     let mut f = NamedTempFile::new().unwrap();
-    writeln!(f, "[search\nbadly_broken = !!!").unwrap();
+    writeln!(f, "[ask\nbadly_broken = !!!").unwrap();
     let result = load_from_path(f.path(), false);
     assert!(result.is_err(), "malformed TOML should return Err");
     assert!(
@@ -229,7 +233,7 @@ fn load_from_path_rejects_not_a_directory_config_path() {
 
 #[test]
 fn unknown_field_fails_parse() {
-    let result = load_toml_config_from_str("[search]\nunknown-key = true");
+    let result = load_toml_config_from_str("[providers.vector]\nunknown-key = true");
     assert!(
         result.is_err(),
         "deny_unknown_fields should reject unknown keys"
@@ -248,7 +252,7 @@ fn empty_file_returns_default() {
 #[serial_test::serial]
 #[test]
 fn axon_config_path_env_var_overrides_home() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         std::env::set_var("AXON_CONFIG_PATH", "/tmp/custom_axon_config.toml");
         let path = resolve_config_path();
@@ -265,7 +269,7 @@ fn axon_config_path_env_var_overrides_home() {
 #[serial_test::serial]
 #[test]
 fn axon_config_path_non_toml_extension_returns_err() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         std::env::set_var("AXON_CONFIG_PATH", "/etc/passwd");
         let result = resolve_config_path();
@@ -285,7 +289,7 @@ fn axon_config_path_non_toml_extension_returns_err() {
 #[serial_test::serial]
 #[test]
 fn explicit_missing_config_path_returns_err() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         std::env::set_var("AXON_CONFIG_PATH", "/tmp/axon-missing-config.toml");
         let result = load_toml_config();
@@ -304,9 +308,11 @@ fn explicit_missing_config_path_returns_err() {
 // ── New schema field tests ────────────────────────────────────────────────────
 
 #[test]
-fn services_url_fields_parse_without_error() {
-    // [services] URL fields should be accepted by the parser (parse-warn-and-ignore
-    // semantics) even though they do not affect service URLs at runtime.
+fn deprecated_services_section_is_rejected_with_new_home() {
+    // [services] was the pre-contract compatibility shim for TOML-level
+    // service URL overrides. The 20-section contract drops it entirely —
+    // URLs live only in .env now — so it must hard-fail with a diagnostic
+    // naming the replacement instead of silently parsing.
     let result = load_toml_config_from_str(
         r#"
 [services]
@@ -315,29 +321,39 @@ tei-url = "http://custom-tei:80"
 chrome-remote-url = "http://custom-chrome:6000"
 "#,
     );
+    let err = match result {
+        Ok(_) => panic!("[services] should be rejected as a deprecated section"),
+        Err(e) => e,
+    };
     assert!(
-        result.is_ok(),
-        "services URL fields should parse without error: {:?}",
-        result.err()
-    );
-    let cfg = result.unwrap();
-    assert_eq!(
-        cfg.services.qdrant_url.as_deref(),
-        Some("http://custom-qdrant:6333")
-    );
-    assert_eq!(
-        cfg.services.tei_url.as_deref(),
-        Some("http://custom-tei:80")
-    );
-    assert_eq!(
-        cfg.services.chrome_remote_url.as_deref(),
-        Some("http://custom-chrome:6000")
+        err.contains("services") && err.contains(".env"),
+        "error should name [services] and point at .env, got: {err}"
     );
 }
 
 #[test]
+fn deprecated_top_level_sections_are_rejected() {
+    for (old, needle) in [
+        ("[llm]\ncompletion-concurrency = 4", "providers.llm"),
+        ("[tei]\nmax-retries = 3", "providers.embedding"),
+        ("[scrape]\nrespect-robots = true", "crawl"),
+        ("[workers]\ningest-lanes = 2", "pipeline"),
+        ("[chrome]\nbypass-csp = true", "providers.render"),
+    ] {
+        let err = match load_toml_config_from_str(old) {
+            Ok(_) => panic!("deprecated section should be rejected: {old}"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains(needle),
+            "error for {old:?} should mention {needle}, got: {err}"
+        );
+    }
+}
+
+#[test]
 fn workers_job_wait_timeout_secs_parses() {
-    let result = load_toml_config_from_str("[workers]\njob-wait-timeout-secs = 600");
+    let result = load_toml_config_from_str("[pipeline]\njob-wait-timeout-secs = 600");
     assert!(
         result.is_ok(),
         "job-wait-timeout-secs should parse: {:?}",
@@ -349,12 +365,12 @@ fn workers_job_wait_timeout_secs_parses() {
 #[test]
 fn chrome_user_agent_parses() {
     let result = load_toml_config_from_str(
-        r#"[chrome]
+        r#"[providers.render]
 user-agent = "Mozilla/5.0 (Axon Test)""#,
     );
     assert!(
         result.is_ok(),
-        "chrome user-agent should parse: {:?}",
+        "render user-agent should parse: {:?}",
         result.err()
     );
     assert_eq!(
@@ -366,13 +382,13 @@ user-agent = "Mozilla/5.0 (Axon Test)""#,
 #[test]
 fn chrome_bootstrap_knobs_parse() {
     let result = load_toml_config_from_str(
-        r#"[chrome]
+        r#"[providers.render]
 bootstrap-timeout-ms = 750
 bootstrap-retries = 4"#,
     );
     assert!(
         result.is_ok(),
-        "chrome bootstrap knobs should parse: {:?}",
+        "render bootstrap knobs should parse: {:?}",
         result.err()
     );
     let chrome = result.unwrap().chrome;
@@ -384,23 +400,23 @@ bootstrap-retries = 4"#,
 fn live_tuning_sections_parse_without_weakening_unknown_field_rejection() {
     let result = load_toml_config_from_str(
         r#"
-[embed]
-tei-max-concurrent = 8
-tei-max-in-flight-inputs = 512
+[providers.embedding]
+max-concurrent-requests = 8
+max-in-flight-inputs = 512
 pool-max-inputs = 1024
 prep-concurrency = 12
 max-chunks-per-doc = 0
 max-source-chunks-per-doc = 0
 dedupe-exact-chunks = true
 
-[chunking]
+[pipeline.chunking]
 markdown-min-chars = 500
 markdown-max-chars = 2000
 overlap-chars = 200
 
-[qdrant]
-upsert-batch-size = 1024
-upsert-parallelism = 1
+[providers.vector]
+upsert-batch-points = 1024
+write-concurrency = 1
 bulk-load = false
 bulk-indexing-threshold-kb = 10485760
 indexing-threshold-kb = 20000
@@ -411,7 +427,7 @@ payload-index-parallelism = 16
 hnsw-on-disk = false
 quantization-always-ram = true
 
-[code-search]
+[sources.code-search]
 freshness-ttl-secs = 30
 reindex-timeout-secs = 300
 max-file-bytes = 10485760
@@ -421,16 +437,16 @@ changed-file-batch-size = 64
 tick-secs = 15
 lease-secs = 300
 
-[endpoints]
+[pipeline.endpoints]
 bundle-concurrency = 8
 chrome-concurrency = 1
 verify-concurrency = 16
 probe-concurrency = 4
 
-[mcp]
+[server.mcp]
 task-result-wait-timeout-secs = 300
 
-[mcp.embed]
+[server.mcp.embed]
 max-local-bytes = 10485760
 max-local-depth = 16
 max-local-entries = 10000
@@ -445,7 +461,7 @@ max-local-entries = 10000
 
 #[test]
 fn unknown_logging_section_is_rejected() {
-    // [logging] was removed from TomlConfig — deny_unknown_fields must reject it.
+    // [logging] was never part of the contract — deny_unknown_fields must reject it.
     let result = load_toml_config_from_str("[logging]\nmax-bytes = 5242880");
     assert!(
         result.is_err(),
@@ -455,10 +471,10 @@ fn unknown_logging_section_is_rejected() {
 
 #[test]
 fn unknown_workers_field_fails_parse() {
-    // deny_unknown_fields on TomlWorkersSection must reject typos
-    let result = load_toml_config_from_str("[workers]\nmax-pending-embed-job = 10");
+    // deny_unknown_fields on RawPipelineSection must reject typos
+    let result = load_toml_config_from_str("[pipeline]\nmax-pending-embed-job = 10");
     assert!(
         result.is_err(),
-        "unknown [workers] field should be rejected by deny_unknown_fields"
+        "unknown [pipeline] field should be rejected by deny_unknown_fields"
     );
 }

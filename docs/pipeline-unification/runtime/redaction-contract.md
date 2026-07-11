@@ -26,6 +26,18 @@ pub struct RedactionContext {
     pub source_kind: Option<SourceKind>,
     pub allow_internal_paths: bool,
 }
+```
+
+**Known dependency gap (C1-V01, 2026-07-09 audit):** `axon-web` currently
+hardcodes `visibility_ceiling: Visibility::Internal` for every caller,
+which does not reflect real caller policy. This is understood as a
+chicken-and-egg dependency, not a standalone bug to fix in this doc pass:
+there is no `VisibilityPolicy` type yet for `axon-web` to call (tracked as
+C1-16, `axon-authz`'s policy-evaluator work). Do not resolve the hardcoded
+ceiling until `axon-authz` exposes a real `VisibilityPolicy`; then wire
+`axon-web` to call it instead of hardcoding.
+
+```rust
 
 pub struct RedactionReport {
     pub status: RedactionStatus,

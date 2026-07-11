@@ -158,6 +158,7 @@ async fn cancel_job(cfg: &Config, service_context: &ServiceContext) -> Result<()
         JobCancelRequest {
             reason: flag_value(cfg, "--reason"),
             force_after_ms: None,
+            actor: None,
         },
     )
     .await

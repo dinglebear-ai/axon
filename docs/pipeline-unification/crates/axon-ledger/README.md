@@ -42,17 +42,25 @@ testing.rs
 
 ## Public API
 
-- `LedgerStore`
-- `SqliteLedgerStore`
-- `SourceRecord`
-- `SourceItemRecord`
-- `SourceManifest`
-- `SourceManifestDiff`
-- `SourceGeneration`
-- `DocumentStatus`
-- `LedgerLease`
-- `CleanupDebt`
-- `LedgerTransaction`
+`axon-ledger` implements the `LedgerStore` trait and its SQLite backend; the
+DTOs it reads/writes are `axon-api` types, not ledger-owned re-declarations
+(repo-wide DTO-ownership rule — every wire/domain shape lives in `axon-api`,
+per `dto-contract.md`). This crate's own module files stay marker/impl-only
+for the shapes below:
+
+- `LedgerStore` (trait), `SqliteLedgerStore` (impl) — owned here
+- `axon_api::source::SourceSummary` (not `SourceRecord`)
+- `axon_api::source::SourceItemStatus` (not `SourceItemRecord`)
+- `axon_api::source::SourceManifest`
+- `axon_api::source::SourceManifestDiff`
+- `axon_api::source::SourceGeneration`
+- `axon_api::source::DocumentStatus`
+- `axon_api::source::LeaseGuard` (not `LedgerLease`)
+- `axon_api::source::CleanupDebt`
+
+There is no `LedgerTransaction` DTO — commit/rollback across the manifest,
+generation, and cleanup-debt tables is internal SQLite transaction handling
+in `transaction.rs`, not a wire-visible type.
 
 ## Dependencies Allowed
 

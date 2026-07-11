@@ -1,5 +1,5 @@
 use super::*;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[test]
 fn is_retryable_status_covers_429_and_5xx_only() {
@@ -42,4 +42,31 @@ fn resolve_batch_size_clamps_to_valid_range() {
     assert_eq!(resolve_batch_size(64), 64);
     assert_eq!(resolve_batch_size(0), 1);
     assert_eq!(resolve_batch_size(10_000), 256);
+}
+
+#[test]
+fn exhausted_cooling_attaches_provider_cooling_metadata_and_marks_retryable() {
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: "http://127.0.0.1:1".to_string(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_millis(10),
+    })
+    .expect("client construction performs no I/O");
+
+    let before = Utc::now();
+    let err = client.status_error(StatusCode::SERVICE_UNAVAILABLE);
+    let cooled = client.with_exhausted_cooling(err);
+
+    assert!(
+        cooled.retryable,
+        "an exhausted retryable error stays retryable"
+    );
+    let cooling = cooled
+        .provider_cooling()
+        .expect("retry-exhausted errors must carry ProviderCooling metadata");
+    assert_eq!(cooling.provider_id.as_deref(), Some("tei"));
+    assert!(cooling.cooldown_until > before);
+    assert_eq!(cooled.cooldown_until, Some(cooling.cooldown_until));
 }

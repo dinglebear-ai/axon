@@ -141,6 +141,7 @@ impl From<RestMemoryRequest> for axon_api::mcp_schema::MemoryRequest {
             dry_run: None,
             export_scope: None,
             include_archived: None,
+            include_working: None,
         }
     }
 }

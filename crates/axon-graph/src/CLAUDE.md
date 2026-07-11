@@ -29,9 +29,10 @@ ledger lifecycle here.
 | `node.rs` / `edge.rs` | `GraphNode`, `GraphEdge` records + node/edge kinds |
 | `evidence.rs` | `GraphEvidence` — required provenance for non-manual edges |
 | `candidate.rs` | `GraphCandidateIngest` — idempotent candidate ingestion |
-| `authority.rs` | `AuthorityLink` — explicit authority records (docs→repo→package) |
+| `authority.rs` | `AuthorityDecision` — explicit authority records (docs→repo→package) |
 | `merge.rs` | `GraphMergePolicy` — merge/upsert/conflict/provenance rules |
-| `query.rs` | `GraphQuery` — retrieval/app query helpers |
+| `store.rs` / `sqlite.rs` | `query()` (`GraphQueryRequest`/`GraphQueryResult`) — retrieval/app query helpers live on the `GraphStore` trait itself, there is no separate `query.rs` module |
+| `schema_registry.rs` | `GraphKindSpec`/`node_kind_registry()` — node/edge kind registry consumed by schema-contract generation |
 | `testing.rs` | `FakeGraphStore` + graph fixtures (authority, dep graph, session, conflict) |
 
 ## Boundary — keep OUT of this crate
@@ -52,9 +53,9 @@ ledger lifecycle here.
 
 ## DTO ownership
 Wire DTOs (`GraphNode`, `GraphEdge`, `GraphEvidence`, `GraphCandidateIngest`,
-`AuthorityLink`, `GraphMergePolicy`, `GraphQuery`, …) are defined in
-**`axon-api`**; this crate stores and returns them — it does not redefine
-transport-facing shapes.
+`AuthorityDecision`, `GraphMergePolicy`, `GraphQueryRequest`/`GraphQueryResult`, …)
+are defined in **`axon-api`**; this crate stores and returns them — it does not
+redefine transport-facing shapes.
 
 ## Keep in sync when shapes change
 `README.md` (crate contract) · `sources/source-graph.md` ·

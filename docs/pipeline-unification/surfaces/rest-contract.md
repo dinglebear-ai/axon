@@ -1588,7 +1588,7 @@ The final HTTP router must not register these routes.
 | `POST /v1/ingest/sessions/prepared` | `POST /v1/uploads` then `POST /v1/sources` with `upload:<upload_id>` |
 | `POST /v1/watch` | `POST /v1/watches` |
 | `POST /v1/watch/{id}/run` | `POST /v1/watches/{watch_id}/exec` |
-| `POST /v1/memory` | `/v1/memories/*` routes by memory operation |
+| `POST /v1/memory` | `/v1/memories/*` routes by memory operation. **Note (C6-25, 2026-07-09 audit):** listed here as "removed" in the target route mapping, but the deprecated `POST /v1/memory` passthrough is intentionally still live in code pending client migration — see the follow-up plan tracked as P1-04. This is not a contradiction once that context is read; do not remove the passthrough without checking P1-04's status first. |
 | `POST /v1/purge` | `POST /v1/prune/purge` |
 | `POST /v1/dedupe` | `POST /v1/prune/dedupe` |
 | `GET /v1/artifacts?path=...` | `GET /v1/artifacts/{artifact_id}/content` after artifact lookup |

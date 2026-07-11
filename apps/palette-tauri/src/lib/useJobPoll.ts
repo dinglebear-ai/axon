@@ -1,7 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
 import { invoke } from "@/lib/invoke";
-import { isJobPhaseTerminal, summarizeJob } from "@/lib/jobProgress";
+import { isJobPhaseTerminal, summarizeUnifiedJob } from "@/lib/jobProgress";
 import type { RunState } from "@/lib/runState";
 
 interface UseJobPollArgs {
@@ -15,9 +15,14 @@ interface UseJobPollArgs {
 }
 
 // Live lifecycle for the generic async-job families (embed/extract/ingest).
-// Sibling of `useCrawlJob`: a ~1Hz poll of `GET /v1/{family}/{id}` while the
-// job is non-terminal, plus the tray/cancel controls. Crawl keeps its own,
-// richer hook; this one drives the simpler `JobSnapshot` model.
+// Sibling of `useCrawlJob`: a ~1Hz poll of the unified `GET /v1/jobs/{id}`
+// route while the job is non-terminal, plus the tray/cancel controls. Crawl
+// keeps its own, richer hook; this one drives the simpler `JobSnapshot`
+// model. The old per-family routes (`GET /v1/{family}/{id}`) this hook used
+// to poll were removed for embed/ingest; `/v1/extract/{id}` still exists but
+// polling the unified route uniformly keeps one code path. See
+// `summarizeUnifiedJob` (bead axon_rust-ruzox.9) for the shape gaps this
+// migration accepts.
 export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob }: UseJobPollArgs) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [canceling, setCanceling] = useState(false);
@@ -64,7 +69,7 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
       try {
         const res = await invoke<{ ok: boolean; status: number; payload: unknown }>(
           "axon_http_request",
-          { request: { method: "GET", path: `/v1/${family}/${jobId}`, body: null } },
+          { request: { method: "GET", path: `/v1/jobs/${jobId}`, body: null } },
         );
         if (!active) return;
         setNowMs(Date.now());
@@ -76,7 +81,7 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
         }
         setRun((current) => {
           if (current.kind !== "asyncJob" || current.jobId !== jobId) return current;
-          const snapshot = summarizeJob(current.family, res.payload, {
+          const snapshot = summarizeUnifiedJob(current.family, res.payload, {
             jobId,
             label: current.snapshot.label,
           });
@@ -116,11 +121,13 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
   async function cancelJob() {
     if (run.kind !== "asyncJob" || !run.jobId) return;
     const id = run.jobId;
-    const fam = run.family;
     setCanceling(true);
     try {
+      // Unified `POST /v1/jobs/{id}/cancel` takes a `JobCancelRequest` body
+      // (all fields optional) — send `{}` rather than `null`, which the JSON
+      // extractor would reject as not-an-object.
       const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
-        request: { method: "POST", path: `/v1/${fam}/${id}/cancel`, body: null },
+        request: { method: "POST", path: `/v1/jobs/${id}/cancel`, body: {} },
       });
       if (!res.ok) {
         setRun((current) =>

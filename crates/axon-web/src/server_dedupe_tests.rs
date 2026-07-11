@@ -10,7 +10,7 @@ async fn dedupe_rejects_invalid_collection_before_work() {
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
     let response = reqwest::Client::new()
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .header("authorization", "Bearer secret")
         .json(&serde_json::json!({ "collection": "invalid/name" }))
         .send()
@@ -39,7 +39,7 @@ async fn dedupe_rejects_body_without_json_content_type() {
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
     let response = reqwest::Client::new()
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .header("authorization", "Bearer secret")
         .body(r#"{"collection":"invalid/name"}"#)
         .send()

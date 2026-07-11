@@ -203,6 +203,53 @@ fn render_status_jobs_keeps_normal_rows_with_progress_under_display_cap() {
     );
 }
 
+// ── secret redaction tests (D1-09) ────────────────────────────────────────────
+
+#[test]
+fn render_status_jobs_redacts_secret_in_job_url_label() {
+    // gitleaks:allow -- synthetic test fixture, not a real credential
+    const FAKE_KEY: &str = "sk-abcdefghijklmnopqrstuvwxyz012345";
+    let mut leaky = job("failed");
+    leaky.url = Some(format!("https://example.com/hook?token={FAKE_KEY}"));
+
+    let jobs = StatusJobs {
+        crawl: vec![leaky],
+        extract: Vec::new(),
+        embed: Vec::new(),
+        ingest: Vec::new(),
+    };
+
+    let rendered = render_status_jobs(&jobs, 0);
+
+    assert!(
+        !rendered.contains(FAKE_KEY),
+        "secret leaked into rendered status label:\n{rendered}"
+    );
+}
+
+#[test]
+fn render_status_jobs_redacts_secret_in_error_text() {
+    // gitleaks:allow -- synthetic test fixture, not a real credential
+    const FAKE_KEY: &str = "AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe";
+    let mut failed = job("failed");
+    failed.error_text = Some(format!("upstream rejected key {FAKE_KEY}"));
+
+    let jobs = StatusJobs {
+        crawl: vec![failed],
+        extract: Vec::new(),
+        embed: Vec::new(),
+        ingest: Vec::new(),
+    };
+
+    let rendered = render_status_jobs(&jobs, 0);
+
+    assert!(
+        !rendered.contains(FAKE_KEY),
+        "secret leaked into rendered status error text:\n{rendered}"
+    );
+    assert!(rendered.contains("[REDACTED]"));
+}
+
 // ── embed_progress_summary regression tests (axon_rust-qfmn) ─────────────────
 
 fn embed_job(status: &str, result_json: Option<serde_json::Value>) -> ServiceJob {

@@ -159,9 +159,9 @@ fn diff_from(plan: &SourcePlan, items: Vec<ManifestItem>) -> SourceManifestDiff 
 #[tokio::test]
 async fn capabilities_advertise_session_thread_scope() {
     let cap = SessionSourceAdapter::new().capabilities().await.unwrap();
-    assert!(cap.validate_scope(SourceScope::Thread).is_ok());
-    assert!(cap.validate_scope(SourceScope::File).is_ok());
-    assert!(cap.validate_scope(SourceScope::Page).is_err());
+    assert!(cap.0.features.contains(&"scope:thread".to_string()));
+    assert!(cap.0.features.contains(&"scope:file".to_string()));
+    assert!(!cap.0.features.contains(&"scope:page".to_string()));
 }
 
 #[tokio::test]

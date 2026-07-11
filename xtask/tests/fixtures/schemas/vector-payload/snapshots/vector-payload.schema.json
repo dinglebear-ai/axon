@@ -1087,6 +1087,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -1495,6 +1510,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -1873,6 +1903,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -2242,6 +2287,21 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
               ]
             },
             {
@@ -2665,6 +2725,21 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
               ]
             },
             {
@@ -3097,6 +3172,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -3516,6 +3606,21 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
               ]
             },
             {
@@ -3948,6 +4053,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -4322,6 +4442,21 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
               ]
             },
             {
@@ -4749,6 +4884,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -5168,6 +5318,21 @@
             {
               "required": [
                 "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
               ]
             },
             {
@@ -5595,6 +5760,21 @@
             },
             {
               "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
                 "manifest"
               ]
             },
@@ -5995,6 +6175,10 @@
   ],
   "description": "Generated vector payload metadata contract derived from the axon-vectors registry.",
   "properties": {
+    "actual_chunking_method": {
+      "minLength": 1,
+      "type": "string"
+    },
     "channel": {
       "type": "string"
     },
@@ -6013,6 +6197,11 @@
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "chunk_index": {
+      "minimum": 0,
+      "type": "integer",
+      "x-qdrant-index": "integer"
     },
     "chunk_key": {
       "minLength": 1,
@@ -6034,14 +6223,32 @@
       "minLength": 1,
       "type": "string"
     },
+    "chunking_method": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "chunking_profile": {
+      "minLength": 1,
+      "type": "string"
+    },
     "code_chunk_source": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "code_fence_language": {
       "minLength": 1,
       "type": "string"
     },
     "code_file_type": {
       "type": "string"
     },
+    "code_is_test": {
+      "type": "string"
+    },
     "code_language": {
+      "type": "string"
+    },
+    "code_parse_status": {
       "type": "string"
     },
     "code_symbol_kind": {
@@ -6205,6 +6412,10 @@
     "manifest": {
       "type": "boolean"
     },
+    "markdown_block_kind": {
+      "minLength": 1,
+      "type": "string"
+    },
     "memory_confidence": {
       "type": "string"
     },
@@ -6245,6 +6456,10 @@
       "const": "2026-07-01",
       "type": "string",
       "x-qdrant-index": "keyword"
+    },
+    "preferred_chunking_method": {
+      "minLength": 1,
+      "type": "string"
     },
     "redacted_field_count": {
       "type": "string"
@@ -6299,6 +6514,10 @@
       "type": "string"
     },
     "reddit_upvote_ratio": {
+      "type": "string"
+    },
+    "section_level": {
+      "minLength": 1,
       "type": "string"
     },
     "segment_kind": {
@@ -6377,7 +6596,18 @@
     "structured_parse_error": {
       "type": "string"
     },
+    "structured_record_kind": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "symbol_extraction_status": {
+      "type": "string"
+    },
     "title": {
+      "type": "string"
+    },
+    "toml_table": {
+      "minLength": 1,
       "type": "string"
     },
     "tool_action": {
@@ -6390,6 +6620,10 @@
       "type": "string"
     },
     "tool_side_effect_class": {
+      "type": "string"
+    },
+    "transcript_speaker": {
+      "minLength": 1,
       "type": "string"
     },
     "url": {
@@ -6472,6 +6706,7 @@
     "source_generation",
     "document_id",
     "chunk_id",
+    "chunk_index",
     "content_kind",
     "content_hash",
     "chunk_hash",
@@ -6487,7 +6722,9 @@
     "embedding_provider",
     "embedding_profile",
     "embedded_at",
-    "committed_generation"
+    "committed_generation",
+    "chunking_profile",
+    "chunking_method"
   ],
   "title": "AxonVectorPayloadSchema",
   "type": "object",
@@ -6514,6 +6751,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-code-0",
+        "chunk_index": 0,
         "chunk_key": "code-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/code",
@@ -6542,8 +6780,12 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "code_file_type": "source",
+        "code_is_test": "code_is_test",
         "code_language": "rust",
+        "code_parse_status": "code_parse_status",
         "code_symbol_kind": "struct",
         "code_symbol_name": "VectorPayload",
         "collection": "axon",
@@ -6593,6 +6835,7 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "symbol_extraction_status": "symbol_extraction_status",
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal"
@@ -6600,6 +6843,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-feed-0",
+        "chunk_index": 0,
         "chunk_key": "feed-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/feed",
@@ -6628,6 +6872,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:feedhash",
@@ -6683,6 +6929,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-social-0",
+        "chunk_index": 0,
         "chunk_key": "social-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/social",
@@ -6711,6 +6958,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:socialhash",
@@ -6774,6 +7023,7 @@
         "channel_url": "channel_url",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-media-0",
+        "chunk_index": 0,
         "chunk_key": "media-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/media",
@@ -6802,6 +7052,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:mediahash",
@@ -6862,6 +7114,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-web-0",
+        "chunk_index": 0,
         "chunk_key": "web-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/web",
@@ -6890,6 +7143,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:webhash",
@@ -6942,6 +7197,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-package-0",
+        "chunk_index": 0,
         "chunk_key": "package-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/package",
@@ -6970,6 +7226,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:packagehash",
@@ -7021,6 +7279,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-session-0",
+        "chunk_index": 0,
         "chunk_key": "session-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/session",
@@ -7049,6 +7308,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:sessionhash",
@@ -7101,6 +7362,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-graph-0",
+        "chunk_index": 0,
         "chunk_key": "graph-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/graph",
@@ -7129,6 +7391,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:graphhash",
@@ -7185,6 +7449,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-memory-0",
+        "chunk_index": 0,
         "chunk_key": "memory-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/memory",
@@ -7213,6 +7478,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:memoryhash",
@@ -7274,6 +7541,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-local-0",
+        "chunk_index": 0,
         "chunk_key": "local-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/local",
@@ -7302,6 +7570,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:localhash",
@@ -7354,6 +7624,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-tool-0",
+        "chunk_index": 0,
         "chunk_key": "tool-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/tool",
@@ -7382,6 +7653,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:toolhash",
@@ -7434,6 +7707,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-docker-0",
+        "chunk_index": 0,
         "chunk_key": "docker-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/docker",
@@ -7462,6 +7736,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:dockerhash",
@@ -7514,6 +7790,7 @@
       {
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-env-0",
+        "chunk_index": 0,
         "chunk_key": "env-chunk-key",
         "chunk_locator": {
           "canonical_uri": "https://example.com/env",
@@ -7542,6 +7819,8 @@
           "symbol": null
         },
         "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
         "collection": "axon",
         "committed_generation": null,
         "content_hash": "sha256:envhash",
@@ -7597,6 +7876,10 @@
         {
           "field_name": "chunk_id",
           "field_schema": "keyword"
+        },
+        {
+          "field_name": "chunk_index",
+          "field_schema": "integer"
         },
         {
           "field_name": "chunk_key",
@@ -7697,6 +7980,10 @@
         "sk-",
         "sk_",
         "ghp_",
+        "gho_",
+        "ghu_",
+        "ghs_",
+        "ghr_",
         "xoxb-",
         "xoxp-",
         "glpat-"
@@ -7756,17 +8043,17 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:45d6beef236e16d572122701748e36ff528992cff85c6ca222440f9e499559f2",
+        "checksum": "sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:9336d0c89dcf90394087fbc070553207ed0c838ddeab5bd51e881b058269699f",
+        "checksum": "sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
       {
-        "checksum": "sha256:f4da74621d8db799cf00f752b323d9b23c4ebe2b8fd30d49eafb87d5628ff44c",
+        "checksum": "sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },
@@ -7786,7 +8073,7 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:debc62b438633191ee4b56a7597828d49752b322d4dffc3ca786a08cc2d3a0f2",
+        "checksum": "sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
@@ -7803,6 +8090,9 @@
           "code_symbol_name",
           "code_symbol_kind",
           "code_file_type",
+          "code_is_test",
+          "code_parse_status",
+          "symbol_extraction_status",
           "manifest",
           "git_provider",
           "git_host",

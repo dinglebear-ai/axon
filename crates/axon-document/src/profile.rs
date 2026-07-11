@@ -38,6 +38,28 @@ impl From<ChunkProfile> for ChunkingProfile {
     }
 }
 
+/// Promoted from the former `#[cfg(test)]`-only `chunk_router::public_profiles()`
+/// mapping — all 11 variants line up 1:1 with `axon_api::source::ChunkProfile`.
+/// Used by `crate::boundary::ChunkRouter` to map the internal profile enum
+/// back onto the contract's transport-neutral `ChunkProfile`.
+impl From<ChunkingProfile> for ChunkProfile {
+    fn from(value: ChunkingProfile) -> Self {
+        match value {
+            ChunkingProfile::CodeSymbol => Self::CodeSymbol,
+            ChunkingProfile::CodeManifest => Self::CodeManifest,
+            ChunkingProfile::MarkdownSections => Self::MarkdownSections,
+            ChunkingProfile::HtmlArticle => Self::HtmlArticle,
+            ChunkingProfile::PlainTextWindows => Self::PlainTextWindows,
+            ChunkingProfile::TranscriptSegments => Self::TranscriptSegments,
+            ChunkingProfile::StructuredRecords => Self::StructuredRecords,
+            ChunkingProfile::ApiSchema => Self::ApiSchema,
+            ChunkingProfile::ToolOutput => Self::ToolOutput,
+            ChunkingProfile::SessionTurns => Self::SessionTurns,
+            ChunkingProfile::AtomicMetadata => Self::AtomicMetadata,
+        }
+    }
+}
+
 impl ChunkingProfile {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -53,6 +75,19 @@ impl ChunkingProfile {
             Self::SessionTurns => "session_turns",
             Self::AtomicMetadata => "atomic_metadata",
         }
+    }
+
+    /// True for profiles where `preparer::build_chunks` actually dispatches to
+    /// a distinct windowed-text implementation when the router flags a
+    /// size/adapter fallback, instead of always running the primary
+    /// structural chunker regardless of the router's decision. Used to gate
+    /// `chunk_router::decision_for_profile`'s reported fallback method so it
+    /// never claims a method that no code path executes.
+    pub(crate) fn has_wired_structural_fallback(self) -> bool {
+        matches!(
+            self,
+            Self::CodeSymbol | Self::MarkdownSections | Self::HtmlArticle
+        )
     }
 }
 

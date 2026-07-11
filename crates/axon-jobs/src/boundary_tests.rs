@@ -57,6 +57,8 @@ async fn fake_job_store_rejects_unknown_jobs_and_terminal_restarts() {
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp("2026-07-01T00:00:00Z".to_string()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -398,6 +400,8 @@ async fn fake_job_store_heartbeat_cannot_resurrect_terminal_job() {
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp("2026-07-01T00:10:00Z".to_string()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -432,6 +436,8 @@ async fn fake_job_store_recovery_honors_staleness_cutoff() {
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp("2026-07-01T00:00:10Z".to_string()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -508,6 +514,7 @@ async fn fake_job_store_controls_cancel_retry_recover_cleanup_and_artifacts() {
         JobCancelRequest {
             reason: Some("user requested".to_string()),
             force_after_ms: None,
+            actor: None,
         },
     )
     .await
@@ -580,6 +587,41 @@ async fn fake_job_store_controls_cancel_retry_recover_cleanup_and_artifacts() {
     .await
     .unwrap();
     assert_eq!(cleanup.jobs_pruned, 1);
+}
+
+#[tokio::test]
+async fn fake_job_store_delete_jobs_deletes_terminal_skips_live_reports_missing() {
+    let store = FakeJobWatchStore::new();
+
+    let terminal = JobStore::create(&store, job_create()).await.unwrap();
+    drive_job_to(&store, terminal.job_id, LifecycleStatus::Completed).await;
+
+    let live = JobStore::create(&store, job_create()).await.unwrap();
+    drive_job_to(&store, live.job_id, LifecycleStatus::Running).await;
+
+    let missing = JobId::new(Uuid::from_u128(424_242));
+
+    let result = JobStore::delete_jobs(&store, &[terminal.job_id, live.job_id, missing])
+        .await
+        .unwrap();
+    assert_eq!(result.deleted, vec![terminal.job_id]);
+    assert_eq!(result.skipped_live, vec![live.job_id]);
+    assert_eq!(result.missing, vec![missing]);
+
+    assert!(
+        JobStore::get(&store, terminal.job_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(JobStore::get(&store, live.job_id).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn fake_job_store_delete_jobs_is_noop_for_empty_input() {
+    let store = FakeJobWatchStore::new();
+    let result = JobStore::delete_jobs(&store, &[]).await.unwrap();
+    assert_eq!(result, JobDeleteResult::default());
 }
 
 fn empty_counts() -> StageCounts {
@@ -701,6 +743,7 @@ fn job_create() -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 

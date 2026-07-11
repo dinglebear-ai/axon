@@ -69,6 +69,14 @@ pub trait MemoryGraphMirror: Send + Sync {
     /// Record that `compacted` was derived from `sources`.
     async fn derived_from(&self, compacted: &MemoryRecord, sources: &[MemoryRecord]) -> Result<()>;
 
+    /// Record an evidence-backed edge from `record`'s memory node to
+    /// `link.target` (contract "Graph Integration": "link | create
+    /// evidence-backed edge to source/repo/file/issue/pr/entity"). The
+    /// target is referenced by stable key only — this crate does not own
+    /// the target node's shape/kind, which belongs to whichever domain
+    /// produced it.
+    async fn link(&self, record: &MemoryRecord, link: &MemoryLink) -> Result<()>;
+
     /// Mark a memory's node as no longer recallable (forgotten). The node
     /// stays (history is never lost per the crate's decay invariant) but its
     /// `memory_status` property flips so graph queries can filter it out.
@@ -163,6 +171,23 @@ impl MemoryGraphMirror for GraphBackedMemoryMirror {
         Ok(())
     }
 
+    async fn link(&self, record: &MemoryRecord, link: &MemoryLink) -> Result<()> {
+        let memory_key = memory_stable_key(&record.memory_id);
+        let candidate = edge_candidate(
+            format!(
+                "memory-link:{}:{}:{}",
+                record.memory_id.0, link.link_type, link.target
+            ),
+            vec![memory_node(record)],
+            link_type_to_edge_kind(&link.link_type),
+            &memory_key,
+            &link.target,
+            Some(link.link_type.as_str()),
+        );
+        self.graph.upsert_candidates(vec![candidate]).await?;
+        Ok(())
+    }
+
     async fn hide_recall_edges(&self, memory_id: &MemoryId, reason: &str) -> Result<()> {
         let mut properties = MetadataMap::new();
         properties.insert(
@@ -189,6 +214,21 @@ impl MemoryGraphMirror for GraphBackedMemoryMirror {
 
 fn memory_stable_key(memory_id: &MemoryId) -> String {
     format!("memory:{}", memory_id.0)
+}
+
+/// Map a [`MemoryLink::link_type`] to the closed [`GraphEdgeKind`] registry
+/// (contract "Graph Integration": "link | create evidence-backed edge to
+/// source/repo/file/issue/pr/entity"). Unrecognized/free-text link types
+/// fall back to the generic `memory_relates_to` edge rather than failing the
+/// link write — the link type is caller-supplied free text, not a closed
+/// enum on the wire (see [`MemoryLink::link_type`]).
+fn link_type_to_edge_kind(link_type: &str) -> GraphEdgeKind {
+    match link_type.to_ascii_lowercase().as_str() {
+        "source" | "repo" | "repository" => GraphEdgeKind::MemoryAboutSource,
+        "file" => GraphEdgeKind::MemoryAboutFile,
+        "issue" | "pr" | "pull_request" | "ticket" => GraphEdgeKind::MemoryAboutIssue,
+        _ => GraphEdgeKind::MemoryRelatesTo,
+    }
 }
 
 fn memory_node(record: &MemoryRecord) -> GraphNodeCandidate {
@@ -339,7 +379,12 @@ impl MemoryStore for GraphBackedMemoryStore {
     }
 
     async fn link(&self, request: MemoryLinkRequest) -> Result<MemoryResult> {
-        self.inner.link(request).await
+        let memory_id = request.memory_id.clone();
+        let link = request.link.clone();
+        let result = self.inner.link(request).await?;
+        let record = self.load_or_missing(&memory_id).await?;
+        self.mirror.link(&record, &link).await?;
+        Ok(result)
     }
 
     async fn reinforce(

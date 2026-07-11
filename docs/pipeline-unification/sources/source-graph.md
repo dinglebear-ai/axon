@@ -37,19 +37,33 @@ Graph data answers questions like:
 
 ## Current Implementation Snapshot
 
+Refreshed 2026-07-10 against HEAD `5a4558cc7`:
+
 Implemented today:
 
-- Durable memory has a small SQLite graph-like model through memory nodes and
-  edges. Current node kinds include `decision`, `fact`, `preference`, `task`,
-  and `bug`; current edge kinds include `relates_to` and `supersedes`.
-- Memory content is embedded into Qdrant and linked to SQLite memory metadata.
+- The general `GraphStore` boundary exists (`crates/axon-graph/src/store.rs`),
+  with `GraphNodeKind`/`GraphEdgeKind` closed Rust enums (`node.rs`/`edge.rs`,
+  55 node kinds / 83 edge kinds) mirroring this doc's canonical vocabulary.
+- Graph candidate ingestion is live and wired end-to-end: `axon-parse`'s
+  docker/env/config/tool parser families emit `GraphCandidate`s, and
+  `axon-services::source::graph::write_baseline_graph` upserts them into
+  `GraphStore` after generation publish (see `source-pipeline.md`'s stage
+  ordering note — graph writes run after `publishing`, not before it).
+  `candidate.rs` validates candidates against the closed enums before merge.
+- Durable memory still has its own smaller SQLite graph-like model (memory
+  nodes/edges: `decision`/`fact`/`preference`/`task`/`bug`,
+  `relates_to`/`supersedes`) independent of `GraphStore`; memory content is
+  embedded into Qdrant and linked to SQLite memory metadata.
 
 Not implemented yet:
 
-- There is no general `GraphStore` crate/boundary, graph REST surface, graph MCP
-  action, source graph query DTO, or graph-aware ask/retrieval contract.
-- Source graph nodes, edges, evidence, conflict handling, authority mapping,
-  and graph candidate ingestion are target architecture.
+- There is no graph REST surface, graph MCP action, or graph-aware
+  ask/retrieval contract wired to `GraphStore` yet — `GraphStore` is written
+  to during indexing but not yet read from by any transport.
+- The schema *generator* for graph schemas (`xtask`) does not read from the
+  `GraphNodeKind`/`GraphEdgeKind` registries yet — see `schemas/graph-schema.md`'s
+  Current Implementation Snapshot and the Q4 audit findings for the generator
+  gap.
 - The removed `ask.graph` field is explicitly rejected by current tests.
 
 ## Node Shape
@@ -258,6 +272,7 @@ the registry names here are `web_origin`, `repo`, `repo_file`, and
 | Level | Meaning |
 |---|---|
 | `official` | Claimed by package/repo/site owner or user-pinned as official. |
+| `verified` | Confirmed correct through an independent check (e.g. checksum/signature match, cross-source corroboration) but not self-claimed by the owner. |
 | `user_pinned` | User explicitly declared relation. |
 | `inferred` | Derived from metadata, redirects, sitemap, llms.txt, or content evidence. |
 | `community` | Community/third-party but useful. |

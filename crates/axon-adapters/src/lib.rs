@@ -1,13 +1,17 @@
-//! Target pipeline crate skeleton for `axon-adapters`.
+//! Target pipeline crate for `axon-adapters` (issue #298).
 //!
-//! This crate is intentionally marker-only in PR0. Runtime behavior moves here
-//! in issue #298 implementation PRs after contract tests exist.
+//! Live, not marker-only: `SourceAdapterRegistry`, per-family adapters
+//! (git/local/web/feed/reddit/youtube/sessions), capability/onboarding
+//! tracking, and the tool-invocation adapters (`cli_tool`, `mcp_tool`) are
+//! wired and exercised by tests in this crate and consumed by
+//! `axon-services`.
 
 pub mod acquisition;
 pub mod adapter;
 pub mod boundary;
 pub mod capability;
 pub mod cli_tool;
+pub mod enrichment;
 pub mod family_matrix;
 pub mod feed;
 pub mod git;
@@ -22,17 +26,23 @@ pub mod registry_sources;
 pub mod sessions;
 pub mod spec;
 pub mod testing;
+pub mod upload;
 pub mod web;
 pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
 pub use adapter::SourceAdapter;
 pub use capability::{AdapterCapability, AdapterVersion};
+pub use enrichment::{NoopSourceEnricher, SourceEnricher};
 pub use family_matrix::{SourceFamilyMatrix, source_family_matrix};
 pub use onboarding::{OnboardingRow, SourceOnboardingStatus, onboarding_rows, onboarding_status};
 pub use registry::SourceAdapterRegistry;
-pub use spec::{ParserFamily, SourceAdapterSpec, SourceFamily, SourceScopeCapability};
-pub use testing::FakeSourceAdapter;
+pub use spec::{
+    ParserFamily, SourceAdapterSpec, SourceFamily, SourceScopeCapability, scope_capability,
+};
+pub use testing::{
+    FakeSourceAdapter, FakeSourceAdapterMode, FakeSourceEnricher, FakeSourceEnricherMode,
+};
 
 pub const CRATE_NAME: &str = "axon-adapters";
 

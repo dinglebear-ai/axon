@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
 use axon_error::ErrorStage;
+use axon_error::cooling::ProviderCooling;
+use chrono::Utc;
 use reqwest::{Client, StatusCode};
 
 /// Opaque endpoint context marker attached to errors.
@@ -22,6 +24,10 @@ pub const ENDPOINT_MARKER: &str = "configured";
 
 /// Cap on exponential backoff before jitter, matching the legacy client.
 const MAX_BACKOFF_MS: u64 = 60_000;
+
+/// Cooling window attached to a retry-exhausted error, matching the default
+/// `cooldown_secs` used by [`crate::reservation::ProviderReservations`].
+const TEI_COOLDOWN_SECS: i64 = 30;
 
 /// Absolute ceiling on the client-side batch size, matching the legacy client's
 /// `tei_max_client_batch_size.clamp(1, 256)`.
@@ -209,6 +215,12 @@ impl TeiClient {
 
     /// Send one chunk, retrying transport errors and 429/5xx, and signalling a
     /// split on 413 for multi-input chunks.
+    ///
+    /// When every attempt is exhausted on a retryable condition (transport
+    /// error or 429/5xx status), the returned [`ApiError`] carries
+    /// [`ProviderCooling`] metadata (`with_provider_cooling`) so the scheduler
+    /// backs off this provider instead of hammering it again immediately —
+    /// see "Cooling" in `docs/pipeline-unification/runtime/provider-contract.md`.
     async fn send_chunk_with_retries(&self, chunk: &[String]) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
             inputs: chunk,
@@ -216,6 +228,11 @@ impl TeiClient {
         };
         let started = Instant::now();
         let mut last: Option<ApiError> = None;
+        // Transport errors are always retried until attempts are exhausted, so
+        // reaching the final fallthrough below always means the last failure
+        // was retryable; this only tracks the 429/5xx status branch, which can
+        // also exit on a non-retryable status (e.g. 400) with no cooling.
+        let mut last_retryable = true;
 
         for attempt in 1..=self.max_attempts {
             self.requests.fetch_add(1, Ordering::Relaxed);
@@ -231,6 +248,7 @@ impl TeiClient {
                 Ok(resp) => resp,
                 Err(err) => {
                     last = Some(self.transport(error_category(&err)));
+                    last_retryable = true;
                     if attempt < self.max_attempts {
                         tokio::time::sleep(retry_delay(attempt, started)).await;
                     }
@@ -253,19 +271,42 @@ impl TeiClient {
 
             let retryable = is_retryable_status(status);
             last = Some(self.status_error(status));
+            last_retryable = retryable;
             if retryable && attempt < self.max_attempts {
                 tokio::time::sleep(retry_delay(attempt, started)).await;
                 continue;
             }
-            return Err(last.unwrap());
+            let err = last.unwrap();
+            return Err(if retryable {
+                self.with_exhausted_cooling(err)
+            } else {
+                err
+            });
         }
 
-        Err(last.unwrap_or_else(|| {
+        let err = last.unwrap_or_else(|| {
             self.error(
                 "embedding.tei.exhausted",
                 "TEI embed exhausted all attempts",
             )
-        }))
+        });
+        Err(if last_retryable {
+            self.with_exhausted_cooling(err)
+        } else {
+            err
+        })
+    }
+
+    /// Attach a bounded [`ProviderCooling`] window to a retry-exhausted error
+    /// so callers holding a scheduler reservation back off before their next
+    /// attempt. The window is fixed (not exponential) — it only needs to
+    /// outlast one scheduling tick, not model the retry backoff itself.
+    fn with_exhausted_cooling(&self, err: ApiError) -> ApiError {
+        err.with_provider_cooling(
+            ProviderCooling::new(Utc::now() + chrono::Duration::seconds(TEI_COOLDOWN_SECS))
+                .with_provider(self.provider_id.as_str())
+                .with_reason("tei_retry_exhausted"),
+        )
     }
 
     fn error(&self, code: &str, message: &str) -> ApiError {

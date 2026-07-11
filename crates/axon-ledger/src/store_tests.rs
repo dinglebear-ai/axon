@@ -188,5 +188,7 @@ fn lease_request_ttl(key: &str, owner: &str, ttl_seconds: u64) -> LeaseRequest {
 mod store_document_cleanup_tests;
 #[path = "store_tests/store_lease_tests.rs"]
 mod store_lease_tests;
+#[path = "store_tests/store_listing_tests.rs"]
+mod store_listing_tests;
 #[path = "store_tests/store_manifest_tests.rs"]
 mod store_manifest_tests;

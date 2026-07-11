@@ -68,6 +68,15 @@ Non-secret behavior:
 
 URLs, bind addresses, public URLs, and auth secrets stay in `.env`.
 
+**Resolved (G1-02, 2026-07-09 audit):** the rename from `[search].collection`
+(current landed key, `crates/axon-core/src/config/`) to `[server].default_collection`
+(this target shape) is confirmed intentional — `default_collection` is a
+server-wide default, not search-specific, so it belongs under `[server]` in
+the target layout. This is not yet implemented in code; Workstream J
+(Configuration) owns moving the key from `[search]` to `[server]` and adding
+a deprecated-key read compatibility shim for `[search].collection`, per the
+`env-contract.md`/`config-contract.md` deprecation pattern used elsewhere.
+
 ## Sources
 
 | Key | Default | Meaning |

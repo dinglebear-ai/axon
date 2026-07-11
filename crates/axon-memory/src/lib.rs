@@ -20,6 +20,7 @@ pub mod decay;
 pub mod graph;
 pub mod link;
 pub mod migration;
+pub mod observe;
 pub mod recall;
 pub mod record;
 pub mod review;
@@ -37,3 +38,7 @@ mod store_tests;
 #[cfg(test)]
 #[path = "shared_pipeline_tests.rs"]
 mod shared_pipeline_tests;
+
+#[cfg(test)]
+#[path = "fixtures_tests.rs"]
+mod fixtures_tests;

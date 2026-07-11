@@ -61,9 +61,24 @@ pub struct GitSourceIndexInput {
     pub embedding_reservations: Option<Arc<ProviderReservationManager>>,
     pub vector_reservations: Option<Arc<ProviderReservationManager>>,
     pub auth_snapshot: Option<AuthSnapshot>,
+    /// `SourceRequest.embed` (source-pipeline.md, Validation Checklist:
+    /// "`embed=false` never writes vectors"). When `false`, documents are still
+    /// discovered/normalized/prepared but no embedding provider or vector store
+    /// call is made.
+    pub embed: bool,
+    /// The real routed plan from `source::routing::resolve_source_route`
+    /// (source-pipeline.md Stage Registry: `routing` -> selected
+    /// adapter/scope/providers). When set, `git_source_adapter::source_plan`
+    /// carries this route's `validated_options`, `credential_requirements`,
+    /// `provider_requirements`, `safety_class`, and hint fields into the
+    /// `SourcePlan` handed to `GitSourceAdapter` instead of rebuilding an
+    /// empty ad-hoc `RoutePlan`. `None` preserves the pre-S2 ad-hoc plan for
+    /// callers that bypass the `index_source` orchestrator (tests, direct
+    /// bridge callers).
+    pub route: Option<RoutePlan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GitSourceIndexOutput {
     pub job_id: JobId,
     pub source_id: SourceId,
@@ -72,6 +87,11 @@ pub struct GitSourceIndexOutput {
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
     pub removed_files: u64,
+    /// Parser-produced graph candidates from every prepared document in
+    /// this generation, carried up for the `graphing` stage
+    /// (`source::graph::write_baseline_graph`) to write. Empty on the
+    /// unchanged-refresh path, since it prepares no documents.
+    pub graph_candidates: Vec<GraphCandidate>,
 }
 
 #[cfg(test)]
@@ -238,6 +258,7 @@ async fn index_git_source_with_lease(
         chunks_prepared: vectorized.stats.chunks_prepared,
         vector_points_written: publish_stats.total_points_written(),
         removed_files: diff.counts.removed,
+        graph_candidates: vectorized.graph_candidates,
     })
 }
 
@@ -271,6 +292,7 @@ async fn unchanged_refresh_output(
         chunks_prepared: 0,
         vector_points_written: 0,
         removed_files: 0,
+        graph_candidates: Vec::new(),
     }))
 }
 

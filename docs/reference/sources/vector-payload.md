@@ -15,13 +15,13 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
-| `crates/axon-vectors/src/payload.rs` | `sha256:45d6beef236e16d572122701748e36ff528992cff85c6ca222440f9e499559f2` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:9336d0c89dcf90394087fbc070553207ed0c838ddeab5bd51e881b058269699f` |
-| `crates/axon-vectors/src/point.rs` | `sha256:f4da74621d8db799cf00f752b323d9b23c4ebe2b8fd30d49eafb87d5628ff44c` |
+| `crates/axon-vectors/src/payload.rs` | `sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1` |
+| `crates/axon-vectors/src/point.rs` | `sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
-| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:debc62b438633191ee4b56a7597828d49752b322d4dffc3ca786a08cc2d3a0f2` |
+| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede` |
 
 ## Root Shape
@@ -51,6 +51,7 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `source_generation` | `string; minLength=1` |
 | `document_id` | `string; minLength=1` |
 | `chunk_id` | `string; minLength=1` |
+| `chunk_index` | `integer; minimum=0` |
 | `content_kind` | `string; minLength=1` |
 | `content_hash` | `string; minLength=1` |
 | `chunk_hash` | `string; minLength=1` |
@@ -67,6 +68,8 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `embedding_profile` | `string; minLength=1` |
 | `embedded_at` | `string; format=date-time; minLength=1` |
 | `committed_generation` | `string; minLength=1` |
+| `chunking_profile` | `string; minLength=1` |
+| `chunking_method` | `string; minLength=1` |
 
 Generation fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `uncommitted` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.
 
@@ -78,7 +81,7 @@ Payload validation applies metadata and locator guardrails before vector writes.
 |---|---|
 | Forbidden field fragments | `raw_auth`, `auth_header`, `authorization`, `cookie`, `api_key`, `apikey`, `secret`, `raw_env`, `env_value`, `absolute_home`, `home_path`, `raw_html`, `html_blob`, `adapter_response`, `response_blob` |
 | Forbidden value fragments | `authorization:`, `proxy-authorization:`, `bearer `, `cookie:`, `set-cookie:`, `api_key=`, `apikey=`, `api-key:`, `x-api-key:`, `access_token=`, `refresh_token=`, `secret_key=`, `token=` |
-| Bare token prefixes | `sk-proj-`, `github_pat_`, `sk-`, `sk_`, `ghp_`, `xoxb-`, `xoxp-`, `glpat-` |
+| Bare token prefixes | `sk-proj-`, `github_pat_`, `sk-`, `sk_`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `xoxb-`, `xoxp-`, `glpat-` |
 
 ## Enum Tables
 
@@ -97,7 +100,7 @@ Payload validation rejects secret field fragments and secret value fragments bef
 
 | Family | Fields |
 |---|---|
-| `code` | `code_language`, `code_symbol_name`, `code_symbol_kind`, `code_file_type`, `manifest`, `git_provider`, `git_host`, `git_repo`, `git_owner`, `git_web_url` |
+| `code` | `code_language`, `code_symbol_name`, `code_symbol_kind`, `code_file_type`, `code_is_test`, `code_parse_status`, `symbol_extraction_status`, `manifest`, `git_provider`, `git_host`, `git_repo`, `git_owner`, `git_web_url` |
 | `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
@@ -118,6 +121,7 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | Field | Schema |
 |---|---|
 | `chunk_id` | `keyword` |
+| `chunk_index` | `integer` |
 | `chunk_key` | `keyword` |
 | `collection` | `keyword` |
 | `committed_generation` | `keyword` |

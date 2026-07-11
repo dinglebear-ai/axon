@@ -26,29 +26,42 @@ logging contract for source pipeline jobs and interactive operations.
 
 ```text
 lib.rs
-event.rs
-phase.rs
-heartbeat.rs
-progress.rs
-metric.rs
-span.rs
-log.rs
 collector.rs
+event.rs
+heartbeat.rs
+log.rs
+metric.rs
+migration.rs
+phase.rs
+progress.rs
+reservation.rs
+schema_registry.rs
+security_audit.rs
+sequence.rs
+sink.rs
+sink/sqlite.rs
+sink/tracing_sink.rs
+span.rs
 testing.rs
 ```
 
 ## Public API
 
-- `ObserveEvent`
-- `ObservePhase`
-- `Heartbeat`
-- `ProgressUpdate`
-- `MetricSample`
-- `SpanFields`
-- `EventEmitter`
-- `ObserveCollector`
-- `NoopEmitter`
-- `TestEmitter`
+The event type itself, `axon_api::source::SourceProgressEvent`, is an
+`axon-api` DTO — `axon-observe` owns emission helpers and sink-based fan-out
+over it, not a standalone `ObserveEvent`/`EventEmitter` pair:
+
+- `SourceProgressEvent` builder functions in `event.rs` (`EventBuilderExt`)
+- `ObservabilitySink` (trait), `NoopObservabilitySink`,
+  `InMemoryObservabilitySink`, `SqliteObservabilitySink`,
+  `TracingObservabilitySink` — sink-based, not a single `EventEmitter`
+- `PhaseDescriptor` and `phase::describe`/`label`/`meaning`/`applies_to`/`is_terminal`
+- `ProgressUpdate` (`progress.rs`)
+- `heartbeat()`/`JobHeartbeatExt` (`heartbeat.rs`)
+- `MetricSample` (`metric.rs`)
+- `SpanFieldSet` (`span.rs`)
+- `SequenceRegistry` (`sequence.rs`) — per-job event ordering
+- `InMemoryObservabilitySnapshot`, `test_error` (`testing.rs`)
 
 ## Dependencies Allowed
 

@@ -233,6 +233,9 @@ pub struct MemoryRequest {
     pub export_scope: Option<crate::source::MemoryScope>,
     /// `export` — include archived memories in the export.
     pub include_archived: Option<bool>,
+    /// `export` — include `working`-status memories in the export (excluded
+    /// by default per contract "Type rules").
+    pub include_working: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -455,29 +458,9 @@ pub struct MigrateRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct WatchRequest {
-    pub subaction: Option<WatchSubaction>,
-    pub id: Option<String>,
-    pub name: Option<String>,
-    pub task_type: Option<String>,
-    pub task_payload: Option<Value>,
-    pub every_seconds: Option<i64>,
-    pub enabled: Option<bool>,
-    pub limit: Option<i64>,
-    pub response_mode: Option<ResponseMode>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WatchSubaction {
-    Create,
-    List,
-    Get,
-    Exec,
-    History,
-}
+#[path = "requests/watch.rs"]
+mod watch;
+pub use watch::{WatchRequest, WatchSubaction};
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -570,6 +553,14 @@ pub struct StatsRequest {
     pub subaction: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
+
+#[path = "requests/discovery.rs"]
+mod discovery;
+pub use discovery::{CapabilitiesRequest, ProvidersRequest, ResolveRequest};
+
+#[path = "requests/graph.rs"]
+mod graph;
+pub use graph::{GraphDirectionArg, GraphRequest, GraphSubaction};
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -43,6 +43,11 @@ reddit.rs
 sessions.rs
 cli_tool.rs
 mcp_tool.rs
+boundary.rs
+enrichment.rs
+family_matrix.rs
+onboarding.rs
+spec.rs
 testing.rs
 ```
 

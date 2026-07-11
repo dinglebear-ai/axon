@@ -122,6 +122,39 @@ pub(super) async fn resolve_cleanup_debt(
     Ok(())
 }
 
+/// Delete ledger rows for one superseded generation: the `source_generations`
+/// row (cascading to `source_manifests`/`source_items` via `ON DELETE
+/// CASCADE`) plus any `document_status` rows recorded against it (no FK to
+/// generation, deleted explicitly). Idempotent — an unknown `(source_id,
+/// generation)` pair deletes nothing and returns `0`.
+pub(super) async fn delete_generation(
+    store: &SqliteLedgerStore,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<u64> {
+    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let documents =
+        sqlx::query("DELETE FROM document_status WHERE source_id = ?1 AND generation = ?2")
+            .bind(&source_id.0)
+            .bind(&generation.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_error)?
+            .rows_affected();
+
+    let generations =
+        sqlx::query("DELETE FROM source_generations WHERE source_id = ?1 AND generation = ?2")
+            .bind(&source_id.0)
+            .bind(&generation.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_error)?
+            .rows_affected();
+
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(documents + generations)
+}
+
 pub(super) async fn insert_cleanup_debt_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     debt: CleanupDebt,

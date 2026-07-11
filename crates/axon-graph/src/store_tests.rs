@@ -263,3 +263,48 @@ async fn fake_graph_store_warns_on_node_kind_conflict() {
         "graph fake should expose conflicts instead of silently replacing node identity"
     );
 }
+
+#[tokio::test]
+async fn fake_graph_store_node_edges_returns_incident_edges_both_directions() {
+    let graph = FakeGraphStore::new();
+    graph
+        .upsert_candidates(vec![multi_edge_candidate()])
+        .await
+        .unwrap();
+
+    let edges = graph
+        .node_edges(GraphNodeId::new("pkg:axon"))
+        .await
+        .unwrap();
+    assert_eq!(edges.len(), 2, "pkg:axon is the `from` side of both edges");
+
+    let tokio_edges = graph
+        .node_edges(GraphNodeId::new("crate:tokio"))
+        .await
+        .unwrap();
+    assert_eq!(tokio_edges.len(), 1);
+
+    let none = graph
+        .node_edges(GraphNodeId::new("does-not-exist"))
+        .await
+        .unwrap();
+    assert!(none.is_empty());
+}
+
+#[tokio::test]
+async fn fake_graph_store_nodes_for_source_filters_by_source_id() {
+    let graph = FakeGraphStore::new();
+    graph.upsert_candidates(vec![candidate()]).await.unwrap();
+
+    let nodes = graph
+        .nodes_for_source(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    assert_eq!(nodes.len(), 2, "both nodes came from source src_a");
+
+    let none = graph
+        .nodes_for_source(SourceId::new("src_missing"))
+        .await
+        .unwrap();
+    assert!(none.is_empty());
+}

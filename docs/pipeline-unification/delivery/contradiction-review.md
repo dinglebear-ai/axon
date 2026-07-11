@@ -106,58 +106,38 @@ Resolution:
 The implementation checklist and current sweep call these out as behaviors to
 preserve when moving to one durable job model.
 
-## Remaining Design Decisions For Implementation Plan
+## Design Decisions — Resolved In Landed Code (verified 2026-07-10, HEAD `5a4558cc7`)
 
-### Retrieval Query Embedding Boundary
+The four decisions below carried `Decision needed` when this doc was written.
+All four now match their recommended default in landed code; kept here as a
+record rather than an open question.
 
-Decision needed:
+### Retrieval Query Embedding Boundary — resolved
 
-Should `axon-retrieval` call `EmbeddingProvider` directly for query embeddings,
-or should `axon-services` produce query embeddings and pass vectors into
-`RetrievalEngine`?
+`axon-retrieval::RetrievalEngine` is generic over `E: EmbeddingProvider`
+(`crates/axon-retrieval/src/boundary.rs`), not a concrete TEI/OpenAI client.
+Tests seed it with `FakeEmbeddingProvider`
+(`crates/axon-retrieval/src/boundary_tests.rs`), confirming the trait-only
+dependency.
 
-Recommended default:
+### Job Runner Injection Shape — resolved
 
-Let `axon-retrieval` depend on the `EmbeddingProvider` trait, not the concrete
-provider, because retrieval planning needs to decide single-query vs dual-query
-embedding behavior. It must not depend on TEI/OpenAI concrete clients.
+`axon-jobs`'s `Cargo.toml` carries no dependency on `axon-services`; runner
+functions/closures are injected from the composition layer, matching the
+recommended default.
 
-### Job Runner Injection Shape
+### `ArtifactStore` Home — resolved
 
-Decision needed:
+`ArtifactStore` remains in `crates/axon-core/src/boundary.rs`, matching the
+recommended default (no object-store/process-boundary need has emerged to
+justify promoting it to its own crate).
 
-How should `axon-services` and `axon-jobs` compose without cycles?
+### `extract` Naming — resolved
 
-Recommended default:
-
-Define runner traits or boxed async runner functions in `axon-api` or
-`axon-jobs`, and have the top-level bootstrap crate or `axon-services` register
-them with `JobRuntime`. The job crate stores/runs jobs; it does not import the
-service crate.
-
-### `ArtifactStore` Home
-
-Decision needed:
-
-Should `ArtifactStore` remain in `axon-core` or become its own crate?
-
-Recommended default:
-
-Keep artifact primitives in `axon-core` until there is more than filesystem
-storage or object-store support is implemented. Promote later only if the
-boundary crosses process/network/security concerns materially.
-
-### `extract` Naming
-
-Decision needed:
-
-Structured LLM extraction remains top-level, while extraction/acquisition inside
-the source pipeline should not be called an indexing category.
-
-Recommended default:
-
-Keep `axon extract` as the explicit structured-data LLM command/action. Use
-`acquire`, `parse`, `enrich`, and `prepare` for internal pipeline stages.
+`axon extract` remains the top-level structured-data LLM command; internal
+pipeline stage names (`acquire`, `parse`, `enrich`, `prepare`) are used for
+the source-pipeline stages per `source-pipeline.md`'s Stage Registry, matching
+the recommended default.
 
 ## No Current Blockers
 

@@ -38,6 +38,7 @@ async fn fake_memory_store_remembers_gets_searches_and_contextualizes() {
 
     let search = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "source ledger".to_string(),
             limit: 5,
             filters: MetadataMap::new(),
@@ -146,6 +147,7 @@ async fn fake_memory_store_rejects_unsupported_search_and_context_options() {
     filters.insert("scope".to_string(), serde_json::json!("axon"));
     let err = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "graph".to_string(),
             limit: 5,
             filters,

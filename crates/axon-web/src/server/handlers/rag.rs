@@ -18,7 +18,7 @@ type WebState = (super::super::state::AppState, Arc<Config>);
     path = "/v1/query",
     request_body = QueryRequest,
     responses(
-        (status = 200, description = "Semantic query results", body = serde_json::Value),
+        (status = 200, description = "Semantic query results", body = axon_api::source::SuccessEnvelope<services::types::QueryResult>),
         (status = 400, description = "Invalid query request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -27,7 +27,7 @@ type WebState = (super::super::state::AppState, Arc<Config>);
 pub(crate) async fn query(
     State((state, cfg)): State<WebState>,
     Json(req): Json<QueryRequest>,
-) -> Result<Json<services::types::QueryResult>, HttpError> {
+) -> Result<Json<axon_api::source::SuccessEnvelope<services::types::QueryResult>>, HttpError> {
     let query = required_text(&req.query, "query")?;
     let cfg = with_query_overrides(
         &cfg,
@@ -36,15 +36,15 @@ pub(crate) async fn query(
         req.before,
         req.hybrid_search,
     )?;
-    services::query::query(
+    let result = services::query::query(
         &state.service_context,
         &cfg,
         query,
         transport::pagination(req.limit, req.offset, cfg.search_limit),
     )
     .await
-    .map(Json)
-    .map_err(HttpError::from_box)
+    .map_err(HttpError::from_box)?;
+    Ok(super::super::envelope::ok(result))
 }
 
 #[utoipa::path(
@@ -52,7 +52,7 @@ pub(crate) async fn query(
     path = "/v1/retrieve",
     request_body = RetrieveRequest,
     responses(
-        (status = 200, description = "Stored document chunks", body = serde_json::Value),
+        (status = 200, description = "Stored document chunks", body = axon_api::source::SuccessEnvelope<services::types::RetrieveResult>),
         (status = 400, description = "Invalid retrieve request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -61,17 +61,17 @@ pub(crate) async fn query(
 pub(crate) async fn retrieve(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<RetrieveRequest>,
-) -> Result<Json<services::types::RetrieveResult>, HttpError> {
+) -> Result<Json<axon_api::source::SuccessEnvelope<services::types::RetrieveResult>>, HttpError> {
     let url = required_text(&req.url, "url")?;
     let cfg = with_query_overrides(&cfg, req.collection, req.since, req.before, None)?;
-    services::query::retrieve(
+    let result = services::query::retrieve(
         &cfg,
         url,
         transport::retrieve_options(req.max_points, req.cursor, req.token_budget),
     )
     .await
-    .map(Json)
-    .map_err(HttpError::from_box_send_sync)
+    .map_err(HttpError::from_box_send_sync)?;
+    Ok(super::super::envelope::ok(result))
 }
 
 #[utoipa::path(

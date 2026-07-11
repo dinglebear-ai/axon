@@ -86,24 +86,64 @@ fn absolute_local_chunk_locator_paths_skip_the_chunk() {
 #[test]
 fn preparer_internal_chunk_metadata_is_not_copied_into_vector_payload() {
     let mut document = test_prepared_document();
-    document.chunks[0]
-        .metadata
-        .insert("chunking_profile".to_string(), json!("markdown_sections"));
-    document.chunks[0]
-        .metadata
-        .insert("chunking_method".to_string(), json!("tree_sitter"));
+    // A stray per-chunk copy of these fields (as the preparer used to stamp
+    // before the document-level `chunking_profile`/`chunking_method` were
+    // exposed in the payload) must not leak through -- the payload's
+    // authoritative values come from `PreparedDocument`, not `chunk.metadata`.
+    document.chunks[0].metadata.insert(
+        "chunking_profile".to_string(),
+        json!("stray-per-chunk-value"),
+    );
+    document.chunks[0].metadata.insert(
+        "chunking_method".to_string(),
+        json!("stray-per-chunk-value"),
+    );
     document.chunks[0]
         .metadata
         .insert("preparer_version".to_string(), json!("2026-07-01"));
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+    let expected_profile = document.chunking_profile.clone();
+    let expected_method = document.chunking_method.clone();
 
     let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
         .unwrap();
 
-    assert!(!batch.points[0].payload.contains_key("chunking_profile"));
-    assert!(!batch.points[0].payload.contains_key("chunking_method"));
+    // Document-level `chunking_profile`/`chunking_method` DO appear in the
+    // payload (S2-18/S2-27), distinct from `embedding_profile` -- but always
+    // the document's authoritative values, never the stray chunk copy.
+    assert_eq!(
+        batch.points[0].payload["chunking_profile"],
+        expected_profile
+    );
+    assert_eq!(batch.points[0].payload["chunking_method"], expected_method);
+    assert_ne!(
+        batch.points[0].payload["chunking_profile"],
+        json!("stray-per-chunk-value")
+    );
     assert!(!batch.points[0].payload.contains_key("preparer_version"));
+}
+
+#[test]
+fn vector_payload_carries_chunk_index_and_a_distinct_embedding_profile() {
+    let document = test_prepared_document();
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let batch = builder(test_collection_spec(3), document.clone(), embeddings)
+        .build()
+        .unwrap();
+
+    assert_eq!(batch.points[0].payload["chunk_index"], json!(0));
+    assert_eq!(
+        batch.points[0].payload["chunking_profile"],
+        document.chunking_profile
+    );
+    // `embedding_profile` is a distinct identity, not a copy of the chunking
+    // profile.
+    assert_ne!(
+        batch.points[0].payload["embedding_profile"],
+        json!(document.chunking_profile)
+    );
 }
 
 #[test]

@@ -6,7 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import com.axon.app.ui.document.DocumentScreen
+import com.axon.app.feature.artifacts.DocumentScreen
 import com.axon.app.ui.theme.AxonTheme
 import org.junit.Rule
 import org.junit.Test

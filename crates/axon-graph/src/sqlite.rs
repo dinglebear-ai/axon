@@ -18,9 +18,9 @@ mod upsert;
 
 use async_trait::async_trait;
 use axon_api::source::{
-    CapabilityBase, GraphCandidate, GraphEdge, GraphEdgeId, GraphNode, GraphNodeId,
-    GraphQueryRequest, GraphQueryResult, GraphResolveRequest, GraphResolveResult,
-    GraphStoreCapability, GraphWriteResult, HealthStatus, MetadataMap,
+    CapabilityBase, GraphCandidate, GraphDeleteResult, GraphEdge, GraphEdgeId, GraphNode,
+    GraphNodeId, GraphQueryRequest, GraphQueryResult, GraphResolveRequest, GraphResolveResult,
+    GraphStoreCapability, GraphWriteResult, HealthStatus, MetadataMap, SourceId,
 };
 use sqlx::SqlitePool;
 
@@ -120,6 +120,70 @@ impl GraphStore for SqliteGraphStore {
                 .map_err(|e| graph_storage_error(format!("failed to reset {table}: {e}")))?;
         }
         Ok(())
+    }
+
+    async fn node_edges(&self, node_id: GraphNodeId) -> Result<Vec<GraphEdge>> {
+        resolve::edges_for_node(&self.pool, &node_id).await
+    }
+
+    async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>> {
+        resolve::nodes_for_source(&self.pool, &source_id).await
+    }
+
+    async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {
+        if stable_keys.is_empty() {
+            return Ok(GraphDeleteResult::default());
+        }
+        let mut nodes_deleted = 0u64;
+        let mut edges_deleted = 0u64;
+        for stable_key in stable_keys {
+            let node_id: Option<String> =
+                sqlx::query_scalar("SELECT node_id FROM graph_nodes WHERE stable_key = ?")
+                    .bind(&stable_key)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(|e| graph_storage_error(format!("failed to look up node: {e}")))?;
+            let Some(node_id) = node_id else {
+                continue;
+            };
+            let incident: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM graph_edges WHERE from_node_id = ?1 OR to_node_id = ?1",
+            )
+            .bind(&node_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| graph_storage_error(format!("failed to count incident edges: {e}")))?;
+            edges_deleted += incident.max(0) as u64;
+            sqlx::query("DELETE FROM graph_nodes WHERE node_id = ?")
+                .bind(&node_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| graph_storage_error(format!("failed to delete node: {e}")))?;
+            nodes_deleted += 1;
+        }
+        Ok(GraphDeleteResult {
+            nodes_deleted,
+            edges_deleted,
+        })
+    }
+
+    async fn delete_edges(&self, edge_ids: Vec<GraphEdgeId>) -> Result<GraphDeleteResult> {
+        if edge_ids.is_empty() {
+            return Ok(GraphDeleteResult::default());
+        }
+        let mut edges_deleted = 0u64;
+        for edge_id in edge_ids {
+            let result = sqlx::query("DELETE FROM graph_edges WHERE edge_id = ?")
+                .bind(&edge_id.0)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| graph_storage_error(format!("failed to delete edge: {e}")))?;
+            edges_deleted += result.rows_affected();
+        }
+        Ok(GraphDeleteResult {
+            nodes_deleted: 0,
+            edges_deleted,
+        })
     }
 
     async fn capabilities(&self) -> Result<GraphStoreCapability> {

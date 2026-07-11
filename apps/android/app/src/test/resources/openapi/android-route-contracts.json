@@ -21,6 +21,26 @@
   },
   {
     "method": "GET",
+    "path": "/v1/sources/{source_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/resolve",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/providers",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/providers/{provider}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
     "path": "/v1/collections",
     "requiresAuth": true
   },
@@ -336,22 +356,22 @@
   },
   {
     "method": "POST",
-    "path": "/v1/dedupe",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/purge",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
     "path": "/v1/prune/plan",
     "requiresAuth": true
   },
   {
     "method": "POST",
     "path": "/v1/prune/exec",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/prune/dedupe",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/prune/purge",
     "requiresAuth": true
   },
   {
@@ -367,6 +387,76 @@
   {
     "method": "POST",
     "path": "/v1/watch/{id}/run",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/watches",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watches",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watches/{watch_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "PATCH",
+    "path": "/v1/watches/{watch_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/watches/{watch_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/watches/{watch_id}/pause",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/watches/{watch_id}/resume",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/graph/kinds",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/graph/resolve",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/graph/query",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/graph/nodes/{node_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/graph/nodes/{node_id}/edges",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/graph/edges/{edge_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/graph/sources/{source_id}",
     "requiresAuth": true
   }
 ]

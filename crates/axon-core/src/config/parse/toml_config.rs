@@ -3,6 +3,9 @@ use serde::Deserialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod convert;
+mod raw;
+
 /// TOML configuration — tuning knobs only, safe to commit to source control.
 ///
 /// Phase 1 scope (~15 fields across 4 sections). All fields are `Option<T>`
@@ -87,6 +90,16 @@ pub(super) struct TomlLlmSection {
     /// window (drives the adaptive full-docs floor in `ask`). Absent = infer
     /// from the model name. Env `AXON_SYNTHESIS_HIGH_CONTEXT` wins.
     pub synthesis_high_context: Option<bool>,
+    /// Max concurrent LLM completion requests across the selected backend
+    /// (clamped 1–64). Env `AXON_LLM_COMPLETION_CONCURRENCY` wins.
+    pub completion_concurrency: Option<usize>,
+    /// Timeout in seconds for each LLM completion request (clamped
+    /// 10–1800). Env `AXON_LLM_COMPLETION_TIMEOUT_SECS` wins.
+    pub completion_timeout_secs: Option<u64>,
+    /// How long (seconds) an idle pooled `codex app-server` child may sit
+    /// unused before the pool discards it on next checkout (clamped 0–3600;
+    /// 0 disables TTL eviction). Env `AXON_CODEX_POOL_IDLE_TTL_SECS` wins.
+    pub codex_pool_idle_ttl_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -197,6 +210,10 @@ pub(super) struct TomlSearchSection {
     pub hnsw_ef_legacy: Option<usize>,
     /// Qdrant collection name.
     pub collection: Option<String>,
+    /// When true (default), `research` fetches each top source's full page
+    /// and synthesizes over it; when false it synthesizes over search
+    /// snippets only (much faster). Env `AXON_RESEARCH_FULL_CONTENT` wins.
+    pub research_full_content: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -392,6 +409,20 @@ pub(super) struct TomlWorkersSection {
     pub max_pending_extract_jobs: Option<usize>,
     /// Ingest queue cap (0 = unlimited).
     pub max_pending_ingest_jobs: Option<usize>,
+    /// Retention window (days) for terminal unified job rows.
+    pub jobs_retention_terminal_days: Option<i64>,
+    /// Retention window (days) for non-failed `job_events` rows.
+    pub jobs_retention_event_days: Option<i64>,
+    /// Retention window (days) for failed-job `job_events` rows.
+    pub jobs_retention_failed_event_days: Option<i64>,
+    /// Retention window (days) for `provider_reservations` rows.
+    pub jobs_retention_provider_health_days: Option<i64>,
+    /// Retention window (days) for `job_artifacts` rows.
+    pub jobs_retention_artifact_days: Option<i64>,
+    /// Seconds between periodic differentiated retention sweeps.
+    pub jobs_retention_sweep_secs: Option<i64>,
+    /// SLO in seconds for the priority-aware interactive-lane starvation watchdog.
+    pub jobs_interactive_starvation_slo_secs: Option<i64>,
     /// Timeout in seconds for `--wait true` job polling (clamped 30–3600).
     /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`.
     pub job_wait_timeout_secs: Option<u64>,
@@ -590,12 +621,25 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
         }
     };
 
-    toml::from_str::<TomlConfig>(&contents).map_err(|e| {
-        format!(
-            "axon: error: config file '{}' has a parse error: {e}",
-            path.display()
-        )
-    })
+    parse_toml_config_str(&contents, Some(path))
+}
+
+/// Parse `config.toml` contents against the current 20-section contract
+/// shape ([`raw::RawTomlConfig`]), then fold the result onto the legacy flat
+/// [`TomlConfig`] every downstream consumer already reads. Deprecated
+/// pre-contract section names (`[llm]`, `[tei]`, `[scrape]`, ...) are
+/// detected before the typed parse so the error names the offending
+/// section(s) and their new home instead of a bare serde "unknown field".
+fn parse_toml_config_str(contents: &str, path: Option<&Path>) -> Result<TomlConfig, String> {
+    let where_clause = path
+        .map(|p| format!(" '{}'", p.display()))
+        .unwrap_or_default();
+    if let Some(msg) = convert::deprecated_section_error(contents) {
+        return Err(format!("axon: error: config file{where_clause} {msg}"));
+    }
+    let raw = toml::from_str::<raw::RawTomlConfig>(contents)
+        .map_err(|e| format!("axon: error: config file{where_clause} has a parse error: {e}"))?;
+    Ok(convert::into_legacy(raw))
 }
 
 #[cfg(unix)]
@@ -617,8 +661,8 @@ fn read_config_file_no_follow(path: &Path) -> Result<String, std::io::Error> {
 }
 
 #[cfg(test)]
-pub(super) fn load_toml_config_from_str(s: &str) -> Result<TomlConfig, toml::de::Error> {
-    toml::from_str(s)
+pub(super) fn load_toml_config_from_str(s: &str) -> Result<TomlConfig, String> {
+    parse_toml_config_str(s, None)
 }
 
 #[cfg(test)]

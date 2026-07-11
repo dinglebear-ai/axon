@@ -54,6 +54,8 @@ fn input(feed_path: std::path::PathBuf) -> FeedSourceIndexInput {
         embedding_dimensions: 8,
         embedding_reservations: None,
         vector_reservations: None,
+        embed: true,
+        max_items: None,
     }
 }
 

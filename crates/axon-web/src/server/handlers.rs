@@ -20,6 +20,8 @@ pub mod config;
 pub mod discovery;
 #[path = "handlers/exploration.rs"]
 pub mod exploration;
+#[path = "handlers/graph.rs"]
+pub mod graph;
 #[path = "handlers/jobs.rs"]
 pub mod jobs;
 #[path = "handlers/jobs_stream.rs"]
@@ -28,14 +30,20 @@ pub mod jobs_stream;
 pub mod memory;
 #[path = "handlers/mobile_sessions.rs"]
 pub mod mobile_sessions;
+#[path = "handlers/providers.rs"]
+pub(crate) mod providers;
 #[path = "handlers/rag.rs"]
 pub mod rag;
 #[path = "handlers/rest.rs"]
 pub(crate) mod rest;
 #[path = "handlers/setup.rs"]
 pub mod setup;
+#[path = "handlers/source_watch.rs"]
+pub mod source_watch;
 #[path = "handlers/sources.rs"]
 pub mod sources;
+#[path = "handlers/sources_resource.rs"]
+pub(crate) mod sources_resource;
 
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;

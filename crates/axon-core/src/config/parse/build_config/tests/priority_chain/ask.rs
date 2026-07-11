@@ -6,7 +6,7 @@ use super::super::*;
 #[serial_test::serial]
 #[test]
 fn ask_explain_cli_sets_explain_and_diagnostics() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut cfg = None;
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
@@ -25,7 +25,7 @@ fn ask_explain_cli_sets_explain_and_diagnostics() {
 #[serial_test::serial]
 #[test]
 fn ask_stream_cli_defaults_to_stream_without_diagnostics() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut cfg = None;
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
@@ -42,7 +42,7 @@ fn ask_stream_cli_defaults_to_stream_without_diagnostics() {
 #[serial_test::serial]
 #[test]
 fn ask_no_stream_cli_disables_default_stream() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut cfg = None;
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
@@ -58,7 +58,7 @@ fn ask_no_stream_cli_disables_default_stream() {
 #[serial_test::serial]
 #[test]
 fn ask_follow_up_cli_sets_session_options() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut cfg = None;
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
@@ -86,7 +86,7 @@ fn ask_follow_up_cli_sets_session_options() {
 #[serial_test::serial]
 #[test]
 fn toml_chunk_limit_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nchunk-limit = 5").unwrap();
 
@@ -118,7 +118,7 @@ fn toml_chunk_limit_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_ask_chunk_limit() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nchunk-limit = 5").unwrap();
 
@@ -150,7 +150,7 @@ fn env_wins_over_toml_for_ask_chunk_limit() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_authoritative_domains_and_boost_win_over_defaults() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
@@ -184,7 +184,7 @@ fn toml_ask_authoritative_domains_and_boost_win_over_defaults() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_ask_authoritative_domains_and_boost() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
@@ -218,7 +218,7 @@ fn env_wins_over_toml_for_ask_authoritative_domains_and_boost() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_context_knobs_win_over_defaults() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
@@ -263,7 +263,7 @@ fn toml_ask_context_knobs_win_over_defaults() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_ask_context_knobs() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
@@ -308,7 +308,7 @@ fn env_wins_over_toml_for_ask_context_knobs() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_chunk_limit_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nchunk-limit = 1").unwrap();
     let mut got = 0usize;
@@ -324,7 +324,7 @@ fn toml_ask_chunk_limit_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_chunk_limit_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nchunk-limit = 999").unwrap();
     let mut got = 0usize;
@@ -340,9 +340,9 @@ fn toml_ask_chunk_limit_clamps_upper_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_hybrid_disabled_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhybrid-enabled = false").unwrap();
+    writeln!(f, "[providers.vector]\nhybrid-enabled = false").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_hs = env::var("AXON_HYBRID_SEARCH").ok();
@@ -371,9 +371,9 @@ fn toml_hybrid_disabled_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn env_wins_over_toml_for_hybrid_enabled() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[search]\nhybrid-enabled = false").unwrap();
+    writeln!(f, "[providers.vector]\nhybrid-enabled = false").unwrap();
 
     let saved = env::var("AXON_CONFIG_PATH").ok();
     let saved_hs = env::var("AXON_HYBRID_SEARCH").ok();
@@ -402,7 +402,7 @@ fn env_wins_over_toml_for_hybrid_enabled() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_candidate_limit_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\ncandidate-limit = 50").unwrap();
 
@@ -434,7 +434,7 @@ fn toml_ask_candidate_limit_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_candidate_limit_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\ncandidate-limit = 1").unwrap();
     let mut got = 0usize;
@@ -455,7 +455,7 @@ fn toml_ask_candidate_limit_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_candidate_limit_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\ncandidate-limit = 999").unwrap();
     let mut got = 0usize;
@@ -476,7 +476,7 @@ fn toml_ask_candidate_limit_clamps_upper_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_min_relevance_score_wins_over_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nmin-relevance-score = 0.7").unwrap();
 
@@ -508,7 +508,7 @@ fn toml_ask_min_relevance_score_wins_over_default() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_min_relevance_score_clamps_lower_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nmin-relevance-score = -9.0").unwrap();
     let mut got = 0.0f64;
@@ -529,7 +529,7 @@ fn toml_ask_min_relevance_score_clamps_lower_bound() {
 #[serial_test::serial]
 #[test]
 fn toml_ask_min_relevance_score_clamps_upper_bound() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[ask]\nmin-relevance-score = 9.0").unwrap();
     let mut got = 0.0f64;

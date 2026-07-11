@@ -11,6 +11,7 @@ pub mod phase;
 pub mod progress;
 pub mod reservation;
 pub mod schema_registry;
+pub mod security_audit;
 pub mod sequence;
 pub mod sink;
 pub mod span;
@@ -33,3 +34,7 @@ mod event_tests;
 #[cfg(test)]
 #[path = "heartbeat_tests.rs"]
 mod heartbeat_tests;
+
+#[cfg(test)]
+#[path = "security_audit_tests.rs"]
+mod security_audit_tests;

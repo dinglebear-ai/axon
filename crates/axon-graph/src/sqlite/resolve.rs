@@ -2,7 +2,7 @@
 
 use axon_api::source::{
     GraphEdge, GraphIdentifier, GraphNode, GraphNodeId, GraphResolveMatch, GraphResolveMiss,
-    GraphResolveRequest, GraphResolveResult,
+    GraphResolveRequest, GraphResolveResult, SourceId,
 };
 use sqlx::SqlitePool;
 
@@ -136,4 +136,25 @@ pub async fn edges_for_node(
         edges.push(edge);
     }
     Ok(edges)
+}
+
+/// All nodes whose `source_ids_json` column contains `source_id`.
+///
+/// Matches on the exact quoted JSON string form (`"<source_id>"`) so a
+/// source id that happens to be a substring of another does not falsely
+/// match; this is a `LIKE` scan rather than a normalized join table, which is
+/// an acceptable tradeoff for the current node volume (tracked as a
+/// follow-up if `graph_nodes` needs a dedicated source-id index table).
+pub async fn nodes_for_source(
+    pool: &SqlitePool,
+    source_id: &SourceId,
+) -> StoreResult<Vec<GraphNode>> {
+    let pattern = format!("%\"{}\"%", source_id.0);
+    let rows =
+        sqlx::query("SELECT * FROM graph_nodes WHERE source_ids_json LIKE ? ORDER BY node_id")
+            .bind(pattern)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| graph_storage_error(format!("failed to fetch nodes for source: {e}")))?;
+    rows.iter().map(node_from_row).collect()
 }

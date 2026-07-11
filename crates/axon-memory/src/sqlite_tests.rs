@@ -113,6 +113,7 @@ async fn search_finds_by_keyword_and_excludes_forgotten() {
 
     let result = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "qdrant".to_string(),
             limit: 10,
             filters: MetadataMap::new(),
@@ -145,6 +146,7 @@ async fn search_excludes_archived_unless_requested() {
 
     let hidden = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "tei".to_string(),
             limit: 10,
             filters: MetadataMap::new(),
@@ -158,6 +160,7 @@ async fn search_excludes_archived_unless_requested() {
 
     let shown = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "tei".to_string(),
             limit: 10,
             filters: MetadataMap::new(),
@@ -190,6 +193,7 @@ async fn scope_filter_narrows_results() {
     filters.insert("scope".to_string(), serde_json::json!("axon"));
     let result = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "shared token".to_string(),
             limit: 10,
             filters,
@@ -262,6 +266,7 @@ async fn context_excludes_working_by_default() {
     // working status to model short-lived context.
     let all = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "scratch".to_string(),
             limit: 10,
             filters: MetadataMap::new(),
@@ -342,6 +347,7 @@ async fn supersede_hides_old_and_links_replacement() {
     // Superseded memory is excluded from search.
     let result = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "postgres".to_string(),
             limit: 10,
             filters: MetadataMap::new(),
@@ -428,6 +434,7 @@ async fn decay_reduces_live_score_over_time() {
 
     let fresh = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "session".to_string(),
             limit: 1,
             filters: MetadataMap::new(),
@@ -443,6 +450,7 @@ async fn decay_reduces_live_score_over_time() {
     clock.advance_days(14);
     let aged = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "session".to_string(),
             limit: 1,
             filters: MetadataMap::new(),
@@ -478,6 +486,7 @@ async fn pinned_memory_does_not_decay_in_recall() {
 
     let fresh = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "pinned".to_string(),
             limit: 1,
             filters: MetadataMap::new(),
@@ -493,6 +502,7 @@ async fn pinned_memory_does_not_decay_in_recall() {
     clock.advance_days(60);
     let later = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: "pinned".to_string(),
             limit: 1,
             filters: MetadataMap::new(),
@@ -707,7 +717,7 @@ async fn compact_rejects_unsupported_strategy() {
     let err = store
         .compact(MemoryCompactRequest {
             memory_ids: vec![a.memory_id, b.memory_id],
-            strategy: "semantic_summary".to_string(),
+            strategy: "not_a_real_strategy".to_string(),
             result_type: MemoryType::Fact,
             title: None,
             scope: MemoryScope {
@@ -721,6 +731,80 @@ async fn compact_rejects_unsupported_strategy() {
         .await
         .unwrap_err();
     assert_eq!(err.code.to_string(), "memory.unsupported_strategy");
+}
+
+/// `semantic_summary` is a supported strategy string, but fails closed
+/// (`memory.llm_unavailable`) rather than silently falling back to
+/// `concatenate` when no `CompactionSynthesizer` is injected.
+#[tokio::test]
+async fn compact_semantic_summary_fails_closed_without_synthesizer() {
+    let (store, clock) = store();
+    let a = store
+        .remember(request(MemoryType::Fact, "fact one", "axon"))
+        .await
+        .unwrap();
+    let b = store
+        .remember(request(MemoryType::Fact, "fact two", "axon"))
+        .await
+        .unwrap();
+
+    let err = store
+        .compact(MemoryCompactRequest {
+            memory_ids: vec![a.memory_id, b.memory_id],
+            strategy: "semantic_summary".to_string(),
+            result_type: MemoryType::Fact,
+            title: None,
+            scope: MemoryScope {
+                kind: "project".to_string(),
+                value: "axon".to_string(),
+            },
+            archive_sources: false,
+            instructions: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.to_string(), "memory.llm_unavailable");
+}
+
+/// With an injected [`FakeCompactionSynthesizer`], `semantic_summary`
+/// produces the synthesized body (not the `concatenate` `[memory_id] body`
+/// format) and runs it through the same redaction boundary as `remember`.
+#[tokio::test]
+async fn compact_semantic_summary_uses_injected_synthesizer() {
+    let (store, clock) = store();
+    let store = store.with_compaction_synthesizer(std::sync::Arc::new(
+        crate::testing::FakeCompactionSynthesizer::new(),
+    ));
+    let a = store
+        .remember(request(MemoryType::Fact, "fact one", "axon"))
+        .await
+        .unwrap();
+    let b = store
+        .remember(request(MemoryType::Fact, "fact two", "axon"))
+        .await
+        .unwrap();
+
+    let result = store
+        .compact(MemoryCompactRequest {
+            memory_ids: vec![a.memory_id, b.memory_id],
+            strategy: "semantic_summary".to_string(),
+            result_type: MemoryType::Fact,
+            title: None,
+            scope: MemoryScope {
+                kind: "project".to_string(),
+                value: "axon".to_string(),
+            },
+            archive_sources: false,
+            instructions: Some("focus on facts".to_string()),
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+    let compacted = store.get(result.memory_id).await.unwrap().unwrap();
+    assert!(compacted.body.starts_with("[synthesized:focus on facts]"));
+    assert!(compacted.body.contains("fact one"));
+    assert!(compacted.body.contains("fact two"));
 }
 
 #[tokio::test]
@@ -756,6 +840,7 @@ async fn import_merge_dedupes_by_body_type_and_scope() {
 async fn import_dry_run_reports_plan_without_writing() {
     let (store, _clock) = store();
     let mut record = MemoryRecord {
+        visibility: Visibility::Internal,
         memory_id: MemoryId::new("mem_dry_run"),
         memory_type: MemoryType::Fact,
         status: MemoryStatus::Active,
@@ -820,6 +905,7 @@ async fn export_excludes_archived_and_forgotten_by_default() {
         .export(MemoryExportRequest {
             scope: None,
             include_archived: false,
+            include_working: false,
         })
         .await
         .unwrap();

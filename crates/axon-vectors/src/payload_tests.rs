@@ -25,6 +25,19 @@ fn fixture(name: &str) -> MetadataMap {
 }
 
 fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
+    // Fields added after these fixtures were authored (S2-18/S2-27):
+    // distinct chunking profile/method + chunk_index. Backfilled here so
+    // existing fixtures don't need per-file edits.
+    metadata
+        .entry("chunk_index".to_string())
+        .or_insert_with(|| serde_json::json!(0));
+    metadata
+        .entry("chunking_profile".to_string())
+        .or_insert_with(|| serde_json::json!("plain_text_windows"));
+    metadata
+        .entry("chunking_method".to_string())
+        .or_insert_with(|| serde_json::json!("paragraph_windows"));
+
     let Some(source_family) = metadata
         .get("source_family")
         .and_then(serde_json::Value::as_str)

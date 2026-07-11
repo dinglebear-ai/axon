@@ -44,6 +44,9 @@ fn plan_with_vector_step(destructive_and_admin: bool) -> PrunePlan {
             }),
             source_id: Some(SourceId::new("owner/repo")),
             generation: None,
+            graph_stable_keys: None,
+            graph_edge_ids: None,
+            memory_ids: None,
         }],
         warnings: Vec::new(),
     }

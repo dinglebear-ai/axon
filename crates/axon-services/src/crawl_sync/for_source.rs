@@ -55,17 +55,32 @@ pub fn crawl_output_manifest_and_markdown(output_dir: &Path) -> (PathBuf, PathBu
     (output_dir.join("manifest.jsonl"), output_dir.to_path_buf())
 }
 
+/// Build the effective crawl config for one web source acquisition: disable
+/// the crawl's own embed pass (the web bridge owns vectorization) and, when
+/// present, override the page cap from `SourceRequest.limits.max_pages` (see
+/// `docs/pipeline-unification/foundation/source-pipeline.md`, `SourceRequest`
+/// table: "`limits` — source/page/file/chunk/provider limits"). Pure — no I/O —
+/// so the limit-propagation contract is unit-testable without a live crawl.
+pub fn effective_crawl_config_for_source(cfg: &Config, max_pages: Option<u64>) -> Config {
+    let mut crawl_cfg = cfg.clone();
+    crawl_cfg.embed = false;
+    if let Some(max_pages) = max_pages {
+        crawl_cfg.max_pages = u32::try_from(max_pages).unwrap_or(u32::MAX);
+    }
+    crawl_cfg
+}
+
 /// Crawl `start_url` to completion (embed disabled) and return the prepared
 /// crawl-output paths for the web source bridge.
+///
+/// `max_pages` honors `SourceRequest.limits.max_pages`; `None` keeps the crawl
+/// config's own default page cap. See [`effective_crawl_config_for_source`].
 pub async fn crawl_for_source(
     cfg: &Config,
     start_url: &str,
+    max_pages: Option<u64>,
 ) -> Result<CrawlForSourceResult, Box<dyn Error>> {
-    // The web bridge owns vectorization; disable the crawl's own embed pass so
-    // pages are not embedded twice (and not embedded as raw crawl payloads that
-    // bypass the source ledger).
-    let mut crawl_cfg = cfg.clone();
-    crawl_cfg.embed = false;
+    let crawl_cfg = effective_crawl_config_for_source(cfg, max_pages);
 
     let summary = crawl_sync(&crawl_cfg, start_url).await?;
 

@@ -396,18 +396,26 @@ Must not own:
 Purpose: shared observability event model, tracing, metrics, and heartbeat
 helpers.
 
-Required public modules:
+Required public modules (synced to `crates/axon-observe/src/lib.rs`,
+2026-07-09 audit — see `axon-observe/README.md` for the full module list and
+public API):
 
 ```text
 lib.rs
+collector.rs
 event.rs
 heartbeat.rs
+log.rs
+metric.rs
+migration.rs
+phase.rs
 progress.rs
-span.rs
-metrics.rs
-log_fields.rs
+reservation.rs
+schema_registry.rs
+security_audit.rs
+sequence.rs
 sink.rs
-redacted.rs
+span.rs
 testing.rs
 ```
 
@@ -473,24 +481,32 @@ Must not own:
 
 Purpose: acquisition/discovery/fetch for every source family.
 
-Required public modules:
+Required public modules (synced to `crates/axon-adapters/src/lib.rs`,
+2026-07-09 audit — see `axon-adapters/README.md` for the full module list):
 
 ```text
 lib.rs
+acquisition.rs
 adapter.rs
-registry.rs
+boundary.rs
 capability.rs
-options.rs
-web.rs
-local.rs
-git.rs
-registry_adapters.rs
+cli_tool.rs
+enrichment.rs
+family_matrix.rs
 feed.rs
-social.rs
-video.rs
+git.rs
+local.rs
+manifest.rs
+mcp_tool.rs
+onboarding.rs
+reddit.rs
+registry.rs
+registry_sources.rs
 sessions.rs
-tools.rs
+spec.rs
 testing.rs
+web.rs
+youtube.rs
 ```
 
 Must expose:
@@ -1496,6 +1512,14 @@ Do not add:
 - restored old commands
 - hidden action shims
 - duplicate old/new source pipelines
+
+**Status (confirmed, per the 2026-07-09 alignment audit F6-V01):** this rule
+is currently violated at the architecture level — the legacy per-source-kind
+pipeline and the target unified source pipeline both exist in the tree today.
+This is the master blocking condition for Workstream A (old-crate removal),
+not one gap among many: no legacy crate/pipeline removal PR should land
+until the target pipeline covers 100% of the legacy behavior it replaces,
+tested, per the Validation Checklist below.
 
 ## Validation Checklist
 

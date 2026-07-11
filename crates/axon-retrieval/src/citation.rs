@@ -7,12 +7,12 @@ use serde_json::Value;
 pub const MODULE_NAME: &str = "citation";
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Citation {
-    pub(crate) source_id: SourceId,
-    pub(crate) document_id: DocumentId,
-    pub(crate) chunk_id: ChunkId,
-    pub(crate) canonical_uri: String,
-    pub(crate) range: SourceRange,
+pub struct Citation {
+    pub source_id: SourceId,
+    pub document_id: DocumentId,
+    pub chunk_id: ChunkId,
+    pub canonical_uri: String,
+    pub range: SourceRange,
 }
 
 impl Citation {

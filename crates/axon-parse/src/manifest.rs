@@ -65,6 +65,14 @@ pub fn dependency_parse_items(input: &ParseInput) -> ManifestParseItems {
         }
     };
 
+    let mut deps = deps;
+    if path.ends_with("pom.xml") {
+        deps.extend(maven::toolchain(input));
+    } else if path.ends_with("pyproject.toml") {
+        deps.extend(python::pyproject_extras(input));
+        deps.extend(python::pyproject_toolchain(input));
+    }
+
     let mut facts = Vec::new();
     let mut candidates = Vec::new();
     for dep in deps {
@@ -72,7 +80,7 @@ pub fn dependency_parse_items(input: &ParseInput) -> ManifestParseItems {
             input,
             dep.parser_id,
             "compact_manifest",
-            "dependency",
+            dep.fact_kind,
             dep.name.clone(),
             json!({
                 "ecosystem": dep.ecosystem,
@@ -84,7 +92,7 @@ pub fn dependency_parse_items(input: &ParseInput) -> ManifestParseItems {
         candidates.push(graph_candidate(
             input,
             dep.parser_id,
-            "manifest_dependency",
+            dep.candidate_kind,
             &dep.name,
             Some(dep.line),
             Some(dep.quote),
@@ -143,6 +151,8 @@ struct Dep {
     parser_id: &'static str,
     ecosystem: &'static str,
     scope: &'static str,
+    fact_kind: &'static str,
+    candidate_kind: &'static str,
     name: String,
     version: Option<String>,
     line: u32,

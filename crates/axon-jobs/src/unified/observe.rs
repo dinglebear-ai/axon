@@ -115,6 +115,8 @@ fn status_heartbeat(status: &JobStatusUpdate) -> JobHeartbeat {
         status: status.status,
         stage_id: status.stage_id,
         heartbeat_at: now_timestamp(),
+        sequence: 0,
+        last_progress_at: None,
         last_event_sequence: None,
         counts: status.counts.clone(),
         provider_reservations: Vec::new(),

@@ -377,6 +377,99 @@ fn non_inline_content_degrades_to_atomic_metadata_chunk() {
     );
 }
 
+#[test]
+fn large_code_document_dispatches_to_windowed_fallback_not_code_symbols() {
+    // Over the 200_000-byte router threshold: `decision_for_profile` reports
+    // "code_blocks" as the active method, and `build_chunks` must actually
+    // dispatch to the windowed-text fallback for it to be true, not just run
+    // `code::code_symbols` unconditionally and mislabel the result.
+    let mut body = String::new();
+    for i in 0..6000 {
+        body.push_str(&format!("fn symbol_{i}() {{ let x = {i}; }}\n"));
+    }
+    assert!(body.len() > 200_000, "fixture must exceed the threshold");
+
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Code,
+            &body,
+            "gen-large-code",
+            ChunkingProfile::CodeSymbol,
+        ))
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_profile, "code_symbol");
+    assert_eq!(prepared.chunking_method, "code_blocks");
+    assert!(!prepared.chunks.is_empty());
+    for chunk in &prepared.chunks {
+        assert_eq!(chunk.metadata["chunking_fallback"], "size_or_adapter");
+        assert_eq!(chunk.metadata["actual_chunking_method"], "code_blocks");
+        // The windowed fallback does not stamp code-symbol-specific fields
+        // that only `build_prepared_chunk`'s CodeSymbol branch adds from a
+        // real `chunk.symbol` -- confirms `code::code_symbols` did not run.
+        assert!(!chunk.metadata.contains_key("code_symbol_name"));
+    }
+}
+
+#[test]
+fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback() {
+    let mut doc = source_doc(ContentKind::Code, "fn tiny() {}\n");
+    doc.metadata.insert(
+        "source_adapter".to_string(),
+        serde_json::json!("web_scrape"),
+    );
+
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-fragment"),
+            profile: Some(ChunkingProfile::CodeSymbol),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_method, "code_blocks");
+    assert_eq!(
+        prepared.chunks[0].metadata["chunking_fallback"],
+        "size_or_adapter"
+    );
+}
+
+#[test]
+fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
+    // StructuredRecords has no wired size fallback: even past the threshold,
+    // both the reported method and the actual chunker stay on the profile's
+    // primary structured parser (this fixture is valid JSON, so it does not
+    // hit the separate parse-failure fallback path either).
+    let mut body = String::from("{\"items\":[");
+    for i in 0..20_000 {
+        if i > 0 {
+            body.push(',');
+        }
+        body.push_str(&format!("{{\"id\":{i}}}"));
+    }
+    body.push_str("]}");
+    assert!(body.len() > 200_000, "fixture must exceed the threshold");
+
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Json,
+            &body,
+            "gen-large-structured",
+            ChunkingProfile::StructuredRecords,
+        ))
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_profile, "structured_records");
+    assert_eq!(prepared.chunking_method, "structured_records");
+}
+
 fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
     SourceDocument {
         document_id: DocumentId::from("doc-test"),

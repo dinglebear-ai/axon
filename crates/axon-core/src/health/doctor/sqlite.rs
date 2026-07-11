@@ -84,12 +84,20 @@ pub(super) async fn build(
     let effective_qdrant = resolve_host_endpoint(EndpointKind::Qdrant, Some(&cfg.qdrant_url), &[]);
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
 
+    let config_diagnostics = super::config_checks::run_all();
+
     let mut recommendations = vec![
         "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
             .to_string(),
     ];
     if let Some(guidance) = cutover_guidance {
         recommendations.push(guidance);
+    }
+    if !config_diagnostics.is_empty() {
+        recommendations.push(format!(
+            "{} config diagnostic(s) found — see config_diagnostics in this report",
+            config_diagnostics.len()
+        ));
     }
 
     Ok(serde_json::json!({
@@ -118,6 +126,7 @@ pub(super) async fn build(
         },
         "cutover_stores": cutover_stores,
         "reset_recommended": reset_recommended,
+        "config_diagnostics": config_diagnostics,
         "services": Value::Object(services),
         "pipelines": {
             "crawl": true,

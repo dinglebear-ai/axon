@@ -75,8 +75,8 @@ pub trait RateLimiter: Send + Sync {
 
 #[async_trait]
 pub trait HealthProbe: Send + Sync {
-    async fn probe(&self) -> Result<HealthProbeResult>;
-    async fn capabilities(&self) -> Result<HealthProbeCapability>;
+    async fn probe(&self, request: HealthProbeRequest) -> Result<HealthReport>;
+    async fn capabilities(&self) -> Result<ProviderCapability>;
 }
 
 #[async_trait]
@@ -86,6 +86,13 @@ pub trait SecurityPolicy: Send + Sync {
     async fn capabilities(&self) -> Result<SecurityPolicyCapability>;
 }
 ```
+
+Note: `HealthProbe` (`crates/axon-core/src/boundary.rs`) is the one trait
+above that already uses the shared `ProviderCapability`/`HealthProbeRequest`/
+`HealthReport` types instead of a bespoke per-trait request/result pair — the
+other provider traits still use their own dedicated capability structs
+(`LlmProviderCapability`, `EmbeddingProviderCapability`, etc., all real types
+in `crates/axon-api/src/source/capability.rs`).
 
 ## Capability Requirements
 

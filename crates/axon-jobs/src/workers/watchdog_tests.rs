@@ -105,6 +105,7 @@ async fn watchdog_sweep_reclaims_stale_unified_job() {
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .unwrap();

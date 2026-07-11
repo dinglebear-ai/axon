@@ -39,7 +39,9 @@ pub async fn search(
 
     let mut matches: Vec<MemorySearchMatch> = records
         .into_iter()
-        .filter(|record| recall_visible(record, request.include_archived))
+        .filter(|record| {
+            recall_visible(record, request.include_archived, &request.include_statuses)
+        })
         .filter(|record| scope_matches_filter(record, scope_filter.as_deref()))
         .filter_map(|record| {
             let semantic = keyword_semantic(&record, &query, &query_terms);
@@ -195,12 +197,21 @@ fn load_all(conn: &Connection) -> Result<Vec<MemoryRecord>> {
     Ok(records)
 }
 
-/// Search visibility: forgotten never; superseded excluded (not "explicitly
-/// requested" in this keyword surface); archived only when included.
-fn recall_visible(record: &MemoryRecord, include_archived: bool) -> bool {
+/// Search visibility (contract "Recall rules"): forgotten never returns;
+/// superseded/contradicted return only when explicitly opted in via
+/// `include_statuses`; archived only when `include_archived` or explicitly
+/// requested.
+fn recall_visible(
+    record: &MemoryRecord,
+    include_archived: bool,
+    include_statuses: &[MemoryStatus],
+) -> bool {
     match record.status {
-        MemoryStatus::Forgotten | MemoryStatus::Superseded => false,
-        MemoryStatus::Archived => include_archived,
+        MemoryStatus::Forgotten => false,
+        MemoryStatus::Superseded => include_statuses.contains(&MemoryStatus::Superseded),
+        MemoryStatus::Archived => {
+            include_archived || include_statuses.contains(&MemoryStatus::Archived)
+        }
         _ => true,
     }
 }

@@ -167,5 +167,7 @@ mod sqlite_document_cleanup_tests;
 mod sqlite_generation_tests;
 #[path = "sqlite_tests/sqlite_lease_tests.rs"]
 mod sqlite_lease_tests;
+#[path = "sqlite_tests/sqlite_listing_tests.rs"]
+mod sqlite_listing_tests;
 #[path = "sqlite_tests/sqlite_source_manifest_tests.rs"]
 mod sqlite_source_manifest_tests;

@@ -38,8 +38,10 @@ Implemented today:
 - `axon-core` owns config, HTTP helpers, artifacts, redaction, and the current
   `LlmProvider` implementations for Gemini headless, OpenAI-compatible, and
   Codex app-server.
-- `axon-code-index` owns the specialized local code ledger, generation, manifest
-  diff, lease, progress emission, and cleanup debt path.
+- There is no standalone `axon-code-index` crate. The specialized local code
+  ledger, generation, manifest diff, lease, progress emission, and cleanup
+  debt path lives inside `axon-vector` today (see the "Current Implementation
+  Snapshot" in `source-pipeline.md` for the exact modules).
 - `axon-jobs` owns SQLite jobs, family workers, progress JSON persistence, watch
   tables, and current memory tables.
 - `axon-services` composes current use cases, including memory orchestration and

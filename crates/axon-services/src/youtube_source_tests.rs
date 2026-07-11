@@ -33,6 +33,43 @@ const DUMP_WITH_ONE_VIDEO: &str = r#"{
   ]
 }"#;
 
+const DUMP_WITH_TWO_VIDEOS: &str = r#"{
+  "videos": [
+    {
+      "video_id": "dQw4w9WgXcQ",
+      "title": "Never Gonna Give You Up",
+      "channel": "Rick Astley",
+      "channel_url": "https://www.youtube.com/@RickAstleyYT",
+      "uploader_id": "RickAstleyYT",
+      "upload_date": "20091025",
+      "description": "The official video.",
+      "duration_string": "3:33",
+      "view_count": 1000000,
+      "like_count": 10000,
+      "tags": ["music"],
+      "categories": ["Music"],
+      "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg",
+      "transcript": "Never gonna give you up, never gonna let you down"
+    },
+    {
+      "video_id": "abc123",
+      "title": "Second Video",
+      "channel": "Rick Astley",
+      "channel_url": "https://www.youtube.com/@RickAstleyYT",
+      "uploader_id": "RickAstleyYT",
+      "upload_date": "20091026",
+      "description": "Another video.",
+      "duration_string": "2:00",
+      "view_count": 500,
+      "like_count": 10,
+      "tags": ["music"],
+      "categories": ["Music"],
+      "thumbnail": "https://i.ytimg.com/vi/abc123/default.jpg",
+      "transcript": "A second transcript body."
+    }
+  ]
+}"#;
+
 fn job_id() -> JobId {
     JobId::new(uuid::Uuid::from_u128(0x2981))
 }
@@ -59,6 +96,8 @@ fn input(dump_path: std::path::PathBuf) -> YoutubeSourceIndexInput {
         embedding_dimensions: 8,
         embedding_reservations: None,
         vector_reservations: None,
+        embed: true,
+        max_items: None,
     }
 }
 
@@ -273,4 +312,64 @@ fn progress_reservation_id(event: &JobEvent) -> Option<&str> {
         .get("source_progress_event")?
         .get("reservation_id")?
         .as_str()
+}
+
+/// `embed = false` (source-pipeline.md Validation Checklist: "`embed=false`
+/// never writes vectors"): videos are still discovered/prepared
+/// (documents_prepared stays non-zero) but neither the embedding provider
+/// nor `vector_store.upsert` may be called.
+#[tokio::test]
+async fn embed_false_prepares_videos_but_writes_no_vectors() {
+    let dump = dump_file(DUMP_WITH_TWO_VIDEOS);
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+
+    let mut no_embed_input = input(dump.clone());
+    no_embed_input.embed = false;
+
+    let output = index_youtube_source(no_embed_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        ledger.committed_generation(&output.source_id).await,
+        Some(output.generation.clone())
+    );
+    assert_eq!(
+        embedder.calls().await.len(),
+        0,
+        "embed=false must not call the embedding provider"
+    );
+    assert!(
+        !vectors.calls().await.contains(&"upsert"),
+        "embed=false must not call vector_store.upsert"
+    );
+    assert_eq!(output.vector_points_written, 0);
+    assert_eq!(output.documents_prepared, 2);
+    assert!(vectors.points("axon-test").await.is_empty());
+
+    std::fs::remove_dir_all(dump.parent().unwrap()).ok();
+}
+
+/// `SourceRequest.limits.max_items` caps the number of YouTube videos
+/// considered before diffing, so only the first `max_items` videos are
+/// prepared/vectorized even though the dump has more.
+#[tokio::test]
+async fn max_items_limit_caps_videos_prepared() {
+    let dump = dump_file(DUMP_WITH_TWO_VIDEOS);
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+
+    let mut capped_input = input(dump.clone());
+    capped_input.max_items = Some(1);
+
+    let output = index_youtube_source(capped_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+
+    assert_eq!(output.documents_prepared, 1);
+
+    std::fs::remove_dir_all(dump.parent().unwrap()).ok();
 }

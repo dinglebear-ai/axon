@@ -876,6 +876,9 @@ fn point_with_filters(
     payload.insert("vector_point_id".to_string(), json!(point_id));
     payload.insert("document_id".to_string(), json!(format!("doc-{chunk_id}")));
     payload.insert("chunk_id".to_string(), json!(chunk_id));
+    payload.insert("chunk_index".to_string(), json!(0));
+    payload.insert("chunking_profile".to_string(), json!("markdown_sections"));
+    payload.insert("chunking_method".to_string(), json!("heading_sections"));
     payload.insert(
         "chunk_locator".to_string(),
         json!({

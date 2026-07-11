@@ -4,6 +4,7 @@
 //! stores, providers, and future adapters without pulling runtime crates into
 //! `axon-api`.
 
+pub mod audit;
 pub mod auth;
 pub mod boundary;
 pub mod capability;
@@ -21,11 +22,13 @@ pub mod llm;
 pub mod memory;
 pub mod provider_io;
 pub mod prune;
+pub mod service_ids;
 pub mod stage;
 pub mod state;
 pub mod status;
 pub mod vector;
 
+pub use audit::*;
 pub use auth::*;
 pub use boundary::*;
 pub use capability::*;
@@ -43,6 +46,7 @@ pub use llm::*;
 pub use memory::*;
 pub use provider_io::*;
 pub use prune::*;
+pub use service_ids::*;
 pub use stage::*;
 pub use state::*;
 pub use status::*;
@@ -83,3 +87,7 @@ mod graph_tests;
 #[cfg(test)]
 #[path = "source_stage_fixture_tests.rs"]
 mod stage_fixture_tests;
+
+#[cfg(test)]
+#[path = "source_audit_tests.rs"]
+mod audit_tests;

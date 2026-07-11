@@ -62,10 +62,15 @@ Implemented today:
 - Current subcommands (from `axon --help`) are: `map`, `endpoints`, `search`,
   `research`, `extract`, `screenshot`, `diff`, `brand`, `query`, `retrieve`,
   `ask`, `evaluate`, `train`, `summarize`, `suggest`, `memory`, `sources`,
-  `domains`, `stats`, `dedupe`, `purge`, `migrate`, `status`, `source`,
+  `domains`, `stats`, `migrate`, `status`, `source`,
   `sessions`, `watch`, `monitor`, `sync`, `refresh`, `fresh`, `debug`,
   `doctor`, `mcp`, `serve`, `setup`, `preflight`, `smoke`, `compose`,
   `completions`, `config`, `update`, `palette`, `jobs`, and `reset`.
+  `dedupe` and `purge` are **not** live subcommands anywhere in the CLI (0
+  grep hits in `crates/axon-cli/src/`) — the live prune surface today is
+  `axon prune plan|exec` (`crates/axon-cli/src/commands/prune.rs`); the
+  target-grammar `axon prune dedupe`/`axon prune purge <target>` rows further
+  below in this doc are not-yet-implemented design, not current state.
 - Async job subcommands are consolidated under `jobs` (`axon jobs --help`)
   rather than remaining family-specific per `crawl`/`extract`/`embed`/
   `ingest` — those parent commands no longer exist to hang job subcommands
@@ -130,8 +135,17 @@ axon --help
 axon --version
 ```
 
-Parser rule: if the first positional token is not a canonical command, removed
-command, or global flag, treat it as `<source>` and route to `SourceRequest`.
+Parser rule (resolved, U1-25, 2026-07-09 audit): if the first positional
+token is not a canonical (registered) command or a global flag, treat it as
+`<source>` and route to `SourceRequest`. Removed-command tokens are **not**
+special-cased or excluded — since they are not registered `clap` subcommands,
+they fall through to the same bare-source routing as any other unrecognized
+token, per the live implementation in `route_bare_source`
+(`crates/axon-core/src/config/source_routing.rs`): `axon embed <path>`
+resolves to `axon source embed <path>` (literal token `embed` becomes the
+source target string), not exit code 8 ("removed command invoked"). This is
+the current, intentional behavior — the "excluded from routing" phrasing
+this section previously used contradicted it and has been removed.
 
 ## Canonical Command Registry
 

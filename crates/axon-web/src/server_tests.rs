@@ -120,6 +120,13 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
                     .send()
                     .await
             }
+            "PATCH" => {
+                client
+                    .patch(format!("{base}{path}"))
+                    .json(&serde_json::json!({}))
+                    .send()
+                    .await
+            }
             _ => unreachable!("unexpected test method"),
         }
         .unwrap_or_else(|err| panic!("{method} {path} failed: {err}"));
@@ -142,6 +149,7 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 fn route_to_test_path(path: &str) -> String {
     path.replace("{id}", &Uuid::nil().to_string())
         .replace("{memory_id}", "mem_test")
+        .replace("{watch_id}", "watch_test")
         .replace("{path}", "missing.txt")
 }
 
@@ -504,12 +512,13 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let memory_compact_one = "/v1/memories/mem_test/compact";
     let memory_forget = "/v1/memories/mem_test";
     let routes = [
-        ("POST", "/v1/dedupe"),
-        ("POST", "/v1/purge"),
         ("POST", "/v1/prune/plan"),
         ("POST", "/v1/prune/exec"),
+        ("POST", "/v1/prune/dedupe"),
+        ("POST", "/v1/prune/purge"),
         ("POST", "/v1/sources"),
         ("POST", "/v1/watch"),
+        ("POST", "/v1/watches"),
         ("POST", watch_run.as_str()),
         ("POST", "/v1/extract"),
         ("POST", extract_cancel.as_str()),
@@ -518,8 +527,11 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("POST", "/v1/extract/recover"),
         ("POST", "/v1/memory"),
         ("POST", "/v1/memories"),
-        ("POST", "/v1/memories/search"),
-        ("POST", "/v1/memories/context"),
+        // `/v1/memories/search` and `/v1/memories/context` moved to
+        // `axon:read` (U2-20/C6-20, query-shaped surfaces) and are covered by
+        // `loopback_dev_allows_non_destructive_write_routes_without_auth`
+        // instead — they pass through loopback dev without auth like other
+        // read routes.
         ("POST", "/v1/memories/review"),
         ("POST", "/v1/memories/compact"),
         ("POST", memory_link),
@@ -571,15 +583,33 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
 async fn loopback_dev_allows_non_destructive_write_routes_without_auth() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
-    let response = reqwest::Client::new()
+    let client = reqwest::Client::new();
+    let response = client
         .post(format!("{base}/v1/ask"))
         .json(&serde_json::json!({ "query": "" }))
         .send()
         .await
         .expect("ask request");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    // U2-20/C6-20: memory search/context default to `axon:read` and pass
+    // through loopback dev without auth like other read routes -- neither
+    // should ever answer 401 here.
+    for path in ["/v1/memories/search", "/v1/memories/context"] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap_or_else(|err| panic!("POST {path} failed: {err}"));
+        assert_ne!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "POST {path} should not require auth in loopback dev"
+        );
+    }
 
     stop(shutdown, handle).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

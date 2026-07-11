@@ -1,121 +1,3843 @@
 {
-  "$id": "https://axon.local/schemas/mcp/tool.schema.json",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "actions": [
-    {
-      "action": "ask",
-      "async": false,
-      "mutates": false,
-      "request_dto": "AskRequest",
-      "requires_auth_scope": "read",
-      "result_dto": "AskResponse",
-      "subaction": null
+  "$defs": {
+    "Action": {
+      "enum": [
+        "help",
+        "status",
+        "jobs",
+        "doctor",
+        "source",
+        "query",
+        "retrieve",
+        "resolve",
+        "capabilities",
+        "providers",
+        "search",
+        "map",
+        "prune",
+        "ask",
+        "evaluate",
+        "suggest",
+        "research",
+        "screenshot",
+        "brand",
+        "diff",
+        "extract",
+        "memory",
+        "summarize",
+        "endpoints",
+        "watch",
+        "graph"
+      ],
+      "type": "string"
     },
-    {
-      "action": "query",
-      "async": false,
-      "mutates": false,
-      "request_dto": "VectorSearchRequest",
-      "requires_auth_scope": "read",
-      "result_dto": "VectorSearchResult",
-      "subaction": null
+    "ActionDiscriminatorRules": {
+      "description": "One if/then branch per live MCP action; constrains subaction requirement and the effective request DTO.",
+      "oneOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "help"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/HelpRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "status"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/StatusRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "jobs"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/JobsRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/JobsSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "doctor"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/DoctorRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "source"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/SourceRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "query"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/QueryRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "retrieve"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/RetrieveRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "resolve"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ResolveRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "capabilities"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/CapabilitiesRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "providers"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ProvidersRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/ProvidersSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "search"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/SearchRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "map"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/MapRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "prune"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/PruneMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/PruneSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "ask"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/AskRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "evaluate"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/EvaluateRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "suggest"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/SuggestRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "research"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ResearchRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "screenshot"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ScreenshotRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "brand"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/BrandRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "diff"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/DiffRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "extract"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ExtractRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/ExtractSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "memory"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/MemoryRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/MemorySubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "summarize"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/SummarizeRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "endpoints"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/EndpointsRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "watch"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/WatchRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/WatchSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "graph"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/GraphRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/GraphSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        }
+      ],
+      "type": "object"
     },
-    {
-      "action": "retrieve",
-      "async": false,
-      "mutates": false,
-      "request_dto": "RetrieveRequest",
-      "requires_auth_scope": "read",
-      "result_dto": "RetrieveResponse",
-      "subaction": null
-    },
-    {
-      "action": "search",
-      "async": false,
-      "mutates": false,
-      "request_dto": "SearchRequest",
-      "requires_auth_scope": "read",
-      "result_dto": "SearchResponse",
-      "subaction": null
-    },
-    {
-      "action": "research",
-      "async": false,
-      "mutates": false,
-      "request_dto": "ResearchRequest",
-      "requires_auth_scope": "read",
-      "result_dto": "ResearchResponse",
-      "subaction": null
-    },
-    {
-      "action": "map",
-      "async": false,
-      "mutates": false,
-      "request_dto": "MapRequest",
-      "requires_auth_scope": "read",
-      "result_dto": "MapResponse",
-      "subaction": null
-    },
-    {
-      "action": "extract",
-      "async": true,
-      "mutates": true,
-      "request_dto": "ExtractRequest",
-      "requires_auth_scope": "write",
-      "result_dto": "ExtractResponse",
-      "subaction": null
-    },
-    {
-      "action": "config",
-      "async": false,
-      "mutates": true,
-      "request_dto": "ConfigProjectionRequest",
-      "requires_auth_scope": "admin",
-      "result_dto": "ConfigProjectionResponse",
-      "subaction": null
-    }
-  ],
-  "additionalProperties": false,
-  "properties": {
-    "actions": {
-      "items": {
-        "additionalProperties": true,
-        "required": [
-          "action",
-          "request_dto",
-          "result_dto",
-          "requires_auth_scope"
-        ],
-        "type": "object"
+    "AskRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "ask_authoritative_boost": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ask_authoritative_domains": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ask_backfill_chunks": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_candidate_limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_chunk_limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_doc_chunk_limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_doc_fetch_concurrency": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_full_docs": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_hybrid_candidates": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_max_context_chars": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_min_citations_nontrivial": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ask_min_relevance_score": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Upper bound for temporal filter. Same formats as `since`.\nRestricts results to content indexed on or before this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collection": {
+          "description": "Qdrant collection to search. Defaults to the server's configured collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diagnostics": {
+          "description": "Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "explain": {
+          "description": "Include per-candidate explain trace and skip LLM synthesis.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "hybrid_search": {
+          "description": "Per-request hybrid search override. `false` forces dense-only retrieval\n(skips BM42 sparse + RRF). When unset, falls back to server config.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AskRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since": {
+          "description": "Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.\nRestricts results to content indexed on or after this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
-      "type": "array"
+      "title": "AskRequest",
+      "type": "object"
+    },
+    "AskRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "AxonToolInput": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ActionDiscriminatorRules"
+        }
+      ],
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/Action"
+        },
+        "body": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "query": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "response_mode": {
+          "$ref": "#/$defs/ResponseMode",
+          "default": "auto"
+        },
+        "source": {
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subaction": {
+          "type": "string"
+        },
+        "wait": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "AxonToolInput",
+      "type": "object",
+      "unevaluatedProperties": true
+    },
+    "AxonToolResponse": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`AxonToolResponse` is the MCP `axon` tool's response envelope. Per the\ntool contract (`docs/pipeline-unification/surfaces/tool-contract.md`,\n§Design Rules: \"Return structured envelopes for every response\"), it is\nconverging toward the same shared envelope shape REST uses\n(`axon_api::source::SuccessEnvelope`) — `request_id`/`contract_version`\nare populated on every response; `job`/`watch`/`artifacts`/`pagination`/\n`trace` are populated only where the constructing handler already has\nthat data (most call sites do not yet thread it through — see WS-G\nfollowups), so they stay optional/empty rather than fabricated.",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "artifacts": {
+          "items": true,
+          "type": "array"
+        },
+        "contract_version": {
+          "description": "See [`MCP_CONTRACT_VERSION`].",
+          "type": "string"
+        },
+        "data": true,
+        "job": true,
+        "ok": {
+          "type": "boolean"
+        },
+        "pagination": true,
+        "request_id": {
+          "description": "Unique id for this response, generated once per call. Present on\nevery response (unlike the REST envelope's `request_id`, which is\nassigned by transport middleware, this one is assigned here because\nMCP has no equivalent per-request middleware seam yet).",
+          "type": "string"
+        },
+        "subaction": {
+          "type": "string"
+        },
+        "trace": true,
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "watch": true
+      },
+      "required": [
+        "ok",
+        "action",
+        "subaction",
+        "warnings",
+        "data",
+        "request_id",
+        "contract_version"
+      ],
+      "title": "AxonToolResponse",
+      "type": "object"
+    },
+    "BrandRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "render_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandRequest_McpRenderMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rendering engine override. Currently accepted but not applied — brand uses\na direct HTTP fetch and ignores the render_mode field. Reserved for a\nfuture Chrome-backed extraction path."
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrandRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "description": "URL to analyze (required)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "BrandRequest",
+      "type": "object"
+    },
+    "BrandRequest_McpRenderMode": {
+      "enum": [
+        "http",
+        "chrome",
+        "auto_switch"
+      ],
+      "type": "string"
+    },
+    "BrandRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "CapabilitiesRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`action=capabilities` — machine-readable runtime capability document\nderived from the live `MCP_ACTION_SPECS` registry and provider doctor\ndata. See `docs/pipeline-unification/surfaces/tool-contract.md`\n§Capabilities Action.",
+      "properties": {
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CapabilitiesRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "CapabilitiesRequest",
+      "type": "object"
+    },
+    "CapabilitiesRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "DiffRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "render_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffRequest_McpRenderMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rendering engine override (http | chrome | auto_switch)"
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url_a": {
+          "description": "First (baseline) URL (required)",
+          "type": "string"
+        },
+        "url_b": {
+          "description": "Second (comparison) URL (required)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url_a",
+        "url_b"
+      ],
+      "title": "DiffRequest",
+      "type": "object"
+    },
+    "DiffRequest_McpRenderMode": {
+      "enum": [
+        "http",
+        "chrome",
+        "auto_switch"
+      ],
+      "type": "string"
+    },
+    "DiffRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "DoctorRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DoctorRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "DoctorRequest",
+      "type": "object"
+    },
+    "DoctorRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "EndpointsRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "capture_network": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "first_party_only": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_bundles": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "max_scan_bytes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_scripts": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "probe_rpc": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "probe_rpc_subdomains": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndpointsRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unique_only": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verify": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "title": "EndpointsRequest",
+      "type": "object"
+    },
+    "EndpointsRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "EvaluateRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "description": "Upper bound for temporal filter. Same formats as `since`.\nRestricts results to content indexed on or before this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collection": {
+          "description": "Qdrant collection to search. Defaults to the server's configured collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diagnostics": {
+          "description": "Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "hybrid_search": {
+          "description": "Per-request hybrid search override. `false` forces dense-only retrieval\n(skips BM42 sparse + RRF). When unset, falls back to server config.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvaluateRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retrieval_ab": {
+          "description": "Compare hybrid RAG against dense-only RAG instead of RAG against baseline.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "since": {
+          "description": "Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.\nRestricts results to content indexed on or after this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "EvaluateRequest",
+      "type": "object"
+    },
+    "EvaluateRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ExtractRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "embed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "prompt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "render_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtractRequest_McpRenderMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtractRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtractRequest_ExtractSubaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "urls": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "title": "ExtractRequest",
+      "type": "object"
+    },
+    "ExtractRequest_ExtractSubaction": {
+      "enum": [
+        "start",
+        "status",
+        "cancel",
+        "list",
+        "cleanup",
+        "clear",
+        "recover"
+      ],
+      "type": "string"
+    },
+    "ExtractRequest_McpRenderMode": {
+      "enum": [
+        "http",
+        "chrome",
+        "auto_switch"
+      ],
+      "type": "string"
+    },
+    "ExtractRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ExtractSubaction": {
+      "enum": [
+        "start",
+        "status",
+        "cancel",
+        "list",
+        "cleanup",
+        "clear",
+        "recover"
+      ],
+      "type": "string"
+    },
+    "GraphRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "description": "`resolve`: explicit `canonical_uri` identifier form.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depth": {
+          "description": "`query`/`source`: max traversal depth. Defaults to `1`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphRequest_GraphDirectionArg"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`query`/`source`: traversal direction. Defaults to `both`."
+        },
+        "edge_kind": {
+          "description": "`source`: single edge-kind filter (contract's `edge_kind` field).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edges": {
+          "description": "`query`: edge-kind allowlist filter (empty = all kinds).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`node`/`edge`: the id to look up. `resolve`: treated as the identifier\n`value` (a stable key) when `node_id`/`canonical_uri` are unset.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "include_edges": {
+          "description": "`node`: include incident edges in the response. Defaults to `false`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_evidence": {
+          "description": "`node`: include edge evidence in the response. Edges already carry\nevidence when loaded; this flag is accepted for contract parity and\ncurrently has no additional effect beyond `include_edges`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "`resolve`: hint for the identifier's expected node kind.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "node_id": {
+          "description": "`query`: start node id (BFS root). Falls back to `id` when unset.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphRequest_GraphSubaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "GraphRequest",
+      "type": "object"
+    },
+    "GraphRequest_GraphDirectionArg": {
+      "enum": [
+        "in",
+        "out",
+        "both"
+      ],
+      "type": "string"
+    },
+    "GraphRequest_GraphSubaction": {
+      "enum": [
+        "kinds",
+        "resolve",
+        "query",
+        "node",
+        "edge",
+        "source"
+      ],
+      "type": "string"
+    },
+    "GraphRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "GraphSubaction": {
+      "enum": [
+        "kinds",
+        "resolve",
+        "query",
+        "node",
+        "edge",
+        "source"
+      ],
+      "type": "string"
+    },
+    "HelpRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HelpRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "HelpRequest",
+      "type": "object"
+    },
+    "HelpRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "JobsRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "after_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "confirm": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dry_run": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "from_phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_JobKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "older_than": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overrides": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_JobRetryMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_Severity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_SourceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stale_before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_JobsSubaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_Visibility"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "watch_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobsRequest_WatchId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "JobsRequest",
+      "type": "object"
+    },
+    "JobsRequest_JobKind": {
+      "oneOf": [
+        {
+          "enum": [
+            "source",
+            "watch",
+            "map",
+            "extract",
+            "research",
+            "ask",
+            "query",
+            "retrieve",
+            "memory",
+            "graph",
+            "prune",
+            "provider_probe",
+            "reset",
+            "crawl",
+            "ingest"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "embed",
+          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobsRequest_JobRetryMode": {
+      "enum": [
+        "same_config",
+        "with_overrides"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_JobsSubaction": {
+      "enum": [
+        "list",
+        "get",
+        "status",
+        "events",
+        "stream",
+        "cancel",
+        "retry",
+        "recover",
+        "cleanup",
+        "clear"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_SourceId": {
+      "type": "string"
+    },
+    "JobsRequest_Visibility": {
+      "enum": [
+        "public",
+        "internal",
+        "sensitive",
+        "redacted",
+        "derived"
+      ],
+      "type": "string"
+    },
+    "JobsRequest_WatchId": {
+      "type": "string"
+    },
+    "JobsSubaction": {
+      "enum": [
+        "list",
+        "get",
+        "status",
+        "events",
+        "stream",
+        "cancel",
+        "retry",
+        "recover",
+        "cleanup",
+        "clear"
+      ],
+      "type": "string"
+    },
+    "MapRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MapRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "MapRequest",
+      "type": "object"
+    },
+    "MapRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "MemoryRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "`reinforce` positive-use signal strength.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "archive_sources": {
+          "description": "`compact` — archive the source memories once merged.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "depth": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dry_run": {
+          "description": "`import` — preview the plan without writing.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "edge_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryEdgeType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "export_scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`export` — scope to export (all scopes when unset)."
+        },
+        "file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "import_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryImportMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`import` — how to reconcile with existing memories."
+        },
+        "include_archived": {
+          "description": "`export` — include archived memories in the export.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_working": {
+          "description": "`export` — include `working`-status memories in the export (excluded\nby default per contract \"Type rules\").",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "memory_ids": {
+          "description": "`compact` source memory ids to merge.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "memory_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryNodeType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned": {
+          "description": "`pin` — pin (`true`, default) or unpin (`false`).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Free-text reason recorded on `archive`/`forget`/`pin` history events.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "records": {
+          "description": "`import` — records to bulk-import.",
+          "items": {
+            "$ref": "#/$defs/MemoryRequest_MemoryRecord"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "repo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "strategy": {
+          "description": "`compact` distillation strategy. Only `\"concatenate\"` is implemented.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemorySubaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_budget": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "MemoryRequest",
+      "type": "object"
+    },
+    "MemoryRequest_ChunkId": {
+      "type": "string"
+    },
+    "MemoryRequest_DocumentId": {
+      "type": "string"
+    },
+    "MemoryRequest_GraphEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "evidence_kind": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "quote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_SourceRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/MemoryRequest_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/MemoryRequest_SourceItemKey"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_kind",
+        "source_id",
+        "source_item_key",
+        "confidence",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "MemoryRequest_MemoryDecayPolicy": {
+      "additionalProperties": false,
+      "description": "Explicit, inspectable decay configuration.\n\nContract: \"Decay Contract\" required fields.",
+      "properties": {
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "half_life_days": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "last_reinforced_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pinned": {
+          "default": false,
+          "type": "boolean"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "reinforcement_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "review_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "MemoryRequest_MemoryEdgeType": {
+      "enum": [
+        "relates_to",
+        "supersedes"
+      ],
+      "type": "string"
+    },
+    "MemoryRequest_MemoryHistoryEvent": {
+      "additionalProperties": false,
+      "description": "Append-only history event recorded on every status/scoring change.",
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/MemoryRequest_MemoryStatus"
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "message",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    "MemoryRequest_MemoryId": {
+      "type": "string"
+    },
+    "MemoryRequest_MemoryImportMode": {
+      "description": "How an import reconciles with existing memories for the same content.",
+      "oneOf": [
+        {
+          "const": "merge",
+          "description": "Add records not already present (deduped by content hash/scope/type);\nleave existing memories untouched.",
+          "type": "string"
+        },
+        {
+          "const": "replace_scope",
+          "description": "Archive every existing memory in the target scope before importing.\nRequires `axon:admin` at the transport boundary.",
+          "type": "string"
+        }
+      ]
+    },
+    "MemoryRequest_MemoryLink": {
+      "additionalProperties": false,
+      "description": "Evidence-backed link from a memory to a source/entity/decision.",
+      "properties": {
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/MemoryRequest_GraphEvidence"
+          },
+          "type": "array"
+        },
+        "link_type": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "link_type",
+        "target",
+        "confidence",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "MemoryRequest_MemoryNodeType": {
+      "enum": [
+        "decision",
+        "fact",
+        "preference",
+        "task",
+        "bug"
+      ],
+      "type": "string"
+    },
+    "MemoryRequest_MemoryRecord": {
+      "additionalProperties": false,
+      "description": "Full stored memory record. Contract: \"Memory DTOs\" — `MemoryRecord`.",
+      "properties": {
+        "body": {
+          "type": "string"
+        },
+        "confidence": {
+          "format": "float",
+          "type": "number"
+        },
+        "contradicts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Memory this record conflicts with (`contradicted` status only)."
+        },
+        "decay": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryDecayPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "embedding_refs": {
+          "items": {
+            "$ref": "#/$defs/MemoryRequest_VectorPointId"
+          },
+          "type": "array"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/MemoryRequest_MemoryHistoryEvent"
+          },
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/MemoryRequest_MemoryLink"
+          },
+          "type": "array"
+        },
+        "memory_id": {
+          "$ref": "#/$defs/MemoryRequest_MemoryId"
+        },
+        "memory_type": {
+          "$ref": "#/$defs/MemoryRequest_MemoryType"
+        },
+        "salience": {
+          "format": "float",
+          "type": "number"
+        },
+        "scope": {
+          "$ref": "#/$defs/MemoryRequest_MemoryScope"
+        },
+        "status": {
+          "$ref": "#/$defs/MemoryRequest_MemoryStatus"
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryRequest_MemoryId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Memory this record was replaced by (`superseded` status only)."
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visibility": {
+          "$ref": "#/$defs/MemoryRequest_Visibility",
+          "default": "internal",
+          "description": "Security classification (contract \"Security and Redaction\": \"classify\nevery memory by visibility\"). Drives caller-scope filtering on\nexport/context (e.g. `sensitive` records excluded from export unless\nthe caller is authorized) independent of `MemoryStatus`."
+        }
+      },
+      "required": [
+        "memory_id",
+        "memory_type",
+        "status",
+        "body",
+        "confidence",
+        "salience",
+        "scope",
+        "history"
+      ],
+      "type": "object"
+    },
+    "MemoryRequest_MemoryScope": {
+      "additionalProperties": false,
+      "description": "Memory scope controlling recall and visibility.\n\nContract: \"Scope Model\" table (`global`, `project`, `repo`, `file`,\n`source_id`, `graph_node_id`, `agent`, `user`, `environment`).",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "type": "object"
+    },
+    "MemoryRequest_MemoryStatus": {
+      "description": "Closed set of memory recall statuses.\n\nContract: \"Memory Status\" table — `active`, `review`, `superseded`,\n`contradicted`, `archived`, `forgotten`, `working`.",
+      "oneOf": [
+        {
+          "const": "active",
+          "description": "Eligible for recall.",
+          "type": "string"
+        },
+        {
+          "const": "review",
+          "description": "Needs user/agent confirmation.",
+          "type": "string"
+        },
+        {
+          "const": "superseded",
+          "description": "Replaced by another memory.",
+          "type": "string"
+        },
+        {
+          "const": "contradicted",
+          "description": "Conflicts with another memory and needs resolution.",
+          "type": "string"
+        },
+        {
+          "const": "archived",
+          "description": "Hidden from normal recall but retained.",
+          "type": "string"
+        },
+        {
+          "const": "forgotten",
+          "description": "Removed from recall and redacted/deleted according to policy.",
+          "type": "string"
+        },
+        {
+          "const": "working",
+          "description": "Temporary memory with short TTL.",
+          "type": "string"
+        }
+      ]
+    },
+    "MemoryRequest_MemorySubaction": {
+      "enum": [
+        "remember",
+        "list",
+        "search",
+        "show",
+        "link",
+        "supersede",
+        "context",
+        "reinforce",
+        "contradict",
+        "pin",
+        "archive",
+        "forget",
+        "review",
+        "compact",
+        "import",
+        "export"
+      ],
+      "type": "string"
+    },
+    "MemoryRequest_MemoryType": {
+      "description": "Closed set of durable memory kinds.\n\nContract: \"Memory Types\" table — `decision`, `fact`, `preference`, `task`,\n`bug`, `procedure`, `incident`, `entity`, `episode`, `working`.",
+      "oneOf": [
+        {
+          "const": "decision",
+          "description": "Durable design/implementation decision (slow decay).",
+          "type": "string"
+        },
+        {
+          "const": "fact",
+          "description": "Observed factual project/system state (normal decay).",
+          "type": "string"
+        },
+        {
+          "const": "preference",
+          "description": "User preference or standing instruction (very slow decay).",
+          "type": "string"
+        },
+        {
+          "const": "task",
+          "description": "Work item or pending follow-up (normal decay).",
+          "type": "string"
+        },
+        {
+          "const": "bug",
+          "description": "Known defect or failure pattern (normal decay).",
+          "type": "string"
+        },
+        {
+          "const": "procedure",
+          "description": "Repeatable operational procedure (slow decay).",
+          "type": "string"
+        },
+        {
+          "const": "incident",
+          "description": "Specific outage/failure/investigation (normal decay).",
+          "type": "string"
+        },
+        {
+          "const": "entity",
+          "description": "Stable entity profile such as repo/service/person/package (slow decay).",
+          "type": "string"
+        },
+        {
+          "const": "episode",
+          "description": "Session or event summary (fast decay).",
+          "type": "string"
+        },
+        {
+          "const": "working",
+          "description": "Short-lived working context (very fast decay).",
+          "type": "string"
+        }
+      ]
+    },
+    "MemoryRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "MemoryRequest_SourceId": {
+      "type": "string"
+    },
+    "MemoryRequest_SourceItemKey": {
+      "type": "string"
+    },
+    "MemoryRequest_SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "byte_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_end": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "char_start": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "csv_row": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dom_selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_pointer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line_end": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line_start": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_end_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_start_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xml_xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yaml_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "MemoryRequest_VectorPointId": {
+      "type": "string"
+    },
+    "MemoryRequest_Visibility": {
+      "enum": [
+        "public",
+        "internal",
+        "sensitive",
+        "redacted",
+        "derived"
+      ],
+      "type": "string"
+    },
+    "MemorySubaction": {
+      "enum": [
+        "remember",
+        "list",
+        "search",
+        "show",
+        "link",
+        "supersede",
+        "context",
+        "reinforce",
+        "contradict",
+        "pin",
+        "archive",
+        "forget",
+        "review",
+        "compact",
+        "import",
+        "export"
+      ],
+      "type": "string"
+    },
+    "ProvidersRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`action=providers` — provider capability/health discovery. `list`\n(default) and `get` (requires `provider_id`) mirror the REST\n`/v1/providers` resource-tier routes (`crates/axon-web/src/server/\nhandlers/providers.rs`), both backed by `axon_services::system::doctor`.",
+      "properties": {
+        "provider_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProvidersRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ProvidersRequest",
+      "type": "object"
+    },
+    "ProvidersRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ProvidersSubaction": {
+      "enum": [
+        "list",
+        "get"
+      ],
+      "type": "string"
+    },
+    "PruneMcpRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`action=prune` — the target-state replacement for the legacy\n`dedupe`/`purge` MCP actions\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare\nsource id or `collection:<name>` for a whole-collection prune, mirroring\nthe CLI's `axon prune plan|exec <target>` selector grammar.",
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirm": {
+          "description": "Required `Some(true)` for `subaction=exec` to proceed — mirrors the\nCLI's `--confirm` gate and [`super::PurgeRequest::dry_run`]'s\n`Option<bool>` idiom (a missing/`false` value is treated identically\nby the handler; `Option` here is purely to match the doc-generator's\nrequired/optional-field heuristic, not a wire-shape requirement).\nIgnored for `subaction=plan`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "generation": {
+          "description": "Narrow a source-id target to one generation. Invalid with a\n`collection:` target.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PruneMcpRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "description": "`plan` (dry-run) or `exec` (destructive). Defaults to `plan` when\nomitted so a bare `prune` call never mutates state.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Prune target: a bare source id, or `collection:<name>` for a\nwhole-collection prune. **Handler-required despite the `Option`** —\nmirrors `PurgeRequest::target`'s \"clean validation error, not a serde\nrejection\" convention.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "PruneMcpRequest",
+      "type": "object"
+    },
+    "PruneMcpRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "PruneSubaction": {
+      "enum": [
+        "plan",
+        "exec"
+      ],
+      "type": "string"
+    },
+    "QueryRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "description": "Upper bound for temporal filter. Same formats as `since`.\nRestricts results to content indexed on or before this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collection": {
+          "description": "Qdrant collection to search. Defaults to the server's configured collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hybrid_search": {
+          "description": "Per-request hybrid search override. `false` forces dense-only retrieval\n(skips BM42 sparse + RRF). When unset, falls back to server config\n(`AXON_HYBRID_SEARCH`, default true). Useful for A/B comparison.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QueryRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since": {
+          "description": "Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.\nRestricts results to content indexed on or after this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "QueryRequest",
+      "type": "object"
+    },
+    "QueryRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ResearchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResearchRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "search_time_range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResearchRequest_SearchTimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "ResearchRequest",
+      "type": "object"
+    },
+    "ResearchRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ResearchRequest_SearchTimeRange": {
+      "enum": [
+        "day",
+        "week",
+        "month",
+        "year"
+      ],
+      "type": "string"
+    },
+    "ResolveRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`action=resolve` — resolve source identity/adapter/route without acquiring\ncontent. Backed by `axon_services::source::routing::resolve_source_route`.",
+      "properties": {
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResolveRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ResolveRequest",
+      "type": "object"
+    },
+    "ResolveRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ResponseMode": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "title": "ResponseMode",
+      "type": "string"
+    },
+    "RetrieveRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "description": "Upper bound for temporal filter. Same formats as `since`.\nRestricts retrieved chunks to content indexed on or before this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collection": {
+          "description": "Qdrant collection to read from. Defaults to the server's configured collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "description": "Opaque cursor for fetching the next slice of document content.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_points": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetrieveRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since": {
+          "description": "Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.\nRestricts retrieved chunks to content indexed on or after this date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_budget": {
+          "description": "Maximum tokens to return in a single response slice. Default: 10,000.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "RetrieveRequest",
+      "type": "object"
+    },
+    "RetrieveRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ScreenshotRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "full_page": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScreenshotRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "viewport": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ScreenshotRequest",
+      "type": "object"
+    },
+    "ScreenshotRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "SearchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SearchRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "search_time_range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SearchRequest_SearchTimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "SearchRequest",
+      "type": "object"
+    },
+    "SearchRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "SearchRequest_SearchTimeRange": {
+      "enum": [
+        "day",
+        "week",
+        "month",
+        "year"
+      ],
+      "type": "string"
+    },
+    "SourceRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Request parameters for the unified `source` action.\n\n`source` is the single indexing entrypoint that replaces the removed\n`embed` / `ingest` / `scrape` / `crawl` / `code_search` / `vertical_scrape`\nMCP actions. The handler maps this onto [`crate::source::SourceRequest`] and\ncalls `axon_services::index_source`, which classifies the input (local path,\ngit URL, feed URL, youtube/reddit target, web URL, session selector, or\nregistry target), acquires it, and indexes it through the unified pipeline.",
+      "properties": {
+        "collection": {
+          "description": "Qdrant collection to index into. Defaults to the server's configured collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detached": {
+          "default": null,
+          "description": "Run source indexing as a detached background `JobKind::Source` job\ninstead of blocking until it completes. When `true`, the response\ncarries a poll descriptor (`job_id`/`status`/`poll_after_ms`) instead\nof the final `SourceResult`. Defaults to `false` (synchronous,\nmatching prior behavior).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRequest_SourceScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional acquisition scope override (e.g. `page`, `site`, `repo`).\nWhen omitted, the classified family's default scope is used."
+        },
+        "source": {
+          "description": "Source input string: a local path, git repository URL, feed URL,\nyoutube target, reddit target, web URL, session selector\n(`session:<claude|codex|gemini>:<path>`), or registry target\n(`pkg:<npm|pypi|crates>/<package>`). Accepts the `input` alias.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "SourceRequest",
+      "type": "object"
+    },
+    "SourceRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "SourceRequest_SourceScope": {
+      "enum": [
+        "page",
+        "site",
+        "docs",
+        "repo",
+        "workspace",
+        "branch",
+        "org",
+        "package",
+        "version",
+        "feed",
+        "subreddit",
+        "thread",
+        "comment",
+        "video",
+        "playlist",
+        "channel",
+        "issue",
+        "pull_request",
+        "merge_request",
+        "release",
+        "wiki",
+        "file",
+        "directory",
+        "map",
+        "tool",
+        "script",
+        "api"
+      ],
+      "type": "string"
+    },
+    "StatusRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatusRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "StatusRequest",
+      "type": "object"
+    },
+    "StatusRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "SuggestRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "description": "Qdrant collection to inspect. Defaults to the server's configured collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "focus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Maximum number of suggestions to return. Overrides cfg.search_limit.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SuggestRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "SuggestRequest",
+      "type": "object"
+    },
+    "SuggestRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "SummarizeRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "exclude_selector": {
+          "description": "CSS selector to exclude elements before summarization.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "render_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SummarizeRequest_McpRenderMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rendering engine override (http | chrome | auto_switch). Overrides cfg.render_mode."
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SummarizeRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_selector": {
+          "description": "CSS selector to scope content extraction before summarization.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "urls": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "title": "SummarizeRequest",
+      "type": "object"
+    },
+    "SummarizeRequest_McpRenderMode": {
+      "enum": [
+        "http",
+        "chrome",
+        "auto_switch"
+      ],
+      "type": "string"
+    },
+    "SummarizeRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "WatchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`/`subaction=create`). Unused by the legacy\ncreate/list/get/exec/history subactions above.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "embed": {
+          "description": "Whether the source-request-backed watch (`subaction=create`) should\nembed content on each run. Defaults to `false` when omitted.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "every_seconds": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source URI to watch (issue #298 WS-B `subaction=create`), e.g.\n`https://example.com/docs` or `file:///path/to/repo`. Required for\n`subaction=create`; unused otherwise.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchRequest_WatchSubaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_payload": true,
+        "task_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "WatchRequest",
+      "type": "object"
+    },
+    "WatchRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "WatchRequest_WatchSubaction": {
+      "oneOf": [
+        {
+          "enum": [
+            "create",
+            "list",
+            "get",
+            "exec",
+            "history"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "update",
+          "description": "Update a source-request-backed watch (issue #298 WS-B). Distinct\nstorage model from `create`/`list`/`get`/`exec`/`history` above — see\n`crates/axon-jobs/src/watch_store.rs` module docs.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "Disable a source-request-backed watch's scheduler execution.",
+          "type": "string"
+        },
+        {
+          "const": "resume",
+          "description": "Re-enable a source-request-backed watch's scheduler execution.",
+          "type": "string"
+        },
+        {
+          "const": "delete",
+          "description": "Hard-delete a source-request-backed watch and its run history.",
+          "type": "string"
+        }
+      ]
+    },
+    "WatchSubaction": {
+      "enum": [
+        "create",
+        "list",
+        "get",
+        "exec",
+        "history",
+        "update",
+        "pause",
+        "resume",
+        "delete"
+      ],
+      "type": "string"
     }
   },
-  "required": [
-    "actions"
-  ],
+  "$id": "https://axon.local/schemas/mcp/tool.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Generated Axon MCP tool schema contract artifact.",
   "title": "AxonMcpToolSchema",
   "type": "object",
   "x-axon": {
+    "clean_break": true,
     "contract_version": "2026-06-30",
+    "deferred_actions": [
+      {
+        "action": "chat",
+        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+      },
+      {
+        "action": "watches",
+        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+      },
+      {
+        "action": "artifacts",
+        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+      },
+      {
+        "action": "uploads",
+        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+      },
+      {
+        "action": "collections",
+        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+      },
+      {
+        "action": "reset",
+        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+      }
+    ],
     "generated_by": "cargo xtask schemas mcp",
+    "live_action_count": 26,
     "owner_crates": [
       "axon-mcp",
       "axon-api"
     ],
-    "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:f41acd92c675cb7fb16f0615f7280f51a4c70242c9621570c0f15cc6a649593d",
+        "checksum": "sha256:3eacee7dde24fa4745784bcbf0ac868b0f966907b210a863ea0bc34558ad1779",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema.rs"
+      },
+      {
+        "checksum": "sha256:385d395e928a7ed96ccc4903ac2e56f835193b58d3c67c0c7179180ce4ae9f70",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
+      },
+      {
+        "checksum": "sha256:f4621603d2656007a2a601778c10986e755c8849c7826310f7afad74b9d078ce",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema/requests.rs"
+      },
+      {
+        "checksum": "sha256:fe0bc74dd850407fd249d86e24541f64518e403aa4a6a87130764e7336834548",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema/requests/discovery.rs"
+      },
+      {
+        "checksum": "sha256:0eaaaaaf9782d9165b519401a91bbf784485088ae34a618dd512755606706118",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema/requests/graph.rs"
+      },
+      {
+        "checksum": "sha256:5d651565b3ff61875b4dfb9e5f1a6c5aa17cb92b78f4f20f69ccd3d9d0ec4990",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
+      },
+      {
+        "checksum": "sha256:145a07007148573c36e39c7fe46c8486a25813f82a50288b2f336815a8404cbf",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/mcp_schema/utility.rs"
+      },
+      {
+        "checksum": "sha256:fc7de3b93f7f0f31cc5149efd9b8b3729f887f79d1f74ba6a9bdde245d8e5eee",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:a09160e89b2b6fbccbcfe477fb228b8822551ea6bf2249558b6665f8c78dbdab",
+        "checksum": "sha256:f45a688cca4b367be606fd4caa833aa500fb52c9f786dbc6c3b81e8b03317fe0",
+        "kind": "rust_module",
+        "path": "crates/axon-mcp/src/server.rs"
+      },
+      {
+        "checksum": "sha256:68f50617fb2536b6e2e1b99c68caa434067da3eac287d32fb0a627de6951b71d",
+        "kind": "rust_module",
+        "path": "crates/axon-mcp/src/server/authz.rs"
+      },
+      {
+        "checksum": "sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
+      },
+      {
+        "checksum": "sha256:0960db61568609c37bc11774b341690a3292d189d7d684b1c6bdc7aef3049051",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/mcp_action_registry.rs"
       }
-    ],
-    "status": "RegistryBacked"
+    ]
   }
 }

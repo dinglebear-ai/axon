@@ -2,7 +2,7 @@ package com.axon.app.data.repository
 
 import com.axon.app.data.local.AskHistoryDao
 import com.axon.app.data.local.AskHistoryEntry
-import com.axon.app.data.remote.AxonClient
+import com.axon.app.core.api.AxonClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking

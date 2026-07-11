@@ -5,7 +5,7 @@
 use crate::explain::*;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct QueryHit {
     pub rank: u64,
     pub score: f64,
@@ -38,7 +38,7 @@ pub struct QueryHit {
     pub symbol_extraction_status: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct QueryResult {
     pub results: Vec<QueryHit>,
 }
@@ -76,7 +76,9 @@ pub struct CodeSearchResult {
     pub freshness: CodeSearchFreshness,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum DocumentBackend {
     /// Content reconstructed from Qdrant vector chunks.
@@ -199,7 +201,7 @@ impl PagedDocument {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct RetrieveResult {
     pub chunk_count: usize,
     pub content: String,
@@ -227,7 +229,7 @@ pub struct RetrieveResult {
     pub refresh_status: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ServiceRetrieveVariantError {
     pub url: String,
     pub error: String,

@@ -25,8 +25,25 @@ use lab_auth::AuthContext;
 pub(crate) fn scope_for_rest_route(method: &str, path: &str) -> Option<&'static str> {
     let scope = match (method, path) {
         ("GET", p) if p.starts_with("/v1/") => axon_authz::http::AxonScope::Read,
-        ("POST", "/v1/query" | "/v1/retrieve" | "/v1/map") => axon_authz::http::AxonScope::Read,
-        ("POST", "/v1/dedupe") => axon_authz::http::AxonScope::Write,
+        // U2-20/C6-20: query-shaped surfaces default to `axon:read`, matching
+        // the real router's `read_routes` gate (routing.rs) and the
+        // `schema_registry.rs` contract table.
+        (
+            "POST",
+            "/v1/query"
+            | "/v1/retrieve"
+            | "/v1/map"
+            | "/v1/ask"
+            | "/v1/chat"
+            | "/v1/search"
+            | "/v1/research"
+            | "/v1/summarize"
+            | "/v1/suggest"
+            | "/v1/evaluate"
+            | "/v1/memories/search"
+            | "/v1/memories/context",
+        ) => axon_authz::http::AxonScope::Read,
+        ("POST", "/v1/prune/dedupe" | "/v1/prune/purge") => axon_authz::http::AxonScope::Admin,
         ("POST", p) if p.starts_with("/v1/") => axon_authz::http::AxonScope::Write,
         ("DELETE", p) if p.starts_with("/v1/") => axon_authz::http::AxonScope::Write,
         _ => return None,

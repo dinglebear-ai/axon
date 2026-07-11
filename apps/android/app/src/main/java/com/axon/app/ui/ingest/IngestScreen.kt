@@ -24,7 +24,7 @@ import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.JobIdChip
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.RecoveryActionCard
-import com.axon.app.ui.jobs.JobRow
+import com.axon.app.feature.jobs.JobRow
 import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraButtonVariant
 import tv.tootie.aurora.components.AuroraCard
@@ -33,7 +33,7 @@ import tv.tootie.aurora.components.AuroraSelect
 import tv.tootie.aurora.components.AuroraSeparator
 import tv.tootie.aurora.components.AuroraTextField
 
-/** Statuses where the server still allows a cancel request. Mirrors [com.axon.app.ui.jobs.CANCELABLE_STATUSES]. */
+/** Statuses where the server still allows a cancel request. Mirrors [com.axon.app.feature.jobs.CANCELABLE_STATUSES]. */
 private val CANCELABLE_STATUSES = setOf("pending", "queued", "running", "in_progress")
 
 /**

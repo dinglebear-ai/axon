@@ -11,9 +11,15 @@ async fn local_adapter_declares_task1_scopes_and_accepts_options() {
     let adapter = LocalSourceAdapter::new();
 
     let capability = adapter.capabilities().await.unwrap();
-    assert_eq!(capability.adapter.name, "local");
-    assert_eq!(capability.source_kind, SourceKind::Local);
-    assert_eq!(capability.default_scope, SourceScope::Directory);
+    assert_eq!(capability.0.name, "local");
+    assert_eq!(
+        capability.0.limits.0.get("source_kind"),
+        Some(&serde_json::json!(SourceKind::Local))
+    );
+    assert_eq!(
+        capability.0.limits.0.get("default_scope"),
+        Some(&serde_json::json!(SourceScope::Directory))
+    );
     for scope in [
         SourceScope::File,
         SourceScope::Directory,
@@ -21,8 +27,12 @@ async fn local_adapter_declares_task1_scopes_and_accepts_options() {
         SourceScope::Repo,
         SourceScope::Map,
     ] {
+        let tag = format!(
+            "scope:{}",
+            serde_json::to_value(scope).unwrap().as_str().unwrap()
+        );
         assert!(
-            capability.scopes.contains(&scope),
+            capability.0.features.contains(&tag),
             "missing local scope {scope:?}"
         );
     }

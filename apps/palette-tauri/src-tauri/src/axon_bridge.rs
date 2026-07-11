@@ -346,8 +346,12 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
             "/v1/doctor" | "/v1/status" | "/v1/sources" | "/v1/domains" | "/v1/stats" | "/v1/watch"
         ) | (
             HttpMethod::Post,
-            "/v1/scrape"
-                | "/v1/crawl"
+            // scrape/crawl/embed/ingest submit through the unified source
+            // pipeline now (see actionRequest.ts) — the legacy verb routes
+            // were removed server-side (confirmed 404 by
+            // crates/axon-web/src/server/handlers/rest_tests.rs) and are
+            // deliberately absent from this allowlist.
+            "/v1/sources"
                 | "/v1/map"
                 | "/v1/summarize"
                 | "/v1/ask"
@@ -358,9 +362,7 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/evaluate"
                 | "/v1/search"
                 | "/v1/research"
-                | "/v1/embed"
                 | "/v1/extract"
-                | "/v1/ingest"
                 | "/v1/endpoints"
                 | "/v1/brand"
                 | "/v1/diff"

@@ -1,8 +1,14 @@
-//! Target pipeline crate skeleton for `axon-document`.
+//! Target pipeline crate for `axon-document` (issue #298).
 //!
-//! This crate is intentionally marker-only in PR0. Runtime behavior moves here
-//! in issue #298 implementation PRs after contract tests exist.
+//! Live, not marker-only: `DocumentPreparer` is wired into every source
+//! family's vectorize path (feed/git/local/reddit/registry/sessions/web/
+//! youtube in `axon-services`, plus `axon-memory` and `axon-vector`'s
+//! `document_bridge`). `prepare_version` is currently the fixed literal
+//! `"axon-document-pr8"` (see `preparer.rs`) — a placeholder pending a real
+//! content-addressed or semantic versioning scheme, not yet load-bearing for
+//! cache invalidation.
 
+pub mod boundary;
 pub mod chunk;
 pub mod chunk_router;
 pub mod code;
@@ -15,6 +21,7 @@ pub mod profile;
 pub mod schema;
 pub mod session;
 pub mod source_range;
+pub mod structured_formats;
 pub mod testing;
 pub mod text;
 pub mod transcript;

@@ -1,9 +1,16 @@
+// `service_traits::source_service::SourceServiceImpl` boxes `crate::source::
+// index_source`'s already-deep async call chain a second time via
+// `#[async_trait]`; the extra layer pushes query-depth layout computation
+// past the default recursion limit (128). Raised, not worked around.
+#![recursion_limit = "256"]
+
 pub mod action_api;
 pub mod artifacts;
 pub mod brand;
 pub mod client_contract;
 pub mod code_search_watch;
 pub mod config;
+pub mod config_snapshot_hash;
 pub mod context;
 pub mod crawl;
 pub mod crawl_sync;
@@ -15,6 +22,7 @@ pub mod endpoints;
 pub mod events;
 pub mod extract;
 pub mod feed_acquire;
+pub mod graph;
 pub use feed_acquire::fetch_feed_to_file;
 #[allow(dead_code)]
 pub(crate) mod feed_source;
@@ -64,6 +72,7 @@ pub mod scrape;
 pub mod screenshot;
 pub mod search;
 pub mod search_crawl;
+pub mod service_traits;
 pub mod sessions;
 #[allow(dead_code)]
 pub(crate) mod sessions_source;

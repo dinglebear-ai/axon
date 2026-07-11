@@ -98,6 +98,7 @@ pub async fn enqueue_change_crawl(
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e.message.into() })?;

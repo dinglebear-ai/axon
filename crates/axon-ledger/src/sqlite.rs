@@ -77,6 +77,10 @@ impl LedgerStore for SqliteLedgerStore {
         source::get_source(self, source_id).await
     }
 
+    async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
+        source::list_sources(self, request).await
+    }
+
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
         manifest::put_manifest(self, manifest).await
     }
@@ -135,6 +139,14 @@ impl LedgerStore for SqliteLedgerStore {
         cleanup::resolve_cleanup_debt(self, &debt_id).await
     }
 
+    async fn delete_generation(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<u64> {
+        cleanup::delete_generation(self, &source_id, &generation).await
+    }
+
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
         lease::acquire_lease(self, request).await
     }
@@ -169,6 +181,7 @@ impl LedgerStore for SqliteLedgerStore {
                 "document_status".to_string(),
                 "cleanup_debt".to_string(),
                 "leases".to_string(),
+                "source_listing".to_string(),
             ],
             limits: MetadataMap::new(),
         }

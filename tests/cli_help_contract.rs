@@ -321,11 +321,12 @@ fn setup_split_help_snapshots_match() {
 
 #[test]
 fn all_command_help_filters_inherited_global_noise() {
-    // scrape/crawl/embed/ingest/code-search were removed at the Phase 10
-    // clean-break cutover -- they no longer have distinct help (any
-    // unrecognized positional falls through to the unified `source` command,
-    // which legitimately has flags like `--embed` that would false-positive
-    // against this loop's "unexpected" noise list).
+    // scrape/crawl/embed/ingest/code-search/dedupe were removed at the
+    // Phase 10 clean-break cutover -- they no longer have distinct help
+    // (any unrecognized positional falls through to the unified `source`
+    // command, which legitimately has flags like `--embed` and
+    // `--screenshot-full-page` that would false-positive against this
+    // loop's "unexpected" noise list). `dedupe` was replaced by `prune`.
     for command in [
         "watch",
         "map",
@@ -344,7 +345,7 @@ fn all_command_help_filters_inherited_global_noise() {
         "domains",
         "stats",
         "status",
-        "dedupe",
+        "prune",
         "memory",
         "sessions",
         "screenshot",

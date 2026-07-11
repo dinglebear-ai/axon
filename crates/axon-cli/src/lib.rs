@@ -3,6 +3,7 @@
 pub mod commands;
 pub mod json;
 pub mod schema_registry;
+pub mod ui;
 
 use axon_core::config::{CommandKind, Config, parse_args};
 use axon_core::logging::{init_tracing, log_done, log_info, log_warn};

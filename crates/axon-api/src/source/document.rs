@@ -122,6 +122,33 @@ pub enum CleanupSelector {
     Artifact {
         artifact_id: ArtifactId,
     },
+    /// Name specific graph nodes (by stable key) for `GraphPrune` debt to
+    /// delete. Added so `GraphStore::delete_nodes` has an identity to target
+    /// (`docs/pipeline-unification/runtime/pruning-contract.md`, "graph orphan
+    /// cleanup").
+    GraphNodes {
+        stable_keys: Vec<String>,
+    },
+    /// Name specific memory records for `MemoryPrune` debt to delete via
+    /// `MemoryStore::forget`.
+    MemoryRecords {
+        ids: Vec<MemoryId>,
+    },
+    /// Name a source's generations up to (and including) `up_to_generation`
+    /// for `LedgerPrune` debt to delete (ledger rows: generation, manifest,
+    /// items, document status).
+    LedgerGenerations {
+        source_id: SourceId,
+        up_to_generation: SourceGenerationId,
+    },
+    /// Name specific job rows for `JobRetention` debt to delete.
+    JobRows {
+        job_ids: Vec<JobId>,
+    },
+    /// Name specific cache keys for `CachePrune` debt to delete.
+    CacheKeys {
+        keys: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

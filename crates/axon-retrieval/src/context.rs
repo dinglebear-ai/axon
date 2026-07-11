@@ -7,12 +7,12 @@ use crate::query::RetrievalMatch;
 pub const MODULE_NAME: &str = "context";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ContextBundle {
-    pub(crate) text: String,
-    pub(crate) chunk_ids: Vec<ChunkId>,
-    pub(crate) bytes_used: u64,
-    pub(crate) token_estimate: u32,
-    pub(crate) truncated: bool,
+pub struct ContextBundle {
+    pub text: String,
+    pub chunk_ids: Vec<ChunkId>,
+    pub bytes_used: u64,
+    pub token_estimate: u32,
+    pub truncated: bool,
 }
 
 impl ContextBundle {

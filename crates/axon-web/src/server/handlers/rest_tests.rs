@@ -268,6 +268,37 @@ async fn legacy_indexing_routes_are_absent_and_sources_present() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "empty source is a 400");
 }
 
+/// `execution.detached=true` with no unified job store configured
+/// (`EmptyRuntime` here) degrades gracefully to the synchronous path instead
+/// of erroring — matching the handler's documented "no job store → fall back"
+/// behavior. The empty-source validation still runs first, so this exercises
+/// the same 400 as the non-detached case, proving the async branch never
+/// bypasses validation.
+#[tokio::test]
+#[serial]
+async fn detached_request_without_a_job_store_falls_back_to_synchronous_validation() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/sources"))
+        .json(&serde_json::json!({
+            "source": "",
+            "execution": { "mode": "background", "detached": true, "priority": "normal", "heartbeat_interval_secs": 5 }
+        }))
+        .send()
+        .await
+        .expect("sources request");
+    let status = response.status();
+    stop(shutdown, handle).await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "empty source is still a 400 even when detached=true"
+    );
+}
+
 #[tokio::test]
 #[serial]
 async fn bearer_only_read_routes_require_auth() {
@@ -552,7 +583,7 @@ async fn admin_routes_accept_valid_bearer() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .header("authorization", "Bearer secret")
         .json(&serde_json::json!({ "collection": "invalid/name" }))
         .send()
@@ -585,7 +616,7 @@ async fn admin_dedupe_rejects_body_without_json_content_type() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .header("authorization", "Bearer secret")
         .body(r#"{"collection":"invalid/name"}"#)
         .send()
@@ -600,7 +631,7 @@ async fn admin_dedupe_rejects_body_without_json_content_type() {
     assert_eq!(body["error"]["code"], "route.validation.unsupported_media");
 }
 
-/// F4: POST /v1/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
+/// F4: POST /v1/prune/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
 /// Migrate is intentionally not exposed as REST.
 #[tokio::test]
 #[serial]
@@ -610,7 +641,7 @@ async fn admin_routes_require_auth_in_loopback_dev() {
     let client = reqwest::Client::new();
 
     let dedupe = client
-        .post(format!("{base}/v1/dedupe"))
+        .post(format!("{base}/v1/prune/dedupe"))
         .send()
         .await
         .expect("dedupe request");

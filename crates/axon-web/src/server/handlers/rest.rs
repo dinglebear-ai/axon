@@ -129,7 +129,7 @@ pub(crate) fn documented_rest_paths_for_tests() -> Vec<String> {
 fn family_4_admin(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
     Router::new()
         .route(
-            "/v1/dedupe",
+            "/v1/prune/dedupe",
             guarded(post(admin::v1_dedupe), ScopeGuard::admin_write()),
         )
         .route(

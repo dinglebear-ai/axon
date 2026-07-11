@@ -34,8 +34,22 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/api_error.rs",
         "crates/axon-error/src/code.rs",
         "crates/axon-error/src/stage.rs",
+        "crates/axon-error/src/retry.rs",
+        "crates/axon-error/src/degradation.rs",
+        "crates/axon-error/src/cooling.rs",
+        "crates/axon-error/src/context.rs",
         "crates/axon-cli/src/schema_registry.rs",
+        "crates/axon-core/src/config/cli.rs",
+        "crates/axon-core/src/config/cli/config_args.rs",
+        "crates/axon-core/src/config/cli/setup_args.rs",
+        "xtask/src/schemas/cli_registry.rs",
+        "xtask/src/schemas/cli_registry/part1.rs",
+        "xtask/src/schemas/cli_registry/part2.rs",
+        "xtask/src/schemas/cli_registry/part3.rs",
+        "xtask/src/schemas/database_defs.rs",
+        "xtask/src/schemas/database_defs/parser.rs",
         "crates/axon-core/src/config/schema_registry.rs",
+        "xtask/src/schemas/config_schema_registry.rs",
         "crates/axon-core/src/boundary.rs",
         "crates/axon-embedding/src/provider.rs",
         "crates/axon-embedding/src/fake.rs",
@@ -52,7 +66,18 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
         "crates/axon-web/src/schema_registry.rs",
         "crates/axon-mcp/src/schema_registry.rs",
+        "xtask/src/schemas/mcp_action_registry.rs",
+        "crates/axon-mcp/src/server/authz.rs",
+        "crates/axon-mcp/src/server.rs",
+        "crates/axon-api/src/mcp_schema.rs",
+        "crates/axon-api/src/mcp_schema/requests.rs",
+        "crates/axon-api/src/mcp_schema/requests/discovery.rs",
+        "crates/axon-api/src/mcp_schema/requests/graph.rs",
+        "crates/axon-api/src/mcp_schema/requests/watch.rs",
+        "crates/axon-api/src/mcp_schema/prune_request.rs",
+        "crates/axon-api/src/mcp_schema/utility.rs",
         "crates/axon-observe/src/schema_registry.rs",
+        "crates/axon-observe/src/metric.rs",
         "crates/axon-graph/src/schema_registry.rs",
         "crates/axon-vectors/src/schema_registry.rs",
         "crates/axon-vectors/src/lib.rs",
@@ -69,6 +94,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "docs/pipeline-unification/schemas/openapi-schema.md",
         "docs/pipeline-unification/schemas/mcp-tool-schema.md",
         "docs/pipeline-unification/schemas/config-schema.md",
+        "docs/pipeline-unification/configuration/config-contract.md",
         "docs/pipeline-unification/schemas/event-schema.md",
         "docs/pipeline-unification/schemas/error-schema.md",
         "docs/pipeline-unification/schemas/database-schema.md",
@@ -96,6 +122,16 @@ pub(super) fn fixture_repo() -> TempDir {
         tmp.path(),
         "crates/axon-ledger/src/migrations/0001.sql",
         "create table sources(source_id text);",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-graph/src/migrations/0001.sql",
+        "create table graph_nodes(node_id text primary key);",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-memory/src/migrations/0001.sql",
+        "create table memory_records(memory_id text primary key);",
     );
     seed_schema_fixtures(tmp.path());
     tmp
@@ -132,7 +168,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
     match family {
         SchemaFamily::Cli => r#"{"commands":[]}"#,
         SchemaFamily::Openapi => r#"{"routes":[]}"#,
-        SchemaFamily::Mcp => r#"{"actions":[]}"#,
+        SchemaFamily::Mcp => "{}",
         SchemaFamily::Config => r#"{"config_keys":[]}"#,
         SchemaFamily::Graph => r#"{"graph_kinds":[]}"#,
         SchemaFamily::Providers => "{}",
@@ -167,6 +203,9 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "source_generation": "gen-code-7",
   "document_id": "doc-code",
   "chunk_id": "chunk-code-0",
+  "chunk_index": 0,
+  "chunking_profile": "markdown_sections",
+  "chunking_method": "heading_sections",
   "content_kind": "content_kind",
   "content_hash": "sha256:codehash",
   "chunk_hash": "chunk_hash",
@@ -856,18 +895,31 @@ fn mcp_schema_is_registry_backed_and_validates_action_branches() {
         &std::fs::read_to_string(tmp.path().join("docs/reference/mcp/tool-schema.json")).unwrap(),
     )
     .unwrap();
+    // The `extract` action is live and must have its real request DTO def.
+    assert!(value["$defs"]["ExtractRequest"].is_object());
+    let action_enum = value["$defs"]["Action"]["enum"].as_array().unwrap();
+    assert!(action_enum.iter().any(|a| a == "extract"));
+    // Removed/HTTP-only/never-contracted actions must be absent from the
+    // live Action enum.
+    for removed in ["crawl", "embed", "ingest", "purge", "dedupe", "scrape"] {
+        assert!(
+            !action_enum.iter().any(|a| a == removed),
+            "removed action {removed:?} must not appear in the Action enum"
+        );
+    }
+    // Contract-only actions with no live DTO surface as `deferred_actions`,
+    // not fabricated schemas.
+    let deferred = value["x-axon"]["deferred_actions"].as_array().unwrap();
     assert!(
-        value["actions"].as_array().unwrap().iter().any(
-            |action| action["action"] == "extract" && action["request_dto"] == "ExtractRequest"
-        )
-    );
-    assert!(
-        !value["actions"]
-            .as_array()
-            .unwrap()
+        deferred
             .iter()
-            .any(|action| action["action"] == "crawl")
+            .any(|entry| entry["action"] == "chat" || entry["action"] == "watches")
     );
+    // Every live action has an if/then discriminator branch.
+    let branches = value["$defs"]["ActionDiscriminatorRules"]["oneOf"]
+        .as_array()
+        .unwrap();
+    assert_eq!(branches.len(), action_enum.len());
 }
 
 #[test]
@@ -1718,6 +1770,194 @@ fn config_and_env_schema_artifacts_have_distinct_identity() {
         "https://axon.local/schemas/config/env.schema.json"
     );
     assert_ne!(config["title"], env["title"]);
+
+    // Distinct identity means more than a differing $id/title: the two
+    // artifacts must not be near-duplicate arrays of the same record shape.
+    assert!(config.get("config_keys").is_some());
+    assert!(env.get("env_vars").is_some());
+    assert!(config.get("env_vars").is_none());
+    assert!(env.get("config_keys").is_none());
+    assert_ne!(
+        config["properties"], env["properties"],
+        "config and env item schemas must differ, not just top-level metadata"
+    );
+}
+
+#[test]
+fn config_schema_covers_all_required_contract_keys() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Config(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+
+    let config: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/config/config.schema.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let keys: std::collections::BTreeSet<&str> = config["config_keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["key"].as_str())
+        .collect();
+    for required in [
+        "server.default_collection",
+        "server.json_pretty",
+        "pipeline.max_active_source_jobs",
+        "pipeline.max_active_interactive_jobs",
+        "jobs.heartbeat_secs",
+        "jobs.provider_reservation_timeout_secs",
+        "sources.embed_by_default",
+        "sources.default_scope_web",
+        "sources.default_scope_local",
+        "watch.tick_secs",
+        "watch.lease_secs",
+        "providers.embedding.batch_size",
+        "providers.embedding.max_concurrent_requests",
+        "providers.embedding.interactive_reserved_requests",
+        "providers.vector.write_concurrency",
+        "providers.vector.read_concurrency",
+        "providers.llm.completion_concurrency",
+        "providers.search.default",
+        "retrieval.limit",
+        "retrieval.hybrid_candidates",
+        "retrieval.ask_hybrid_candidates",
+        "crawl.max_pages",
+        "crawl.respect_robots",
+        "memory.decay_enabled",
+        "memory.review_interval_days",
+        "graph.enabled",
+        "prune.retention_days.jobs",
+        "observability.log_level",
+        "security.allow_private_network_fetch",
+    ] {
+        assert!(
+            keys.contains(required),
+            "config schema missing required key {required}"
+        );
+    }
+
+    let env: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/config/env.schema.json")).unwrap(),
+    )
+    .unwrap();
+    let env_names: std::collections::BTreeSet<&str> = env["env_vars"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["name"].as_str())
+        .collect();
+    for required in [
+        "AXON_DATA_DIR",
+        "QDRANT_URL",
+        "TEI_URL",
+        "AXON_CHROME_REMOTE_URL",
+        "AXON_HTTP_HOST",
+        "AXON_HTTP_PORT",
+        "AXON_PUBLIC_URL",
+        "AXON_HTTP_TOKEN",
+        "AXON_AUTH_MODE",
+        "AXON_GOOGLE_CLIENT_ID",
+        "AXON_GOOGLE_CLIENT_SECRET",
+        "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "GITEA_TOKEN",
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "TAVILY_API_KEY",
+        "AXON_SEARXNG_URL",
+        "AXON_OPENAI_API_KEY",
+        "AXON_OPENAI_BASE_URL",
+        "AXON_CODEX_HOME",
+    ] {
+        assert!(
+            env_names.contains(required),
+            "env schema missing required var {required}"
+        );
+    }
+}
+
+#[test]
+fn schema_generation_is_idempotent_across_all_families() {
+    let tmp = fixture_repo();
+
+    // First pass: --update-fixtures regenerates docs/reference/** artifacts
+    // and the fixture snapshots together.
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Generate(SchemaGenerateArgs {
+                update_fixtures: true,
+                ..SchemaGenerateArgs::default()
+            }),
+        },
+    )
+    .unwrap();
+    let first_pass = generated_artifact_contents(tmp.path());
+    let first_snapshots = snapshot_contents(tmp.path());
+    assert!(
+        !first_pass.is_empty(),
+        "first pass should produce artifacts"
+    );
+
+    // Second pass over the same tree must be byte-identical: no drift from
+    // running the generator again with no source changes.
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Generate(SchemaGenerateArgs {
+                update_fixtures: true,
+                ..SchemaGenerateArgs::default()
+            }),
+        },
+    )
+    .unwrap();
+    let second_pass = generated_artifact_contents(tmp.path());
+    let second_snapshots = snapshot_contents(tmp.path());
+
+    assert_eq!(
+        first_pass, second_pass,
+        "cargo xtask schemas generate --update-fixtures is not idempotent for docs/reference artifacts"
+    );
+    assert_eq!(
+        first_snapshots, second_snapshots,
+        "cargo xtask schemas generate --update-fixtures is not idempotent for fixture snapshots"
+    );
+
+    // `--check` against the first pass's output must also be clean, i.e. a
+    // plain (non-update-fixtures) `generate` run afterward writes nothing new.
+    check(tmp.path()).expect("generated artifacts must already satisfy --check");
+}
+
+fn snapshot_contents(root: &Path) -> std::collections::BTreeMap<String, String> {
+    let mut contents = std::collections::BTreeMap::new();
+    for family in families::all_families() {
+        let dir = root.join(format!(
+            "xtask/tests/fixtures/schemas/{}/snapshots",
+            family.as_str()
+        ));
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(&dir) {
+            let entry = entry.unwrap();
+            if entry.file_type().is_file() {
+                let rel = entry
+                    .path()
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                contents.insert(rel, std::fs::read_to_string(entry.path()).unwrap());
+            }
+        }
+    }
+    contents
 }
 
 #[test]
@@ -1744,6 +1984,115 @@ fn enum_projection_drift_is_scoped_to_each_enum_array() {
         .expect_err("missing enum value should fail even when value appears elsewhere");
     assert!(err.to_string().contains("SourceKind"));
     assert!(err.to_string().contains("web"));
+}
+
+#[test]
+fn enum_projection_drift_rejects_non_canonical_extra_values() {
+    let mut enums = serde_json::Map::new();
+    for (name, values) in registry::CANONICAL_ENUMS {
+        let mut values = values
+            .iter()
+            .copied()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        if *name == "SourceIntent" {
+            values.push("bogus_extra_variant".to_string());
+        }
+        enums.insert((*name).to_string(), serde_json::json!({ "enum": values }));
+    }
+    let artifact = artifact::SchemaArtifact::new(
+        "docs/reference/api/schemas.json",
+        serde_json::json!({ "$defs": { "enums": enums } }).to_string(),
+    );
+
+    let err = registry::check_enum_projection_drift(&[artifact])
+        .expect_err("extra non-canonical enum value should fail the bidirectional check");
+    assert!(err.to_string().contains("SourceIntent"));
+    assert!(err.to_string().contains("bogus_extra_variant"));
+}
+
+/// Cross-checks every `CANONICAL_ENUMS` entry against the real
+/// `schemars::JsonSchema` output of its backing `axon-api` enum, so a typo'd
+/// or stale hand-maintained value list fails fast instead of silently
+/// drifting from the Rust source of truth.
+#[test]
+fn canonical_enums_match_axon_api_schemars_output() {
+    use axon_api::source::*;
+
+    fn schemars_values<T: schemars::JsonSchema>() -> Vec<String> {
+        let schema = schemars::schema_for!(T);
+        let value: serde_json::Value = schema.into();
+        // Plain enums project as a flat `enum` array; variants carrying a doc
+        // comment (e.g. `JobKind::Embed`) make schemars emit a `oneOf` with
+        // per-variant `enum`/`const` branches instead — flatten both shapes.
+        if let Some(values) = value["enum"].as_array() {
+            return values
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+        }
+        let mut values = Vec::new();
+        for branch in value["oneOf"]
+            .as_array()
+            .unwrap_or_else(|| panic!("expected an `enum` or `oneOf` array in {value}"))
+        {
+            if let Some(v) = branch["const"].as_str() {
+                values.push(v.to_string());
+            } else if let Some(arr) = branch["enum"].as_array() {
+                values.extend(arr.iter().map(|v| v.as_str().unwrap().to_string()));
+            } else {
+                panic!("unexpected oneOf branch shape in {branch}");
+            }
+        }
+        values
+    }
+
+    macro_rules! check {
+        ($name:literal, $ty:ty) => {
+            let (_, expected) = registry::CANONICAL_ENUMS
+                .iter()
+                .find(|(name, _)| *name == $name)
+                .unwrap_or_else(|| panic!("{} missing from CANONICAL_ENUMS", $name));
+            let actual = schemars_values::<$ty>();
+            assert_eq!(
+                actual,
+                expected.to_vec(),
+                "{} CANONICAL_ENUMS values drifted from schemars output",
+                $name
+            );
+        };
+    }
+
+    check!("SourceIntent", SourceIntent);
+    check!("SourceRefreshPolicy", SourceRefreshPolicy);
+    check!("SourceWatchPolicy", SourceWatchPolicy);
+    check!("ExecutionMode", ExecutionMode);
+    check!("ResponseMode", ResponseMode);
+    check!("ArtifactMode", ArtifactMode);
+    check!("SourceKind", SourceKind);
+    check!("SourceScope", SourceScope);
+    check!("ItemKind", ItemKind);
+    check!("ContentKind", ContentKind);
+    check!("PipelinePhase", PipelinePhase);
+    check!("JobKind", JobKind);
+    check!("LifecycleStatus", LifecycleStatus);
+    check!("PublishState", PublishState);
+    check!("DocumentLifecycleStatus", DocumentLifecycleStatus);
+    check!("DiffKind", DiffKind);
+    check!("EnrichmentKind", EnrichmentKind);
+    check!("CleanupDebtKind", CleanupDebtKind);
+    check!("ProviderKind", ProviderKind);
+    check!("HealthStatus", HealthStatus);
+    check!("Visibility", Visibility);
+    check!("Severity", Severity);
+    check!("JobPriority", JobPriority);
+    check!("AuthorityLevel", AuthorityLevel);
+    check!("ExecutionAffinity", ExecutionAffinity);
+    check!("SafetyClass", SafetyClass);
+    check!("CredentialKind", CredentialKind);
+    check!("ArtifactKind", ArtifactKind);
+    check!("CachePolicy", CachePolicy);
+    check!("ChunkProfile", ChunkProfile);
 }
 
 #[test]

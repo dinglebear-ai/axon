@@ -140,9 +140,12 @@ fn diff_from(plan: &SourcePlan, items: Vec<ManifestItem>) -> SourceManifestDiff 
 #[tokio::test]
 async fn capabilities_advertise_feed_scope() {
     let cap = FeedSourceAdapter::new().capabilities().await.unwrap();
-    assert_eq!(cap.source_kind, SourceKind::Feed);
-    assert!(cap.validate_scope(SourceScope::Feed).is_ok());
-    assert!(cap.validate_scope(SourceScope::Page).is_err());
+    assert_eq!(
+        cap.0.limits.0.get("source_kind"),
+        Some(&serde_json::json!(SourceKind::Feed))
+    );
+    assert!(cap.0.features.contains(&"scope:feed".to_string()));
+    assert!(!cap.0.features.contains(&"scope:page".to_string()));
 }
 
 #[tokio::test]

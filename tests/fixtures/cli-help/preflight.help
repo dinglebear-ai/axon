@@ -4,4 +4,5 @@ Usage
   axon preflight [OPTIONS]
 
 Options
+  --config                         Validate config cutover keys only; do not run service readiness probes
   -h, --help                       Print help

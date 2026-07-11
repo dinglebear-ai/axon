@@ -35,8 +35,8 @@ impl SqliteUnifiedJobStore {
                 parent_job_id, root_job_id, attempt, warnings_json, request_json,
                 metadata_json, idempotency_key, auth_snapshot_json, config_snapshot_id,
                 stage_plan_json, requirements_json, result_schema, error_json,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                created_at, updated_at, deadline_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(job_id.0.to_string())
         .bind(enum_name(request.job_kind)?)
@@ -67,6 +67,7 @@ impl SqliteUnifiedJobStore {
         .bind(optional_to_json(&request.error)?)
         .bind(now.0.as_str())
         .bind(now.0.as_str())
+        .bind(request.deadline_at.as_ref().map(|ts| ts.0.as_str()))
         .execute(&mut *tx)
         .await
         .map_err(sql_error)?;

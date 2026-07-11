@@ -1,4 +1,5 @@
 use super::*;
+use axon_core::config::Config;
 use std::path::PathBuf;
 
 #[test]
@@ -31,4 +32,26 @@ fn manifest_and_markdown_paths_derive_from_output_dir() {
     // `markdown/` segment) is the output dir itself — NOT `<output_dir>/markdown`,
     // which would double the segment when the adapter joins.
     assert_eq!(markdown, PathBuf::from("/data/domains/example.com/sync"));
+}
+
+/// `SourceRequest.limits.max_pages` (source-pipeline.md `SourceRequest` table)
+/// must reach the crawl config's page cap unchanged.
+#[test]
+fn max_pages_limit_overrides_crawl_config_page_cap() {
+    let cfg = Config::test_default();
+    let crawl_cfg = effective_crawl_config_for_source(&cfg, Some(7));
+    assert_eq!(crawl_cfg.max_pages, 7);
+    assert!(
+        !crawl_cfg.embed,
+        "web source acquisition must always disable the crawl's own embed pass"
+    );
+}
+
+/// No `limits.max_pages` in the request keeps the crawl config's own default
+/// page cap untouched.
+#[test]
+fn missing_max_pages_limit_keeps_default_page_cap() {
+    let cfg = Config::test_default();
+    let crawl_cfg = effective_crawl_config_for_source(&cfg, None);
+    assert_eq!(crawl_cfg.max_pages, cfg.max_pages);
 }

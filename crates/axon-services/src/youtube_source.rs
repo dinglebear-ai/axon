@@ -55,9 +55,19 @@ pub struct YoutubeSourceIndexInput {
     pub embedding_reservations: Option<Arc<ProviderReservationManager>>,
     pub vector_reservations: Option<Arc<ProviderReservationManager>>,
     pub auth_snapshot: Option<AuthSnapshot>,
+    /// `SourceRequest.embed` (source-pipeline.md, Validation Checklist:
+    /// "`embed=false` never writes vectors"). When `false`, videos are still
+    /// discovered/normalized/prepared but no embedding provider or vector
+    /// store call is made.
+    pub embed: bool,
+    /// `SourceRequest.limits.max_items` (source-pipeline.md limits contract).
+    /// Natural mapping for YouTube: caps the number of videos considered
+    /// from the discovered manifest, applied before diffing so videos beyond
+    /// the limit are neither diffed nor vectorized. `None` means uncapped.
+    pub max_items: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct YoutubeSourceIndexOutput {
     pub job_id: JobId,
     pub source_id: SourceId,
@@ -66,6 +76,11 @@ pub struct YoutubeSourceIndexOutput {
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
     pub removed_videos: u64,
+    /// Parser-produced graph candidates from every prepared document in
+    /// this generation, carried up for the `graphing` stage
+    /// (`source::graph::write_baseline_graph`) to write. Empty on the
+    /// unchanged-refresh path, since it prepares no documents.
+    pub graph_candidates: Vec<GraphCandidate>,
 }
 
 #[cfg(test)]
@@ -141,6 +156,7 @@ async fn index_youtube_source_with_lease(
     lease: &LeaseGuard,
 ) -> anyhow::Result<YoutubeSourceIndexOutput> {
     let mut manifest = discover_manifest(&run).await?;
+    apply_max_items_limit(&mut manifest, input.max_items);
     record_progress(progress, PipelinePhase::Discovering, None).await?;
     let diff = ledger.diff_manifest(manifest.clone()).await?;
     record_progress(progress, PipelinePhase::Diffing, None).await?;
@@ -235,6 +251,7 @@ async fn index_youtube_source_with_lease(
         chunks_prepared: vectorized.stats.chunks_prepared,
         vector_points_written: publish_stats.total_points_written(),
         removed_videos: diff.counts.removed,
+        graph_candidates: vectorized.graph_candidates,
     })
 }
 
@@ -268,6 +285,7 @@ async fn unchanged_refresh_output(
         chunks_prepared: 0,
         vector_points_written: 0,
         removed_videos: 0,
+        graph_candidates: Vec::new(),
     }))
 }
 
@@ -380,6 +398,17 @@ fn unchanged_source_summary(
     summary.counts.items_total = item_count;
     summary.updated_at = timestamp();
     summary
+}
+
+/// Cap the discovered YouTube manifest to `max_items` videos
+/// (`SourceRequest.limits.max_items`). Applied before diffing so videos
+/// beyond the cap are never diffed, prepared, or vectorized. `None` leaves
+/// the manifest untouched.
+fn apply_max_items_limit(manifest: &mut SourceManifest, max_items: Option<u64>) {
+    if let Some(max_items) = max_items {
+        let max_items = usize::try_from(max_items).unwrap_or(usize::MAX);
+        manifest.items.truncate(max_items);
+    }
 }
 
 fn manifest_diff_has_changes(diff: &SourceManifestDiff) -> bool {

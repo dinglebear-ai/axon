@@ -1,7 +1,8 @@
-//! Target pipeline crate skeleton for `axon-parse`.
+//! Target pipeline crate for `axon-parse` (issue #298).
 //!
-//! This crate is intentionally marker-only in PR0. Runtime behavior moves here
-//! in issue #298 implementation PRs after contract tests exist.
+//! Live, not marker-only: per-family parsers (`code`, `config`, `docker`,
+//! `env`, `markdown`, `session`, `tool`), fact extraction (`facts`), and
+//! `graph_candidate` construction are wired and tested in this crate.
 
 pub mod builtins;
 pub mod code;
@@ -18,6 +19,8 @@ pub mod schema;
 pub mod session;
 pub mod testing;
 pub mod tool;
+pub mod tool_schema;
+pub mod validate;
 
 pub const CRATE_NAME: &str = "axon-parse";
 

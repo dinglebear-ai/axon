@@ -1,7 +1,7 @@
 package com.axon.app.data.repository
 
-import com.axon.app.data.remote.CrawlRequest
-import com.axon.app.data.remote.models.IngestRequest
+import com.axon.app.core.api.CrawlRequest
+import com.axon.app.core.api.models.IngestRequest
 
 data class CrawlSubmitOptions(
     val maxPages: Int? = null,

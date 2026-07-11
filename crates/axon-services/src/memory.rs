@@ -40,7 +40,11 @@ mod store;
 
 pub use compact::compact;
 pub use import_export::{MAX_MEMORY_IMPORT_RECORDS, MemoryAuthz, export, import};
-use store::memory_store;
+// `pub(crate)` (not just `use`) so `crate::source::open_cleanup_debt_stores`
+// can open the same composed (graph-mirrored, vector-backed) memory store
+// this module's own subactions use, instead of a bare `SqliteMemoryStore`
+// that would skip that composition's extra cleanup on `forget()`.
+pub(crate) use store::memory_store;
 #[cfg(test)]
 mod tests;
 
@@ -136,7 +140,7 @@ pub async fn dispatch(
             Ok(serde_json::to_value(result).unwrap_or(json!({})))
         }
         MemorySubaction::Export => {
-            let result = export(ctx, import_export::export_request_from_flat(req))
+            let result = export(ctx, import_export::export_request_from_flat(req), authz)
                 .await
                 .map_err(memory_error)?;
             Ok(serde_json::to_value(result).unwrap_or(json!({})))
@@ -150,6 +154,7 @@ pub async fn list(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<Memory
     // Empty-query search returns the full recall-visible set; then facet-filter.
     let search = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: String::new(),
             limit: MAX_LIMIT as u32,
             filters: Default::default(),
@@ -205,6 +210,7 @@ pub async fn search(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<Memo
     let store = memory_store(ctx).await?;
     let search = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query,
             limit: MAX_LIMIT as u32,
             filters: Default::default(),
@@ -287,6 +293,7 @@ pub async fn context(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryC
     // Seed from a keyword search when a query is present, else the full set.
     let search = store
         .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
             query: req.query.clone().unwrap_or_default(),
             limit: MAX_LIMIT as u32,
             filters: Default::default(),

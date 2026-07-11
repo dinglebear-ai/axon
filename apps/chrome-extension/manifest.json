@@ -3,7 +3,7 @@
   "name": "Axon",
   "version": "0.2.2",
   "description": "Scrape, crawl, extract, search and ask Axon over the page you're on.",
-  "options_page": "options.html",
+  "options_page": "src/options/options.html",
   "icons": {
     "16": "assets/png/axon-icon-16.png",
     "32": "assets/png/axon-icon-32.png",
@@ -20,13 +20,13 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background/background.js"
   },
   "side_panel": {
-    "default_path": "sidepanel.html"
+    "default_path": "src/sidepanel/sidepanel.html"
   },
   "permissions": ["activeTab", "clipboardWrite", "contextMenus", "notifications", "offscreen", "sidePanel", "storage", "tabs"],
-  "host_permissions": [
+  "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
   ],
