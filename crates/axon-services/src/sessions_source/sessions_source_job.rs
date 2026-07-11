@@ -107,7 +107,19 @@ fn job_create_request(input: &SessionsSourceIndexInput, _source_id: SourceId) ->
             .auth_snapshot
             .clone()
             .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
-        config_snapshot_id: Some(ConfigSnapshotId::new("cfg_sessions_source")),
+        config_snapshot_id: Some(crate::config_snapshot_hash::config_snapshot_id(
+            &crate::config_snapshot_hash::JobConfigSnapshot {
+                source_kind: "session",
+                source_ref: &format!("{}:{}", input.provider, input.session_id),
+                collection: &input.collection,
+                embedding_provider_id: &input.embedding_provider_id.0,
+                vector_provider_id: &input.vector_provider_id.0,
+                embedding_model: &input.embedding_model,
+                embedding_dimensions: input.embedding_dimensions,
+                embed: input.embed,
+                max_items: input.max_items,
+            },
+        )),
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
         warnings: Vec::new(),

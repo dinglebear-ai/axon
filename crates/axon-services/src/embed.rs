@@ -135,7 +135,9 @@ pub async fn embed_start_with_context(
             auth_snapshot: caller
                 .cloned()
                 .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
-            config_snapshot_id: None,
+            config_snapshot_id: Some(crate::config_snapshot_hash::config_snapshot_id_from_json(
+                &config_json,
+            )),
             requirements: MetadataMap::new(),
             result_schema: Some("embed_result".to_string()),
             warnings: Vec::new(),
