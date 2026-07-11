@@ -485,7 +485,6 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-crawl",
- "axon-ingest",
  "axon-jobs",
  "axon-llm",
  "axon-mcp",
@@ -654,33 +653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "axon-ingest"
-version = "6.2.2"
-dependencies = [
- "anyhow",
- "async-trait",
- "axon-api",
- "axon-core",
- "axon-vector",
- "chrono",
- "futures-util",
- "hex",
- "indicatif",
- "notify",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "serial_test",
- "sha2 0.11.0",
- "sqlx",
- "tempfile",
- "tokio",
- "tracing",
- "utoipa",
- "uuid",
-]
-
-[[package]]
 name = "axon-jobs"
 version = "6.2.2"
 dependencies = [
@@ -690,7 +662,6 @@ dependencies = [
  "axon-crawl",
  "axon-error",
  "axon-graph",
- "axon-ingest",
  "axon-ledger",
  "axon-llm",
  "axon-memory",
@@ -894,7 +865,6 @@ dependencies = [
  "axon-embedding",
  "axon-error",
  "axon-graph",
- "axon-ingest",
  "axon-jobs",
  "axon-ledger",
  "axon-llm",
@@ -909,6 +879,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "futures-util",
+ "hex",
  "httpmock",
  "indicatif",
  "libc",
@@ -1018,7 +989,6 @@ dependencies = [
  "axon-authz",
  "axon-core",
  "axon-error",
- "axon-ingest",
  "axon-jobs",
  "axon-ledger",
  "axon-llm",

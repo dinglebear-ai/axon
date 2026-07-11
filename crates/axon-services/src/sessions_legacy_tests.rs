@@ -1,5 +1,5 @@
 use super::*;
-use crate::sessions::watch::validate::{
+use crate::sessions_legacy::watch::validate::{
     SessionProvider, SessionWatchRoots, validate_session_file_path,
 };
 

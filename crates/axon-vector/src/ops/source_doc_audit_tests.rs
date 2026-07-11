@@ -8,7 +8,13 @@ fn source_doc_audit_forbids_manual_chunking_in_adapters() {
         .parent()
         .and_then(Path::parent)
         .expect("axon-vector lives under crates/");
-    let mut files = collect_files(&workspace_root.join("crates/axon-ingest/src"));
+    // `axon-ingest` was deleted outright (issue #298 cleanup); its
+    // session-ingest machinery (the PreparedDoc-producing code this audit
+    // cares about) moved to `axon-services::sessions_legacy`.
+    let mut files = collect_files(&workspace_root.join("crates/axon-services/src/sessions_legacy"));
+    files.push(workspace_root.join("crates/axon-services/src/sessions_legacy.rs"));
+    files.push(workspace_root.join("crates/axon-services/src/sessions_legacy_tests.rs"));
+    files.push(workspace_root.join("crates/axon-services/src/sessions_legacy_decode_tests.rs"));
     files.extend(collect_files(
         &workspace_root.join("crates/axon-document/src"),
     ));

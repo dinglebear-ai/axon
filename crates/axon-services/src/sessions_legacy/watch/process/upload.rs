@@ -1,6 +1,6 @@
 use super::{SessionWatchOptions, redact_error_detail};
-use crate::sessions::checkpoint::SessionFileMetadata;
-use crate::sessions::watch::validate::ValidatedSessionPath;
+use crate::sessions_legacy::checkpoint::SessionFileMetadata;
+use crate::sessions_legacy::watch::validate::ValidatedSessionPath;
 use anyhow::{Result, anyhow};
 use sha2::Digest;
 use std::path::Path;
@@ -12,7 +12,7 @@ pub(super) type PreparedWatchDoc = (
     usize,
     ValidatedSessionPath,
     SessionFileMetadata,
-    crate::sessions::PreparedSessionDoc,
+    crate::sessions_legacy::PreparedSessionDoc,
     Option<String>,
 );
 
@@ -117,7 +117,7 @@ fn remote_upload_body_len_from_doc_lens(
 }
 
 pub(super) async fn upload_prepared_sessions_to_server(
-    request: crate::sessions::IngestSessionsPreparedRequest,
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
     options: &SessionWatchOptions,
 ) -> Result<String> {
     let base = options
@@ -139,7 +139,7 @@ pub(super) async fn upload_prepared_sessions_to_server(
 pub async fn upload_prepared_sessions_to_server_with_auth(
     base: &str,
     token: &str,
-    request: crate::sessions::IngestSessionsPreparedRequest,
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
 ) -> Result<String> {
     let url = reqwest::Url::parse(base)
         .map_err(|error| anyhow!("invalid AXON_SERVER_URL: {error}"))?
@@ -187,7 +187,7 @@ pub async fn upload_prepared_sessions_to_server_with_auth(
 }
 
 fn serialize_remote_upload_body(
-    request: crate::sessions::IngestSessionsPreparedRequest,
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
 ) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec(&redact_remote_prepared_request(
         request,
@@ -195,9 +195,9 @@ fn serialize_remote_upload_body(
 }
 
 pub fn redact_remote_prepared_request(
-    request: crate::sessions::IngestSessionsPreparedRequest,
-) -> crate::sessions::IngestSessionsPreparedRequest {
-    crate::sessions::IngestSessionsPreparedRequest {
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
+) -> crate::sessions_legacy::IngestSessionsPreparedRequest {
+    crate::sessions_legacy::IngestSessionsPreparedRequest {
         docs: request
             .docs
             .into_iter()
@@ -209,8 +209,8 @@ pub fn redact_remote_prepared_request(
 }
 
 fn redact_remote_prepared_doc(
-    mut doc: crate::sessions::PreparedSessionDoc,
-) -> crate::sessions::PreparedSessionDoc {
+    mut doc: crate::sessions_legacy::PreparedSessionDoc,
+) -> crate::sessions_legacy::PreparedSessionDoc {
     let mut hasher = sha2::Sha256::new();
     Digest::update(&mut hasher, doc.url.as_bytes());
     Digest::update(&mut hasher, doc.session_file.as_bytes());
@@ -269,7 +269,7 @@ fn is_loopback_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sessions::watch::validate::SessionProvider;
+    use crate::sessions_legacy::watch::validate::SessionProvider;
     use axon_core::config::SessionWatchConfig;
     use std::path::PathBuf;
 
@@ -339,7 +339,7 @@ mod tests {
             0,
             validated,
             meta,
-            crate::sessions::PreparedSessionDoc {
+            crate::sessions_legacy::PreparedSessionDoc {
                 url: format!("file:///tmp/{name}"),
                 title: Some(name.to_string()),
                 text: text.to_string(),
