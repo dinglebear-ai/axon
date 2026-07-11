@@ -25,6 +25,7 @@ pub struct FakeLlmProvider {
     health: HealthStatus,
     health_override: Option<HealthStatus>,
     mode: FakeLlmMode,
+    cooldown_until_override: Option<Timestamp>,
     calls: Arc<Mutex<Vec<LlmCompletionRequest>>>,
 }
 
@@ -35,6 +36,7 @@ impl FakeLlmProvider {
             health: HealthStatus::Healthy,
             health_override: None,
             mode: FakeLlmMode::Success,
+            cooldown_until_override: None,
             calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -47,6 +49,15 @@ impl FakeLlmProvider {
 
     pub fn with_mode(mut self, mode: FakeLlmMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Override `capabilities().cooldown_until`, taking precedence over the
+    /// fixed timestamp [`FakeLlmMode::RateLimited`] otherwise reports. Lets
+    /// tests simulate a live, "now"-relative cooldown window instead of a
+    /// mode-derived fixed instant.
+    pub fn with_cooldown_until(mut self, cooldown_until: Timestamp) -> Self {
+        self.cooldown_until_override = Some(cooldown_until);
         self
     }
 
@@ -85,6 +96,9 @@ impl FakeLlmProvider {
             self.mode_state() == FakeProviderModeState::Success || *health != HealthStatus::Healthy
         }) {
             state.health = health;
+        }
+        if let Some(cooldown_until) = self.cooldown_until_override.clone() {
+            state.cooldown_until = Some(cooldown_until);
         }
         state
     }

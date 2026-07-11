@@ -2,6 +2,9 @@
 //! and any crate-local payload validator that needs to agree on what a
 //! secret looks like (e.g. `axon-vectors`'s vector payload validator).
 
+use regex::Regex;
+use std::sync::LazyLock;
+
 /// Field names that are secret-shaped but not hard-forbidden. Non-fatal:
 /// callers typically drop the field rather than reject the whole write.
 pub fn secret_like_field_name(field: &str) -> bool {
@@ -31,7 +34,121 @@ pub fn value_contains_secret(value: &str) -> bool {
         .any(|fragment| normalized.contains(fragment))
         || raw_dotenv_assignment(value)
         || contains_bare_secret_token(value)
+        || contains_pem_private_key_block(value)
+        || contains_url_embedded_credentials(value)
+        || looks_like_bare_cookie_string(value)
         || normalized.contains("adapter_response")
+}
+
+/// Whether `value` contains a PEM-encoded private-key block
+/// (`-----BEGIN ... PRIVATE KEY-----`) — RSA/EC/DSA/OpenSSH/PKCS8 keys all
+/// share this header shape regardless of algorithm label.
+pub fn contains_pem_private_key_block(value: &str) -> bool {
+    static PEM_PRIVATE_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+            .expect("pem private key regex is valid")
+    });
+    PEM_PRIVATE_KEY_RE.is_match(value)
+}
+
+/// Whether `value` contains a URL authority with a non-empty
+/// username **and** password (`scheme://user:pass@host`). A bare username
+/// with no password (`https://user@example.com`) is not flagged — that is a
+/// common non-secret pattern (e.g. git remotes) the contract's "non-empty
+/// username and password authority parts" wording excludes.
+pub fn contains_url_embedded_credentials(value: &str) -> bool {
+    static URL_CREDENTIALS_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s/:@]+:[^\s/@]+@[^\s/]+")
+            .expect("url credentials regex is valid")
+    });
+    URL_CREDENTIALS_RE.is_match(value)
+}
+
+/// Whether `value` looks like a bare (unlabeled) `Cookie`/`Set-Cookie`
+/// header value: two or more `;`-separated segments, each either a
+/// `key=value` pair or a bare attribute flag (`HttpOnly`, `Secure`, …), with
+/// at least one value long enough to look like a session identifier (16+
+/// chars). The length floor bounds false positives on short, clearly
+/// non-secret `key=value; key2=value2` text (e.g. query-string-shaped
+/// examples in docs) while still catching real cookie strings.
+pub fn looks_like_bare_cookie_string(value: &str) -> bool {
+    let segments: Vec<&str> = value
+        .split(';')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.len() < 2 {
+        return false;
+    }
+    let mut kv_count = 0usize;
+    let mut has_long_value = false;
+    for segment in &segments {
+        if let Some((key, val)) = segment.split_once('=') {
+            let key_ok = !key.is_empty()
+                && !key.contains(char::is_whitespace)
+                && key
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'));
+            let val_ok = !val.is_empty() && !val.contains(char::is_whitespace);
+            if !key_ok || !val_ok {
+                return false;
+            }
+            kv_count += 1;
+            if val.len() >= 16 {
+                has_long_value = true;
+            }
+        } else if !segment.chars().all(|ch| ch.is_ascii_alphanumeric()) {
+            // Not a `key=value` pair and not a bare alnum flag (HttpOnly,
+            // Secure, …) — this isn't cookie-shaped text at all.
+            return false;
+        }
+    }
+    kv_count >= 1 && has_long_value
+}
+
+/// Field-name fragments that put a value in "opaque token" context per the
+/// contract: Gitea/GitLab/OAuth-style opaque tokens carry no fixed prefix,
+/// so they are classified by key/path context plus value entropy rather
+/// than a prefix match.
+pub const OPAQUE_TOKEN_FIELD_CONTEXT_FRAGMENTS: &[&str] = &[
+    "token",
+    "secret",
+    "gitlab",
+    "gitea",
+    "oauth",
+    "deploy_token",
+];
+
+/// Whether `field` name context marks its value as opaque-token-shaped.
+pub fn field_is_opaque_token_context(field: &str) -> bool {
+    let normalized = field.to_ascii_lowercase();
+    OPAQUE_TOKEN_FIELD_CONTEXT_FRAGMENTS
+        .iter()
+        .any(|fragment| normalized.contains(fragment))
+}
+
+/// Whether `value` is shaped like an opaque secret token: long enough,
+/// token-charset only, and high Shannon entropy. This is a **secondary**
+/// signal — per the contract, entropy is only used alongside key/path
+/// context ([`field_is_opaque_token_context`]), never on its own.
+pub fn value_is_high_entropy_token(value: &str) -> bool {
+    let trimmed = value.trim();
+    const MIN_LEN: usize = 20;
+    if trimmed.len() < MIN_LEN
+        || !trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+    {
+        return false;
+    }
+    super::shannon_entropy_bits(trimmed) >= super::MIN_ENTROPY_BITS
+}
+
+/// Last `.`-delimited segment of a redaction field path (e.g.
+/// `metadata.gitlab_token` -> `gitlab_token`), used to check field-name
+/// context without matching on ancestor path segments.
+pub fn last_field_segment(path: &str) -> &str {
+    path.rsplit('.').next().unwrap_or(path)
 }
 
 /// Whether a free-text value looks like an absolute local filesystem path
@@ -172,6 +289,10 @@ pub const BARE_SECRET_TOKEN_PREFIXES: &[&str] = &[
     "sk-",
     "sk_",
     "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "ghr_",
     "xoxb-",
     "xoxp-",
     "glpat-",

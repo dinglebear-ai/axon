@@ -177,10 +177,12 @@ fn authorize_task_tool_call<'a>(
 ) -> Result<Option<&'a lab_auth::AuthContext>, ErrorData> {
     let auth = server_authz::require_auth_context(&server.auth_policy, context)?;
     let (action, subaction) = action_pair_from_arguments(request.arguments.as_ref());
-    match (
-        auth,
-        server_authz::required_scope_for_tool("axon", &action, &subaction),
-    ) {
+    // mutates_if (axon #298 follow-up): mirrors the upgrade applied in
+    // `server.rs::call_tool` so the deferred-task path enforces the same
+    // effective scope as the synchronous dispatch path.
+    let base_required_scope = server_authz::required_scope_for_tool("axon", &action, &subaction);
+    let required_scope = server_authz::required_scope_with_mutates_if(&action, base_required_scope);
+    match (auth, required_scope) {
         (Some(_), Some("__deny__")) => Err(ErrorData::invalid_request(
             format!("forbidden: unknown action `{action}`"),
             None,
@@ -202,12 +204,21 @@ fn authorize_task_tool_call<'a>(
 fn caller_auth_snapshot_from_auth_context(
     auth_ctx: &lab_auth::AuthContext,
 ) -> axon_api::source::AuthSnapshot {
+    let auth_mode = if auth_ctx.sub == "static-bearer" {
+        axon_api::source::AuthMode::StaticToken
+    } else {
+        axon_api::source::AuthMode::Oauth
+    };
     axon_api::source::AuthSnapshot::from_caller(
         &axon_api::source::CallerContext {
-            actor: Some(auth_ctx.sub.clone()),
+            caller_id: Some(auth_ctx.sub.clone()),
             transport: axon_api::source::TransportKind::Mcp,
+            trusted_local: false,
             scopes: auth_ctx.scopes.clone(),
             visibility_ceiling: axon_api::source::Visibility::Internal,
+            auth_mode,
+            token_id: None,
+            display_name: None,
         },
         axon_api::source::Visibility::Internal,
         "runtime",
@@ -383,6 +394,10 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Migrate(_) => ("migrate", "None".to_string()),
         AxonRequest::Watch(_) => ("watch", "None".to_string()),
         AxonRequest::Setup(_) => ("setup", "None".to_string()),
+        AxonRequest::Resolve(_) => ("resolve", "None".to_string()),
+        AxonRequest::Capabilities(_) => ("capabilities", "None".to_string()),
+        AxonRequest::Providers(req) => ("providers", format!("{:?}", req.subaction)),
+        AxonRequest::Graph(req) => ("graph", format!("{:?}", req.subaction)),
     };
     invalid_params(format!(
         "task execution is supported only for extract.start; got {action}.{subaction}"

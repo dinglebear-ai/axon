@@ -1,0 +1,77 @@
+{
+  "candidate_id": "gc_session_tool_skill_1",
+  "job_id": "00000000-0000-0000-0000-000000000003",
+  "source_id": "src_claude_session",
+  "source_item_key": "session_2026-07-09.jsonl",
+  "item_canonical_uri": "session://claude/2026-07-09",
+  "document_id": null,
+  "kind": "session_transcript",
+  "merge_key": null,
+  "producer": {
+    "adapter": "sessions",
+    "parser": "claude_jsonl",
+    "version": "1"
+  },
+  "nodes": [
+    {
+      "node_kind": "session",
+      "stable_key": "session:claude:2026-07-09",
+      "label": "2026-07-09 session",
+      "properties": {}
+    },
+    {
+      "node_kind": "session_turn",
+      "stable_key": "session-turn:claude:2026-07-09:1",
+      "label": "turn 1",
+      "properties": {}
+    },
+    {
+      "node_kind": "tool_call",
+      "stable_key": "tool-call:claude:2026-07-09:1:bash",
+      "label": "Bash",
+      "properties": {}
+    },
+    {
+      "node_kind": "skill",
+      "stable_key": "skill:axon:using-axon",
+      "label": "using-axon",
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "edge_kind": "session_has_turn",
+      "from_stable_key": "session:claude:2026-07-09",
+      "to_stable_key": "session-turn:claude:2026-07-09:1",
+      "properties": {}
+    },
+    {
+      "edge_kind": "turn_invoked_tool",
+      "from_stable_key": "session-turn:claude:2026-07-09:1",
+      "to_stable_key": "tool-call:claude:2026-07-09:1:bash",
+      "properties": {}
+    },
+    {
+      "edge_kind": "turn_invoked_skill",
+      "from_stable_key": "session-turn:claude:2026-07-09:1",
+      "to_stable_key": "skill:axon:using-axon",
+      "properties": {}
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_1",
+      "evidence_kind": "session_jsonl",
+      "source_id": "src_claude_session",
+      "source_item_key": "session_2026-07-09.jsonl",
+      "document_id": null,
+      "chunk_id": null,
+      "range": null,
+      "quote": null,
+      "confidence": 0.9,
+      "metadata": {}
+    }
+  ],
+  "confidence": 0.9,
+  "metadata": {}
+}

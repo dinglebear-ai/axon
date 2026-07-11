@@ -10,8 +10,13 @@ use crate::validation::{
     manifest_missing_error, source_missing_error,
 };
 
+mod graph_prune;
+mod ledger_prune;
+mod manifest_items;
 mod stale_cleanup;
 
+use graph_prune::graph_prune_cleanup_debt_in_tx;
+use ledger_prune::ledger_prune_cleanup_debt_in_tx;
 use stale_cleanup::stale_item_cleanup_debt_in_tx;
 
 pub(super) async fn create_generation(
@@ -182,8 +187,19 @@ pub(super) async fn publish_generation(
 
     let mut committed_generation = generation.clone();
     committed_generation.published_at = Some(timestamp());
-    let cleanup_debt =
+    let mut cleanup_debt =
         stale_item_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?;
+    cleanup_debt.extend(
+        graph_prune_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?,
+    );
+    cleanup_debt.extend(
+        ledger_prune_cleanup_debt_in_tx(
+            &mut tx,
+            &committed_generation.source_id,
+            previous.as_ref(),
+        )
+        .await?,
+    );
     committed_generation.publish_state = if cleanup_debt.is_empty() {
         PublishState::Committed
     } else {

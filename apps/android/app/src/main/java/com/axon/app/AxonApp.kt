@@ -2,7 +2,7 @@ package com.axon.app
 
 import android.app.Application
 import android.util.Log
-import com.axon.app.data.auth.AuthMode
+import com.axon.app.core.auth.AuthMode
 import com.axon.app.data.repository.DEFAULT_SERVER_URL
 import com.axon.app.di.AppContainer
 import kotlinx.coroutines.CoroutineScope

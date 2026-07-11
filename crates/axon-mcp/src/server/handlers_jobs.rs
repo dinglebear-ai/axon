@@ -103,6 +103,7 @@ async fn jobs_cancel(
         JobCancelRequest {
             reason: req.reason,
             force_after_ms: None,
+            actor: None,
         },
     )
     .await

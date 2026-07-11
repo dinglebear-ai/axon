@@ -114,7 +114,7 @@ pub async fn embed_start_with_context(
         .create(JobCreateRequest {
             request_id: None,
             job_kind: UnifiedJobKind::Embed,
-            job_intent: JobIntent::Run,
+            job_intent: JobIntent::Index,
             source_id: None,
             watch_id: None,
             parent_job_id: None,
@@ -135,12 +135,15 @@ pub async fn embed_start_with_context(
             auth_snapshot: caller
                 .cloned()
                 .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
-            config_snapshot_id: None,
+            config_snapshot_id: Some(crate::config_snapshot_hash::config_snapshot_id_from_json(
+                &config_json,
+            )),
             requirements: MetadataMap::new(),
             result_schema: Some("embed_result".to_string()),
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
+            deadline_at: None,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e.message.into() })?;

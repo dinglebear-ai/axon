@@ -42,16 +42,16 @@ impl RedditSourceAdapter {
 
 #[async_trait]
 impl SourceAdapter for RedditSourceAdapter {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         ADAPTER_NAME
     }
 
-    fn version(&self) -> &str {
+    fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
 
-    async fn capabilities(&self) -> Result<AdapterCapability> {
-        Ok(reddit_capability(self.version()))
+    async fn capabilities(&self) -> Result<SourceAdapterCapability> {
+        Ok(reddit_capability(self.version()).into())
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {

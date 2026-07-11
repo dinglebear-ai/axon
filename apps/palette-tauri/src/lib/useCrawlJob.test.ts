@@ -25,11 +25,17 @@ function runningJob(jobId: string): RunState {
   };
 }
 
-function crawlResponse(status: string, pages: number) {
-  return new Response(JSON.stringify({ job: { status, pages_crawled: pages } }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+// Unified `GET /v1/jobs/{id}` returns a flat `JobSummary`, not the legacy
+// `{ job: {...} }` envelope — see `adaptUnifiedCrawlPayload` (bead
+// axon_rust-ruzox.9) in `useCrawlJob.ts`.
+function crawlResponse(status: string, itemsDone: number) {
+  return new Response(
+    JSON.stringify({ status, counts: { items_done: itemsDone, documents_done: 0, chunks_done: 0 } }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
 }
 
 function setup(initial: RunState) {
@@ -80,8 +86,8 @@ describe("useCrawlJob 1Hz poll (T-L1)", () => {
     });
     expect(fetchSpy.mock.calls.length).toBe(afterMount + 3);
 
-    // Every poll targets the crawl status route.
-    expect(fetchSpy).toHaveBeenCalledWith("/v1/crawl/job-1", expect.objectContaining({ method: "GET" }));
+    // Every poll targets the unified job status route.
+    expect(fetchSpy).toHaveBeenCalledWith("/v1/jobs/job-1", expect.objectContaining({ method: "GET" }));
   });
 
   it("stops polling once the job reaches a terminal phase", async () => {

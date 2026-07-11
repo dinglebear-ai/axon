@@ -237,3 +237,15 @@ pub struct GraphQueryResult {
     pub next_cursor: Option<String>,
     pub warnings: Vec<SourceWarning>,
 }
+
+/// Result of a scoped `GraphStore` delete (`delete_nodes`/`delete_edges`).
+/// Used by cleanup-debt `GraphPrune` drains — per the pruning contract,
+/// deletes are identity-based (stable key / edge id), never a blanket reset.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct GraphDeleteResult {
+    pub nodes_deleted: u64,
+    pub edges_deleted: u64,
+}

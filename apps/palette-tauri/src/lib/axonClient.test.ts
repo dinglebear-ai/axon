@@ -65,18 +65,18 @@ describe("executeAction", () => {
     // canonical backend `classify_target`. It ships the bare target; the server
     // routes github/gitlab/gitea/git/reddit/youtube/rss from it.
     await executeTestAction("ingest", "owner/repo");
-    expect(lastRequestBody()).toEqual({ target: "owner/repo" });
+    expect(lastRequestBody()).toEqual({ source: "owner/repo", collection: "docs" });
 
     await executeTestAction("ingest", "https://www.youtube.com/watch?v=abc123");
-    expect(lastRequestBody()).toEqual({ target: "https://www.youtube.com/watch?v=abc123" });
+    expect(lastRequestBody()).toEqual({ source: "https://www.youtube.com/watch?v=abc123", collection: "docs" });
 
     await executeTestAction("ingest", "r/rust");
-    expect(lastRequestBody()).toEqual({ target: "r/rust" });
+    expect(lastRequestBody()).toEqual({ source: "r/rust", collection: "docs" });
   });
 
   it("sends GitLab/Gitea targets raw (previously misclassified as github by the client)", async () => {
     await executeTestAction("ingest", "https://gitlab.com/group/project");
-    expect(lastRequestBody()).toEqual({ target: "https://gitlab.com/group/project" });
+    expect(lastRequestBody()).toEqual({ source: "https://gitlab.com/group/project", collection: "docs" });
   });
 
   it("does not attach collection to summarize requests", async () => {
@@ -165,8 +165,8 @@ describe("executeAction", () => {
       ["domains", "", "GET", "/v1/domains", null],
       ["stats", "", "GET", "/v1/stats", null],
       ["watch-list", "", "GET", "/v1/watch", null],
-      ["scrape", "https://example.com/doc", "POST", "/v1/scrape", { url: "https://example.com/doc", collection: "docs" }],
-      ["crawl", "https://example.com/docs", "POST", "/v1/crawl", { urls: ["https://example.com/docs"], collection: "docs" }],
+      ["scrape", "https://example.com/doc", "POST", "/v1/sources", { source: "https://example.com/doc", scope: "page", collection: "docs" }],
+      ["crawl", "https://example.com/docs", "POST", "/v1/sources", { source: "https://example.com/docs", scope: "site", collection: "docs" }],
       ["map", "https://example.com", "POST", "/v1/map", { url: "https://example.com" }],
       ["summarize", "https://example.com/doc", "POST", "/v1/summarize", { urls: ["https://example.com/doc"] }],
       ["ask", "what changed?", "POST", "/v1/ask", { query: "what changed?", explain: false, diagnostics: false, collection: "docs" }],
@@ -177,9 +177,9 @@ describe("executeAction", () => {
       ["evaluate", "is RAG better?", "POST", "/v1/evaluate", { question: "is RAG better?" }],
       ["search", "tauri v2", "POST", "/v1/search", { query: "tauri v2", limit: 7 }],
       ["research", "qdrant hybrid", "POST", "/v1/research", { query: "qdrant hybrid", limit: 7 }],
-      ["embed", "https://example.com/doc", "POST", "/v1/embed", { input: "https://example.com/doc", collection: "docs" }],
+      ["embed", "https://example.com/doc", "POST", "/v1/sources", { source: "https://example.com/doc", collection: "docs" }],
       ["extract", "https://example.com/pricing", "POST", "/v1/extract", { urls: ["https://example.com/pricing"], collection: "docs" }],
-      ["ingest", "owner/repo", "POST", "/v1/ingest", { target: "owner/repo" }],
+      ["ingest", "owner/repo", "POST", "/v1/sources", { source: "owner/repo", collection: "docs" }],
       ["endpoints", "https://example.com", "POST", "/v1/endpoints", { url: "https://example.com" }],
       ["brand", "https://example.com", "POST", "/v1/brand", { url: "https://example.com" }],
       ["diff", "https://example.com/a https://example.com/b", "POST", "/v1/diff", { url_a: "https://example.com/a", url_b: "https://example.com/b" }],

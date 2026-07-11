@@ -84,6 +84,21 @@ async fn fake_llm_capabilities_reflect_failure_mode() {
 }
 
 #[tokio::test]
+async fn fake_llm_with_cooldown_until_overrides_the_mode_derived_timestamp() {
+    // `with_cooldown_until` lets a test simulate a live, "now"-relative
+    // cooldown window instead of `FakeLlmMode::RateLimited`'s fixed timestamp.
+    let cooldown_until =
+        axon_api::source::Timestamp::from(chrono::Utc::now() + chrono::Duration::seconds(45));
+    let provider = FakeLlmProvider::new("fake-llm")
+        .with_mode(FakeLlmMode::RateLimited)
+        .with_cooldown_until(cooldown_until.clone());
+
+    let capability = provider.capabilities().await.unwrap();
+    assert_eq!(capability.health, HealthStatus::Cooling);
+    assert_eq!(capability.cooldown_until, Some(cooldown_until));
+}
+
+#[tokio::test]
 async fn fake_llm_health_override_cannot_hide_failure_mode() {
     let provider = FakeLlmProvider::new("fake-llm")
         .with_health(HealthStatus::Healthy)

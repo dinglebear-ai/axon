@@ -1,4 +1,4 @@
-use super::build_config::tests::{ENV_LOCK, with_env_saved};
+use super::build_config::tests::{env_guard, with_env_saved};
 use super::docker::is_docker_service_host;
 use crate::config::types::{CommandKind, McpTransport};
 use clap::Parser;
@@ -7,7 +7,7 @@ use std::env;
 #[allow(unsafe_code)]
 #[test]
 fn parse_watch_create_with_every_and_type() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -76,7 +76,7 @@ fn help_omits_removed_source_commands() {
 #[allow(unsafe_code)]
 #[test]
 fn removed_command_names_dispatch_as_source() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     for removed in [
         "embed",
@@ -136,7 +136,7 @@ fn removed_command_names_dispatch_as_source() {
 /// the dedupe/purge removal.
 #[test]
 fn removed_dedupe_purge_dispatch_as_source() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let command = super::build_cli_command();
 
     for removed in ["dedupe", "purge"] {
@@ -181,7 +181,7 @@ fn parse_brand_rejects_fresh_flag() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_max_profile_flows_to_crawl_subscribe_buffer() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -220,7 +220,7 @@ fn config_example_toml_parses() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_watch_exec() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -246,7 +246,7 @@ fn parse_watch_exec() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_watch_history_with_limit() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -276,7 +276,7 @@ fn parse_watch_history_with_limit() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_jobs_events_with_after_sequence_into_config() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from(with_service_urls(&[
         "jobs",
@@ -305,7 +305,7 @@ fn parse_jobs_events_with_after_sequence_into_config() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_jobs_controls_into_config() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     for args in [
         vec![
@@ -360,7 +360,7 @@ fn with_service_urls<'a>(args: &'a [&'a str]) -> Vec<&'a str> {
 #[allow(unsafe_code)]
 #[test]
 fn parse_completions_bash_does_not_require_service_envs() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cli = super::Cli::parse_from(["axon", "completions", "bash"]);
     let cfg = super::build_config::into_config(cli)
         .expect("completions should parse without service env vars");
@@ -377,7 +377,7 @@ fn parse_completion_alias_is_accepted() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_sources_domain_flags_into_config() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -400,7 +400,7 @@ fn parse_sources_domain_flags_into_config() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_domains_domain_flag_into_config() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -424,7 +424,7 @@ fn parse_retrieve_max_points_into_config() {
     // `retrieve` is not in into_config's early-return command list, so it
     // reads AXON_COLLECTION/AXON_SQLITE_PATH/AXON_OUTPUT_DIR/AXON_CONFIG_PATH
     // -- hold ENV_LOCK to avoid racing other tests that mutate that env.
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cli = super::Cli::parse_from([
         "axon",
         "--tei-url",
@@ -509,7 +509,7 @@ fn try_ask_cli(extra: &[&str]) -> Result<super::Cli, clap::Error> {
 
 #[allow(unsafe_code)]
 fn into_ask_config(extra: &[&str]) -> Result<crate::config::Config, String> {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut default_toml = tempfile::Builder::new()
         .suffix(".toml")
         .tempfile()
@@ -631,7 +631,7 @@ fn test_is_docker_service_host_rejects_plain_hosts() {
 #[allow(unsafe_code)]
 #[test]
 fn test_tavily_api_key_read_from_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     const VAR: &str = "AXON_TEST_TAVILY_KEY_PRESENT";
     // SAFETY: guarded by ENV_LOCK; no other test mutates this var concurrently.
     unsafe { env::set_var(VAR, "test-key-123") };
@@ -642,7 +642,7 @@ fn test_tavily_api_key_read_from_env() {
 
 #[test]
 fn test_tavily_api_key_defaults_to_empty_when_unset() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     const VAR: &str = "AXON_TEST_TAVILY_KEY_ABSENT";
     // This var is never set anywhere, so it should always be absent.
     let key = env::var(VAR).ok().unwrap_or_default();
@@ -812,7 +812,7 @@ fn test_slash_disables_default_exclude_prefixes() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_mcp_defaults_to_stdio_transport() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
         "axon",
@@ -830,7 +830,7 @@ fn parse_mcp_defaults_to_stdio_transport() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_mcp_transport_flag_overrides_command_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
 
     unsafe {
@@ -858,7 +858,7 @@ fn parse_mcp_transport_flag_overrides_command_default() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_serve_mcp_maps_to_mcp_http_transport() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cli = super::Cli::parse_from([
         "axon",
         "--tei-url",
@@ -876,7 +876,7 @@ fn parse_serve_mcp_maps_to_mcp_http_transport() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_mcp_transport_env_overrides_command_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
     unsafe {
         env::set_var(TRANSPORT, "both");
@@ -897,7 +897,7 @@ fn parse_mcp_transport_env_overrides_command_default() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_setup_targets_does_not_require_service_urls() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     unsafe {
         env::remove_var("TEI_URL");
         env::remove_var("QDRANT_URL");
@@ -914,7 +914,7 @@ fn parse_setup_targets_does_not_require_service_urls() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_setup_without_subcommand_is_local_first_run() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     unsafe {
         env::remove_var("TEI_URL");
         env::remove_var("QDRANT_URL");
@@ -930,7 +930,7 @@ fn parse_setup_without_subcommand_is_local_first_run() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_setup_init_preflight_smoke_and_stack_modes() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     unsafe {
         env::remove_var("TEI_URL");
         env::remove_var("QDRANT_URL");
@@ -1036,7 +1036,7 @@ fn parse_sessions_watch_provider_and_project_filters_are_typed() {
     // `sessions` is not in into_config's early-return command list, so it
     // reads AXON_COLLECTION/AXON_SQLITE_PATH/AXON_OUTPUT_DIR/AXON_CONFIG_PATH
     // -- hold ENV_LOCK to avoid racing other tests that mutate that env.
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cli = super::Cli::parse_from([
         "axon",
         "--tei-url",
@@ -1063,7 +1063,7 @@ fn parse_sessions_watch_provider_and_project_filters_are_typed() {
 #[allow(unsafe_code)]
 #[test]
 fn parse_setup_session_watch_service_actions_are_typed() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     unsafe {
         env::remove_var("TEI_URL");
         env::remove_var("QDRANT_URL");

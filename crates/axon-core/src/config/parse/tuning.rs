@@ -59,6 +59,30 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     // leaves `high_context_synthesis_model` on its substring-heuristic fallback.
     cfg.synthesis_high_context =
         env_bool_opt("AXON_SYNTHESIS_HIGH_CONTEXT").or(toml.llm.synthesis_high_context);
+    cfg.llm_completion_concurrency = resolve_clamped_usize(
+        "AXON_LLM_COMPLETION_CONCURRENCY",
+        toml.llm.completion_concurrency,
+        4,
+        1,
+        64,
+    );
+    cfg.llm_completion_timeout_secs = resolve_clamped_u64(
+        "AXON_LLM_COMPLETION_TIMEOUT_SECS",
+        toml.llm.completion_timeout_secs,
+        300,
+        10,
+        1800,
+    );
+    cfg.codex_pool_idle_ttl_secs = resolve_clamped_u64(
+        "AXON_CODEX_POOL_IDLE_TTL_SECS",
+        toml.llm.codex_pool_idle_ttl_secs,
+        300,
+        0,
+        3600,
+    );
+    cfg.research_full_content = env_bool_opt("AXON_RESEARCH_FULL_CONTENT")
+        .or(toml.search.research_full_content)
+        .unwrap_or(true);
     cfg.hybrid_search_enabled = hybrid_search_enabled(toml);
     cfg.hybrid_search_candidates = hybrid_search_candidates(toml);
     cfg.ask_hybrid_candidates = ask_hybrid;

@@ -11,6 +11,7 @@ async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
+axon-observe = { path = "../axon-observe" }
 hex = "0.4"
 qdrant-client = { version = "1.18.0", default-features = false, features = ["serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
@@ -23,4 +24,5 @@ url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }

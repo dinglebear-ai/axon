@@ -5,7 +5,7 @@ use axon_api::source::*;
 use axon_observe::sink::SqliteObservabilitySink;
 use sqlx::SqlitePool;
 
-use crate::boundary::{JobStore, Result};
+use crate::boundary::{JobDeleteResult, JobStore, Result};
 pub use crate::store_inventory::{
     LegacyJobStoreBlocker, RECEIPT_KIND_LEGACY_RESET, RECEIPT_KIND_PREFLIGHT_CLEAN_CUTOVER,
     detect_incompatible_legacy_jobs, record_cutover_receipt,
@@ -25,6 +25,8 @@ mod ops;
 mod pagination;
 #[path = "unified/request_read.rs"]
 mod request_read;
+#[path = "unified/retention.rs"]
+pub(crate) mod retention;
 #[path = "unified/schema.rs"]
 mod schema;
 
@@ -136,6 +138,10 @@ impl JobStore for SqliteUnifiedJobStore {
 
     async fn cleanup(&self, request: JobCleanupRequest) -> Result<JobCleanupResult> {
         self.cleanup_jobs(request).await
+    }
+
+    async fn delete_jobs(&self, job_ids: &[JobId]) -> Result<JobDeleteResult> {
+        self.delete_job_rows(job_ids).await
     }
 
     async fn artifacts(&self, request: JobArtifactListRequest) -> Result<JobArtifactListResult> {

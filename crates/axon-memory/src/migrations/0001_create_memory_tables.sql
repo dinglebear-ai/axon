@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS memory_records (
     embedding_refs_json TEXT NOT NULL DEFAULT '[]',
     superseded_by       TEXT,
     contradicts         TEXT,
+    visibility          TEXT NOT NULL DEFAULT 'internal',
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL
 );

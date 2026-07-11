@@ -54,10 +54,10 @@ async fn v1_chat_stream_emits_meta_delta_done_sequence() {
         .expect("SSE body");
     let body = std::str::from_utf8(&body).expect("SSE body is utf8");
 
-    let meta = body.find("event: meta").expect("meta event");
+    let progress = body.find("event: progress").expect("progress event");
     let delta = body.find("event: delta").expect("delta event");
     let done = body.find("event: done").expect("done event");
-    assert!(meta < delta, "{body}");
+    assert!(progress < delta, "{body}");
     assert!(delta < done, "{body}");
 }
 

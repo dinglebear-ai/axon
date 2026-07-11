@@ -64,7 +64,7 @@ impl AuthSnapshot {
         policy_version: impl Into<String>,
     ) -> Self {
         Self {
-            caller_id: caller.actor.clone(),
+            caller_id: caller.caller_id.clone(),
             transport: caller.transport,
             granted_scopes: caller
                 .scopes
@@ -74,9 +74,9 @@ impl AuthSnapshot {
             visibility_ceiling,
             request_time: Timestamp::from(Utc::now()),
             policy_version: policy_version.into(),
-            auth_mode: AuthMode::None,
-            token_id: None,
-            display_name: caller.actor.clone(),
+            auth_mode: caller.auth_mode.clone(),
+            token_id: caller.token_id.clone(),
+            display_name: caller.display_name.clone(),
         }
     }
 }

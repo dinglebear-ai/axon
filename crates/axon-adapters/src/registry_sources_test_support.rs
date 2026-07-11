@@ -53,8 +53,36 @@ pub(super) fn valid_dump_json() -> &'static str {
     }"##
 }
 
+pub(super) fn huggingface_dump_json() -> &'static str {
+    r##"{
+        "registry": "huggingface",
+        "package": "bert-base-uncased",
+        "description": "BERT base model (uncased).",
+        "homepage": "https://huggingface.co/bert-base-uncased",
+        "license": "apache-2.0",
+        "author": "google",
+        "keywords": ["nlp", "transformers"],
+        "versions": [
+            {
+                "version": "main",
+                "readme": "# bert-base-uncased\n\nPretrained BERT model card.",
+                "description": "BERT base model (uncased).",
+                "is_latest": true
+            }
+        ]
+    }"##
+}
+
 pub(super) fn source_plan(dump_path: PathBuf, scope: SourceScope) -> SourcePlan {
-    let canonical_uri = "pkg://npm/lodash".to_string();
+    source_plan_for("pkg://npm/lodash", dump_path, scope)
+}
+
+pub(super) fn source_plan_for(
+    canonical_uri: &str,
+    dump_path: PathBuf,
+    scope: SourceScope,
+) -> SourcePlan {
+    let canonical_uri = canonical_uri.to_string();
     SourcePlan {
         job_id: JobId::new(Uuid::from_u128(298_009)),
         request: SourceRequest::new(canonical_uri.clone()),

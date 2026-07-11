@@ -61,6 +61,24 @@ fn allows_known_palette_routes() {
         .unwrap(),
         "/v1/watch/00000000-0000-4000-8000-000000000000/run"
     );
+    assert_eq!(
+        validate_axon_route(&request(HttpMethod::Post, "/v1/sources")).unwrap(),
+        "/v1/sources"
+    );
+}
+
+/// scrape/crawl/embed/ingest were removed server-side in favor of the
+/// unified `POST /v1/sources` pipeline (confirmed 404 by
+/// crates/axon-web/src/server/handlers/rest_tests.rs); the bridge allowlist
+/// must not resurrect them.
+#[test]
+fn rejects_removed_legacy_verb_routes() {
+    for path in ["/v1/scrape", "/v1/crawl", "/v1/embed", "/v1/ingest"] {
+        assert!(
+            validate_axon_route(&request(HttpMethod::Post, path)).is_err(),
+            "removed route {path} should be rejected"
+        );
+    }
 }
 
 #[test]

@@ -28,6 +28,7 @@ fn input(root: &std::path::Path, manifest_path: std::path::PathBuf) -> WebSource
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        embed: true,
     }
 }
 

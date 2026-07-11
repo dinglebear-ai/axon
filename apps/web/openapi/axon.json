@@ -714,105 +714,6 @@
         ]
       }
     },
-    "/v1/dedupe": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "dedupe",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DedupeRequest"
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Dedupe result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid dedupe request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported request body content type",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/diff": {
       "post": {
         "tags": [
@@ -1669,6 +1570,578 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/edges/{edge_id}": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "get_edge",
+        "parameters": [
+          {
+            "name": "edge_id",
+            "in": "path",
+            "description": "Graph edge id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Edge detail and evidence",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Edge not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Graph storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/kinds": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "kinds",
+        "responses": {
+          "200": {
+            "description": "Supported node/edge/evidence kinds and authority levels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphKindDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/nodes/{node_id}": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "get_node",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "path",
+            "description": "Graph node id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_edges",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Node detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Node not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Graph storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/nodes/{node_id}/edges": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "get_node_edges",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "path",
+            "description": "Graph node id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Edges incident to the node",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Node not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Graph storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/query": {
+      "post": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "graph_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Typed graph traversal result",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Graph storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/resolve": {
+      "post": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "resolve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved graph nodes for each identifier",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Graph storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/graph/sources/{source_id}": {
+      "get": {
+        "tags": [
+          "graph"
+        ],
+        "operationId": "get_source_subgraph",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "description": "Ledger source id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "edge_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Graph nodes/edges tied to the source",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Graph storage unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4257,7 +4730,7 @@
             }
           },
           "409": {
-            "description": "Stale mobile session update",
+            "description": "Stale mobile session update: `updated_at` is older than the stored session, or `sync_version` no longer matches the server's optimistic-concurrency counter",
             "content": {
               "application/json": {
                 "schema": {
@@ -4353,6 +4826,251 @@
           {
             "oauth2": [
               "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/providers": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "operationId": "list_providers",
+        "responses": {
+          "200": {
+            "description": "Provider capability/health list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Health check failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/providers/{provider}": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "operationId": "get_provider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "description": "Provider id, e.g. qdrant/tei/chrome/llm",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One provider capability/health report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown provider id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Health check failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/prune/dedupe": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "dedupe",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DedupeRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dedupe result",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid dedupe request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller lacks axon:admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported request body content type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream vector service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
             ]
           }
         ]
@@ -4518,7 +5236,7 @@
         ]
       }
     },
-    "/v1/purge": {
+    "/v1/prune/purge": {
       "post": {
         "tags": [
           "admin"
@@ -4566,7 +5284,7 @@
             }
           },
           "403": {
-            "description": "Authenticated token lacks Axon access",
+            "description": "Caller lacks axon:admin",
             "content": {
               "application/json": {
                 "schema": {
@@ -4592,12 +5310,7 @@
           },
           {
             "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
+              "axon:admin"
             ]
           }
         ]
@@ -4624,7 +5337,9 @@
             "description": "Semantic query results",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_QueryResult"
+                }
               }
             }
           },
@@ -4844,6 +5559,91 @@
         ]
       }
     },
+    "/v1/resolve": {
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "operationId": "resolve_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved source route plan (no mutation)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid source request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Source could not be resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/retrieve": {
       "post": {
         "tags": [
@@ -4865,7 +5665,9 @@
             "description": "Stored document chunks",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_RetrieveResult"
+                }
               }
             }
           },
@@ -5222,7 +6024,17 @@
         },
         "responses": {
           "200": {
-            "description": "Source indexing result",
+            "description": "Source indexing result (synchronous)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Source indexing enqueued as a detached job",
             "content": {
               "application/json": {
                 "schema": {
@@ -5263,6 +6075,92 @@
           },
           "502": {
             "description": "Upstream service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/sources/{source_id}": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "operationId": "get_source",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "description": "Ledger source id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source not found in the ledger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Source ledger not configured on this deployment",
             "content": {
               "application/json": {
                 "schema": {
@@ -5898,6 +6796,625 @@
           }
         ]
       }
+    },
+    "/v1/watches": {
+      "get": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "list_watches",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "adapter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paged watch summaries",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "create_watch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Created (or dual-write-ensured) watch detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/watches/{watch_id}": {
+      "get": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "get_watch",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Watch detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "delete_watch",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion result",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "update_watch",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated watch detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/watches/{watch_id}/pause": {
+      "post": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "pause_watch",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated watch detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/watches/{watch_id}/resume": {
+      "post": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "resume_watch",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated watch detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -6222,10 +7739,6 @@
           "unknown"
         ]
       },
-      "BatchId": {
-        "type": "string",
-        "format": "uuid"
-      },
       "BrandColor": {
         "type": "object",
         "required": [
@@ -6302,11 +7815,44 @@
           }
         }
       },
-      "CheckpointId": {
-        "type": "string"
+      "ChunkHint": {
+        "type": "object",
+        "required": [
+          "profile",
+          "reason",
+          "options"
+        ],
+        "properties": {
+          "options": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ChunkProfile"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "ChunkId": {
         "type": "string"
+      },
+      "ChunkProfile": {
+        "type": "string",
+        "enum": [
+          "code_symbol",
+          "code_manifest",
+          "markdown_sections",
+          "html_article",
+          "plain_text_windows",
+          "transcript_segments",
+          "structured_records",
+          "api_schema",
+          "tool_output",
+          "session_turns",
+          "atomic_metadata"
+        ]
       },
       "CleanupDebtId": {
         "type": "string"
@@ -6407,6 +7953,48 @@
             }
           }
         ]
+      },
+      "CredentialKind": {
+        "type": "string",
+        "enum": [
+          "api_key",
+          "o_auth_token",
+          "bearer_token",
+          "basic_auth",
+          "cookie",
+          "ssh_key",
+          "local_config"
+        ]
+      },
+      "CredentialRequirement": {
+        "type": "object",
+        "required": [
+          "credential_kind",
+          "required",
+          "reason"
+        ],
+        "properties": {
+          "credential_kind": {
+            "$ref": "#/components/schemas/CredentialKind"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "secret_ref": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SecretRef"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "DedupeRequest": {
         "type": "object",
@@ -6544,6 +8132,14 @@
             ]
           }
         }
+      },
+      "DocumentBackend": {
+        "type": "string",
+        "enum": [
+          "qdrant",
+          "stored_source",
+          "live_scrape"
+        ]
       },
       "DocumentId": {
         "type": "string"
@@ -6856,17 +8452,25 @@
           "diffing",
           "fetching",
           "rendering",
+          "enriching",
           "normalizing",
           "parsing_content",
           "graphing",
           "preparing",
+          "batching",
           "embedding",
+          "vectorizing",
           "upserting",
           "publishing",
           "cleaning",
           "retrieving",
           "synthesizing",
-          "observing"
+          "evaluating",
+          "observing",
+          "storage",
+          "provider",
+          "transport",
+          "internal"
         ]
       },
       "ErrorVisibility": {
@@ -6876,6 +8480,15 @@
           "public",
           "internal",
           "sensitive"
+        ]
+      },
+      "ExecutionAffinity": {
+        "type": "string",
+        "enum": [
+          "inline",
+          "worker",
+          "scheduler",
+          "provider_bound"
         ]
       },
       "ExecutionMode": {
@@ -6916,6 +8529,58 @@
             ],
             "format": "int64",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphDirection": {
+        "type": "string",
+        "enum": [
+          "in",
+          "out",
+          "both"
+        ]
+      },
+      "GraphEdge": {
+        "type": "object",
+        "required": [
+          "edge_id",
+          "kind",
+          "from_node_id",
+          "to_node_id",
+          "authority",
+          "confidence",
+          "evidence",
+          "metadata"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityLevel"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "edge_id": {
+            "$ref": "#/components/schemas/GraphEdgeId"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEvidence"
+            }
+          },
+          "from_node_id": {
+            "$ref": "#/components/schemas/GraphNodeId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "to_node_id": {
+            "$ref": "#/components/schemas/GraphNodeId"
           }
         },
         "additionalProperties": false
@@ -6992,8 +8657,417 @@
         },
         "additionalProperties": false
       },
+      "GraphIdentifier": {
+        "type": "object",
+        "required": [
+          "kind",
+          "metadata"
+        ],
+        "properties": {
+          "canonical_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "node_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GraphNodeId"
+              }
+            ]
+          },
+          "source_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceId"
+              }
+            ]
+          },
+          "source_item_key": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceItemKey"
+              }
+            ]
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphKindDocument": {
+        "type": "object",
+        "required": [
+          "node_kinds",
+          "edge_kinds",
+          "evidence_kinds",
+          "authority_levels"
+        ],
+        "properties": {
+          "authority_levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityLevel"
+            }
+          },
+          "edge_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "node_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphNode": {
+        "type": "object",
+        "required": [
+          "node_id",
+          "kind",
+          "canonical_uri",
+          "display_name",
+          "authority",
+          "confidence",
+          "metadata"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityLevel"
+          },
+          "canonical_uri": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "created_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "node_id": {
+            "$ref": "#/components/schemas/GraphNodeId"
+          },
+          "source_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceId"
+            }
+          },
+          "updated_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "GraphNodeId": {
         "type": "string"
+      },
+      "GraphQueryFilters": {
+        "type": "object",
+        "required": [
+          "metadata"
+        ],
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "min_confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "node_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceId"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphQueryRequest": {
+        "type": "object",
+        "required": [
+          "start",
+          "direction",
+          "depth",
+          "limit"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "depth": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "direction": {
+            "$ref": "#/components/schemas/GraphDirection"
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GraphQueryFilters"
+              }
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "$ref": "#/components/schemas/GraphIdentifier"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphQueryResult": {
+        "type": "object",
+        "required": [
+          "nodes",
+          "edges",
+          "evidence",
+          "warnings"
+        ],
+        "properties": {
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEvidence"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphRef": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "edge_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GraphEdgeId"
+              }
+            ]
+          },
+          "node_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GraphNodeId"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphResolveMatch": {
+        "type": "object",
+        "required": [
+          "identifier",
+          "node",
+          "confidence",
+          "evidence"
+        ],
+        "properties": {
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEvidence"
+            }
+          },
+          "identifier": {
+            "$ref": "#/components/schemas/GraphIdentifier"
+          },
+          "node": {
+            "$ref": "#/components/schemas/GraphNode"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphResolveMiss": {
+        "type": "object",
+        "required": [
+          "identifier",
+          "reason"
+        ],
+        "properties": {
+          "identifier": {
+            "$ref": "#/components/schemas/GraphIdentifier"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphResolveRequest": {
+        "type": "object",
+        "required": [
+          "identifiers"
+        ],
+        "properties": {
+          "identifiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphIdentifier"
+            }
+          },
+          "include_edges": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphResolveResult": {
+        "type": "object",
+        "required": [
+          "resolved",
+          "misses",
+          "warnings"
+        ],
+        "properties": {
+          "misses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphResolveMiss"
+            }
+          },
+          "resolved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphResolveMatch"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "GraphWriteSummary": {
         "type": "object",
@@ -7083,6 +9157,13 @@
       "JobCancelRequest": {
         "type": "object",
         "properties": {
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User/system identity requesting the cancellation, echoed back on\n`JobCancelResult::canceled_by`."
+          },
           "force_after_ms": {
             "type": [
               "integer",
@@ -7117,14 +9198,46 @@
               }
             ]
           },
+          "canceled_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User/system identity that requested the cancellation.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Cancellation\"."
+          },
+          "cleanup_debt_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Cleanup work created for any published partial side effect."
+          },
           "job_id": {
             "$ref": "#/components/schemas/JobId"
+          },
+          "last_safe_stage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PipelinePhase",
+                "description": "Last completed safe point (stage phase) before cancellation unwound."
+              }
+            ]
           },
           "reason": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "side_effects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Published/written side effects that survived the cooperative unwind."
           },
           "status": {
             "$ref": "#/components/schemas/LifecycleStatus"
@@ -7993,6 +10106,10 @@
           "include_archived": {
             "type": "boolean"
           },
+          "include_working": {
+            "type": "boolean",
+            "description": "Include `working`-status memories in the export. Contract \"Import and\nExport\" implies the \"Type rules\" exclusion (\"working memories are\nexcluded from long-term exports by default\") applies to export, not\njust ask/context; defaults to `false` to match that default."
+          },
           "scope": {
             "oneOf": [
               {
@@ -8014,6 +10131,17 @@
           "count"
         ],
         "properties": {
+          "artifact": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArtifactRef",
+                "description": "Artifact backing this export, when written through the artifact\nboundary (contract \"Import and Export\": \"export writes an artifact or\nstream with redacted content according to caller scope\"). `None` when\nthe caller only requested the in-memory record list (e.g. a direct\n`axon-memory` store call with no artifact root configured)."
+              }
+            ]
+          },
           "count": {
             "type": "integer",
             "format": "int32",
@@ -8248,6 +10376,10 @@
               "string",
               "null"
             ]
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility",
+            "description": "Security classification (contract \"Security and Redaction\": \"classify\nevery memory by visibility\"). Drives caller-scope filtering on\nexport/context (e.g. `sensitive` records excluded from export unless\nthe caller is authorized) independent of `MemoryStatus`."
           }
         },
         "additionalProperties": false
@@ -8365,6 +10497,13 @@
             "type": "integer",
             "format": "int64"
           },
+          "draft": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional redacted/encrypted draft payload the client is composing."
+          },
           "first_message_preview": {
             "type": "string"
           },
@@ -8388,6 +10527,21 @@
               "null"
             ],
             "format": "int64"
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sources/jobs/artifacts linked to this session (ids or URLs)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MobileSessionStatus"
+          },
+          "sync_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Optimistic concurrency token. Clients must echo back the version they\nlast observed; the server increments it on every successful upsert and\nrejects mismatched versions with a stale-update conflict."
           },
           "title": {
             "type": "string"
@@ -8427,6 +10581,16 @@
             }
           }
         }
+      },
+      "MobileSessionStatus": {
+        "type": "string",
+        "description": "Mobile session lifecycle/sync status.\n\nContract: `docs/pipeline-unification/surfaces/android-contract.md`\n(\"Mobile Session Model\" -- `active`, `archived`, `deleted`, or\n`sync_conflict`).",
+        "enum": [
+          "active",
+          "archived",
+          "deleted",
+          "sync_conflict"
+        ]
       },
       "MobileSessionSummary": {
         "type": "object",
@@ -8506,6 +10670,34 @@
         },
         "additionalProperties": false
       },
+      "PageInfo": {
+        "type": "object",
+        "required": [
+          "limit"
+        ],
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "PanelCollectionsResponse": {
         "type": "object",
         "required": [
@@ -8519,6 +10711,26 @@
             }
           }
         }
+      },
+      "ParserHint": {
+        "type": "object",
+        "required": [
+          "parser_id",
+          "reason",
+          "options"
+        ],
+        "properties": {
+          "options": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "parser_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "PipelinePhase": {
         "type": "string",
@@ -8552,123 +10764,90 @@
           "canceled"
         ]
       },
-      "ProgressCurrent": {
-        "type": "object",
-        "properties": {
-          "adapter": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "chunk_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ChunkId"
-              }
-            ]
-          },
-          "document_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/DocumentId"
-              }
-            ]
-          },
-          "message": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "provider": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProviderId"
-              }
-            ]
-          },
-          "source_item_key": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SourceItemKey"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "ProgressThroughput": {
-        "type": "object",
-        "properties": {
-          "bytes_per_second": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "chunks_per_second": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "items_per_second": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          }
-        },
-        "additionalProperties": false
-      },
-      "ProgressTiming": {
-        "type": "object",
-        "required": [
-          "started_at",
-          "updated_at",
-          "elapsed_ms"
-        ],
-        "properties": {
-          "elapsed_ms": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "eta_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "started_at": {
-            "$ref": "#/components/schemas/Timestamp"
-          },
-          "updated_at": {
-            "$ref": "#/components/schemas/Timestamp"
-          }
-        },
-        "additionalProperties": false
-      },
       "ProviderId": {
         "type": "string"
+      },
+      "ProviderKind": {
+        "type": "string",
+        "enum": [
+          "llm",
+          "embedding",
+          "vector",
+          "search",
+          "fetch",
+          "render",
+          "network_capture",
+          "artifact",
+          "ledger",
+          "graph",
+          "memory",
+          "job",
+          "watch",
+          "config",
+          "credential",
+          "cache",
+          "security",
+          "rate_limiter",
+          "health_probe"
+        ]
+      },
+      "ProviderListResponse": {
+        "type": "object",
+        "required": [
+          "providers"
+        ],
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderSummary"
+            }
+          }
+        }
+      },
+      "ProviderRequirement": {
+        "type": "object",
+        "required": [
+          "provider_kind",
+          "capability",
+          "required",
+          "reason"
+        ],
+        "properties": {
+          "capability": {
+            "type": "string"
+          },
+          "provider_kind": {
+            "$ref": "#/components/schemas/ProviderKind"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProviderSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "ok",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "description": "Raw per-provider diagnostics payload from the doctor report."
+          },
+          "id": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "`true` when the doctor probe for this provider reported healthy."
+          }
+        }
       },
       "PruneCounts": {
         "type": "object",
@@ -9135,6 +11314,36 @@
               }
             ]
           },
+          "graph_edge_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/GraphEdgeId"
+            },
+            "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive."
+          },
+          "graph_stable_keys": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this."
+          },
+          "memory_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MemoryId"
+            },
+            "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive."
+          },
           "source_id": {
             "oneOf": [
               {
@@ -9306,6 +11515,132 @@
           }
         }
       },
+      "QueryHit": {
+        "type": "object",
+        "required": [
+          "rank",
+          "score",
+          "rerank_score",
+          "url",
+          "source",
+          "snippet"
+        ],
+        "properties": {
+          "chunk_index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "chunking_method": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "file_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rank": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "rerank_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol_extraction_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "QueryResult": {
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryHit"
+            }
+          }
+        }
+      },
       "ReadinessBody": {
         "type": "object",
         "required": [
@@ -9337,8 +11672,66 @@
           "auto-switch"
         ]
       },
-      "ReservationId": {
-        "type": "string"
+      "ResolvedSource": {
+        "type": "object",
+        "required": [
+          "source",
+          "canonical_uri",
+          "source_kind",
+          "adapter",
+          "default_scope",
+          "available_scopes",
+          "authority",
+          "confidence",
+          "reason",
+          "warnings"
+        ],
+        "properties": {
+          "adapter": {
+            "$ref": "#/components/schemas/AdapterRef"
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityLevel"
+          },
+          "available_scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceScope"
+            }
+          },
+          "canonical_uri": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "default_scope": {
+            "$ref": "#/components/schemas/SourceScope"
+          },
+          "graph": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphRef"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "ResponseMode": {
         "type": "string",
@@ -10157,38 +12550,160 @@
         },
         "additionalProperties": false
       },
-      "RetryState": {
+      "RetrieveResult": {
         "type": "object",
         "required": [
-          "attempt",
-          "reason"
+          "chunk_count",
+          "content"
         ],
         "properties": {
-          "attempt": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "max_attempts": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          },
-          "next_retry_at": {
+          "backend": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "$ref": "#/components/schemas/DocumentBackend"
               }
             ]
           },
-          "reason": {
+          "chunk_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content": {
             "type": "string"
+          },
+          "matched_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refresh_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remaining_tokens_estimate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "requested_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_estimate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "variant_errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceRetrieveVariantError"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RoutePlan": {
+        "type": "object",
+        "required": [
+          "source",
+          "adapter",
+          "scope",
+          "provider_requirements",
+          "credential_requirements",
+          "execution_affinity",
+          "safety_class",
+          "option_schema_id",
+          "validated_options",
+          "chunking_hints",
+          "parser_hints",
+          "graph_fact_kinds",
+          "watch_supported",
+          "refresh_supported"
+        ],
+        "properties": {
+          "adapter": {
+            "$ref": "#/components/schemas/AdapterRef"
+          },
+          "chunking_hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChunkHint"
+            }
+          },
+          "credential_requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialRequirement"
+            }
+          },
+          "execution_affinity": {
+            "$ref": "#/components/schemas/ExecutionAffinity"
+          },
+          "graph_fact_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "option_schema_id": {
+            "type": "string"
+          },
+          "parser_hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParserHint"
+            }
+          },
+          "provider_requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderRequirement"
+            }
+          },
+          "refresh_supported": {
+            "type": "boolean"
+          },
+          "safety_class": {
+            "$ref": "#/components/schemas/SafetyClass"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SourceScope"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ResolvedSource"
+          },
+          "validated_options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "watch_supported": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -10266,6 +12781,15 @@
           "sse"
         ]
       },
+      "SafetyClass": {
+        "type": "string",
+        "enum": [
+          "public_network",
+          "authenticated_network",
+          "local_filesystem",
+          "tool_execution"
+        ]
+      },
       "ScreenshotResult": {
         "type": "object",
         "required": [
@@ -10296,6 +12820,26 @@
             "type": "string"
           }
         }
+      },
+      "SecretRef": {
+        "type": "object",
+        "required": [
+          "provider",
+          "key",
+          "label"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "ServerInfo": {
         "type": "object",
@@ -10332,6 +12876,21 @@
             }
           },
           "version": {
+            "type": "string"
+          }
+        }
+      },
+      "ServiceRetrieveVariantError": {
+        "type": "object",
+        "required": [
+          "url",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "url": {
             "type": "string"
           }
         }
@@ -10534,213 +13093,6 @@
             ],
             "format": "int64",
             "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
-      "SourceProgressEvent": {
-        "type": "object",
-        "required": [
-          "event_id",
-          "sequence",
-          "job_id",
-          "phase",
-          "status",
-          "severity",
-          "visibility",
-          "message",
-          "timestamp",
-          "counts"
-        ],
-        "properties": {
-          "adapter": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AdapterRef"
-              }
-            ]
-          },
-          "attempt": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "batch_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/BatchId"
-              }
-            ]
-          },
-          "canonical_uri": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "checkpoint_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CheckpointId"
-              }
-            ]
-          },
-          "counts": {
-            "$ref": "#/components/schemas/StageCounts"
-          },
-          "current": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProgressCurrent"
-              }
-            ]
-          },
-          "dedupe_key": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "error": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ApiError"
-              }
-            ]
-          },
-          "event_id": {
-            "type": "string"
-          },
-          "generation": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SourceGenerationId"
-              }
-            ]
-          },
-          "job_id": {
-            "$ref": "#/components/schemas/JobId"
-          },
-          "message": {
-            "type": "string"
-          },
-          "phase": {
-            "$ref": "#/components/schemas/PipelinePhase"
-          },
-          "reservation_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ReservationId"
-              }
-            ]
-          },
-          "retry": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RetryState"
-              }
-            ]
-          },
-          "scope": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SourceScope"
-              }
-            ]
-          },
-          "sequence": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "severity": {
-            "$ref": "#/components/schemas/Severity"
-          },
-          "source_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SourceId"
-              }
-            ]
-          },
-          "stage_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/StageId"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/LifecycleStatus"
-          },
-          "throughput": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProgressThroughput"
-              }
-            ]
-          },
-          "timestamp": {
-            "$ref": "#/components/schemas/Timestamp"
-          },
-          "timing": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProgressTiming"
-              }
-            ]
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/Visibility"
-          },
-          "warning": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SourceWarning"
-              }
-            ]
           }
         },
         "additionalProperties": false
@@ -11035,26 +13387,6 @@
         },
         "additionalProperties": false
       },
-      "SourceResultRef": {
-        "type": "object",
-        "required": [
-          "job_id",
-          "source_id",
-          "status"
-        ],
-        "properties": {
-          "job_id": {
-            "$ref": "#/components/schemas/JobId"
-          },
-          "source_id": {
-            "$ref": "#/components/schemas/SourceId"
-          },
-          "status": {
-            "$ref": "#/components/schemas/LifecycleStatus"
-          }
-        },
-        "additionalProperties": false
-      },
       "SourceScope": {
         "type": "string",
         "enum": [
@@ -11086,6 +13418,102 @@
           "script",
           "api"
         ]
+      },
+      "SourceSummary": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "canonical_uri",
+          "display_name",
+          "source_kind",
+          "adapter",
+          "authority",
+          "status",
+          "counts",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "adapter": {
+            "$ref": "#/components/schemas/AdapterRef"
+          },
+          "authority": {
+            "$ref": "#/components/schemas/AuthorityLevel"
+          },
+          "canonical_uri": {
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/SourceCounts"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "graph_node_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeId"
+            }
+          },
+          "last_job_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobId"
+              }
+            ]
+          },
+          "last_refreshed_at": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "user_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "watch_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WatchId"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "SourceWarning": {
         "type": "object",
@@ -11198,80 +13626,292 @@
         "format": "uuid"
       },
       "StreamEvent": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "event",
-              "kind"
-            ],
-            "properties": {
-              "event": {
-                "$ref": "#/components/schemas/SourceProgressEvent"
+        "type": "object",
+        "description": "The contracted flat SSE/MCP streaming envelope. `data` carries the\nkind-specific payload (a `SourceProgressEvent` for `progress`, the\nroute-specific result DTO for `final`, a `{ \"text\": ... }` object for\n`token`, etc.) — see the contract doc for the per-kind validation rules.",
+        "required": [
+          "event_id",
+          "kind",
+          "sequence",
+          "timestamp"
+        ],
+        "properties": {
+          "data": {},
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
               },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "progress"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "result",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "result"
-                ]
-              },
-              "result": {
-                "$ref": "#/components/schemas/SourceResultRef"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "error",
-              "kind"
-            ],
-            "properties": {
-              "error": {
+              {
                 "$ref": "#/components/schemas/ApiError"
+              }
+            ]
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "oneOf": [
+              {
+                "type": "null"
               },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "error"
-                ]
+              {
+                "$ref": "#/components/schemas/JobId"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StreamKind"
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "warning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceWarning"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "StreamKind": {
+        "type": "string",
+        "description": "`StreamEvent.kind` — the flat set of streaming event kinds shared by SSE\nand MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`\n(\"StreamEvent Shape\").",
+        "enum": [
+          "progress",
+          "token",
+          "citation",
+          "artifact",
+          "warning",
+          "error",
+          "final"
+        ]
+      },
+      "SuccessEnvelope_QueryResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "contract_version",
+          "data",
+          "warnings",
+          "request_id",
+          "trace",
+          "artifacts"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            }
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "results"
+            ],
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QueryHit"
+                }
               }
             }
           },
-          {
-            "type": "object",
-            "required": [
-              "timestamp",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "heartbeat"
-                ]
+          "job": {
+            "oneOf": [
+              {
+                "type": "null"
               },
-              "timestamp": {
-                "$ref": "#/components/schemas/Timestamp"
+              {
+                "$ref": "#/components/schemas/JobDescriptor"
               }
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "pagination": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PageInfo"
+              }
+            ]
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/TraceContext"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
             }
           }
-        ]
+        },
+        "additionalProperties": false
+      },
+      "SuccessEnvelope_RetrieveResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "contract_version",
+          "data",
+          "warnings",
+          "request_id",
+          "trace",
+          "artifacts"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            }
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "chunk_count",
+              "content"
+            ],
+            "properties": {
+              "backend": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentBackend"
+                  }
+                ]
+              },
+              "chunk_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "content": {
+                "type": "string"
+              },
+              "matched_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "next_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "refresh_status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remaining_tokens_estimate": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "requested_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "token_estimate": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "variant_errors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ServiceRetrieveVariantError"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "job": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobDescriptor"
+              }
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "pagination": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PageInfo"
+              }
+            ]
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/TraceContext"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "Timestamp": {
         "type": "string",
@@ -11577,6 +14217,52 @@
       "WatchId": {
         "type": "string"
       },
+      "WatchRequest": {
+        "type": "object",
+        "required": [
+          "source",
+          "schedule",
+          "embed",
+          "options"
+        ],
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embed": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/WatchSchedule"
+          },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "WatchResult": {
         "type": "object",
         "required": [
@@ -11665,6 +14351,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "WatchUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "options": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdapterOptions"
+              }
+            ]
+          },
+          "schedule": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WatchSchedule"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {
@@ -11713,6 +14443,10 @@
     {
       "name": "admin",
       "description": "Administrative mutation endpoints"
+    },
+    {
+      "name": "graph",
+      "description": "Read-only SourceGraph query/resolve/detail endpoints"
     },
     {
       "name": "watch",

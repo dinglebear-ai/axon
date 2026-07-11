@@ -23,7 +23,42 @@ pub(super) use std::path::Path;
 pub(super) use std::sync::Mutex;
 pub(super) use tempfile::Builder as TempfileBuilder;
 
-pub(in crate::config::parse) static ENV_LOCK: Mutex<()> = Mutex::new(());
+/// Process-wide lock serializing all `std::env` mutation across axon-core's
+/// test suite. `std::env` is process-global, so ANY test module that mutates
+/// env vars (directly or via `AXON_CONFIG_PATH`) MUST acquire this lock via
+/// [`env_guard()`] rather than declaring a local/private lock of its own — a
+/// second, same-named-but-distinct `Mutex` elsewhere provides zero mutual
+/// exclusion with this one and reintroduces the exact cross-module race this
+/// lock exists to prevent (see `health::doctor::config_checks_tests`, which
+/// reuses this lock instead of a private one).
+pub(crate) static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// Acquire [`ENV_LOCK`] and isolate `AXON_CONFIG_PATH` to a shared empty temp
+/// file for the duration of the test run, so tests exercise only the CLI/env/
+/// default layers by default regardless of any real `~/.axon/config.toml` on
+/// the host running the suite. Tests that need a specific TOML fixture still
+/// override `AXON_CONFIG_PATH` afterward exactly as before.
+///
+/// This is the ONLY sanctioned way to mutate `AXON_CONFIG_PATH` (or any other
+/// process-global env var) in axon-core tests — every test module in the
+/// crate that touches env vars must call this instead of rolling its own
+/// lock, or concurrent `cargo test` runs will race and poison each other.
+#[allow(unsafe_code)]
+pub(crate) fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+    static ISOLATED_CONFIG: std::sync::OnceLock<tempfile::NamedTempFile> =
+        std::sync::OnceLock::new();
+    let guard = ENV_LOCK.lock().unwrap();
+    let path = ISOLATED_CONFIG.get_or_init(|| {
+        TempfileBuilder::new()
+            .suffix(".toml")
+            .tempfile()
+            .expect("create isolated empty config.toml for tests")
+    });
+    unsafe {
+        env::set_var("AXON_CONFIG_PATH", path.path());
+    }
+    guard
+}
 
 // Convenience: build a CLI with stable service URLs via flags (avoids QDRANT_URL/TEI_URL env noise).
 pub(super) fn cli_with_services(extra: &[&str]) -> Cli {
@@ -68,7 +103,7 @@ pub(super) fn into_config_via_args(extra: &[&str]) -> Result<Config, String> {
 #[allow(unsafe_code)]
 #[test]
 fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut default_toml = TempfileBuilder::new()
         .suffix(".toml")
         .tempfile()
@@ -114,7 +149,7 @@ fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {
                 .suffix(".toml")
                 .tempfile()
                 .expect("temp unlimited config");
-            writeln!(unlimited_toml, "[scrape]\nmax-page-bytes = 0")
+            writeln!(unlimited_toml, "[crawl]\nmax-page-bytes = 0")
                 .expect("write unlimited config");
             env::set_var("AXON_CONFIG_PATH", unlimited_toml.path());
             let explicit_unlimited_bytes =
@@ -173,7 +208,7 @@ fn source_subcommand_parses_local_path_positional() {
     // concurrently with another test in this file that mutates those same
     // env vars (most of them do hold the lock), racing on process-global
     // env state and occasionally observing a torn/unexpected value.
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cfg = into_config(cli_with_services(&["source", "./somepath"]))
         .expect("source subcommand should parse");
@@ -189,7 +224,7 @@ fn source_subcommand_without_path_has_empty_positional() {
     // needs ENV_LOCK: into_config() reads process env for the `source`
     // command, and other tests in this file mutate that same env under the
     // lock.
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cfg = into_config(cli_with_services(&["source"]))
         .expect("source subcommand without a path should parse");
@@ -201,7 +236,7 @@ fn source_subcommand_without_path_has_empty_positional() {
 #[allow(unsafe_code)]
 #[test]
 fn skip_embed_flag_disables_default_embedding() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
 
     let cfg = into_config(cli_with_services(&[
         "--skip-embed",
@@ -216,7 +251,7 @@ fn skip_embed_flag_disables_default_embedding() {
 #[allow(unsafe_code)]
 #[test]
 fn empty_output_dir_env_falls_through_to_default_data_dir_output() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_OUTPUT_DIR", "AXON_DATA_DIR"], || unsafe {
         env::set_var("AXON_OUTPUT_DIR", "");
         env::remove_var("AXON_DATA_DIR");
@@ -234,7 +269,7 @@ fn empty_output_dir_env_falls_through_to_default_data_dir_output() {
 #[allow(unsafe_code)]
 #[test]
 fn empty_sqlite_path_env_falls_through_to_default_jobs_db() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_SQLITE_PATH", "AXON_DATA_DIR"], || unsafe {
         env::set_var("AXON_SQLITE_PATH", "");
         env::remove_var("AXON_DATA_DIR");
@@ -252,7 +287,7 @@ fn empty_sqlite_path_env_falls_through_to_default_jobs_db() {
 #[allow(unsafe_code)]
 #[test]
 fn nonempty_output_dir_env_overrides_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
         env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
 
@@ -266,7 +301,7 @@ fn nonempty_output_dir_env_overrides_default() {
 #[allow(unsafe_code)]
 #[test]
 fn output_dir_flag_wins_over_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
         env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
 
@@ -285,7 +320,7 @@ fn output_dir_flag_wins_over_env() {
 #[allow(unsafe_code)]
 #[test]
 fn explicit_default_output_dir_flag_wins_over_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
         env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
 
@@ -309,11 +344,11 @@ fn explicit_default_output_dir_flag_wins_over_env() {
 #[allow(unsafe_code)]
 #[test]
 fn migrated_crawl_tuning_reads_from_toml() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[scrape]\nrespect-robots = true\nmin-markdown-chars = 777\ndrop-thin-markdown = false\ndiscover-sitemaps = false\nsitemap-since-days = 9\nmax-sitemaps = 42\ndelay-ms = 123\nrequest-timeout-ms = 4567\nfetch-retries = 5\nretry-backoff-ms = 321\nauto-switch-thin-ratio = 0.25\nauto-switch-min-pages = 3\nurl-whitelist = [\"^https://example.com/docs\"]\nmax-page-bytes = 9999\nredirect-policy-strict = true\n\n[chrome]\nbypass-csp = true\naccept-invalid-certs = true\nnetwork-idle-timeout-secs = 22\n"
+        "[crawl]\nrespect-robots = true\nmin-markdown-chars = 777\ndrop-thin-markdown = false\ndiscover-sitemaps = false\nsitemap-since-days = 9\nmax-sitemaps = 42\nauto-switch-thin-ratio = 0.25\nauto-switch-min-pages = 3\nurl-whitelist = [\"^https://example.com/docs\"]\nmax-page-bytes = 9999\nredirect-policy-strict = true\n\n[providers.fetch]\ndelay-ms = 123\nrequest-timeout-ms = 4567\nretries = 5\nretry-backoff-ms = 321\n\n[providers.render]\nbypass-csp = true\naccept-invalid-certs = true\nnetwork-idle-timeout-secs = 22\n"
     )
     .unwrap();
 
@@ -345,11 +380,11 @@ fn migrated_crawl_tuning_reads_from_toml() {
 #[allow(unsafe_code)]
 #[test]
 fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[embed]\ntei-max-concurrent = 7\ntei-max-in-flight-inputs = 240\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
+        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
     )
     .unwrap();
 
@@ -387,9 +422,9 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
 #[allow(unsafe_code)]
 #[test]
 fn openai_embed_model_toml_wins_over_vllm_fallback_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[embed]\nopenai-model = \"from-toml\"\n").unwrap();
+    writeln!(f, "[providers.embedding]\nopenai-model = \"from-toml\"\n").unwrap();
 
     with_env_saved(
         &[
@@ -412,11 +447,11 @@ fn openai_embed_model_toml_wins_over_vllm_fallback_env() {
 #[allow(unsafe_code)]
 #[test]
 fn parses_llms_txt_scrape_keys() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[scrape]\ndiscover-llms-txt = false\nmax-llms-txt-urls = 42\n"
+        "[crawl]\ndiscover-llms-txt = false\nmax-llms-txt-urls = 42\n"
     )
     .unwrap();
 
@@ -431,11 +466,11 @@ fn parses_llms_txt_scrape_keys() {
 #[allow(unsafe_code)]
 #[test]
 fn migrated_worker_tuning_reads_from_toml_and_watchdog_env_still_wins() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[workers]\nconcurrency-limit = 11\nwatchdog-stale-timeout-secs = 45\nwatchdog-confirm-secs = 20\nwatchdog-sweep-secs = 25\n"
+        "[crawl]\nconcurrency-limit = 11\n\n[jobs]\nstale-after-secs = 45\nstale-grace-secs = 20\nwatchdog-sweep-secs = 25\n"
     )
     .unwrap();
 
@@ -463,9 +498,9 @@ fn migrated_worker_tuning_reads_from_toml_and_watchdog_env_still_wins() {
 #[allow(unsafe_code)]
 #[test]
 fn freshness_max_due_per_tick_accepts_configured_values_above_default() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[freshness]\nmax-due-per-tick = 12\n").unwrap();
+    writeln!(f, "[jobs.freshness]\nmax-due-per-tick = 12\n").unwrap();
 
     with_env_saved(
         &["AXON_CONFIG_PATH", "AXON_FRESHNESS_MAX_DUE_PER_TICK"],
@@ -489,7 +524,7 @@ fn explicit_default_collection_flag_wins_over_env() {
     // treated explicit `--collection axon` the same as the clap default and
     // fell through to env/TOML. With clap value_source threading,
     // `--collection axon` on the CLI must win.
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_COLLECTION", "from-env");
 
@@ -505,14 +540,14 @@ fn explicit_default_collection_flag_wins_over_env() {
 #[allow(unsafe_code)]
 #[test]
 fn chrome_bootstrap_tuning_comes_from_toml() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let mut config = TempfileBuilder::new()
         .suffix(".toml")
         .tempfile()
         .expect("temp config");
     writeln!(
         config,
-        "[chrome]\nbootstrap-timeout-ms = 125\nbootstrap-retries = 15"
+        "[providers.render]\nbootstrap-timeout-ms = 125\nbootstrap-retries = 15"
     )
     .expect("write config");
 
@@ -529,7 +564,7 @@ fn chrome_bootstrap_tuning_comes_from_toml() {
 
 #[test]
 fn crawl_cache_defaults_off() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cfg = into_config(cli_with_services(&["extract", "https://example.com"]))
         .expect("crawl config should parse");
     assert!(!cfg.cache, "crawl cache must be opt-in");
@@ -537,7 +572,7 @@ fn crawl_cache_defaults_off() {
 
 #[test]
 fn etag_conditional_without_cache_is_rejected() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let result = into_config(cli_with_services(&[
         "--etag-conditional",
         "--cache",
@@ -558,7 +593,7 @@ fn etag_conditional_without_cache_is_rejected() {
 
 #[test]
 fn etag_conditional_with_cache_true_is_valid() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cfg = into_config(cli_with_services(&[
         "--etag-conditional",
         "--cache",

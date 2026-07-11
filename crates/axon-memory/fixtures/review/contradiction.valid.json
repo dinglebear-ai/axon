@@ -1,0 +1,6 @@
+{
+  "memory_id": "mem_a1b2c3d4",
+  "conflicting_id": "mem_e5f6a7b8",
+  "reason": "mem_a1b2c3d4 says the collection defaults to unnamed vectors; mem_e5f6a7b8 says it defaults to named dense+sparse vectors.",
+  "timestamp": "2026-07-09T00:00:00Z"
+}

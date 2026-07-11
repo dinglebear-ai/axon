@@ -32,11 +32,11 @@ Provider capabilities report health, limits, cooling, reservation policy, reserv
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
 | `crates/axon-authz/src/policy.rs` | `sha256:27590ae1e1ecfde070df97bf3d67b362ad08d4e5d499d7d19baa64e2d1519ac3` |
 | `crates/axon-core/src/boundary.rs` | `sha256:cdf5d490a8b2eb0d697fbad7e1b3ed6d0da128c7ad433fd133ef98f83f01bd9f` |
-| `crates/axon-embedding/src/fake.rs` | `sha256:0a7f6c9f4936ea017c78273c8ce43c93952c9ea147f34439429149b4c89d6e80` |
+| `crates/axon-embedding/src/fake.rs` | `sha256:ee3ae9d7dbee3455d25afb00a4e9c62689521a6b543cec31c74d3eb082c8b17f` |
 | `crates/axon-embedding/src/provider.rs` | `sha256:6ea8b3fc76cae8f4aef0eb1a9602e4f3dc7cb7b2c9cf22ce2c5a050adee767ba` |
-| `crates/axon-llm/src/fake.rs` | `sha256:434f6306076a521876554880cc676663e7cd94b3998e4c80422f263df3d92a06` |
+| `crates/axon-llm/src/fake.rs` | `sha256:6b864926eb293c52751e81390fc85f13f014900e7399bb8bafd014c4915ef6d5` |
 | `crates/axon-llm/src/provider.rs` | `sha256:a1600254dc8b409227437eff91ec012a17adb0ee42766564bd7431036b2ed359` |
 | `crates/axon-observe/src/reservation.rs` | `sha256:508c71fd4073569d1bd1f272d0d827cd63990ba16db5a202017b7664e06920df` |
-| `crates/axon-vectors/src/store.rs` | `sha256:dcb2623f2d3757a17c364cf377dc5d746524a9a439608f051e09e5e00a43be6b` |
+| `crates/axon-vectors/src/store.rs` | `sha256:147f6b2e4f9e857456d6ef7dfc5dd5142ba18e050f8d96a85723e4bc0837fb62` |
 | `docs/pipeline-unification/runtime/provider-contract.md` | `sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73` |
 | `docs/pipeline-unification/schemas/provider-capability-schema.md` | `sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f` |

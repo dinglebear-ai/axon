@@ -1,11 +1,13 @@
 //! Source router boundary.
 
 use axon_api::{
-    AdapterOptions, ChunkHint, ChunkProfile, ExecutionAffinity, ParserHint, ProviderRequirement,
-    ResolvedSource, RoutePlan, SafetyClass, SourceKind, SourceRequest,
+    AdapterOptions, CapabilityBase, ChunkHint, ChunkProfile, ExecutionAffinity, HealthStatus,
+    MetadataMap, ParserHint, ProviderRequirement, ResolvedSource, RoutePlan, SafetyClass,
+    SourceKind, SourceRequest, SourceRouterCapability, ValidatedOptions,
 };
 use axon_error::{ApiError, ErrorStage};
 
+use crate::boundary;
 use crate::capability::{AdapterDefinition, AdapterRegistry};
 use crate::source_id::source_id;
 
@@ -188,6 +190,53 @@ impl SourceRouter {
         }
 
         Ok(())
+    }
+}
+
+/// `boundary::SourceRouter` trait implementation for the concrete
+/// `SourceRouter` struct.
+///
+/// `self.route(request, source)` below resolves to the pre-existing inherent
+/// sync method (`impl SourceRouter { pub fn route(...) }` above) because
+/// inherent methods always shadow same-named trait methods for direct
+/// dot-call resolution in Rust — this is NOT recursion. The contract's
+/// argument order (`source, request`) is reversed from the inherent method's
+/// (`request, source`); that's fine because they're different items thanks
+/// to the module split.
+#[async_trait::async_trait]
+impl boundary::SourceRouter for SourceRouter {
+    async fn route(
+        &self,
+        source: ResolvedSource,
+        request: &SourceRequest,
+    ) -> boundary::Result<RoutePlan> {
+        self.route(request, source)
+    }
+
+    // TODO(#298): this is a pass-through echo, not a real re-validation. A
+    // `RoutePlan` cannot yield an invalid state (`route()` above already
+    // errors before constructing one), and `RoutePlan` doesn't carry the
+    // `RouteSecurityPolicy`/`AdapterDefinition` needed to re-run the real
+    // option-key/tool-execution checks performed by the private
+    // `validate_options` gate above. Flagged for the pipeline-unification
+    // cutover to decide whether this method should become a genuine
+    // idempotent re-check or be dropped from the contract.
+    async fn validate_options(&self, plan: &RoutePlan) -> boundary::Result<ValidatedOptions> {
+        Ok(ValidatedOptions {
+            values: plan.validated_options.values.clone(),
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> boundary::Result<SourceRouterCapability> {
+        Ok(SourceRouterCapability::from(CapabilityBase {
+            name: "axon-route-router".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            owner_crate: "axon-route".to_string(),
+            health: HealthStatus::Healthy,
+            features: vec!["adapter-selection".to_string(), "scope-routing".to_string()],
+            limits: MetadataMap::new(),
+        }))
     }
 }
 

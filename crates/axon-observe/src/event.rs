@@ -123,7 +123,9 @@ pub fn warning(code: impl Into<String>, message: impl Into<String>) -> SourceWar
     }
 }
 
-fn base_event(
+/// Shared by [`crate::progress`] so `status=running` in-flight updates use the
+/// same base envelope as the terminal builders above.
+pub(crate) fn base_event(
     job_id: JobId,
     phase: PipelinePhase,
     status: LifecycleStatus,
@@ -182,7 +184,7 @@ impl EventBuilderExt for axon_api::source::SourceProgressEvent {
     }
 }
 
-fn zero_counts() -> StageCounts {
+pub(crate) fn zero_counts() -> StageCounts {
     StageCounts {
         items_total: None,
         items_done: 0,

@@ -22,7 +22,7 @@ import android.net.Uri
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.axon.app.data.remote.ResearchHit
+import com.axon.app.core.api.ResearchHit
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.rememberRevealState

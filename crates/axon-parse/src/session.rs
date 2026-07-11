@@ -151,7 +151,7 @@ fn append_invocations(
         let Some(field_value) = value.get(*key) else {
             continue;
         };
-        for invocation in invocations_from_value(field_value, *key, spec.name_keys) {
+        for invocation in invocations_from_value(field_value, key, spec.name_keys) {
             let mut fact = source_fact(
                 input,
                 "session_jsonl",

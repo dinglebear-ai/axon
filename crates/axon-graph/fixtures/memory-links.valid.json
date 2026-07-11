@@ -1,0 +1,36 @@
+{
+  "adapter": "axon-memory",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "memory_link",
+      "supersedes"
+    ],
+    "required_fact_kinds": [
+      "memory_document"
+    ]
+  },
+  "graph_candidates": [
+    {
+      "candidate_id": "memory-upsert:mem_a1b2c3d4",
+      "confidence": 1.0,
+      "kind": "memory_document"
+    },
+    {
+      "candidate_id": "memory-link:mem_a1b2c3d4:source:src-git",
+      "confidence": 1.0,
+      "kind": "memory_link"
+    },
+    {
+      "candidate_id": "memory-supersedes:mem_e5f6a7b8:mem_a1b2c3d4",
+      "confidence": 1.0,
+      "kind": "supersedes"
+    }
+  ],
+  "item_canonical_uri": "memory://memory:mem_a1b2c3d4",
+  "metadata_family": "memory",
+  "redaction_status": "clean",
+  "source_canonical_uri": "memory://memory:mem_a1b2c3d4",
+  "source_id": "axon-memory",
+  "source_item_key": "memory-upsert:mem_a1b2c3d4"
+}

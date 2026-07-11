@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axon_api::source::*;
 
 use crate::parser::{ParseInput, ParseResult, ParserCapability, SourceParser, stage_header};
+use crate::validate::sanitize_result;
 
 #[derive(Clone, Default)]
 pub struct ParserRegistry {
@@ -21,27 +22,57 @@ impl ParserRegistry {
         self
     }
 
+    /// Select the single "primary" parser for `input` — the best-scored
+    /// specific match (MIME type, path/extension, or content sniffing), or,
+    /// failing that, the highest-priority content-kind-only match. Used for
+    /// routing decisions (e.g. `DocumentPreparer` chunk-profile selection)
+    /// that need exactly one parser identity, not the full fan-out `parse`
+    /// may run.
     pub fn select(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
         if requested_parser_id(input).is_some() {
             return self.select_explicit(input);
         }
-        self.select_best_match(input)
+        self.ranked_matches(input)
+            .into_iter()
+            .next()
+            .map(|(_, parser)| parser)
     }
 
+    /// Parse `input` per parsing-contract.md's selection order:
+    ///
+    /// 1. an explicit `ParserHint`/`requested_parser` runs alone — exclusive.
+    /// 2. otherwise every parser that specifically identifies the document
+    ///    (MIME type, path/extension, or content sniffing) runs and their
+    ///    facts/graph candidates/warnings/errors merge into one result, since
+    ///    "Multiple parsers may run when they emit different fact families"
+    ///    (e.g. `docker-compose.yaml` gets both generic manifest facts and
+    ///    Docker-specific facts).
+    /// 3. when nothing matches specifically, fall back to a single
+    ///    content-kind-only match (the weakest, last-resort signal).
+    /// 4. when nothing matches at all, the input is `Skipped`, not `Failed`
+    ///    or `CompletedDegraded` — an unsupported item must not fail the job.
+    ///
+    /// Every result is sanitized before it leaves the registry: facts and
+    /// graph-candidate evidence with an impossible/unordered source range are
+    /// dropped and the result is degraded (see `validate::sanitize_result`).
     pub fn parse(&self, input: &ParseInput) -> ParseResult {
-        if let Some(requested) = requested_parser_id(input)
-            && let Some(parser) =
-                self.select_by(|parser| parser.capability().parser_id == *requested)
-        {
-            return parser.parse(input);
-        } else if let Some(requested) = requested_parser_id(input) {
-            return requested_parser_unavailable(input, requested);
+        if let Some(requested) = requested_parser_id(input) {
+            return match self.select_by(|parser| parser.capability().parser_id == *requested) {
+                Some(parser) => sanitize_result(parser.parse(input)),
+                None => requested_parser_unavailable(input, requested),
+            };
         }
 
-        if let Some(parser) = self.select(input) {
-            return parser.parse(input);
+        let matches = self.ranked_matches(input);
+        if matches.is_empty() {
+            return unsupported_result(input);
         }
-        unsupported_result(input)
+
+        let mut merged = matches[0].1.parse(input);
+        for (_, parser) in &matches[1..] {
+            merge_result(&mut merged, parser.parse(input));
+        }
+        sanitize_result(merged)
     }
 
     fn select_explicit(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
@@ -59,23 +90,41 @@ impl ParserRegistry {
             .cloned()
     }
 
-    fn select_best_match(&self, input: &ParseInput) -> Option<Arc<dyn SourceParser>> {
-        let mut best: Option<(u8, u32, Arc<dyn SourceParser>)> = None;
-
-        for parser in &self.parsers {
-            let Some(score) = match_score(parser.capability(), input) else {
-                continue;
-            };
-            let priority = parser.capability().priority;
-            let should_replace = best.as_ref().is_none_or(|(best_score, best_priority, _)| {
-                score > *best_score || (score == *best_score && priority < *best_priority)
+    /// All parsers that match `input`, ranked best-first. When one or more
+    /// parsers match via a specific signal (MIME type, path/extension, or
+    /// content sniffing) the ranking contains only those specific matches —
+    /// every one of them is a positive, self-identifying signal and all are
+    /// intended to run together per the contract's multi-parser example.
+    /// When none match specifically, the ranking falls back to content-kind
+    /// matches alone (at most the single highest-priority one, since
+    /// content-kind is a broad, last-resort classification rather than a
+    /// distinct identification and should not fan out).
+    fn ranked_matches(&self, input: &ParseInput) -> Vec<(u8, Arc<dyn SourceParser>)> {
+        let mut specific: Vec<(u8, Arc<dyn SourceParser>)> = self
+            .parsers
+            .iter()
+            .filter_map(|parser| {
+                specific_score(parser.capability(), input).map(|score| (score, parser.clone()))
+            })
+            .collect();
+        if !specific.is_empty() {
+            specific.sort_by(|(score_a, parser_a), (score_b, parser_b)| {
+                score_b.cmp(score_a).then(
+                    parser_a
+                        .capability()
+                        .priority
+                        .cmp(&parser_b.capability().priority),
+                )
             });
-            if should_replace {
-                best = Some((score, priority, parser.clone()));
-            }
+            return specific;
         }
 
-        best.map(|(_, _, parser)| parser)
+        self.parsers
+            .iter()
+            .filter(|parser| parser.capability().matches_content_kind(input))
+            .min_by_key(|parser| parser.capability().priority)
+            .map(|parser| vec![(0u8, parser.clone())])
+            .unwrap_or_default()
     }
 }
 
@@ -89,16 +138,41 @@ fn requested_parser_id(input: &ParseInput) -> Option<&String> {
     })
 }
 
-fn match_score(capability: &ParserCapability, input: &ParseInput) -> Option<u8> {
+/// Score a parser's specific (non-content-kind) identification signals per
+/// parsing-contract.md's order: MIME type, then path/extension, then content
+/// sniffing. `None` means the parser did not specifically identify the
+/// document at all.
+fn specific_score(capability: &ParserCapability, input: &ParseInput) -> Option<u8> {
     [
-        (50, capability.matches_path(input)),
         (40, capability.matches_mime_type(input)),
-        (30, capability.matches_sniffing(input)),
-        (10, capability.matches_content_kind(input)),
+        (30, capability.matches_path(input)),
+        (20, capability.matches_sniffing(input)),
     ]
     .into_iter()
     .filter_map(|(score, matched)| matched.then_some(score))
     .max()
+}
+
+/// Merge a secondary parser's output into the primary (best-matched) result.
+/// The header/parser identity stay the primary's; facts, graph candidates,
+/// warnings, and errors accumulate. The merged status degrades when any
+/// secondary parser did not complete cleanly.
+fn merge_result(primary: &mut ParseResult, mut secondary: ParseResult) {
+    primary.facts.append(&mut secondary.facts);
+    primary
+        .graph_candidates
+        .append(&mut secondary.graph_candidates);
+    primary.warnings.append(&mut secondary.warnings);
+    primary.errors.append(&mut secondary.errors);
+    primary
+        .header
+        .warnings
+        .append(&mut secondary.header.warnings);
+    if secondary.header.status != LifecycleStatus::Completed
+        && primary.header.status == LifecycleStatus::Completed
+    {
+        primary.header.status = LifecycleStatus::CompletedDegraded;
+    }
 }
 
 fn unsupported_result(input: &ParseInput) -> ParseResult {
@@ -113,12 +187,7 @@ fn unsupported_result(input: &ParseInput) -> ParseResult {
         retryable: false,
     };
     ParseResult {
-        header: stage_header(
-            input,
-            LifecycleStatus::CompletedDegraded,
-            vec![warning.clone()],
-            None,
-        ),
+        header: stage_header(input, LifecycleStatus::Skipped, vec![warning.clone()], None),
         document_id: input.document.document_id.clone(),
         facts: Vec::new(),
         graph_candidates: Vec::new(),

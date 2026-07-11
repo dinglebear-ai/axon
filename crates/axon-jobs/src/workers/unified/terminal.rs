@@ -88,6 +88,8 @@ pub(super) async fn heartbeat(
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp::from(chrono::Utc::now()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: Some(empty_counts()),
             provider_reservations: Vec::new(),

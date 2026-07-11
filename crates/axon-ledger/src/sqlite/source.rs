@@ -56,6 +56,42 @@ pub(super) async fn get_source(
     .transpose()
 }
 
+/// List all registered sources, then filter/paginate via [`crate::listing`] so
+/// this stays in lockstep with `FakeLedgerStore::list_sources`.
+///
+/// Sources are stored as an opaque `summary_json` blob keyed by `source_id`
+/// (see `upsert_source`), so filtering happens in Rust rather than via
+/// `json_extract` `WHERE` clauses — simpler, and correct for the tag/query
+/// substring filters that don't map cleanly onto SQL. The empty-store
+/// assumption in `docs/pipeline-unification/runtime/ledger-contract.md` means
+/// this full scan is bounded by the same source-count expectations as the rest
+/// of the ledger.
+pub(super) async fn list_sources(
+    store: &SqliteLedgerStore,
+    request: SourceListRequest,
+) -> Result<Page<SourceSummary>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT summary_json
+        FROM sources
+        ORDER BY source_id ASC
+        "#,
+    )
+    .fetch_all(&store.pool)
+    .await
+    .map_err(sqlite_error)?;
+
+    let sources = rows
+        .into_iter()
+        .map(|row| {
+            let summary_json: String = row.get("summary_json");
+            serde_json::from_str::<SourceSummary>(&summary_json).map_err(json_error)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(crate::listing::list_page(sources, &request))
+}
+
 pub(super) async fn foreign_keys_enabled(store: &SqliteLedgerStore) -> Result<bool> {
     let enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
         .fetch_one(&store.pool)

@@ -1,0 +1,14 @@
+{
+  "memory_type": "decision",
+  "body": "Use SQLite as the durable jobs/memory metadata store; Qdrant stays vector-only.",
+  "confidence": 0.9,
+  "salience": 0.8,
+  "scope": {
+    "kind": "repo",
+    "value": "jmagar/axon"
+  },
+  "title": "Jobs metadata stays in SQLite",
+  "tags": ["architecture", "jobs"],
+  "links": [],
+  "embed": true
+}

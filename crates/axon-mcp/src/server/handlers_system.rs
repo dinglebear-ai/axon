@@ -1,17 +1,13 @@
 use super::AxonMcpServer;
 use super::artifacts::{InlineHint, artifact_root, client_context_name, respond_with_mode};
 use super::common::{
-    CURRENT_PRUNE_AUTHZ, MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error, to_pagination,
+    CURRENT_PRUNE_AUTHZ, MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error,
 };
-use crate::schema::{
-    AxonToolResponse, DoctorRequest, DomainsRequest, HelpRequest, PruneMcpRequest, PurgeRequest,
-    SourcesRequest, StatsRequest, StatusRequest,
-};
+use crate::schema::{AxonToolResponse, DoctorRequest, HelpRequest, PruneMcpRequest, StatusRequest};
 use axon_api::source::prune::{PruneRequest as ApiPruneRequest, PruneSelector};
 use axon_api::source::{SourceGenerationId, SourceId};
 use axon_services::prune::{PruneAuthz, prune};
 use axon_services::system;
-use axon_services::transport;
 use rmcp::ErrorData;
 use serde_json::Value;
 
@@ -42,54 +38,30 @@ impl AxonMcpServer {
         .await
     }
 
-    pub(super) async fn handle_purge(
-        &self,
-        req: PurgeRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let target = req
-            .target
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| invalid_params("purge requires a target URL"))?
-            .to_string();
-        // Agent safety: a bare `purge` previews; deletion requires dry_run=false.
-        let dry_run = req.dry_run.unwrap_or(true);
-        let mut cfg = (*self.cfg).clone();
-        if let Some(collection) = req.collection.as_deref() {
-            axon_core::config::validate_collection_name(collection)
-                .map_err(|e| invalid_params(format!("collection: {e}")))?;
-            cfg.collection = collection.to_string();
-        }
-        let result = system::purge(&cfg, &target, req.prefix, dry_run)
-            .await
-            .map_err(|e| logged_internal_error("purge", e.as_ref()))?;
-        let payload =
-            serde_json::to_value(result).map_err(|e| logged_internal_error("purge", &e))?;
-        respond_with_mode(
-            "purge",
-            "purge",
-            req.response_mode,
-            "purge",
-            payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
     pub(super) async fn handle_prune(
         &self,
         req: PruneMcpRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.as_deref().unwrap_or("plan");
+
+        // `dedupe`/`purge` are the target-state replacements for the removed
+        // legacy `dedupe`/`purge` MCP actions (U2-24/C6-18/C6-19) — they call
+        // the same `axon-services` facades the old actions did, just routed
+        // through `prune`'s subaction dispatch and its `axon:admin` gate.
+        // They bypass `PruneSelector`/`ApiPruneRequest` entirely since neither
+        // maps onto the source/generation/collection prune-selector grammar.
+        if subaction == "dedupe" || subaction == "purge" {
+            return self.handle_prune_dedupe_or_purge(subaction, &req).await;
+        }
+
         let selector = prune_selector_from_request(&req)?;
 
         // `prune` executes against the shared, cached `ServiceContext` (see
         // `base_service_context`), which is built once from the server's
-        // startup config and cannot be overridden per-call the way
-        // `handle_purge` overrides a throwaway `Config` clone. A per-request
-        // `collection` override is therefore not honored here — reject
-        // rather than silently ignore it.
+        // startup config and cannot be overridden per-call the way the REST
+        // `purge` handler (`axon-web`) overrides a throwaway `Config` clone.
+        // A per-request `collection` override is therefore not honored here —
+        // reject rather than silently ignore it.
         if req.collection.is_some() {
             return Err(invalid_params(
                 "prune does not support a per-request collection override over MCP; the server's configured collection is always used",
@@ -134,6 +106,58 @@ impl AxonMcpServer {
             "plan": plan,
             "result": result,
         });
+        respond_with_mode(
+            "prune",
+            subaction,
+            req.response_mode,
+            "prune",
+            payload,
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    /// `prune subaction=dedupe|purge` — thin wrappers over the same
+    /// `axon-services::system::{dedupe,purge}` facades the REST
+    /// `/v1/prune/dedupe` and `/v1/prune/purge` routes call.
+    ///
+    /// `purge` here only supports an exact-target delete (`prefix=false`,
+    /// `dry_run=!confirm`) — `PruneMcpRequest` has no `prefix`/`dry_run`
+    /// fields today (unlike REST's `PurgeRequest`), so prefix-scoped purge
+    /// over MCP is a follow-up pending an `axon-api` schema addition.
+    async fn handle_prune_dedupe_or_purge(
+        &self,
+        subaction: &str,
+        req: &PruneMcpRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let mut cfg = (*self.cfg).clone();
+        if let Some(collection) = req.collection.as_deref() {
+            let collection = collection.trim();
+            if collection.is_empty() {
+                return Err(invalid_params("collection must be non-empty when provided"));
+            }
+            cfg.collection = collection.to_string();
+        }
+
+        let payload = if subaction == "dedupe" {
+            let result = system::dedupe(&cfg, None)
+                .await
+                .map_err(|e| logged_internal_error("prune.dedupe", e.as_ref()))?;
+            serde_json::json!({ "subaction": "dedupe", "result": result })
+        } else {
+            let target = req
+                .target
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| invalid_params("purge requires a target"))?;
+            let dry_run = !req.confirm.unwrap_or(false);
+            let result = system::purge(&cfg, target, false, dry_run)
+                .await
+                .map_err(|e| logged_internal_error("prune.purge", e.as_ref()))?;
+            serde_json::json!({ "subaction": "purge", "result": result })
+        };
+
         respond_with_mode(
             "prune",
             subaction,
@@ -193,112 +217,12 @@ impl AxonMcpServer {
         .await
     }
 
-    pub(super) async fn handle_domains(
-        &self,
-        req: DomainsRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let pagination = to_pagination(req.limit, req.offset, transport::DISCOVERY_PAGE_DEFAULT);
-        let response_mode = req.response_mode;
-        if let Some(domain) = req.domain.as_deref() {
-            let result = system::domain_indexed(self.cfg.as_ref(), domain)
-                .await
-                .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
-            let payload =
-                serde_json::to_value(result).map_err(|e| logged_internal_error("domains", &e))?;
-            return respond_with_mode(
-                "domains",
-                "domains",
-                response_mode,
-                "domains",
-                payload,
-                InlineHint::Default,
-            )
-            .await;
-        }
-        let result = system::domains(self.cfg.as_ref(), pagination)
-            .await
-            .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
-        let payload = serde_json::json!({
-            "limit": result.limit,
-            "offset": result.offset,
-            "domains": result.domains.iter().map(|d| serde_json::json!({
-                "domain": d.domain,
-                "vectors": d.vectors,
-            })).collect::<Vec<_>>(),
-        });
-        respond_with_mode(
-            "domains",
-            "domains",
-            response_mode,
-            "domains",
-            payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
-    pub(super) async fn handle_sources(
-        &self,
-        req: SourcesRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let response_mode = req.response_mode;
-        if let Some(domain) = req.domain.as_deref() {
-            let pagination = transport::domain_sources_pagination(req.limit, req.offset);
-            let result = system::sources_for_domain(
-                self.cfg.as_ref(),
-                domain,
-                pagination,
-                req.cursor.as_deref(),
-            )
-            .await
-            .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
-            let payload =
-                serde_json::to_value(result).map_err(|e| logged_internal_error("sources", &e))?;
-            return respond_with_mode(
-                "sources",
-                "sources",
-                response_mode,
-                "sources",
-                payload,
-                InlineHint::Default,
-            )
-            .await;
-        }
-        let pagination = to_pagination(req.limit, req.offset, transport::DISCOVERY_PAGE_DEFAULT);
-        let result = system::sources(self.cfg.as_ref(), pagination)
-            .await
-            .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
-        let payload =
-            serde_json::to_value(result).map_err(|e| logged_internal_error("sources", &e))?;
-        respond_with_mode(
-            "sources",
-            "sources",
-            response_mode,
-            "sources",
-            payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
-    pub(super) async fn handle_stats(
-        &self,
-        req: StatsRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        let response_mode = req.response_mode;
-        let result = system::stats(self.cfg.as_ref())
-            .await
-            .map_err(|e| logged_internal_error("stats", e.as_ref()))?;
-        respond_with_mode(
-            "stats",
-            "stats",
-            response_mode,
-            "stats",
-            result.payload,
-            InlineHint::Default,
-        )
-        .await
-    }
+    // `handle_domains`/`handle_sources`/`handle_stats` were removed along
+    // with the `domains`/`sources`/`stats` MCP actions (issue #298 WS-G —
+    // see the rejection arm in `server.rs`). The underlying
+    // `system::domains`/`system::sources`/`system::stats` service functions
+    // are untouched and remain reachable through the CLI (`axon domains`,
+    // `axon sources`, `axon stats`) and REST.
 }
 
 /// Build a [`PruneSelector`] from an MCP [`PruneMcpRequest`]. Mirrors
@@ -369,15 +293,15 @@ fn help_payload() -> Value {
             "retrieve": ["retrieve"],
             "search": ["search"],
             "map": ["map"],
-            "purge": ["purge"],
-            "prune": ["plan", "exec"],
+            "prune": ["plan", "exec", "dedupe", "purge"],
             "doctor": ["doctor"],
-            "domains": ["domains"],
-            "sources": ["sources"],
-            "stats": ["stats"],
+            "resolve": ["resolve"],
+            "capabilities": ["capabilities"],
+            "providers": ["list", "get"],
             "diff": ["diff"],
             "brand": ["brand"],
-            "elicit_demo": []
+            "watch": ["list", "get", "update", "pause", "resume", "delete"],
+            "graph": ["kinds", "resolve", "query", "node", "edge", "source"]
         },
         "resources": [
             MCP_TOOL_SCHEMA_URI

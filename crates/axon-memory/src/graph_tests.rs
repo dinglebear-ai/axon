@@ -48,6 +48,7 @@ fn record(id: &str, status: MemoryStatus) -> MemoryRecord {
             value: "axon".to_string(),
         },
         history: Vec::new(),
+        visibility: Visibility::Internal,
         title: Some(format!("title-{id}")),
         links: Vec::new(),
         decay: None,

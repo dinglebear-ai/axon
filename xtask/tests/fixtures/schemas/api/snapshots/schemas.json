@@ -200,6 +200,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -220,8 +225,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -250,8 +265,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -1493,6 +1533,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupDebt_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupDebt_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -1518,6 +1664,9 @@
         "expired",
         "skipped"
       ],
+      "type": "string"
+    },
+    "CleanupDebt_MemoryId": {
       "type": "string"
     },
     "CleanupDebt_ProviderId": {
@@ -1709,6 +1858,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupSelector_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/CleanupSelector_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupSelector_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ],
       "title": "CleanupSelector"
@@ -1720,6 +1975,13 @@
       "type": "string"
     },
     "CleanupSelector_DocumentId": {
+      "type": "string"
+    },
+    "CleanupSelector_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "CleanupSelector_MemoryId": {
       "type": "string"
     },
     "CleanupSelector_SourceGenerationId": {
@@ -4039,6 +4301,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -4059,8 +4326,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -4089,8 +4366,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -5606,6 +5908,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -5626,8 +5933,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -5656,8 +5973,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -5703,6 +6045,13 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "actor": {
+          "description": "User/system identity requesting the cancellation, echoed back on\n`JobCancelResult::canceled_by`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "force_after_ms": {
           "format": "uint64",
           "minimum": 0,
@@ -5731,14 +6080,46 @@
             "null"
           ]
         },
+        "canceled_by": {
+          "description": "User/system identity that requested the cancellation.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Cancellation\".",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cleanup_debt_ids": {
+          "description": "Cleanup work created for any published partial side effect.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "job_id": {
           "$ref": "#/$defs/JobCancelResult_JobId"
+        },
+        "last_safe_stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCancelResult_PipelinePhase"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Last completed safe point (stage phase) before cancellation unwound."
         },
         "reason": {
           "type": [
             "string",
             "null"
           ]
+        },
+        "side_effects": {
+          "description": "Published/written side effects that survived the cooperative unwind.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "status": {
           "$ref": "#/$defs/JobCancelResult_LifecycleStatus"
@@ -5769,6 +6150,38 @@
         "canceled",
         "expired",
         "skipped"
+      ],
+      "type": "string"
+    },
+    "JobCancelResult_PipelinePhase": {
+      "enum": [
+        "queued",
+        "requested",
+        "resolving",
+        "routing",
+        "authorizing",
+        "planning",
+        "leasing",
+        "discovering",
+        "diffing",
+        "fetching",
+        "rendering",
+        "enriching",
+        "normalizing",
+        "parsing",
+        "graphing",
+        "preparing",
+        "batching",
+        "embedding",
+        "vectorizing",
+        "upserting",
+        "retrieving",
+        "synthesizing",
+        "evaluating",
+        "publishing",
+        "cleaning",
+        "complete",
+        "canceled"
       ],
       "type": "string"
     },
@@ -6196,6 +6609,13 @@
             }
           ]
         },
+        "deadline_at": {
+          "description": "Optional cancellation deadline. Past-deadline `running` attempts are\ntransitioned to `expired` by the worker claim/heartbeat path.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Required Job\nFields\" (`deadline_at`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "error": {
           "anyOf": [
             {
@@ -6582,6 +7002,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -6602,8 +7027,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -6632,8 +7067,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -6663,19 +7123,38 @@
       "type": "string"
     },
     "JobCreateRequest_JobIntent": {
-      "enum": [
-        "run",
-        "acquire",
-        "refresh",
-        "watch",
-        "exec",
-        "retry",
-        "recover",
-        "cleanup",
-        "probe",
-        "reset"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "run",
+            "acquire",
+            "refresh",
+            "watch",
+            "exec",
+            "retry",
+            "recover",
+            "cleanup",
+            "probe",
+            "reset"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "index",
+          "description": "Initial index/acquire submission for a legacy per-family job\n(crawl/embed/ingest) that predates the unified `source` pipeline's\n`Acquire` intent.",
+          "type": "string"
+        },
+        {
+          "const": "map",
+          "description": "Discover items without embedding (`JobKind::Map`).",
+          "type": "string"
+        },
+        {
+          "const": "extract",
+          "description": "Structured LLM extraction (`JobKind::Extract`).",
+          "type": "string"
+        }
+      ]
     },
     "JobCreateRequest_JobKind": {
       "oneOf": [
@@ -7474,6 +7953,13 @@
             "null"
           ]
         },
+        "last_progress_at": {
+          "description": "Timestamp of the last progress-bearing event observed for this job\n(distinct from `heartbeat_at`, which is just the liveness ping time).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "phase": {
           "$ref": "#/$defs/JobHeartbeat_PipelinePhase"
         },
@@ -7482,6 +7968,13 @@
             "$ref": "#/$defs/JobHeartbeat_ProviderReservationSnapshot"
           },
           "type": "array"
+        },
+        "sequence": {
+          "default": 0,
+          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
         "stage_id": {
           "anyOf": [
@@ -8621,6 +9114,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -8641,8 +9139,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -8671,8 +9179,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -11126,6 +11659,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/PreparedDocument_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/PreparedDocument_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -11413,6 +12052,9 @@
     },
     "PreparedDocument_JobId": {
       "format": "uuid",
+      "type": "string"
+    },
+    "PreparedDocument_MemoryId": {
       "type": "string"
     },
     "PreparedDocument_PreparedChunk": {
@@ -12270,6 +12912,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -12290,8 +12937,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -12320,8 +12977,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -13168,6 +13850,36 @@
             }
           ]
         },
+        "graph_edge_ids": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PruneExecuteRequest_GraphEdgeId"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "graph_stable_keys": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "memory_ids": {
+          "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PruneExecuteRequest_MemoryId"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "source_id": {
           "anyOf": [
             {
@@ -13787,6 +14499,36 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "graph_edge_ids": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PrunePlan_GraphEdgeId"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "graph_stable_keys": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "memory_ids": {
+          "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PrunePlan_MemoryId"
+          },
+          "type": [
+            "array",
+            "null"
           ]
         },
         "source_id": {
@@ -16958,6 +17700,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/SourceGenerationDetail_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/SourceGenerationDetail_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -17120,6 +17968,9 @@
         "expired",
         "skipped"
       ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_MemoryId": {
       "type": "string"
     },
     "SourceGenerationDetail_ProviderId": {
@@ -18972,6 +19823,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -18992,8 +19848,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -19022,8 +19888,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -22755,6 +23646,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -22775,8 +23671,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -22805,8 +23711,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -27441,6 +28372,84 @@
       "type": "object"
     },
     "enums": {
+      "ArtifactKind": {
+        "enum": [
+          "raw_content",
+          "normalized_content",
+          "manifest",
+          "report",
+          "screenshot",
+          "warc",
+          "provider_trace"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ArtifactKind"
+        }
+      },
+      "ArtifactMode": {
+        "enum": [
+          "none",
+          "on_large_output",
+          "always"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ArtifactMode"
+        }
+      },
+      "AuthorityLevel": {
+        "enum": [
+          "official",
+          "verified",
+          "user_pinned",
+          "inferred",
+          "community",
+          "mirror",
+          "conflicting",
+          "unknown"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "AuthorityLevel"
+        }
+      },
+      "CachePolicy": {
+        "enum": [
+          "bypass",
+          "use",
+          "revalidate",
+          "offline"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "CachePolicy"
+        }
+      },
+      "ChunkProfile": {
+        "enum": [
+          "code_symbol",
+          "code_manifest",
+          "markdown_sections",
+          "html_article",
+          "plain_text_windows",
+          "transcript_segments",
+          "structured_records",
+          "api_schema",
+          "tool_output",
+          "session_turns",
+          "atomic_metadata"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ChunkProfile"
+        }
+      },
       "CleanupDebtKind": {
         "enum": [
           "vector_delete",
@@ -27455,6 +28464,57 @@
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "CleanupDebtKind"
+        }
+      },
+      "ContentKind": {
+        "enum": [
+          "code",
+          "markdown",
+          "html",
+          "plain_text",
+          "transcript",
+          "structured",
+          "json",
+          "yaml",
+          "toml",
+          "xml",
+          "binary_metadata"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ContentKind"
+        }
+      },
+      "CredentialKind": {
+        "enum": [
+          "api_key",
+          "o_auth_token",
+          "bearer_token",
+          "basic_auth",
+          "cookie",
+          "ssh_key",
+          "local_config"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "CredentialKind"
+        }
+      },
+      "DiffKind": {
+        "enum": [
+          "added",
+          "modified",
+          "removed",
+          "unchanged",
+          "skipped",
+          "failed"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "DiffKind"
         }
       },
       "DocumentLifecycleStatus": {
@@ -27479,6 +28539,86 @@
           "rust_enum": "DocumentLifecycleStatus"
         }
       },
+      "EnrichmentKind": {
+        "enum": [
+          "none",
+          "metadata",
+          "classification",
+          "summary",
+          "extraction",
+          "authority",
+          "dependency",
+          "api_schema",
+          "tool_schema",
+          "session",
+          "custom"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "EnrichmentKind"
+        }
+      },
+      "ExecutionAffinity": {
+        "enum": [
+          "inline",
+          "worker",
+          "scheduler",
+          "provider_bound"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ExecutionAffinity"
+        }
+      },
+      "ExecutionMode": {
+        "enum": [
+          "foreground",
+          "background",
+          "wait"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ExecutionMode"
+        }
+      },
+      "HealthStatus": {
+        "enum": [
+          "healthy",
+          "degraded",
+          "unavailable",
+          "cooling",
+          "unknown"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "HealthStatus"
+        }
+      },
+      "ItemKind": {
+        "enum": [
+          "web_page",
+          "repo_file",
+          "local_file",
+          "package_version",
+          "feed_entry",
+          "transcript",
+          "session_turn",
+          "tool_call",
+          "cli_output",
+          "mcp_tool_output",
+          "memory_record",
+          "artifact"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ItemKind"
+        }
+      },
       "JobKind": {
         "enum": [
           "source",
@@ -27493,12 +28633,29 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset"
+          "reset",
+          "crawl",
+          "ingest",
+          "embed"
         ],
         "type": "string",
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "JobKind"
+        }
+      },
+      "JobPriority": {
+        "enum": [
+          "interactive",
+          "high",
+          "normal",
+          "background",
+          "maintenance"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "JobPriority"
         }
       },
       "LifecycleStatus": {
@@ -27558,6 +28715,34 @@
           "rust_enum": "PipelinePhase"
         }
       },
+      "ProviderKind": {
+        "enum": [
+          "llm",
+          "embedding",
+          "vector",
+          "search",
+          "fetch",
+          "render",
+          "network_capture",
+          "artifact",
+          "ledger",
+          "graph",
+          "memory",
+          "job",
+          "watch",
+          "config",
+          "credential",
+          "cache",
+          "security",
+          "rate_limiter",
+          "health_probe"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ProviderKind"
+        }
+      },
       "PublishState": {
         "enum": [
           "planning",
@@ -27572,6 +28757,50 @@
         "x-axon": {
           "owner_crate": "axon-api",
           "rust_enum": "PublishState"
+        }
+      },
+      "ResponseMode": {
+        "enum": [
+          "auto",
+          "summary",
+          "full",
+          "inline",
+          "artifact",
+          "path",
+          "job_only"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "ResponseMode"
+        }
+      },
+      "SafetyClass": {
+        "enum": [
+          "public_network",
+          "authenticated_network",
+          "local_filesystem",
+          "tool_execution"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SafetyClass"
+        }
+      },
+      "Severity": {
+        "enum": [
+          "debug",
+          "info",
+          "warning",
+          "degraded",
+          "failed",
+          "fatal"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "Severity"
         }
       },
       "SourceIntent": {
@@ -27607,6 +28836,80 @@
           "owner_crate": "axon-api",
           "rust_enum": "SourceKind"
         }
+      },
+      "SourceRefreshPolicy": {
+        "enum": [
+          "if_stale",
+          "force",
+          "never"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SourceRefreshPolicy"
+        }
+      },
+      "SourceScope": {
+        "enum": [
+          "page",
+          "site",
+          "docs",
+          "repo",
+          "workspace",
+          "branch",
+          "org",
+          "package",
+          "version",
+          "feed",
+          "subreddit",
+          "thread",
+          "comment",
+          "video",
+          "playlist",
+          "channel",
+          "issue",
+          "pull_request",
+          "merge_request",
+          "release",
+          "wiki",
+          "file",
+          "directory",
+          "map",
+          "tool",
+          "script",
+          "api"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SourceScope"
+        }
+      },
+      "SourceWatchPolicy": {
+        "enum": [
+          "disabled",
+          "ensure",
+          "enabled"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "SourceWatchPolicy"
+        }
+      },
+      "Visibility": {
+        "enum": [
+          "public",
+          "internal",
+          "sensitive",
+          "redacted",
+          "derived"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "axon-api",
+          "rust_enum": "Visibility"
+        }
       }
     }
   },
@@ -27631,7 +28934,7 @@
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:c42fb950da36e92ea3c39b7bf27166d791017079b5742f7ca3919afb06f538a6",
+        "checksum": "sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -27646,22 +28949,22 @@
         "path": "crates/axon-api/src/source/capability.rs"
       },
       {
-        "checksum": "sha256:46f8c247ec7d77b72d37b08913526403eac035156733e4d779308700edcd6fb5",
+        "checksum": "sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:0395b09638d4265bc795fa64409dfaee4df517883d6e62b909889e3537a78f1c",
+        "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:6a0ebcea59dc81c31a30069cadafe39f0e60dbdc914d4aad55334e5e5b8265a2",
+        "checksum": "sha256:372466d1aedf5632d7af89b9562ec6e2820eb8fcea83f8182b064b6c46492c93",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
       {
-        "checksum": "sha256:d96090e8b5089f0d19f68e755eeee577e86961a46269ad98c7de1548ba0558f0",
+        "checksum": "sha256:ca3c484a987057b7cc4c7fb9cce1b2ceb773384307f9fbd7b09cfd3ece9d0511",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/graph.rs"
       },
@@ -27671,7 +28974,7 @@
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:819cc30c3ef16d34581c838b775ac5eab8cc5e3aa622df40bdd1989662c7236d",
+        "checksum": "sha256:0266cb19a5aecea9c85aec5723ce33d2f882dc449c543b4fa57e9880a34d8d24",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job.rs"
       },
@@ -27696,7 +28999,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:5f98e4a52fe7dd507955161917635f3c1bcaf7839737ea03c3c0378551e26233",
+        "checksum": "sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
@@ -27706,12 +29009,12 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:9c7d65b7d3a4e163d2f3e8c60806713466909fef2822b79566eda77575faf63b",
+        "checksum": "sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:75d4a2a43c699a17343689d6d57c0f4e3eb2c254718ae5f31f9b5fe1f5111616",
+        "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },
@@ -27736,7 +29039,7 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:2a71db7eaeb8c352eb999213a9706479f93f358d0b0cbe6d411c6ae58abc80e6",
+        "checksum": "sha256:9019aca90671d373722f9c1692a68edd5198c2c7374e12aaaa6cb74af1964673",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       }

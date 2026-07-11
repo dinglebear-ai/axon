@@ -8,7 +8,7 @@ use super::*;
 #[allow(unsafe_code)]
 #[test]
 fn into_config_parses_mcp_origin_allowlist_from_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     const MCP: &str = "AXON_ALLOWED_ORIGINS";
 
     unsafe {
@@ -40,7 +40,7 @@ fn into_config_parses_mcp_origin_allowlist_from_env() {
 
 #[test]
 fn into_config_normalizes_tei_url_like_other_services() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let cli = Cli::parse_from([
         "axon",
         "--qdrant-url",
@@ -59,7 +59,7 @@ fn into_config_normalizes_tei_url_like_other_services() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_reads_gemini_env_settings() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(
         &[
             "AXON_HEADLESS_GEMINI_MODEL",
@@ -90,7 +90,7 @@ fn into_config_reads_gemini_env_settings() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_reads_openai_compat_env_settings() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(
         &[
             "AXON_LLM_BACKEND",
@@ -119,7 +119,7 @@ fn into_config_reads_openai_compat_env_settings() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_reads_codex_app_server_env_settings() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(
         &[
             "AXON_LLM_BACKEND",
@@ -158,7 +158,7 @@ fn into_config_reads_codex_app_server_env_settings() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_reads_split_synthesis_and_chat_models() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(
         &[
             "AXON_LLM_BACKEND",
@@ -190,7 +190,7 @@ fn into_config_reads_split_synthesis_and_chat_models() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_rejects_unknown_llm_backend() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["AXON_LLM_BACKEND"], || unsafe {
         env::set_var("AXON_LLM_BACKEND", "llama");
         let err = into_config_via_args(&["status"]).unwrap_err();
@@ -202,7 +202,7 @@ fn into_config_rejects_unknown_llm_backend() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_ignores_removed_openai_model_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     with_env_saved(&["OPENAI_MODEL", "AXON_HEADLESS_GEMINI_MODEL"], || unsafe {
         env::set_var("OPENAI_MODEL", "gemini-legacy");
         env::remove_var("AXON_HEADLESS_GEMINI_MODEL");
@@ -214,10 +214,12 @@ fn into_config_ignores_removed_openai_model_env() {
 
 #[allow(unsafe_code)]
 #[test]
-fn into_config_accepts_deprecated_ask_backend_toml() {
-    let _guard = ENV_LOCK.lock().unwrap();
+fn into_config_reads_ask_chunk_limit_from_toml() {
+    let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    write!(f, "[ask]\nbackend = \"headless\"\nchunk-limit = 8\n").unwrap();
+    // The old `[ask].backend = "headless"` compat field was dropped in the
+    // 20-section config contract clean break; `[ask].chunk-limit` still parses.
+    write!(f, "[ask]\nchunk-limit = 8\n").unwrap();
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_ASK_CHUNK_LIMIT");
@@ -228,19 +230,23 @@ fn into_config_accepts_deprecated_ask_backend_toml() {
 
 #[allow(unsafe_code)]
 #[test]
-fn into_config_rejects_invalid_llm_runtime_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
+fn into_config_falls_back_to_default_on_unparseable_llm_runtime_env() {
+    // AXON_LLM_COMPLETION_CONCURRENCY is a MoveToml tuning knob (config.toml
+    // `llm.completion-concurrency`); like its sibling TEI/ask/search knobs, an
+    // unparseable env value warns and falls back to TOML/default rather than
+    // hard-failing config construction.
+    let _guard = env_guard();
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "abc");
-        let err = into_config_via_args(&["status"]).unwrap_err();
-        assert!(err.contains("AXON_LLM_COMPLETION_CONCURRENCY"));
+        let cfg = into_config_via_args(&["status"]).expect("status config");
+        assert_eq!(cfg.llm_completion_concurrency, 4);
     });
 }
 
 #[allow(unsafe_code)]
 #[test]
 fn into_config_errors_when_qdrant_url_missing() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     unsafe {
         env::remove_var("QDRANT_URL");
     }
@@ -256,7 +262,7 @@ fn into_config_errors_when_qdrant_url_missing() {
 #[allow(unsafe_code)]
 #[test]
 fn into_config_errors_when_tei_url_missing() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = env_guard();
     let orig_tei_url = env::var("TEI_URL").ok();
     unsafe {
         env::remove_var("TEI_URL");

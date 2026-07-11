@@ -157,7 +157,12 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
                 Some("axon:read")
             }
-            WatchSubaction::Create | WatchSubaction::Exec => Some("axon:write"),
+            WatchSubaction::Create
+            | WatchSubaction::Exec
+            | WatchSubaction::Update
+            | WatchSubaction::Pause
+            | WatchSubaction::Resume
+            | WatchSubaction::Delete => Some("axon:write"),
         },
         AxonRequest::Setup(req) => match req.mode.unwrap_or(SetupMode::Check) {
             SetupMode::Check => Some("axon:read"),
@@ -170,9 +175,17 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         | AxonRequest::Brand(_) => Some("axon:write"),
         AxonRequest::VerticalScrape(_) => Some("axon:write"),
         AxonRequest::Source(_) => Some("axon:write"),
-        // NOTE: no wildcard arm — the match must be exhaustive.
-        // Adding a new AxonRequest variant without a required_scope arm is a compile error,
-        // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
+        // resolve/capabilities/providers (issue #298 WS-G): read-only
+        // discovery surfaces, no side-effects.
+        AxonRequest::Resolve(_) | AxonRequest::Capabilities(_) | AxonRequest::Providers(_) => {
+            Some("axon:read")
+        }
+        // graph (issue #298 GQ): read-only SourceGraph query surface. Every
+        // subaction (kinds/resolve/query/node/edge/source) is a pure read —
+        // graph writes stay parser/source-job owned.
+        AxonRequest::Graph(_) => Some("axon:read"), // NOTE: no wildcard arm — the match must be exhaustive.
+                                                    // Adding a new AxonRequest variant without a required_scope arm is a compile error,
+                                                    // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
     }
 }
 
@@ -228,6 +241,10 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::ElicitDemo(_) => "elicit_demo",
         AxonRequest::VerticalScrape(_) => "vertical_scrape",
         AxonRequest::Source(_) => "source",
+        AxonRequest::Resolve(_) => "resolve",
+        AxonRequest::Capabilities(_) => "capabilities",
+        AxonRequest::Providers(_) => "providers",
+        AxonRequest::Graph(_) => "graph",
     }
 }
 

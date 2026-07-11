@@ -37,6 +37,12 @@ pub const REDACTION_PLACEHOLDER: &str = "[REDACTED]";
 /// Minimum Shannon entropy (bits/char) for the high-entropy fallback to fire.
 /// Repeated/low-diversity runs fall below this and are left untouched; real
 /// API keys and tokens sit comfortably above it.
+///
+/// Private (module-private, not `pub`), but still visible to the child
+/// `redact::detectors` module — Rust privacy is scoped to the defining
+/// module *and its descendants*. This lets the structured detector set
+/// reuse the same threshold and entropy math for its Gitea/GitLab/OAuth
+/// opaque-token classifier instead of re-implementing entropy scoring.
 const MIN_ENTROPY_BITS: f64 = 3.0;
 
 /// Structured secret shapes — redacted unconditionally.

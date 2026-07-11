@@ -2,7 +2,7 @@ use axon_api::source::*;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use crate::boundary::JobStore;
+use crate::boundary::{JobDeleteResult, JobStore};
 use crate::store::open_sqlite_pool;
 use crate::unified::SqliteUnifiedJobStore;
 
@@ -52,6 +52,7 @@ fn create_request() -> JobCreateRequest {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     }
 }
 
@@ -584,6 +585,8 @@ async fn heartbeat_updates_latest_job_summary_and_history() {
         status: LifecycleStatus::Running,
         stage_id: None,
         heartbeat_at: Timestamp("2026-07-01T12:00:00Z".to_string()),
+        sequence: 0,
+        last_progress_at: None,
         last_event_sequence: Some(7),
         counts: None,
         provider_reservations: vec![ProviderReservationSnapshot {
@@ -663,6 +666,8 @@ async fn heartbeat_cannot_resurrect_terminal_job() {
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp("2026-07-01T12:05:00Z".to_string()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -710,6 +715,8 @@ async fn recovery_honors_staleness_cutoff() {
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp::from(chrono::Utc::now()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -752,6 +759,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             JobCancelRequest {
                 reason: Some("queued no longer needed".to_string()),
                 force_after_ms: None,
+                actor: None,
             },
         )
         .await
@@ -781,6 +789,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             JobCancelRequest {
                 reason: Some("user requested".to_string()),
                 force_after_ms: None,
+                actor: None,
             },
         )
         .await
@@ -890,6 +899,8 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp("2026-07-01T12:00:00Z".to_string()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -942,6 +953,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             JobCancelRequest {
                 reason: Some("cleanup fixture".to_string()),
                 force_after_ms: Some(0),
+                actor: None,
             },
         )
         .await
@@ -991,6 +1003,166 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             .expect("count child rows");
         assert_eq!(remaining, 0, "{table} rows should be pruned");
     }
+}
+
+#[tokio::test]
+async fn delete_jobs_deletes_terminal_rows_skips_live_rows_and_reports_missing() {
+    let store = store().await;
+
+    // A terminal job — eligible for delete. Give it a full row set (event,
+    // heartbeat, artifact, plus the stage `create()` always plans) so the
+    // cascade-delete assertion below actually exercises every child table.
+    let terminal = store
+        .create(JobCreateRequest {
+            idempotency_key: Some("delete-terminal".to_string()),
+            ..create_request()
+        })
+        .await
+        .expect("create terminal job");
+    store
+        .update_status(JobStatusUpdate {
+            source_id: None,
+            job_id: terminal.job_id,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Embedding,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("queued -> running");
+    store
+        .append_event(progress_event(terminal.job_id, 1, Visibility::Public))
+        .await
+        .expect("append event");
+    store
+        .heartbeat(JobHeartbeat {
+            job_id: terminal.job_id,
+            attempt: 1,
+            worker_id: Some("delete-worker".to_string()),
+            phase: PipelinePhase::Embedding,
+            status: LifecycleStatus::Running,
+            stage_id: None,
+            heartbeat_at: Timestamp("2026-07-01T12:00:00Z".to_string()),
+            sequence: 0,
+            last_progress_at: None,
+            last_event_sequence: None,
+            counts: None,
+            provider_reservations: Vec::new(),
+        })
+        .await
+        .expect("heartbeat");
+    sqlx::query(
+        "INSERT INTO job_artifacts (
+            artifact_id, job_id, artifact_kind, uri, size_bytes, content_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind("artifact-delete-terminal")
+    .bind(terminal.job_id.0.to_string())
+    .bind("report")
+    .bind("file:///home/jmagar/.axon/artifacts/private/delete.json")
+    .bind(32_i64)
+    .bind("sha256:xyz")
+    .bind("2026-07-01T12:30:00Z")
+    .execute(&store.pool)
+    .await
+    .expect("insert artifact");
+    store
+        .update_status(JobStatusUpdate {
+            source_id: None,
+            job_id: terminal.job_id,
+            status: LifecycleStatus::Completed,
+            phase: PipelinePhase::Complete,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("running -> completed");
+
+    // A live job — must be refused.
+    let live = store
+        .create(JobCreateRequest {
+            idempotency_key: Some("delete-live".to_string()),
+            ..create_request()
+        })
+        .await
+        .expect("create live job");
+    store
+        .update_status(JobStatusUpdate {
+            source_id: None,
+            job_id: live.job_id,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Embedding,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("queued -> running");
+
+    let missing = JobId::new(uuid::Uuid::from_u128(999_999));
+
+    let result = store
+        .delete_jobs(&[terminal.job_id, live.job_id, missing])
+        .await
+        .expect("delete_jobs");
+    assert_eq!(result.deleted, vec![terminal.job_id]);
+    assert_eq!(result.skipped_live, vec![live.job_id]);
+    assert_eq!(result.missing, vec![missing]);
+
+    assert!(
+        store
+            .get(terminal.job_id)
+            .await
+            .expect("get terminal")
+            .is_none(),
+        "terminal job row should be deleted"
+    );
+    assert!(
+        store.get(live.job_id).await.expect("get live").is_some(),
+        "live job row must not be touched"
+    );
+
+    for table in [
+        "job_events",
+        "job_heartbeats",
+        "job_attempts",
+        "job_stages",
+        "job_artifacts",
+    ] {
+        let sql = format!("SELECT COUNT(*) FROM {table} WHERE job_id = ?");
+        let remaining = sqlx::query_scalar::<_, i64>(&sql)
+            .bind(terminal.job_id.0.to_string())
+            .fetch_one(&store.pool)
+            .await
+            .expect("count child rows");
+        assert_eq!(
+            remaining, 0,
+            "{table} rows for the deleted job should cascade"
+        );
+    }
+
+    // The live job's stage row (planted by `create()`) must survive untouched.
+    let live_stages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM job_stages WHERE job_id = ?")
+        .bind(live.job_id.0.to_string())
+        .fetch_one(&store.pool)
+        .await
+        .expect("count live job stages");
+    assert_eq!(live_stages, 1, "live job's own rows must not be touched");
+}
+
+#[tokio::test]
+async fn delete_jobs_is_noop_for_empty_input() {
+    let store = store().await;
+    let result = store.delete_jobs(&[]).await.expect("delete_jobs empty");
+    assert_eq!(result, JobDeleteResult::default());
 }
 
 fn progress_event(job_id: JobId, sequence: u64, visibility: Visibility) -> SourceProgressEvent {

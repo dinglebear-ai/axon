@@ -49,16 +49,16 @@ impl SessionSourceAdapter {
 
 #[async_trait]
 impl SourceAdapter for SessionSourceAdapter {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         ADAPTER_NAME
     }
 
-    fn version(&self) -> &str {
+    fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
 
-    async fn capabilities(&self) -> Result<AdapterCapability> {
-        Ok(session_capability(self.version()))
+    async fn capabilities(&self) -> Result<SourceAdapterCapability> {
+        Ok(session_capability(self.version()).into())
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {

@@ -34,20 +34,25 @@ pub(super) async fn block_loopback_destructive_request(
 
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
-        && (path == "/v1/dedupe"
-            || path == "/v1/purge"
-            || path == "/v1/sources"
+        && (path == "/v1/sources"
             || path == "/v1/watch"
+            || path == "/v1/watches"
             || path == "/v1/jobs/recover"
             || path == "/v1/jobs/cleanup"
             || path == "/v1/prune/plan"
             || path == "/v1/prune/exec"
+            || path == "/v1/prune/dedupe"
+            || path == "/v1/prune/purge"
             || path.starts_with("/v1/watch/")
+            || path.starts_with("/v1/watches/")
             || path.starts_with("/v1/jobs/"))
     {
         return true;
     }
     if *method == Method::DELETE && path == "/v1/jobs" {
+        return true;
+    }
+    if (*method == Method::DELETE || *method == Method::PATCH) && path.starts_with("/v1/watches/") {
         return true;
     }
     if *method == Method::POST && path == "/v1/memory" {

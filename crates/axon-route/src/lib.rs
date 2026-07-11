@@ -2,6 +2,7 @@
 
 pub mod alias;
 pub mod authority;
+pub mod boundary;
 pub mod canonical;
 pub mod capability;
 mod github;

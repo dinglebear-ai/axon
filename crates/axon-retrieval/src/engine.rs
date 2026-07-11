@@ -19,7 +19,7 @@ use crate::query::{RetrievalMatch, RetrievalRequest, RetrievalResult};
 pub const MODULE_NAME: &str = "engine";
 
 #[derive(Clone)]
-pub(crate) struct RetrievalEngine<S, E> {
+pub struct RetrievalEngine<S, E> {
     store: Arc<S>,
     embedding_provider: Arc<E>,
     config: RetrievalEngineConfig,
@@ -83,10 +83,14 @@ where
         }
     }
 
-    pub(crate) async fn retrieve(
-        &self,
-        request: RetrievalRequest,
-    ) -> Result<RetrievalResult, ApiError> {
+    /// Inherent retrieval entry. Kept as the authoritative direct-call path —
+    /// existing callers (e.g. `crate::service::run_query`) keep compiling
+    /// unchanged. [`crate::boundary::RetrievalEngine::retrieve`] on this same
+    /// type delegates straight back here: Rust resolves `self.retrieve(...)`
+    /// to this inherent method rather than the trait method even from within
+    /// the trait impl, because inherent methods always take priority over
+    /// trait methods in dot-call resolution for a given receiver type.
+    pub async fn retrieve(&self, request: RetrievalRequest) -> Result<RetrievalResult, ApiError> {
         let plan =
             RetrievalPlan::from_request(&request, self.config.access.allowed_visibility.clone());
         let dense_vector = self.embed_query(&request.query).await?;

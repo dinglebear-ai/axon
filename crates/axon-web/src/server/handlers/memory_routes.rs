@@ -14,8 +14,9 @@
 //! derivation.
 
 use axon_api::source::{
-    CallerContext, MemoryExportRequest, MemoryImportRequest, TransportKind, Visibility,
+    AuthMode, CallerContext, MemoryExportRequest, MemoryImportRequest, TransportKind, Visibility,
 };
+use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
 use axon_services as services;
 use axon_services::client_contract::RestMemoryRequest;
@@ -39,12 +40,23 @@ type WebState = (super::super::super::state::AppState, Arc<Config>);
 /// stays available for logging/parity and any future per-route check that
 /// wants the fuller shape.
 fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
-    CallerContext {
-        actor: Some(auth.sub.clone()),
+    let auth_mode = if auth.sub == "static-bearer" {
+        AuthMode::StaticToken
+    } else {
+        AuthMode::Oauth
+    };
+    let mut caller = CallerContext {
+        caller_id: Some(auth.sub.clone()),
         transport: TransportKind::Rest,
+        trusted_local: false,
         scopes: auth.scopes.clone(),
-        visibility_ceiling: Visibility::Internal,
-    }
+        visibility_ceiling: Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    caller.visibility_ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+    caller
 }
 
 /// Log the caller context so the per-handler auth extraction is observable
@@ -55,7 +67,7 @@ fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
 fn log_caller(route: &'static str, auth: Option<&Extension<AuthContext>>) {
     if let Some(Extension(auth)) = auth {
         let caller = caller_context_from_auth(auth);
-        tracing::debug!(route, actor = ?caller.actor, scopes = ?caller.scopes, "memory route caller");
+        tracing::debug!(route, caller_id = ?caller.caller_id, scopes = ?caller.scopes, "memory route caller");
     }
 }
 
@@ -348,7 +360,19 @@ pub(crate) async fn export_memories(
     Json(req): Json<MemoryExportRequest>,
 ) -> Result<Json<axon_api::source::MemoryExportResult>, HttpError> {
     log_caller("/v1/memories/export", auth.as_ref());
-    services::memory::export(&state.service_context, req)
+    // Caller-scope redaction (contract "Import and Export": "export writes
+    // an artifact or stream with redacted content according to caller
+    // scope"): a non-admin caller's export drops `sensitive`-visibility
+    // records. Same admin-scope derivation as `import_memories`'s
+    // `replace_scope` gate; `LoopbackDev` has no `AuthContext` and is
+    // locally-trusted.
+    let authz = match auth.as_ref() {
+        Some(Extension(auth_ctx)) => services::memory::MemoryAuthz {
+            is_admin: axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE),
+        },
+        None => services::memory::MemoryAuthz::admin(),
+    };
+    services::memory::export(&state.service_context, req, &authz)
         .await
         .map(Json)
         .map_err(anyhow_to_http_error)

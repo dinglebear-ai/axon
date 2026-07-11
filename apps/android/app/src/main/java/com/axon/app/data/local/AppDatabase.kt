@@ -8,7 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.axon.app.BuildConfig
 
-@Database(entities = [AskHistoryEntry::class, Session::class], version = 2, exportSchema = true)
+@Database(entities = [AskHistoryEntry::class, Session::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun askHistoryDao(): AskHistoryDao
     abstract fun sessionDao(): SessionDao
@@ -32,9 +32,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Mobile Session Model fields (android-contract.md); the server's
+        // MobileSession DTO now carries these too — see Session.kt kdoc for
+        // how the local cache and the full-detail server routes interact.
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+                db.execSQL("ALTER TABLE sessions ADD COLUMN source_refs TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE sessions ADD COLUMN draft TEXT")
+                db.execSQL("ALTER TABLE sessions ADD COLUMN sync_version INTEGER")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "axon.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .apply { if (BuildConfig.DEBUG) fallbackToDestructiveMigration() }
                 .build()
     }

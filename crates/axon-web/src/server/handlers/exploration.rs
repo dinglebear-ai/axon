@@ -1,3 +1,4 @@
+use axon_authz::scope_satisfies;
 use axon_core::config::{Config, ConfigOverrides};
 use axon_core::http::{normalize_url, validate_url};
 use axon_services as services;
@@ -8,7 +9,8 @@ use axon_services::client_contract::{
 };
 use axon_services::transport;
 use axon_services::types::SearchOptions;
-use axum::{extract::State, http::StatusCode};
+use axum::{Extension, extract::State, http::StatusCode};
+use lab_auth::AuthContext;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -17,6 +19,39 @@ use std::time::Duration;
 use super::super::error::HttpError;
 use super::super::json::Json;
 use super::rag::required_text;
+
+/// Conditional scope upgrade (`mutates_if`, axon #298 follow-up).
+///
+/// `/v1/search` and `/v1/research` are routed under `read_routes` (declared
+/// `axon:read`, matching `docs/pipeline-unification/surfaces/tool-contract.md`'s
+/// Auth and Visibility table and axon-mcp's `required_scope_for`), but
+/// neither has a non-mutating default form today: [`search`] always calls
+/// `services::search_crawl::search_and_crawl`, and [`research`] /
+/// `research_stream` always call `services::search::research_with_context` —
+/// both unconditionally enqueue one bounded crawl job per result URL, with no
+/// request-level opt-out on `SearchRequest`/`ResearchRequest`. Enforced
+/// in-handler (mirroring `memory_routes::import_memories`'s `replace_scope`
+/// elevation) so the router group's declared `axon:read` class stays intact
+/// for docs/schema purposes while actual authorization matches real
+/// (mutating) behavior. `LoopbackDev` has no `AuthContext` and is locally
+/// trusted, matching every other elevation check in this crate.
+///
+/// Mirrors `axon_mcp::server::server_authz::mutates_if_upgrade` — see that
+/// function's doc comment for why `ask`/`evaluate`/`suggest`/`summarize` stay
+/// ungated (they do not enqueue jobs in the current runtime).
+pub(super) fn require_mutates_if_write_scope(
+    auth: Option<&Extension<AuthContext>>,
+) -> Result<(), HttpError> {
+    match auth {
+        None => Ok(()),
+        Some(Extension(auth_ctx)) if scope_satisfies(&auth_ctx.scopes, "axon:write") => Ok(()),
+        Some(_) => Err(HttpError::new(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "requires scope: axon:write (this call enqueues a background job)",
+        )),
+    }
+}
 
 #[path = "exploration_stream.rs"]
 pub(crate) mod exploration_stream;
@@ -239,8 +274,10 @@ pub(crate) async fn screenshot(
 )]
 pub(crate) async fn search(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<SearchRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
+    require_mutates_if_write_scope(auth.as_ref())?;
     let query = required_text(&req.query, "query")?;
     let result = services::search_crawl::search_and_crawl(
         &cfg,
@@ -272,8 +309,10 @@ pub(crate) async fn search(
 )]
 pub(crate) async fn research(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<ResearchRequest>,
 ) -> Result<Json<services::types::ResearchResult>, HttpError> {
+    require_mutates_if_write_scope(auth.as_ref())?;
     let query = required_text(&req.query, "query")?.to_string();
     let opts = search_options(&cfg, req.limit, req.offset, req.time_range.as_deref())?;
     let service_context = Arc::clone(&state.service_context);

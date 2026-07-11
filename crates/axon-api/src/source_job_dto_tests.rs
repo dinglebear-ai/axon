@@ -31,6 +31,7 @@ fn job_create_request_serializes_required_contract_fields() {
         warnings: Vec::new(),
         error: None,
         metadata: MetadataMap::new(),
+        deadline_at: None,
     };
 
     let json = serde_json::to_value(&request).expect("serialize request");

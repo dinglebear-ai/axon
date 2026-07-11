@@ -52,7 +52,8 @@ fn registry_item_schema(registry_key: &str) -> Value {
             "requires_auth_scope",
             "responses",
         ],
-        "config_keys" => vec!["key", "section", "env_key", "secret"],
+        "config_keys" => vec!["key", "section", "type", "default", "env_key", "secret"],
+        "env_vars" => vec!["name", "required", "secret"],
         "graph_kinds" => vec!["kind", "type", "requires_evidence"],
         "providers" => vec![
             "provider_kind",

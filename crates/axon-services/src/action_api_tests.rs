@@ -414,6 +414,7 @@ fn req_memory(subaction: MemorySubaction) -> AxonRequest {
         dry_run: None,
         export_scope: None,
         include_archived: None,
+        include_working: None,
     })
 }
 

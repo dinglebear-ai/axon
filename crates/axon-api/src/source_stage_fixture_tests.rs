@@ -145,10 +145,14 @@ fn authorization_result_fixtures_round_trip() {
                 warnings: Vec::new(),
             },
             caller: CallerContext {
-                actor: Some("cli".to_string()),
+                caller_id: Some("cli".to_string()),
                 transport: TransportKind::Cli,
+                trusted_local: true,
                 scopes: vec!["axon:read".to_string()],
                 visibility_ceiling: Visibility::Internal,
+                auth_mode: AuthMode::Test,
+                token_id: None,
+                display_name: None,
             },
         };
         round_trip(&value);

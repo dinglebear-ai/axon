@@ -9,7 +9,13 @@ and event emission rule. Stage results are serializable DTOs owned by
 
 Payload DTOs are not stage results by themselves. Every stage returns either
 `StageExecutionResult<T>` for a simple payload or a concrete result DTO that
-includes `StageResultHeader`.
+includes `StageResultHeader`, **except** `EmbeddingResult` (`embedding` stage)
+and `SourceResult` (`complete` stage). Those two are documented, header-less
+exceptions: `EmbeddingResult` carries its own `batch_id`/`job_id` in place of a
+full header, and `SourceResult` is the terminal job-summary DTO — it already
+carries `job_id`/`status`/`warnings` directly and is never wrapped a second
+time. Both shapes are defined once in `dto-contract.md`; do not retrofit
+`StageResultHeader` onto them.
 
 ## Stage Result Registry
 

@@ -141,41 +141,11 @@ fn source_plan(
     adapter: AdapterRef,
     scope: SourceScope,
 ) -> SourcePlan {
+    let route = routed_plan(input, target, source_id, &adapter, scope);
     SourcePlan {
         job_id: input.job_id,
         request: SourceRequest::new(input.target_url.clone()),
-        route: RoutePlan {
-            source: ResolvedSource {
-                source: input.target_url.clone(),
-                canonical_uri: target.web_url.clone(),
-                source_id: source_id.clone(),
-                source_kind: SourceKind::Git,
-                adapter: adapter.clone(),
-                default_scope: scope,
-                available_scopes: vec![scope],
-                authority: AuthorityLevel::UserPinned,
-                confidence: 1.0,
-                reason: "target git source".to_string(),
-                graph: Vec::new(),
-                warnings: Vec::new(),
-                metadata: MetadataMap::new(),
-            },
-            adapter,
-            scope,
-            provider_requirements: Vec::new(),
-            credential_requirements: Vec::new(),
-            execution_affinity: ExecutionAffinity::Worker,
-            safety_class: SafetyClass::LocalFilesystem,
-            option_schema_id: "adapter:git:options:v1".to_string(),
-            validated_options: AdapterOptions {
-                values: adapter_options(input),
-            },
-            chunking_hints: Vec::new(),
-            parser_hints: Vec::new(),
-            graph_fact_kinds: Vec::new(),
-            watch_supported: true,
-            refresh_supported: true,
-        },
+        route,
         stage_plan: Vec::new(),
         limits: EffectiveLimits {
             request: SourceLimits::default(),
@@ -185,6 +155,67 @@ fn source_plan(
         },
         config_snapshot_id: ConfigSnapshotId::new("cfg_git_source"),
         provider_reservations: provider_reservations(input),
+    }
+}
+
+/// Build the `RoutePlan` embedded in the git `SourcePlan`.
+///
+/// When `input.route` carries the real routed plan from
+/// `source::routing::resolve_source_route` (S2-routeplan-threading), its
+/// `validated_options`, `credential_requirements`, `provider_requirements`,
+/// `safety_class`, and hint fields survive into acquisition — only the
+/// runtime-resolved `source`/`adapter`/`scope` (known only once the clone is
+/// on disk) are overlaid. Falls back to the pre-S2 ad-hoc `RoutePlan` when no
+/// route was threaded (tests, direct bridge callers).
+fn routed_plan(
+    input: &GitSourceIndexInput,
+    target: &GitTarget,
+    source_id: &SourceId,
+    adapter: &AdapterRef,
+    scope: SourceScope,
+) -> RoutePlan {
+    let resolved_source = ResolvedSource {
+        source: input.target_url.clone(),
+        canonical_uri: target.web_url.clone(),
+        source_id: source_id.clone(),
+        source_kind: SourceKind::Git,
+        adapter: adapter.clone(),
+        default_scope: scope,
+        available_scopes: vec![scope],
+        authority: AuthorityLevel::UserPinned,
+        confidence: 1.0,
+        reason: "target git source".to_string(),
+        graph: Vec::new(),
+        warnings: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    if let Some(routed) = &input.route {
+        return RoutePlan {
+            source: resolved_source,
+            adapter: adapter.clone(),
+            scope,
+            ..routed.clone()
+        };
+    }
+
+    RoutePlan {
+        source: resolved_source,
+        adapter: adapter.clone(),
+        scope,
+        provider_requirements: Vec::new(),
+        credential_requirements: Vec::new(),
+        execution_affinity: ExecutionAffinity::Worker,
+        safety_class: SafetyClass::LocalFilesystem,
+        option_schema_id: "adapter:git:options:v1".to_string(),
+        validated_options: AdapterOptions {
+            values: adapter_options(input),
+        },
+        chunking_hints: Vec::new(),
+        parser_hints: Vec::new(),
+        graph_fact_kinds: Vec::new(),
+        watch_supported: true,
+        refresh_supported: true,
     }
 }
 

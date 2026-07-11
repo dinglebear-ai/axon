@@ -27,6 +27,7 @@ fn input(root: &std::path::Path, manifest_path: std::path::PathBuf) -> WebSource
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        embed: true,
     }
 }
 
@@ -72,6 +73,41 @@ async fn web_source_refresh_writes_vectors_then_commits_generation() {
                 == committed_generation_payload(&output.generation)
             && point.payload["document_status"].as_str() == Some("published")
     }));
+}
+
+/// `embed = false` (source-pipeline.md Validation Checklist: "`embed=false`
+/// never writes vectors") must produce zero embedding-provider calls and zero
+/// vector-store upserts while still returning a `SourceResult`-shaped output
+/// (a valid, non-error generation).
+#[tokio::test]
+async fn embed_false_writes_no_vectors_but_still_completes() {
+    let fixture = web_fixture("# Intro\n\nHello docs.");
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+
+    let mut no_embed_input = input(fixture.root.path(), fixture.manifest_path.clone());
+    no_embed_input.embed = false;
+
+    let output = index_web_source(no_embed_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        ledger.committed_generation(&output.source_id).await,
+        Some(output.generation.clone())
+    );
+    assert_eq!(output.vector_points_written, 0);
+    assert_eq!(
+        embedder.calls().await.len(),
+        0,
+        "embed=false must not call the embedding provider"
+    );
+    assert!(
+        vectors.calls().await.is_empty(),
+        "embed=false must not call the vector store"
+    );
+    assert!(vectors.points("axon-web-test").await.is_empty());
 }
 
 #[tokio::test]
@@ -131,6 +167,7 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        embed: true,
     };
 
     let output = index_web_source(input, &ledger, &embedder, &vectors)

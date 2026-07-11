@@ -162,6 +162,7 @@ pub(super) async fn cancel(
             JobCancelRequest {
                 reason: Some("cancel requested via extract job surface".to_string()),
                 force_after_ms: None,
+                actor: None,
             },
         )
         .await

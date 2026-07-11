@@ -233,6 +233,12 @@ pub struct MemoryRecord {
     pub salience: f32,
     pub scope: MemoryScope,
     pub history: Vec<MemoryHistoryEvent>,
+    /// Security classification (contract "Security and Redaction": "classify
+    /// every memory by visibility"). Drives caller-scope filtering on
+    /// export/context (e.g. `sensitive` records excluded from export unless
+    /// the caller is authorized) independent of `MemoryStatus`.
+    #[serde(default)]
+    pub visibility: Visibility,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -263,6 +269,13 @@ pub struct MemorySearchRequest {
     pub include_archived: bool,
     #[serde(default)]
     pub reinforce: bool,
+    /// Explicitly opt in specific non-`active` statuses that would otherwise
+    /// be excluded by default (contract "Recall rules": "superseded memories
+    /// return only when explicitly requested"; "contradicted memories return
+    /// only with warning unless resolved"). `forgotten` is never honored here
+    /// — forgotten memories never return regardless of this list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include_statuses: Vec<MemoryStatus>,
 }
 
 /// One scored search hit.
@@ -542,6 +555,12 @@ pub struct MemoryExportRequest {
     pub scope: Option<MemoryScope>,
     #[serde(default)]
     pub include_archived: bool,
+    /// Include `working`-status memories in the export. Contract "Import and
+    /// Export" implies the "Type rules" exclusion ("working memories are
+    /// excluded from long-term exports by default") applies to export, not
+    /// just ask/context; defaults to `false` to match that default.
+    #[serde(default)]
+    pub include_working: bool,
 }
 
 /// Exported memory records.
@@ -552,4 +571,11 @@ pub struct MemoryExportRequest {
 pub struct MemoryExportResult {
     pub records: Vec<MemoryRecord>,
     pub count: u32,
+    /// Artifact backing this export, when written through the artifact
+    /// boundary (contract "Import and Export": "export writes an artifact or
+    /// stream with redacted content according to caller scope"). `None` when
+    /// the caller only requested the in-memory record list (e.g. a direct
+    /// `axon-memory` store call with no artifact root configured).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<ArtifactRef>,
 }

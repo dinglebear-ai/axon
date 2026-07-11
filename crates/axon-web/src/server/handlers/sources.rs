@@ -28,12 +28,28 @@
 //! `Box<dyn Error>` across an `.await`), so — like `admin::run_watch` — the
 //! call runs on a blocking thread via `spawn_blocking` + `Handle::block_on`,
 //! whose `JoinHandle` is `Send` and thus a valid axum handler future.
+//!
+//! ## Async / detached execution
+//!
+//! `request.execution.detached == true` (and `execution.mode != Wait`) routes
+//! through [`axon_services::source::enqueue::enqueue_source`] instead of
+//! running acquisition inline: it creates a detached `JobKind::Source` row
+//! and returns `202 Accepted` with a `SourceResult` whose `job` field carries
+//! the pollable descriptor (`job_id`/`status_url`/`poll_after_ms`), matching
+//! the `rest-contract.md` "Canonical Source Request" async shape. The row is
+//! picked up and actually run by `SourceRunner` (registered against
+//! `JobKind::Source`), which is the missing consumer side this closes (audit
+//! U2-V02 / bead `axon_rust-mijoc`). `execution.mode == Wait` always forces
+//! the synchronous path below, regardless of `detached`. The default
+//! (`execution` omitted, `detached = false`) is unchanged: synchronous, `200
+//! OK`.
 
 use axon_api::ApiError;
 use axon_api::source::{
-    AuthSnapshot, CallerContext, SafetyClass, SecurityPolicyRequest, SourceRequest, SourceResult,
-    TransportKind, Visibility,
+    AuthMode, AuthSnapshot, CallerContext, ExecutionMode, SafetyClass, SecurityPolicyRequest,
+    SourceRequest, SourceResult, TransportKind, Visibility,
 };
+use axon_authz::VisibilityPolicy;
 use axon_authz::policy::{ScopeSecurityPolicy, SecurityPolicy};
 use axon_error::ErrorStage;
 use axon_services::source::classify::{SourceInputKind, classify_source_input};
@@ -52,7 +68,8 @@ type WebState = (AppState, Arc<axon_core::config::Config>);
     path = "/v1/sources",
     request_body = SourceRequest,
     responses(
-        (status = 200, description = "Source indexing result", body = SourceResult),
+        (status = 200, description = "Source indexing result (synchronous)", body = SourceResult),
+        (status = 202, description = "Source indexing enqueued as a detached job", body = SourceResult),
         (status = 400, description = "Invalid source request", body = crate::server::error::ErrorBody),
         (status = 403, description = "Source not authorized for caller scopes", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream service unavailable", body = crate::server::error::ErrorBody)
@@ -63,7 +80,7 @@ pub(crate) async fn index_source(
     State((state, _cfg)): State<WebState>,
     auth: Option<Extension<AuthContext>>,
     Json(request): Json<SourceRequest>,
-) -> Result<Json<SourceResult>, HttpError> {
+) -> Result<(StatusCode, Json<SourceResult>), HttpError> {
     if request.source.trim().is_empty() {
         // The source pipeline produces a contract `ApiError` directly; it is
         // passed through the transport verbatim as an `ErrorEnvelope`.
@@ -90,6 +107,29 @@ pub(crate) async fn index_source(
         None
     };
 
+    let want_async = request.execution.detached && request.execution.mode != ExecutionMode::Wait;
+
+    if want_async {
+        if let Some(job_store) = state.service_context.job_store() {
+            let result = axon_services::source::enqueue::enqueue_source(
+                request,
+                job_store.as_ref(),
+                auth_snapshot,
+            )
+            .await
+            .map_err(|err| {
+                HttpError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "upstream_unavailable",
+                    err.to_string(),
+                )
+            })?;
+            return Ok((StatusCode::ACCEPTED, Json(result)));
+        }
+        // No job store configured — degrade to the synchronous path below
+        // rather than failing a detached request outright.
+    }
+
     let service_context = Arc::clone(&state.service_context);
     let handle = tokio::runtime::Handle::current();
     let result = tokio::task::spawn_blocking(move || {
@@ -112,7 +152,7 @@ pub(crate) async fn index_source(
         )
     })?;
     result
-        .map(Json)
+        .map(|source_result| (StatusCode::OK, Json(source_result)))
         .map_err(|message| HttpError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", message))
 }
 
@@ -162,12 +202,23 @@ async fn authorize_source_request(
 }
 
 fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
-    CallerContext {
-        actor: Some(auth.sub.clone()),
+    let auth_mode = if auth.sub == "static-bearer" {
+        AuthMode::StaticToken
+    } else {
+        AuthMode::Oauth
+    };
+    let mut caller = CallerContext {
+        caller_id: Some(auth.sub.clone()),
         transport: TransportKind::Rest,
+        trusted_local: false,
         scopes: auth.scopes.clone(),
-        visibility_ceiling: Visibility::Internal,
-    }
+        visibility_ceiling: Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    caller.visibility_ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+    caller
 }
 
 /// Map a classified source input to its [`SafetyClass`].

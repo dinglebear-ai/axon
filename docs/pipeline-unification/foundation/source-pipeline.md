@@ -42,9 +42,20 @@ Implemented today:
   build `SourceDocument` explicitly or call helpers that create a
   `SourceDocument` internally, `prepare_source_document` creates `PreparedDoc`,
   and `embed_prepared_docs` writes through the TEI/Qdrant embedding pipeline.
-- Code-search has a real SQLite ledger/generation path in `axon-code-index`.
-  It tracks local projects, files, hashes, sizes, mtimes, pending state,
+- The standalone `axon-code-index` crate named in earlier drafts of this doc
+  does not exist in the workspace. Code-search's real SQLite ledger/generation
+  path lives inside `axon-vector` (see `crates/axon-vector/src/ops/qdrant/filter.rs`,
+  `.../tei/qdrant_store/payload_indexes.rs`, and `axon-route`'s
+  `local-code://` id helpers) alongside `axon-vectors` (the target crate). It
+  tracks local projects, files, hashes, sizes, mtimes, pending state,
   committed generation, leases, and cleanup debt.
+- `SourceRequest`/`SourceResult` and the envelope DTOs in `axon-api` are
+  implemented and exercised, not target-only: `SourceRequest` alone has 40+
+  call sites across `axon-services` and `axon-cli` (see
+  `crates/axon-api/src/source_tests.rs`, `crates/axon-api/src/mcp_schema.rs`).
+  The target pipeline's *types* exist and are unit-tested; what remains
+  unwired is routing every source family's command/service/job path through
+  them uniformly (see "Partially implemented" below).
 - Code-search local vectors use `local-code://<project_key>/g/<generation>/<path>`
   item URLs and payload fields such as `source_type=local_code`,
   `local_project_key`, `local_generation`, and `code_file_path`.

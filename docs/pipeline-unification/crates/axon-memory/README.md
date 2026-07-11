@@ -55,13 +55,30 @@ testing.rs
 
 - `axon-api`, `axon-error`, `axon-core`, `axon-ledger`, `axon-graph`,
   `axon-observe`
+- `axon-vectors`, `axon-embedding` — **trait-only**: `VectorBackedMemoryStore`
+  composes over the `VectorStore`/embedding-provider traits those crates
+  export; it must not depend on a concrete Qdrant/TEI client type
 - SQLite and migration crates
 
 ## Dependencies Forbidden
 
-- direct Qdrant client ownership
+- direct Qdrant client ownership (concrete client types, not the `VectorStore`
+  trait — see `axon-vectors`/`axon-embedding` above)
 - LLM provider implementations
 - transport crates
+
+**Decision (C5-05, 2026-07-09 audit):** `xtask check-crate-contracts` fails
+today because its `forbidden_axon_deps` list for `axon-memory`
+(`xtask/src/checks/crate_contracts_spec_cont.rs`) bans the whole
+`axon-vectors` crate name, not just concrete-client imports — but
+`crates/axon-memory/src/CLAUDE.md` documents `VectorBackedMemoryStore`
+composing over the `VectorStore` trait via dependency injection as the
+landed, intentional design. Resolution: relax the contract — the
+forbidden-deps list should distinguish trait-only imports (allowed) from
+concrete-client imports (forbidden), not ban the crate outright. Update
+`forbidden_axon_deps` to drop `axon-vectors` for `axon-memory`. This is a
+code change in `xtask/`, out of scope for this docs-only workstream — see
+`code_followups`.
 
 ## Generated Artifacts
 

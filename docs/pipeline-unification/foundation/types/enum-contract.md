@@ -108,6 +108,45 @@ pub enum PipelinePhase {
     Canceled,
 }
 
+/// Owned by `axon-error` (`ErrorStage`). More specific than `PipelinePhase`:
+/// every direct-projection `ErrorStage` shares a name with a `PipelinePhase`
+/// value above; the remaining values (`ParsingContent`, `Observing`,
+/// `Storage`, `Provider`, `Transport`, `Internal`) are error-boundary-only and
+/// must not be added to `PipelinePhase`. See `schemas/error-schema.md`
+/// "Error Stage to Event Phase Projection" for the projection rules.
+pub enum ErrorStage {
+    Parsing,
+    Validation,
+    Resolving,
+    Routing,
+    Authorizing,
+    Planning,
+    Leasing,
+    Discovering,
+    Diffing,
+    Fetching,
+    Rendering,
+    Enriching,
+    Normalizing,
+    ParsingContent,
+    Graphing,
+    Preparing,
+    Batching,
+    Embedding,
+    Vectorizing,
+    Upserting,
+    Publishing,
+    Cleaning,
+    Retrieving,
+    Synthesizing,
+    Evaluating,
+    Observing,
+    Storage,
+    Provider,
+    Transport,
+    Internal,
+}
+
 pub enum JobKind {
     Source,
     Watch,
@@ -261,7 +300,7 @@ pub enum CredentialKind { ApiKey, OAuthToken, BearerToken, BasicAuth, Cookie, Ss
 pub enum ArtifactKind { RawContent, NormalizedContent, Manifest, Report, Screenshot, Warc, ProviderTrace }
 pub enum CachePolicy { Bypass, Use, Revalidate, Offline }
 pub enum PayloadFieldSchema { Keyword, Integer, Float, Boolean, Datetime, Text }
-pub enum ChunkProfile { CodeAst, Markdown, Html, PlainText, Transcript, Structured, Session, BinaryMetadata }
+pub enum ChunkProfile { CodeSymbol, CodeManifest, MarkdownSections, HtmlArticle, PlainTextWindows, TranscriptSegments, StructuredRecords, ApiSchema, ToolOutput, SessionTurns, AtomicMetadata }
 pub enum TransportKind { Cli, Rest, Mcp, Watch, Worker, System }
 ```
 

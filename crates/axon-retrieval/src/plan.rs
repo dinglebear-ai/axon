@@ -7,16 +7,16 @@ use crate::query::RetrievalRequest;
 pub const MODULE_NAME: &str = "plan";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RetrievalPlan {
-    pub(crate) collection: String,
-    pub(crate) limit: u32,
-    pub(crate) source_id: Option<SourceId>,
-    pub(crate) generation: Option<SourceGenerationId>,
-    pub(crate) allowed_visibility: Vec<Visibility>,
-    pub(crate) namespace_filters: Vec<String>,
-    pub(crate) excluded_namespaces: Vec<String>,
-    pub(crate) byte_budget: u64,
-    pub(crate) token_budget: u32,
+pub struct RetrievalPlan {
+    pub collection: String,
+    pub limit: u32,
+    pub source_id: Option<SourceId>,
+    pub generation: Option<SourceGenerationId>,
+    pub allowed_visibility: Vec<Visibility>,
+    pub namespace_filters: Vec<String>,
+    pub excluded_namespaces: Vec<String>,
+    pub byte_budget: u64,
+    pub token_budget: u32,
 }
 
 impl RetrievalPlan {

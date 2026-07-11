@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 use axon_api::source::*;
-use sqlx::Row;
 
-use crate::migration::sqlite_error;
-use crate::sqlite::util::{json_error, manifest_item_changed, timestamp};
+use crate::sqlite::util::{manifest_item_changed, timestamp};
 use crate::store::Result;
+
+use super::manifest_items::manifest_items_in_tx;
 
 pub(super) async fn stale_item_cleanup_debt_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -62,30 +62,4 @@ pub(super) async fn stale_item_cleanup_debt_in_tx(
         cleanup_debt.push(debt);
     }
     Ok(cleanup_debt)
-}
-
-async fn manifest_items_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    source_id: &SourceId,
-    generation: &SourceGenerationId,
-) -> Result<Vec<ManifestItem>> {
-    let rows = sqlx::query(
-        r#"
-        SELECT item_json
-        FROM source_items
-        WHERE source_id = ?1 AND generation = ?2
-        "#,
-    )
-    .bind(&source_id.0)
-    .bind(&generation.0)
-    .fetch_all(&mut **tx)
-    .await
-    .map_err(sqlite_error)?;
-
-    rows.into_iter()
-        .map(|row| {
-            let item_json: String = row.get("item_json");
-            serde_json::from_str(&item_json).map_err(json_error)
-        })
-        .collect()
 }

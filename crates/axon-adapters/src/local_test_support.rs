@@ -24,7 +24,17 @@ pub(super) fn binary_options(policy: &str) -> MetadataMap {
 }
 
 pub(super) fn source_plan(path: PathBuf, scope: SourceScope) -> SourcePlan {
-    let canonical_uri = format!("local://{}", slug(&path));
+    source_plan_for("local", SourceKind::Local, "local", path, scope)
+}
+
+pub(super) fn source_plan_for(
+    adapter_name: &str,
+    source_kind: SourceKind,
+    uri_scheme: &str,
+    path: PathBuf,
+    scope: SourceScope,
+) -> SourcePlan {
+    let canonical_uri = format!("{uri_scheme}://{}", slug(&path));
     SourcePlan {
         job_id: JobId::new(Uuid::from_u128(298)),
         request: SourceRequest::new(path.to_string_lossy().to_string()),
@@ -33,9 +43,9 @@ pub(super) fn source_plan(path: PathBuf, scope: SourceScope) -> SourcePlan {
                 source: path.to_string_lossy().to_string(),
                 canonical_uri: canonical_uri.clone(),
                 source_id: SourceId::from("src_local_test"),
-                source_kind: SourceKind::Local,
+                source_kind,
                 adapter: AdapterRef {
-                    name: "local".to_string(),
+                    name: adapter_name.to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
                 },
                 default_scope: scope,
@@ -48,7 +58,7 @@ pub(super) fn source_plan(path: PathBuf, scope: SourceScope) -> SourcePlan {
                 metadata: MetadataMap::new(),
             },
             adapter: AdapterRef {
-                name: "local".to_string(),
+                name: adapter_name.to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             scope,

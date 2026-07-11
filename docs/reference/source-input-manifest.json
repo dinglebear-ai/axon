@@ -1,0 +1,598 @@
+{
+  "families": [
+    {
+      "family": "adapters",
+      "generated_by": "cargo xtask docs generate --family adapters",
+      "source_inputs": [
+        {
+          "path": "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
+          "kind": "rust_module",
+          "checksum": "sha256:b29e9ebbe3e77d6141d7c948c5e40db714c6ed9a4530dce8084d5299512eee50"
+        },
+        {
+          "path": "crates/axon-adapters/src/family_matrix.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b8e0ffebe9f034ae083acd658eab03d99edda8720d8b4c47c7b7a2183d638801"
+        },
+        {
+          "path": "crates/axon-adapters/src/onboarding.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:67a3bbd0280d8a4d0a48783f599723e463988ffc3bf97f1cc2cbc4c285f87913"
+        },
+        {
+          "path": "crates/axon-adapters/src/spec.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:5f9e6da4d9d3fb6870c95818425fdfef853edf3f9525b036d50f4fe4a7308e71"
+        },
+        {
+          "path": "crates/axon-adapters/src/web.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:594d57f321084553f23892265588f84713d43d8cb6ea1750a076797a924152da"
+        },
+        {
+          "path": "crates/axon-route/src/capability.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:7189b435f0277c9fffbcbd1390899b8723b28101f9efbd8157509b54299627e0"
+        },
+        {
+          "path": "docs/pipeline-unification/sources/adapter-scopes.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:c6278b9b235886bcce7a3c55e931f2349c254e639399ed8e9a42e67bb06c3491"
+        },
+        {
+          "path": "docs/pipeline-unification/sources/new-source-contract.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd"
+        }
+      ],
+      "manifest_checksum": "6d05bcb8b632e58d396c1e0f6a2e4a4b050b7ceb6a85d9ba7893b3ec23f0e528"
+    },
+    {
+      "family": "api",
+      "generated_by": "cargo xtask docs generate --family api",
+      "source_inputs": [
+        {
+          "path": "crates/axon-api/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f"
+        },
+        {
+          "path": "crates/axon-api/src/source.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362"
+        },
+        {
+          "path": "crates/axon-api/src/source/boundary.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e"
+        },
+        {
+          "path": "crates/axon-api/src/source/capability.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3"
+        },
+        {
+          "path": "crates/axon-api/src/source/common.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab"
+        },
+        {
+          "path": "crates/axon-api/src/source/document.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e"
+        },
+        {
+          "path": "crates/axon-api/src/source/enums.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:372466d1aedf5632d7af89b9562ec6e2820eb8fcea83f8182b064b6c46492c93"
+        },
+        {
+          "path": "crates/axon-api/src/source/graph.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:ca3c484a987057b7cc4c7fb9cce1b2ceb773384307f9fbd7b09cfd3ece9d0511"
+        },
+        {
+          "path": "crates/axon-api/src/source/ids.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17"
+        },
+        {
+          "path": "crates/axon-api/src/source/job.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:0266cb19a5aecea9c85aec5723ce33d2f882dc449c543b4fa57e9880a34d8d24"
+        },
+        {
+          "path": "crates/axon-api/src/source/job_listing.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271"
+        },
+        {
+          "path": "crates/axon-api/src/source/lifecycle.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:04755fecf0a574f9d07bbe72c6053592703a07ab14de3d4c28dd5083f7219828"
+        },
+        {
+          "path": "crates/axon-api/src/source/listing.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb"
+        },
+        {
+          "path": "crates/axon-api/src/source/provider_io.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:a5728db42e846a995b35eb01a2d6e34751ba825e630b324852c16e36d4d2ec91"
+        },
+        {
+          "path": "crates/axon-api/src/source/prune.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7"
+        },
+        {
+          "path": "crates/axon-api/src/source/stage.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8"
+        },
+        {
+          "path": "crates/axon-api/src/source/state.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb"
+        },
+        {
+          "path": "crates/axon-api/src/source/status.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea"
+        },
+        {
+          "path": "crates/axon-api/src/source/vector.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac"
+        },
+        {
+          "path": "crates/axon-error/src/api_error.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/api-dto-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:1b30e91ddefd5596315b1a6e90c7f216fc7debbe92b3fff48c39c6525d0f38c4"
+        },
+        {
+          "path": "xtask/src/schemas/api_defs.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a"
+        },
+        {
+          "path": "xtask/src/schemas/registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:9019aca90671d373722f9c1692a68edd5198c2c7374e12aaaa6cb74af1964673"
+        }
+      ],
+      "manifest_checksum": "f9114f81149aedd319c66805ecc7450e279cebf41bb2c6db30527847a3157699"
+    },
+    {
+      "family": "cli",
+      "generated_by": "cargo xtask docs generate --family cli",
+      "source_inputs": [
+        {
+          "path": "crates/axon-cli/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:8a8d4ca409519cc040ba251fd5dd7106477024797ba074b719d6681256d7b060"
+        },
+        {
+          "path": "crates/axon-core/src/config/cli.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:d1a35a1faf46350686aaf11d8674c2b9955c15483bc2c10776cef2d526f06197"
+        },
+        {
+          "path": "crates/axon-core/src/config/cli/config_args.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:ee3bae44b57a96696213245d225b14d09ac95415d4ca8da10403f7949fabd2e6"
+        },
+        {
+          "path": "crates/axon-core/src/config/cli/setup_args.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/cli-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:906aa128ffd9876e675b8ba3ce139777f50172726c26d8d55fbbe40894377065"
+        },
+        {
+          "path": "xtask/src/schemas/cli_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:9058776d7aeba4fff80334cbe2eba2f662ddedf94631ae50e4fce07bb8c9c0a6"
+        },
+        {
+          "path": "xtask/src/schemas/cli_registry/part1.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:cb15aac18b19f1a1bbbb2f19a7efc519647f3dc458d13f1b8906339a12a1dcac"
+        },
+        {
+          "path": "xtask/src/schemas/cli_registry/part2.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:8a3dc8487ca77926709faa2eca92b599a61a7e80eaefe9fc8581226e5d3a3cf6"
+        },
+        {
+          "path": "xtask/src/schemas/cli_registry/part3.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:12369c37652edf712d21113879a14cda9f0426e1b825f5a25ed19d0732a500f4"
+        }
+      ],
+      "manifest_checksum": "fffd20f7845079fa89c3cd0358daaaf87cf03ddef758be1da6c64d5f5b8dd9eb"
+    },
+    {
+      "family": "config",
+      "generated_by": "cargo xtask docs generate --family config",
+      "source_inputs": [
+        {
+          "path": "docs/pipeline-unification/configuration/config-contract.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:c27557d30d13b7322aa6fe75e6fc1c761e4e421829245dbb25172983e063b993"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/config-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:fcec11271050d626b8a4a42f1714c45bfcff2bd66b75ad4a3962e51d0ef84c24"
+        },
+        {
+          "path": "xtask/src/schemas/config_schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:db1e13e7a3d88268e9689776efce9f5b966739d80f90b16080087ff84a12534f"
+        }
+      ],
+      "manifest_checksum": "6fb182e3971c4b0d67305be2c67b006d112b5f9c7c85975352945506c15129db"
+    },
+    {
+      "family": "database",
+      "generated_by": "cargo xtask docs generate --family database",
+      "source_inputs": [
+        {
+          "path": "crates/axon-graph/src/migrations",
+          "kind": "sql_migration_directory",
+          "checksum": "sha256:0386be31730c916c31e940f4257a03380562634f67f634a96df4e71c2d5edc3b"
+        },
+        {
+          "path": "crates/axon-jobs/src/migrations",
+          "kind": "sql_migration_directory",
+          "checksum": "sha256:8fd206e8313f599006b520d1504f2cb65cfe140650a8ab975722ab784f86b6f7"
+        },
+        {
+          "path": "crates/axon-ledger/src/migrations",
+          "kind": "sql_migration_directory",
+          "checksum": "sha256:5c0c9f475a14a4a0af3eacbe6f3cf029612170b3ab5b91c5c1b1c5fe88d0b285"
+        },
+        {
+          "path": "crates/axon-memory/src/migrations",
+          "kind": "sql_migration_directory",
+          "checksum": "sha256:1d08bb6ab6696a4c7e574a3915cd003c270ec427b12ab2e68592aaf686c7958a"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/database-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571"
+        },
+        {
+          "path": "xtask/src/schemas/database_defs.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:cbd4c77c0e062a56b476afc0b007c02d333c68f598d409101dbaf44610912386"
+        },
+        {
+          "path": "xtask/src/schemas/database_defs/parser.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:4ffeb151312c88f1b1d316f58d57450bed1224a374689d6fae02761de788ec4c"
+        }
+      ],
+      "manifest_checksum": "b62a4d999285f52a28e5373bea2a56e572471b257768af77e9fb78c9f7212225"
+    },
+    {
+      "family": "errors",
+      "generated_by": "cargo xtask docs generate --family errors",
+      "source_inputs": [
+        {
+          "path": "crates/axon-api/src/source/status.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea"
+        },
+        {
+          "path": "crates/axon-error/src/api_error.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57"
+        },
+        {
+          "path": "crates/axon-error/src/code.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:abf9bc24f7596983e5fc8bd1228156b8360be4ea20b4d48ceb3e8ed5dd974929"
+        },
+        {
+          "path": "crates/axon-error/src/context.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:ca9e67a1ed3feb4dbfc66e4ae0717e5254ffeb81b00cff0dde74d37dcd125755"
+        },
+        {
+          "path": "crates/axon-error/src/cooling.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:2da7a16ea5064986b853f7380acd6b66d03137ba8eeba72fedd7493c238df900"
+        },
+        {
+          "path": "crates/axon-error/src/degradation.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b054137819cb965bb929515d48a412a11f74222e61599d22e0ab211e07dafeec"
+        },
+        {
+          "path": "crates/axon-error/src/lib.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:4498c249c8c1476db9c365d0b097fa35e8db871672f40208787bbb4afcd353a1"
+        },
+        {
+          "path": "crates/axon-error/src/retry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:e5ccc139cf2de5b797cf37d842690176ab57896b4f3954e0e90e75dcd79e50db"
+        },
+        {
+          "path": "crates/axon-error/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:7e1f574864bbbe1c71622b9a6a2677c14213f45333990916c6b601b508a36f99"
+        },
+        {
+          "path": "crates/axon-error/src/stage.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:afee6d711302dd5b0d8b1d2868f8cab3b50c90534b781773287f7dc6d5e15471"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/error-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:e922cf9a9275494393949f37a1ff3325234e7a874bf5a78425eb5c16fc2a6c46"
+        }
+      ],
+      "manifest_checksum": "111460792f3afe76305abd87f8729269e264fa1838a69e04d53e5e8717bb97f9"
+    },
+    {
+      "family": "events",
+      "generated_by": "cargo xtask docs generate --family events",
+      "source_inputs": [
+        {
+          "path": "crates/axon-observe/src/metric.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:0431ae0e49e02633f95b0abbe54dcf0b20b5a4367e0fd4ca2dc1cf3ce3a06342"
+        },
+        {
+          "path": "crates/axon-observe/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:bdd484ac24fd7b662c75b8917981f8a6ebfe07b5dc59e7f4c518be69de22c046"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/event-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:11698f7a5004224ceac5d1697af2f880ab9676cfa89e2e25a4cfd2f2308b7596"
+        }
+      ],
+      "manifest_checksum": "71141e6d5fb67fc72f5a1944670ce504fc7b5659c18ead0a160fe8925da734f9"
+    },
+    {
+      "family": "graph",
+      "generated_by": "cargo xtask docs generate --family graph",
+      "source_inputs": [
+        {
+          "path": "crates/axon-graph/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:bed4a1a35628922b24094d02417bd57a1cfcf284093f2cd87b1b545edc4a66b1"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/graph-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:9e62401eb732eb673b9529bfe544c17afb7d7b387d449782eb77741286564a12"
+        }
+      ],
+      "manifest_checksum": "69acb2da8248455504eb28bc3a5c21fffc28b2f039f7f79c46b2adf6344b828f"
+    },
+    {
+      "family": "mcp",
+      "generated_by": "cargo xtask docs generate --family mcp",
+      "source_inputs": [
+        {
+          "path": "crates/axon-api/src/mcp_schema.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:3eacee7dde24fa4745784bcbf0ac868b0f966907b210a863ea0bc34558ad1779"
+        },
+        {
+          "path": "crates/axon-api/src/mcp_schema/prune_request.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:385d395e928a7ed96ccc4903ac2e56f835193b58d3c67c0c7179180ce4ae9f70"
+        },
+        {
+          "path": "crates/axon-api/src/mcp_schema/requests.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:f4621603d2656007a2a601778c10986e755c8849c7826310f7afad74b9d078ce"
+        },
+        {
+          "path": "crates/axon-api/src/mcp_schema/requests/discovery.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:fe0bc74dd850407fd249d86e24541f64518e403aa4a6a87130764e7336834548"
+        },
+        {
+          "path": "crates/axon-api/src/mcp_schema/requests/graph.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:0eaaaaaf9782d9165b519401a91bbf784485088ae34a618dd512755606706118"
+        },
+        {
+          "path": "crates/axon-api/src/mcp_schema/requests/watch.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:5d651565b3ff61875b4dfb9e5f1a6c5aa17cb92b78f4f20f69ccd3d9d0ec4990"
+        },
+        {
+          "path": "crates/axon-api/src/mcp_schema/utility.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:145a07007148573c36e39c7fe46c8486a25813f82a50288b2f336815a8404cbf"
+        },
+        {
+          "path": "crates/axon-mcp/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:fc7de3b93f7f0f31cc5149efd9b8b3729f887f79d1f74ba6a9bdde245d8e5eee"
+        },
+        {
+          "path": "crates/axon-mcp/src/server.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:f45a688cca4b367be606fd4caa833aa500fb52c9f786dbc6c3b81e8b03317fe0"
+        },
+        {
+          "path": "crates/axon-mcp/src/server/authz.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:68f50617fb2536b6e2e1b99c68caa434067da3eac287d32fb0a627de6951b71d"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc"
+        },
+        {
+          "path": "xtask/src/schemas/mcp_action_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:0960db61568609c37bc11774b341690a3292d189d7d684b1c6bdc7aef3049051"
+        }
+      ],
+      "manifest_checksum": "675e74383ad298acf74c816c1f60163a72228adb8f173616590e3d804c0be32c"
+    },
+    {
+      "family": "openapi",
+      "generated_by": "cargo xtask docs generate --family openapi",
+      "source_inputs": [
+        {
+          "path": "crates/axon-web/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:f99294dacc94f7fbc144f82c964d2c22e56b6848324cd50d6969d1ae5e7a7075"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/openapi-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7"
+        }
+      ],
+      "manifest_checksum": "8b11fad2db2caa252b8823bb2d97f5a50a177e71fd40d15c3b26e8b82722733e"
+    },
+    {
+      "family": "providers",
+      "generated_by": "cargo xtask docs generate --family providers",
+      "source_inputs": [
+        {
+          "path": "crates/axon-adapters/src/boundary.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:ae232f6479f56b8051fce765d263de93a0787a469cc43531148960e8a9e9b06f"
+        },
+        {
+          "path": "crates/axon-api/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f"
+        },
+        {
+          "path": "crates/axon-api/src/source/capability.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3"
+        },
+        {
+          "path": "crates/axon-authz/src/policy.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:27590ae1e1ecfde070df97bf3d67b362ad08d4e5d499d7d19baa64e2d1519ac3"
+        },
+        {
+          "path": "crates/axon-core/src/boundary.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:cdf5d490a8b2eb0d697fbad7e1b3ed6d0da128c7ad433fd133ef98f83f01bd9f"
+        },
+        {
+          "path": "crates/axon-embedding/src/fake.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:ee3ae9d7dbee3455d25afb00a4e9c62689521a6b543cec31c74d3eb082c8b17f"
+        },
+        {
+          "path": "crates/axon-embedding/src/provider.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:6ea8b3fc76cae8f4aef0eb1a9602e4f3dc7cb7b2c9cf22ce2c5a050adee767ba"
+        },
+        {
+          "path": "crates/axon-llm/src/fake.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:6b864926eb293c52751e81390fc85f13f014900e7399bb8bafd014c4915ef6d5"
+        },
+        {
+          "path": "crates/axon-llm/src/provider.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:a1600254dc8b409227437eff91ec012a17adb0ee42766564bd7431036b2ed359"
+        },
+        {
+          "path": "crates/axon-observe/src/reservation.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:508c71fd4073569d1bd1f272d0d827cd63990ba16db5a202017b7664e06920df"
+        },
+        {
+          "path": "crates/axon-vectors/src/store.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:147f6b2e4f9e857456d6ef7dfc5dd5142ba18e050f8d96a85723e4bc0837fb62"
+        },
+        {
+          "path": "docs/pipeline-unification/runtime/provider-contract.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/provider-capability-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
+        }
+      ],
+      "manifest_checksum": "ee2906902a1eae98afb7b166b3ad98b6ddf5a4a1eb54ec633a546d967a8949fb"
+    },
+    {
+      "family": "vector-payload",
+      "generated_by": "cargo xtask docs generate --family vector-payload",
+      "source_inputs": [
+        {
+          "path": "crates/axon-api/src/source/vector.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac"
+        },
+        {
+          "path": "crates/axon-vectors/src/payload.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5"
+        },
+        {
+          "path": "crates/axon-vectors/src/payload_families.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1"
+        },
+        {
+          "path": "crates/axon-vectors/src/point.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2"
+        },
+        {
+          "path": "crates/axon-vectors/src/schema_registry.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a"
+        },
+        {
+          "path": "docs/pipeline-unification/schemas/vector-payload-schema.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604"
+        },
+        {
+          "path": "docs/pipeline-unification/sources/chunking-contract.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8"
+        },
+        {
+          "path": "docs/pipeline-unification/sources/metadata-payload.md",
+          "kind": "markdown_contract",
+          "checksum": "sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae"
+        },
+        {
+          "path": "xtask/src/schemas/vector_payload_markdown.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede"
+        }
+      ],
+      "manifest_checksum": "f8854ea6462010d74c917946ea31ce5f4f6d358c8e476dd4d680daca3baf0a5d"
+    }
+  ]
+}

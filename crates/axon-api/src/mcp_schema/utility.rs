@@ -26,6 +26,13 @@ pub struct SourceRequest {
     /// Qdrant collection to index into. Defaults to the server's configured collection.
     pub collection: Option<String>,
     pub response_mode: Option<ResponseMode>,
+    /// Run source indexing as a detached background `JobKind::Source` job
+    /// instead of blocking until it completes. When `true`, the response
+    /// carries a poll descriptor (`job_id`/`status`/`poll_after_ms`) instead
+    /// of the final `SourceResult`. Defaults to `false` (synchronous,
+    /// matching prior behavior).
+    #[serde(default)]
+    pub detached: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

@@ -175,6 +175,16 @@ The web app must:
 - redact secrets and sensitive fields in UI, logs, and screenshots
 - avoid storing bearer tokens in insecure browser storage when safer auth is
   available
+
+**Decision (U3-V02, 2026-07-09 audit):** the live web app currently stores
+its bearer token in `localStorage`, which this section forbids by omission
+(no explicit exception). Resolved storage mechanism: httpOnly, `Secure`,
+`SameSite=Strict` session cookies set by the server on login, with the
+frontend never holding a readable token in JS-accessible storage. This is
+the standard mitigation for XSS-driven token theft in a first-party SPA and
+matches `auth-contract.md`'s server-issued-session model. This is a code
+change in `apps/web`, out of scope for this docs-only workstream — see
+`code_followups`.
 - follow content security policy and same-origin rules
 - use artifact/content routes for large outputs
 

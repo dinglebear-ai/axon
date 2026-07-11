@@ -1,6 +1,6 @@
 use super::*;
 use crate::context::ServiceContext;
-use axon_api::source::{AuthSnapshot, CallerContext, TransportKind, Visibility};
+use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_jobs::backend::JobKind as LegacyJobKind;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,10 +22,14 @@ async fn embed_start_with_context_enqueues_on_unified_job_store_with_caller_auth
     let ctx = test_ctx_with_workers().await;
     let caller = AuthSnapshot::from_caller(
         &CallerContext {
-            actor: Some("user_1".to_string()),
+            caller_id: Some("user_1".to_string()),
             transport: TransportKind::Cli,
+            trusted_local: true,
             scopes: vec!["axon:read".to_string(), "axon:write".to_string()],
             visibility_ceiling: Visibility::Internal,
+            auth_mode: AuthMode::Test,
+            token_id: None,
+            display_name: None,
         },
         Visibility::Internal,
         "test",

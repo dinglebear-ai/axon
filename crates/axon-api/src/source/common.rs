@@ -78,6 +78,15 @@ pub struct AdapterOptions {
     pub values: MetadataMap,
 }
 
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct ValidatedOptions {
+    pub values: MetadataMap,
+    pub warnings: Vec<SourceWarning>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterRef {
@@ -349,10 +358,20 @@ pub struct SecurityDecision {
 #[serde(deny_unknown_fields)]
 pub struct CallerContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actor: Option<String>,
+    pub caller_id: Option<String>,
     pub transport: TransportKind,
+    /// Local CLI trust flag per the auth contract's "Trusted CLI Context" —
+    /// only set true for local CLI invocations running as the local user and
+    /// not through a remote transport. REST/MCP never infer this from network
+    /// location alone.
+    pub trusted_local: bool,
     pub scopes: Vec<String>,
     pub visibility_ceiling: Visibility,
+    pub auth_mode: super::auth::AuthMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 #[derive(

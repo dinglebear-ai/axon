@@ -5,6 +5,8 @@ use std::sync::Arc;
 // Module declarations
 #[path = "server/api_error.rs"]
 mod api_error;
+#[path = "server/envelope.rs"]
+mod envelope;
 #[path = "server/error.rs"]
 mod error;
 #[path = "server/handlers.rs"]

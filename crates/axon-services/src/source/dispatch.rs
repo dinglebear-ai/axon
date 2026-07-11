@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-use crate::crawl_sync::crawl_for_source;
+use crate::crawl_sync::{crawl_for_source, crawl_for_source_page};
 use crate::{
     FeedSourceIndexInput, GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy,
     RedditSourceIndexInput, RegistrySourceIndexInput, SessionSelector, SessionsSourceIndexInput,
@@ -33,15 +33,18 @@ fn placeholder_job_id() -> JobId {
 }
 
 /// Local-path source: dispatch straight to the local bridge (no acquisition).
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_local(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    route: &axon_api::source::RoutePlan,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=local"
+        "command=source collection={collection} kind=local embed={embed}"
     ));
     let index_input = LocalSourceIndexInput {
         root: std::path::PathBuf::from(input),
@@ -56,6 +59,8 @@ pub async fn dispatch_local(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed,
+        route: Some(route.clone()),
     };
     let output = index_local_source_with_job(
         index_input,
@@ -75,19 +80,25 @@ pub async fn dispatch_local(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_files,
+        graph_candidates: output.graph_candidates,
     })
 }
 
 /// Git-repository source: shallow-clone (acquisition) then dispatch to the git
 /// bridge. The `TempDir` is kept alive for the whole indexing pass.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_git(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    route: &axon_api::source::RoutePlan,
 ) -> anyhow::Result<IndexCounts> {
-    log_info(&format!("command=source collection={collection} kind=git"));
+    log_info(&format!(
+        "command=source collection={collection} kind=git embed={embed}"
+    ));
     let checkout = clone_git_repo(input)
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))
@@ -105,6 +116,8 @@ pub async fn dispatch_git(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed,
+        route: Some(route.clone()),
     };
     let output = index_git_source_with_job(
         index_input,
@@ -124,6 +137,7 @@ pub async fn dispatch_git(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_files,
+        graph_candidates: output.graph_candidates,
     })
 }
 
@@ -153,6 +167,8 @@ pub async fn dispatch_feed(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_feed_source_with_job(
         index_input,
@@ -172,6 +188,7 @@ pub async fn dispatch_feed(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_entries,
+        graph_candidates: output.graph_candidates,
     })
 }
 
@@ -204,6 +221,8 @@ pub async fn dispatch_reddit(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_reddit_source_with_job(
         index_input,
@@ -223,6 +242,7 @@ pub async fn dispatch_reddit(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_items,
+        graph_candidates: output.graph_candidates,
     })
 }
 
@@ -255,6 +275,8 @@ pub async fn dispatch_youtube(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_youtube_source_with_job(
         index_input,
@@ -274,6 +296,7 @@ pub async fn dispatch_youtube(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_videos,
+        graph_candidates: output.graph_candidates,
     })
 }
 
@@ -308,6 +331,8 @@ pub async fn dispatch_registry(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_registry_source_with_job(
         index_input,
@@ -327,6 +352,7 @@ pub async fn dispatch_registry(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_versions,
+        graph_candidates: output.graph_candidates,
     })
 }
 
@@ -361,6 +387,8 @@ pub async fn dispatch_session(
         embedding_reservations: Some(runtime.embedding_reservations.clone()),
         vector_reservations: Some(runtime.vector_reservations.clone()),
         auth_snapshot: auth_snapshot.cloned(),
+        embed: true,
+        max_items: None,
     };
     let output = index_sessions_source_with_job(
         index_input,
@@ -380,12 +408,14 @@ pub async fn dispatch_session(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_files,
+        graph_candidates: output.graph_candidates,
     })
 }
 
 /// Web source: crawl to completion (acquisition) then dispatch to the web
 /// bridge. The web bridge owns vectorization, so `crawl_for_source` disables the
 /// crawl's own embed pass.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_web(
     cfg: &Config,
     runtime: &TargetLocalSourceRuntime,
@@ -394,12 +424,26 @@ pub async fn dispatch_web(
     owner_id: &str,
     scope: SourceScope,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_pages: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
-    log_info(&format!("command=source collection={collection} kind=web"));
-    let crawl = crawl_for_source(cfg, input)
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("web crawl acquisition failed")?;
+    log_info(&format!(
+        "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?}"
+    ));
+    // `scope = Page` must acquire exactly the one URL — no link following, no
+    // sitemap/llms.txt backfill. Every other web scope (`Site`, `Docs`, `Map`)
+    // keeps the existing full-crawl acquisition.
+    let crawl = if scope == SourceScope::Page {
+        crawl_for_source_page(cfg, input)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .context("web single-page acquisition failed")?
+    } else {
+        crawl_for_source(cfg, input, max_pages)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .context("web crawl acquisition failed")?
+    };
     log_info(&format!(
         "command=source kind=web crawl_pages={} crawl_markdown={} output_dir={}",
         crawl.pages_seen,
@@ -420,6 +464,7 @@ pub async fn dispatch_web(
         embedding_model: runtime.embedding_model.clone(),
         embedding_dimensions: runtime.embedding_dimensions,
         auth_snapshot: auth_snapshot.cloned(),
+        embed,
     };
     let output = index_web_source_with_job(
         index_input,
@@ -439,5 +484,6 @@ pub async fn dispatch_web(
         chunks_prepared: output.chunks_prepared,
         vector_points_written: output.vector_points_written,
         removed: output.removed_pages,
+        graph_candidates: output.graph_candidates,
     })
 }

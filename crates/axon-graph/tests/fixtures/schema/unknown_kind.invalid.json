@@ -1,0 +1,53 @@
+{
+  "candidate_id": "gc_unknown_kind_1",
+  "job_id": "00000000-0000-0000-0000-000000000001",
+  "source_id": "src_local_repo",
+  "source_item_key": "Cargo.toml",
+  "item_canonical_uri": "file:///repo/Cargo.toml",
+  "document_id": null,
+  "kind": "repo_package",
+  "merge_key": null,
+  "producer": {
+    "adapter": "local",
+    "parser": "manifest",
+    "version": "1"
+  },
+  "nodes": [
+    {
+      "node_kind": "repository",
+      "stable_key": "repo:local/x",
+      "label": "x",
+      "properties": {}
+    },
+    {
+      "node_kind": "package",
+      "stable_key": "pkg:crates.io:tokio",
+      "label": "tokio",
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "edge_kind": "repo_declares_dependency",
+      "from_stable_key": "repo:local/x",
+      "to_stable_key": "pkg:crates.io:tokio",
+      "properties": {}
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_1",
+      "evidence_kind": "dependency_manifest",
+      "source_id": "src_local_repo",
+      "source_item_key": "Cargo.toml",
+      "document_id": null,
+      "chunk_id": null,
+      "range": null,
+      "quote": "tokio = \"1\"",
+      "confidence": 0.9,
+      "metadata": {}
+    }
+  ],
+  "confidence": 0.9,
+  "metadata": {}
+}

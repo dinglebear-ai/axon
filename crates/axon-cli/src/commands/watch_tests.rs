@@ -64,6 +64,48 @@ async fn handle_watch_create_rejects_invalid_task_payload_json() {
     assert!(err.to_string().contains("--task-payload is not valid JSON"));
 }
 
+/// WS-B followups (issue #298): `watch create` dual-writes into the
+/// source-request-backed `SqliteWatchStore` so `watch get|update|pause|
+/// resume|delete` — which act exclusively on that store — can find watches
+/// created here.
+#[tokio::test]
+async fn handle_watch_create_dual_writes_source_watch_store() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+
+    handle_watch_create(
+        &cfg,
+        None,
+        "demo".to_string(),
+        "watch".to_string(),
+        3600,
+        Some(r#"{"urls": ["https://example.com/dual-write"]}"#.to_string()),
+    )
+    .await?;
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let page = watch_svc::SourceWatchStoreTrait::list(
+        &store,
+        watch_svc::WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: None,
+            cursor: None,
+        },
+    )
+    .await?;
+    assert_eq!(page.items.len(), 1);
+    let found = watch_svc::SourceWatchStoreTrait::get(&store, page.items[0].watch_id.clone())
+        .await?
+        .expect("dual-written watch present");
+    assert_eq!(found.canonical_uri, "https://example.com/dual-write");
+    assert_eq!(found.schedule.every_seconds, 3600);
+    assert!(found.enabled);
+    Ok(())
+}
+
 #[tokio::test]
 async fn run_watch_rejects_unknown_subcommand() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -126,5 +168,126 @@ async fn run_watch_artifacts_lists_with_sqlite_backend() -> Result<(), Box<dyn E
     ];
     let service_context = test_service_context(&cfg).await;
     run_watch(&cfg, &service_context).await?;
+    Ok(())
+}
+
+fn source_watch_request() -> watch_svc::WatchRequest {
+    watch_svc::WatchRequest {
+        source: "https://example.com/docs".to_string(),
+        schedule: axon_api::source::WatchSchedule {
+            every_seconds: 3600,
+            cron: None,
+            timezone: None,
+        },
+        embed: true,
+        options: axon_api::source::AdapterOptions::default(),
+        scope: None,
+        collection: None,
+        enabled: Some(true),
+    }
+}
+
+#[tokio::test]
+async fn handle_watch_get_finds_and_reports_missing_source_watches() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
+
+    handle_watch_get(&cfg, None, &created.watch_id.0).await?;
+
+    let err = handle_watch_get(&cfg, None, "watch_missing")
+        .await
+        .expect_err("missing watch should error");
+    assert!(err.to_string().contains("not found"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn handle_watch_update_pause_resume_and_delete_round_trip() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
+    let id = created.watch_id.0.clone();
+
+    handle_watch_update(
+        &cfg,
+        None,
+        &id,
+        watch_svc::WatchUpdateRequest {
+            enabled: Some(false),
+            schedule: None,
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await?;
+
+    let paused = watch_svc::SourceWatchStoreTrait::get(&store, watch_svc::WatchId::new(&id))
+        .await?
+        .expect("watch present after pause");
+    assert!(!paused.enabled);
+
+    handle_watch_update(
+        &cfg,
+        None,
+        &id,
+        watch_svc::WatchUpdateRequest {
+            enabled: Some(true),
+            schedule: None,
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await?;
+    let resumed = watch_svc::SourceWatchStoreTrait::get(&store, watch_svc::WatchId::new(&id))
+        .await?
+        .expect("watch present after resume");
+    assert!(resumed.enabled);
+
+    handle_watch_delete(&cfg, None, &id).await?;
+    let err = handle_watch_delete(&cfg, None, &id)
+        .await
+        .expect_err("deleting an already-deleted watch should error");
+    assert!(err.to_string().contains("not found"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_watch_dispatches_get_update_pause_resume_delete() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+    cfg.json_output = true;
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
+    let id = created.watch_id.0.clone();
+
+    for args in [
+        vec!["get".to_string(), id.clone()],
+        vec![
+            "update".to_string(),
+            id.clone(),
+            "--every-seconds".to_string(),
+            "120".to_string(),
+        ],
+        vec!["pause".to_string(), id.clone()],
+        vec!["resume".to_string(), id.clone()],
+        vec!["delete".to_string(), id.clone()],
+    ] {
+        cfg.positional = args;
+        let service_context = test_service_context(&cfg).await;
+        run_watch(&cfg, &service_context).await?;
+    }
     Ok(())
 }

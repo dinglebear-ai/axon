@@ -1,7 +1,7 @@
 package com.axon.app.data.repository
 
-import com.axon.app.data.remote.AxonClient
-import com.axon.app.data.remote.models.ServiceJob
+import com.axon.app.core.api.AxonClient
+import com.axon.app.core.api.models.ServiceJob
 
 /** Wire enum → domain enum. Used at the repository boundary. */
 internal fun AxonClient.JobKind.toJobFamily(): JobFamily = when (this) {

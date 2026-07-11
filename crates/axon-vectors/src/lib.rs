@@ -13,6 +13,7 @@ pub mod payload;
 pub mod payload_families;
 mod payload_generation;
 mod payload_redaction;
+mod payload_shape;
 pub mod point;
 pub mod qdrant;
 pub mod query;

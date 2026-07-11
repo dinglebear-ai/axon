@@ -1,3 +1,7 @@
+use axon_api::source::{
+    ApiError, ErrorStage, JobId, LifecycleStatus, PipelinePhase, Severity, SourceProgressEvent,
+    StreamEvent,
+};
 use axon_services as services;
 use axon_services::client_contract::{
     RestResearchRequest as ResearchRequest, RestSummarizeRequest as SummarizeRequest,
@@ -9,11 +13,10 @@ use axum::response::{
 };
 use axum::{Json, extract::State};
 use futures_util::Stream;
-use serde::Serialize;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -43,23 +46,52 @@ impl Drop for AbortOnDropStream {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum LlmStreamEvent<T: Serialize> {
-    Meta { phase: &'static str },
-    Delta { text: String },
-    Done { result: T },
-    Error { message: String },
+/// Per-stream monotonic sequence counter, per the `StreamEvent.sequence`
+/// contract ("event sequence is monotonic per job").
+#[derive(Default)]
+struct SequenceCounter(AtomicU64);
+
+impl SequenceCounter {
+    fn next(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::Relaxed)
+    }
 }
 
-fn sse_json<T: Serialize>(event_name: &'static str, value: &LlmStreamEvent<T>) -> Event {
+fn exploration_progress_event(
+    job_id: JobId,
+    sequence: u64,
+    message: impl Into<String>,
+) -> SourceProgressEvent {
+    SourceProgressEvent::minimal(
+        job_id,
+        sequence,
+        PipelinePhase::Synthesizing,
+        LifecycleStatus::Running,
+        Severity::Info,
+        message,
+    )
+}
+
+fn event_name(event: &StreamEvent) -> &'static str {
+    match event.kind {
+        axon_api::source::StreamKind::Progress => "progress",
+        axon_api::source::StreamKind::Token => "delta",
+        axon_api::source::StreamKind::Citation => "citation",
+        axon_api::source::StreamKind::Artifact => "artifact",
+        axon_api::source::StreamKind::Warning => "warning",
+        axon_api::source::StreamKind::Error => "error",
+        axon_api::source::StreamKind::Final => "done",
+    }
+}
+
+fn sse_json(event: &StreamEvent) -> Event {
     Event::default()
-        .event(event_name)
-        .json_data(value)
+        .event(event_name(event))
+        .json_data(event)
         .unwrap_or_else(|_| {
             Event::default()
                 .event("error")
-                .data("{\"type\":\"error\",\"message\":\"encode failed\"}")
+                .data("{\"kind\":\"error\",\"data\":{},\"message\":\"encode failed\"}")
         })
 }
 
@@ -87,14 +119,14 @@ pub(crate) async fn summarize_stream(
     };
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
     let disconnected = Arc::new(AtomicBool::new(false));
+    let job_id = JobId::new(uuid::Uuid::new_v4());
+    let sequence = Arc::new(SequenceCounter::default());
 
     let handle = tokio::spawn(async move {
+        let meta = exploration_progress_event(job_id, sequence.next(), "summarizing");
         if tx
             .send(Ok(sse_json(
-                "meta",
-                &LlmStreamEvent::<services::types::SummarizeResult>::Meta {
-                    phase: "summarizing",
-                },
+                &StreamEvent::progress(meta.sequence, &meta).with_job_id(job_id),
             )))
             .await
             .is_err()
@@ -105,22 +137,18 @@ pub(crate) async fn summarize_stream(
         let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_tx = tx.clone();
         let delta_disconnected = Arc::clone(&disconnected);
+        let delta_sequence = Arc::clone(&sequence);
         let delta_task = tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if delta_disconnected.load(Ordering::Relaxed) {
                     return;
                 }
-                if let ServiceEvent::SynthesisDelta { text } = event
-                    && delta_tx
-                        .send(Ok(sse_json(
-                            "delta",
-                            &LlmStreamEvent::<services::types::SummarizeResult>::Delta { text },
-                        )))
-                        .await
-                        .is_err()
-                {
-                    delta_disconnected.store(true, Ordering::Relaxed);
-                    return;
+                if let ServiceEvent::SynthesisDelta { text } = event {
+                    let event = StreamEvent::token(delta_sequence.next(), text).with_job_id(job_id);
+                    if delta_tx.send(Ok(sse_json(&event))).await.is_err() {
+                        delta_disconnected.store(true, Ordering::Relaxed);
+                        return;
+                    }
                 }
             }
         });
@@ -133,17 +161,14 @@ pub(crate) async fn summarize_stream(
         }
         match result {
             Ok(result) => {
-                let _ = tx
-                    .send(Ok(sse_json("done", &LlmStreamEvent::Done { result })))
-                    .await;
+                let event = StreamEvent::final_event(sequence.next(), &result).with_job_id(job_id);
+                let _ = tx.send(Ok(sse_json(&event))).await;
             }
             Err(message) => {
-                let _ = tx
-                    .send(Ok(sse_json(
-                        "error",
-                        &LlmStreamEvent::<services::types::SummarizeResult>::Error { message },
-                    )))
-                    .await;
+                let error =
+                    ApiError::new("summarize.stream_failed", ErrorStage::Synthesizing, message);
+                let event = StreamEvent::error_event(sequence.next(), error).with_job_id(job_id);
+                let _ = tx.send(Ok(sse_json(&event))).await;
             }
         }
     });
@@ -187,8 +212,15 @@ pub(super) fn bounded_stream_for_tests(
 )]
 pub(crate) async fn research_stream(
     State((state, cfg)): State<WebState>,
+    auth: Option<axum::Extension<lab_auth::AuthContext>>,
     Json(req): Json<ResearchRequest>,
 ) -> Response {
+    // mutates_if (axon #298 follow-up): same unconditional auto-crawl as
+    // `research` above — see `super::require_mutates_if_write_scope`'s doc
+    // comment.
+    if let Err(err) = super::require_mutates_if_write_scope(auth.as_ref()) {
+        return err.into_response();
+    }
     let query = match required_text(&req.query, "query") {
         Ok(query) => query.to_string(),
         Err(err) => return err.into_response(),
@@ -200,14 +232,14 @@ pub(crate) async fn research_stream(
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
     let disconnected = Arc::new(AtomicBool::new(false));
     let service_context = Arc::clone(&state.service_context);
+    let job_id = JobId::new(uuid::Uuid::new_v4());
+    let sequence = Arc::new(SequenceCounter::default());
 
     let handle = tokio::spawn(async move {
+        let meta = exploration_progress_event(job_id, sequence.next(), "researching");
         if tx
             .send(Ok(sse_json(
-                "meta",
-                &LlmStreamEvent::<services::types::ResearchPayload>::Meta {
-                    phase: "researching",
-                },
+                &StreamEvent::progress(meta.sequence, &meta).with_job_id(job_id),
             )))
             .await
             .is_err()
@@ -218,22 +250,18 @@ pub(crate) async fn research_stream(
         let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_tx = tx.clone();
         let delta_disconnected = Arc::clone(&disconnected);
+        let delta_sequence = Arc::clone(&sequence);
         let delta_task = tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 if delta_disconnected.load(Ordering::Relaxed) {
                     return;
                 }
-                if let ServiceEvent::SynthesisDelta { text } = event
-                    && delta_tx
-                        .send(Ok(sse_json(
-                            "delta",
-                            &LlmStreamEvent::<services::types::ResearchPayload>::Delta { text },
-                        )))
-                        .await
-                        .is_err()
-                {
-                    delta_disconnected.store(true, Ordering::Relaxed);
-                    return;
+                if let ServiceEvent::SynthesisDelta { text } = event {
+                    let event = StreamEvent::token(delta_sequence.next(), text).with_job_id(job_id);
+                    if delta_tx.send(Ok(sse_json(&event))).await.is_err() {
+                        delta_disconnected.store(true, Ordering::Relaxed);
+                        return;
+                    }
                 }
             }
         });
@@ -260,17 +288,14 @@ pub(crate) async fn research_stream(
         }
         match result {
             Ok(result) => {
-                let _ = tx
-                    .send(Ok(sse_json("done", &LlmStreamEvent::Done { result })))
-                    .await;
+                let event = StreamEvent::final_event(sequence.next(), &result).with_job_id(job_id);
+                let _ = tx.send(Ok(sse_json(&event))).await;
             }
             Err(message) => {
-                let _ = tx
-                    .send(Ok(sse_json(
-                        "error",
-                        &LlmStreamEvent::<services::types::ResearchPayload>::Error { message },
-                    )))
-                    .await;
+                let error =
+                    ApiError::new("research.stream_failed", ErrorStage::Synthesizing, message);
+                let event = StreamEvent::error_event(sequence.next(), error).with_job_id(job_id);
+                let _ = tx.send(Ok(sse_json(&event))).await;
             }
         }
     });
@@ -280,61 +305,5 @@ pub(crate) async fn research_stream(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::response::sse::Event;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    };
-
-    #[test]
-    fn exploration_stream_output_channel_is_bounded() {
-        let (tx, _rx) = mpsc::channel::<Result<Event, Infallible>>(sse_event_buffer_for_tests());
-        for _ in 0..sse_event_buffer_for_tests() {
-            tx.try_send(Ok(Event::default()))
-                .expect("buffer slot should be available");
-        }
-        assert!(
-            tx.try_send(Ok(Event::default())).is_err(),
-            "stream output channel should apply backpressure when full"
-        );
-    }
-
-    #[test]
-    fn research_stream_budget_is_finite() {
-        assert_eq!(research_stream_timeout_for_tests(), Duration::from_secs(35));
-    }
-
-    #[test]
-    fn summarize_stream_has_no_fixed_wall_clock_timeout() {
-        assert_eq!(summarize_stream_timeout_for_tests(), None);
-    }
-
-    #[tokio::test]
-    async fn exploration_stream_drop_aborts_worker_task() {
-        struct AbortFlag(Arc<AtomicBool>);
-        impl Drop for AbortFlag {
-            fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
-            }
-        }
-
-        let (_tx, rx) = mpsc::channel::<Result<Event, Infallible>>(1);
-        let aborted = Arc::new(AtomicBool::new(false));
-        let task_aborted = Arc::clone(&aborted);
-        let handle = tokio::spawn(async move {
-            let _flag = AbortFlag(task_aborted);
-            std::future::pending::<()>().await;
-        });
-        tokio::task::yield_now().await;
-        let stream = bounded_stream_for_tests(rx, handle);
-        drop(stream);
-        tokio::task::yield_now().await;
-
-        assert!(
-            aborted.load(Ordering::SeqCst),
-            "dropping the SSE stream should abort the worker task"
-        );
-    }
-}
+#[path = "exploration_stream_tests.rs"]
+mod tests;

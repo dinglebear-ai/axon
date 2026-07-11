@@ -203,7 +203,8 @@ export function useActionRunner({
           ? {
               ...current,
               jobId,
-              statusUrl: `/v1/crawl/${jobId}`,
+              // Unified route (bead axon_rust-ruzox.9) — `/v1/crawl/{id}` no longer exists.
+              statusUrl: `/v1/jobs/${jobId}`,
               subtitle: `job ${jobId}`,
               snapshot: { ...current.snapshot, jobId },
             }
@@ -283,7 +284,9 @@ export function useActionRunner({
           ? {
               ...current,
               jobId,
-              statusUrl: `/v1/${family}/${jobId}`,
+              // Unified route (bead axon_rust-ruzox.9) — the per-family status
+              // route for embed/ingest no longer exists.
+              statusUrl: `/v1/jobs/${jobId}`,
               subtitle: `job ${jobId}`,
               snapshot: summarizeJob(family, result.payload, { jobId, label }),
             }

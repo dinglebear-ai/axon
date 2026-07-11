@@ -211,19 +211,4857 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Generated Axon schema contract artifact.",
+  "divergences": [
+    {
+      "kind": "duplicate_domain_naming",
+      "note": "Two independent 'memory' schemas coexist: the legacy agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision.",
+      "tables": [
+        "axon_memory_nodes",
+        "axon_memory_edges",
+        "memory_records",
+        "memory_links",
+        "memory_reinforcement",
+        "memory_reviews"
+      ]
+    },
+    {
+      "kind": "legacy_per_family_job_tables",
+      "note": "Predate the unified `jobs`/`job_attempts`/`job_stages`/`job_events` tables introduced in crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql. `embed`/`ingest`/`scrape`/`crawl` CLI/MCP/REST surfaces are already removed (see xtask/src/schemas/registry.rs::REMOVED_SURFACE_RULES); the legacy tables persist for `extract` and in-flight rows and are not renamed here.",
+      "tables": [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs"
+      ]
+    },
+    {
+      "kind": "watch_naming_overlap",
+      "note": "axon_watch_defs/axon_watch_runs (migration 0002) back the task_type/task_payload watch scheduler; axon_source_watches/axon_source_watch_runs (migration 0023) back the newer SourceRequest-shaped WatchStore used by `watch get|update|pause|resume|delete`. Both are live; not merged here.",
+      "tables": [
+        "axon_watch_defs",
+        "axon_watch_runs",
+        "axon_source_watches",
+        "axon_source_watch_runs"
+      ]
+    }
+  ],
+  "foreign_keys": [
+    {
+      "columns": [
+        "freshness_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_freshness_defs",
+      "table": "axon_freshness_runs"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_ingest_jobs",
+      "table": "axon_ingest_payloads"
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_memory_nodes",
+      "table": "axon_memory_edges"
+    },
+    {
+      "columns": [
+        "target_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_memory_nodes",
+      "table": "axon_memory_edges"
+    },
+    {
+      "columns": [
+        "watch_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "watch_id"
+      ],
+      "references_table": "axon_source_watches",
+      "table": "axon_source_watch_runs"
+    },
+    {
+      "columns": [
+        "watch_run_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_watch_runs",
+      "table": "axon_watch_run_artifacts"
+    },
+    {
+      "columns": [
+        "watch_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_watch_defs",
+      "table": "axon_watch_runs"
+    },
+    {
+      "columns": [
+        "watch_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_watch_defs",
+      "table": "axon_watch_url_state"
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "source_id"
+      ],
+      "references_table": "sources",
+      "table": "cleanup_debt"
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "source_id"
+      ],
+      "references_table": "sources",
+      "table": "document_status"
+    },
+    {
+      "columns": [
+        "node_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "node_id"
+      ],
+      "references_table": "graph_nodes",
+      "table": "graph_aliases"
+    },
+    {
+      "columns": [
+        "from_node_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "node_id"
+      ],
+      "references_table": "graph_nodes",
+      "table": "graph_edges"
+    },
+    {
+      "columns": [
+        "to_node_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "node_id"
+      ],
+      "references_table": "graph_nodes",
+      "table": "graph_edges"
+    },
+    {
+      "columns": [
+        "edge_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "edge_id"
+      ],
+      "references_table": "graph_edges",
+      "table": "graph_evidence"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs",
+      "table": "job_artifacts"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs",
+      "table": "job_attempts"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs",
+      "table": "job_events"
+    },
+    {
+      "columns": [
+        "stage_id"
+      ],
+      "on_delete": "SET NULL",
+      "references_columns": [
+        "stage_id"
+      ],
+      "references_table": "job_stages",
+      "table": "job_events"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs",
+      "table": "job_heartbeats"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs",
+      "table": "job_stages"
+    },
+    {
+      "columns": [
+        "parent_job_id"
+      ],
+      "on_delete": "SET NULL",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs_v3",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        "root_job_id"
+      ],
+      "on_delete": "SET NULL",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs_v3",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "on_delete": "SET NULL",
+      "references_columns": [
+        "source_id"
+      ],
+      "references_table": "sources",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        "watch_id"
+      ],
+      "on_delete": "SET NULL",
+      "references_columns": [
+        "id"
+      ],
+      "references_table": "axon_watch_defs",
+      "table": "jobs"
+    },
+    {
+      "columns": [
+        "memory_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "memory_id"
+      ],
+      "references_table": "memory_records",
+      "table": "memory_links"
+    },
+    {
+      "columns": [
+        "memory_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "memory_id"
+      ],
+      "references_table": "memory_records",
+      "table": "memory_reinforcement"
+    },
+    {
+      "columns": [
+        "memory_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "memory_id"
+      ],
+      "references_table": "memory_records",
+      "table": "memory_reviews"
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "job_id"
+      ],
+      "references_table": "jobs",
+      "table": "provider_reservations"
+    },
+    {
+      "columns": [
+        "stage_id"
+      ],
+      "on_delete": "SET NULL",
+      "references_columns": [
+        "stage_id"
+      ],
+      "references_table": "job_stages",
+      "table": "provider_reservations"
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "source_id"
+      ],
+      "references_table": "sources",
+      "table": "source_generations"
+    },
+    {
+      "columns": [
+        "source_id",
+        "generation"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "source_id",
+        "generation"
+      ],
+      "references_table": "source_manifests",
+      "table": "source_items"
+    },
+    {
+      "columns": [
+        "source_id",
+        "generation"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "source_id",
+        "generation"
+      ],
+      "references_table": "source_generations",
+      "table": "source_manifests"
+    }
+  ],
+  "indexes": [
+    {
+      "columns": [
+        "enabled",
+        "next_run_at",
+        "lease_expires_at"
+      ],
+      "name": "idx_axon_freshness_due",
+      "table": "axon_freshness_defs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "created_at"
+      ],
+      "name": "idx_axon_freshness_runs_created",
+      "table": "axon_freshness_runs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "freshness_id",
+        "created_at DESC"
+      ],
+      "name": "idx_axon_freshness_runs_def_created",
+      "table": "axon_freshness_runs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "command",
+        "target"
+      ],
+      "name": "idx_axon_freshness_target",
+      "table": "axon_freshness_defs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "payload_kind"
+      ],
+      "name": "idx_axon_ingest_payloads_kind",
+      "table": "axon_ingest_payloads",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "attempt"
+      ],
+      "name": "idx_axon_job_attempts_job_attempt",
+      "table": "job_attempts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "receipt_kind",
+        "created_at DESC"
+      ],
+      "name": "idx_axon_job_cutover_receipts_kind",
+      "table": "axon_job_cutover_receipts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "sequence"
+      ],
+      "name": "idx_axon_job_events_job_sequence",
+      "table": "job_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "severity",
+        "sequence"
+      ],
+      "name": "idx_axon_job_events_job_severity_sequence",
+      "table": "job_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "stage_id"
+      ],
+      "name": "idx_axon_job_stages_job_stage",
+      "table": "job_stages",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "CASE priority WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'background' THEN 3 WHEN 'maintenance' THEN 4 ELSE 5 END",
+        "updated_at ASC",
+        "job_id ASC"
+      ],
+      "name": "idx_axon_jobs_claim",
+      "table": "jobs",
+      "unique": false,
+      "where": "status IN ('queued', 'waiting', 'blocked')"
+    },
+    {
+      "columns": [
+        "status",
+        "cooldown_until"
+      ],
+      "name": "idx_axon_jobs_claim_cooldown",
+      "table": "jobs",
+      "unique": false,
+      "where": "status IN ('queued', 'waiting', 'blocked')"
+    },
+    {
+      "columns": [
+        "deadline_at"
+      ],
+      "name": "idx_axon_jobs_deadline",
+      "table": "jobs",
+      "unique": false,
+      "where": "deadline_at IS NOT NULL AND status = 'running'"
+    },
+    {
+      "columns": [
+        "source_id",
+        "status",
+        "updated_at DESC",
+        "job_id DESC"
+      ],
+      "name": "idx_axon_jobs_source_status_updated",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "updated_at DESC",
+        "job_id DESC"
+      ],
+      "name": "idx_axon_jobs_source_updated",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "kind",
+        "updated_at DESC",
+        "job_id DESC"
+      ],
+      "name": "idx_axon_jobs_status_kind_updated",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "updated_at DESC",
+        "job_id DESC"
+      ],
+      "name": "idx_axon_jobs_updated",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "watch_id",
+        "status",
+        "updated_at DESC",
+        "job_id DESC"
+      ],
+      "name": "idx_axon_jobs_watch_status_updated",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "watch_id",
+        "updated_at DESC",
+        "job_id DESC"
+      ],
+      "name": "idx_axon_jobs_watch_updated",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "last_error_code"
+      ],
+      "name": "idx_axon_session_watch_checkpoints_error",
+      "table": "axon_session_watch_checkpoints",
+      "unique": false,
+      "where": "last_error_code IS NOT NULL"
+    },
+    {
+      "columns": [
+        "provider"
+      ],
+      "name": "idx_axon_session_watch_checkpoints_provider",
+      "table": "axon_session_watch_checkpoints",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "state"
+      ],
+      "name": "idx_axon_session_watch_checkpoints_state",
+      "table": "axon_session_watch_checkpoints",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "path_hash"
+      ],
+      "name": "idx_axon_session_watch_errors_path",
+      "table": "axon_session_watch_errors",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "next_retry_at"
+      ],
+      "name": "idx_cleanup_debt_status_retry",
+      "table": "cleanup_debt",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "name": "idx_crawl_status",
+      "table": "axon_crawl_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "created_at DESC"
+      ],
+      "name": "idx_crawl_status_created",
+      "table": "axon_crawl_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "generation",
+        "source_item_key"
+      ],
+      "name": "idx_document_status_source_generation_item",
+      "table": "document_status",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "name": "idx_embed_status",
+      "table": "axon_embed_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "created_at DESC"
+      ],
+      "name": "idx_embed_status_created",
+      "table": "axon_embed_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "name": "idx_extract_status",
+      "table": "axon_extract_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "created_at DESC"
+      ],
+      "name": "idx_extract_status_created",
+      "table": "axon_extract_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "node_id"
+      ],
+      "name": "idx_graph_aliases_node",
+      "table": "graph_aliases",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "target_kind",
+        "target_id"
+      ],
+      "name": "idx_graph_conflicts_target",
+      "table": "graph_conflicts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "from_node_id"
+      ],
+      "name": "idx_graph_edges_from",
+      "table": "graph_edges",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "to_node_id"
+      ],
+      "name": "idx_graph_edges_to",
+      "table": "graph_edges",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "kind",
+        "from_node_id",
+        "to_node_id"
+      ],
+      "name": "idx_graph_edges_tuple",
+      "table": "graph_edges",
+      "unique": true,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "name": "idx_graph_evidence_source",
+      "table": "graph_evidence",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "kind",
+        "stable_key"
+      ],
+      "name": "idx_graph_nodes_stable_key",
+      "table": "graph_nodes",
+      "unique": true,
+      "where": null
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "name": "idx_ingest_status",
+      "table": "axon_ingest_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "created_at DESC"
+      ],
+      "name": "idx_ingest_status_created",
+      "table": "axon_ingest_jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "lease_key",
+        "expires_at"
+      ],
+      "name": "idx_leases_key_expires",
+      "table": "leases",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "name": "idx_memory_edges_source",
+      "table": "axon_memory_edges",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "target_id"
+      ],
+      "name": "idx_memory_edges_target",
+      "table": "axon_memory_edges",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "memory_id"
+      ],
+      "name": "idx_memory_links_memory",
+      "table": "memory_links",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "project",
+        "type"
+      ],
+      "name": "idx_memory_nodes_active",
+      "table": "axon_memory_nodes",
+      "unique": false,
+      "where": "status='active'"
+    },
+    {
+      "columns": [
+        "scope_kind",
+        "scope_value"
+      ],
+      "name": "idx_memory_records_scope",
+      "table": "memory_records",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "name": "idx_memory_records_status",
+      "table": "memory_records",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "scope_kind",
+        "scope_value"
+      ],
+      "name": "idx_memory_records_status_scope",
+      "table": "memory_records",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "memory_type"
+      ],
+      "name": "idx_memory_records_type",
+      "table": "memory_records",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "memory_type",
+        "status"
+      ],
+      "name": "idx_memory_records_type_status",
+      "table": "memory_records",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "updated_at"
+      ],
+      "name": "idx_memory_records_updated",
+      "table": "memory_records",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "memory_id"
+      ],
+      "name": "idx_memory_reinforcement_memory",
+      "table": "memory_reinforcement",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "memory_id",
+        "created_at"
+      ],
+      "name": "idx_memory_reinforcement_memory_time",
+      "table": "memory_reinforcement",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "resolved"
+      ],
+      "name": "idx_memory_reviews_open",
+      "table": "memory_reviews",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "sequence"
+      ],
+      "name": "idx_source_generations_source_sequence",
+      "table": "source_generations",
+      "unique": true,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "status",
+        "created_at"
+      ],
+      "name": "idx_source_generations_source_status_created",
+      "table": "source_generations",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "item_canonical_uri"
+      ],
+      "name": "idx_source_items_canonical_uri",
+      "table": "source_items",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "source_item_key",
+        "generation"
+      ],
+      "name": "idx_source_items_key_generation",
+      "table": "source_items",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "watch_id",
+        "created_at DESC",
+        "id DESC"
+      ],
+      "name": "idx_source_watch_runs_watch_id",
+      "table": "axon_source_watch_runs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "next_run_at"
+      ],
+      "name": "idx_source_watches_due",
+      "table": "axon_source_watches",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "name": "idx_source_watches_source_id",
+      "table": "axon_source_watches",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "json_extract(summary_json, '$.canonical_uri')"
+      ],
+      "name": "idx_sources_canonical_uri",
+      "table": "sources",
+      "unique": true,
+      "where": null
+    },
+    {
+      "columns": [
+        "next_run_at"
+      ],
+      "name": "idx_watch_defs_due",
+      "table": "axon_watch_defs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "watch_id",
+        "created_at DESC"
+      ],
+      "name": "idx_watch_runs_watch_id",
+      "table": "axon_watch_runs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "name": "job_artifacts_job_id_idx",
+      "table": "job_artifacts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "artifact_kind"
+      ],
+      "name": "job_artifacts_job_kind_idx",
+      "table": "job_artifacts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "name": "job_attempts_job_id_idx",
+      "table": "job_attempts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "dedupe_key"
+      ],
+      "name": "job_events_job_dedupe_key_idx",
+      "table": "job_events",
+      "unique": true,
+      "where": "dedupe_key IS NOT NULL"
+    },
+    {
+      "columns": [
+        "job_id",
+        "phase"
+      ],
+      "name": "job_events_job_phase_idx",
+      "table": "job_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "sequence"
+      ],
+      "name": "job_events_job_sequence_idx",
+      "table": "job_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "severity"
+      ],
+      "name": "job_events_job_severity_idx",
+      "table": "job_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "visibility"
+      ],
+      "name": "job_events_job_visibility_idx",
+      "table": "job_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "heartbeat_at"
+      ],
+      "name": "job_heartbeats_heartbeat_at_idx",
+      "table": "job_heartbeats",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "name": "job_heartbeats_job_id_idx",
+      "table": "job_heartbeats",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "name": "job_stages_job_id_idx",
+      "table": "job_stages",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "created_at DESC"
+      ],
+      "name": "jobs_created_at_desc_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "idempotency_key"
+      ],
+      "name": "jobs_idempotency_key_idx",
+      "table": "jobs",
+      "unique": true,
+      "where": "idempotency_key IS NOT NULL"
+    },
+    {
+      "columns": [
+        "kind",
+        "status",
+        "created_at DESC"
+      ],
+      "name": "jobs_kind_status_created_at_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id",
+        "created_at DESC"
+      ],
+      "name": "jobs_source_id_created_at_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "name": "jobs_source_id_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "created_at DESC"
+      ],
+      "name": "jobs_status_created_at_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "status",
+        "updated_at"
+      ],
+      "name": "jobs_status_updated_at_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "watch_id",
+        "created_at DESC"
+      ],
+      "name": "jobs_watch_id_created_at_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "watch_id"
+      ],
+      "name": "jobs_watch_id_idx",
+      "table": "jobs",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id"
+      ],
+      "name": "provider_reservations_job_id_idx",
+      "table": "provider_reservations",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "provider_kind"
+      ],
+      "name": "provider_reservations_provider_kind_idx",
+      "table": "provider_reservations",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "stage_id"
+      ],
+      "name": "provider_reservations_stage_id_idx",
+      "table": "provider_reservations",
+      "unique": false,
+      "where": null
+    }
+  ],
+  "migrations": [
+    {
+      "file": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "owner_crate": "axon-ledger",
+      "tables_touched": [
+        "cleanup_debt",
+        "document_status",
+        "leases",
+        "source_generations",
+        "source_items",
+        "source_manifests",
+        "sources"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0001_create_tables.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_watch_defs",
+        "axon_watch_run_artifacts",
+        "axon_watch_runs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0003_add_status_checks.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_crawl_jobs",
+        "axon_crawl_jobs_v2",
+        "axon_embed_jobs",
+        "axon_embed_jobs_v2",
+        "axon_extract_jobs",
+        "axon_extract_jobs_v2",
+        "axon_ingest_jobs",
+        "axon_ingest_jobs_v2"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0004_status_created_at_index.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0005_add_attempt_metadata.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0006_create_ingest_payloads.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_ingest_payloads"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0007_create_watch_url_state.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_watch_url_state"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0008_add_embed_fs_namespace.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_embed_jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0009_create_memory_tables.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_memory_edges",
+        "axon_memory_nodes"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0010_create_session_watch_tables.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_session_watch_checkpoints",
+        "axon_session_watch_errors"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0011_add_session_watch_checkpoint_state.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_session_watch_checkpoints"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0012_add_memory_runtime_metadata.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_memory_nodes"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0013_add_job_progress_json.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0014_backfill_active_job_progress_json.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": []
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0015_freshness.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_freshness_defs",
+        "axon_freshness_runs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0016_freshness_run_retention_index.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_freshness_runs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0017_source_ledger.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": []
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "job_artifacts",
+        "job_attempts",
+        "job_events",
+        "job_heartbeats",
+        "job_stages",
+        "jobs",
+        "provider_reservations"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0019_unified_jobs_contract_fields.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "job_attempts",
+        "job_events",
+        "job_stages",
+        "jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0020_job_cutover_receipts.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_job_cutover_receipts"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0021_job_kind_family_cutover.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "jobs",
+        "jobs_v2"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0022_add_job_cooldown_until.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "jobs"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0023_create_source_watch_store.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "axon_source_watch_runs",
+        "axon_source_watches"
+      ]
+    },
+    {
+      "file": "crates/axon-jobs/src/migrations/0024_job_intent_widen_and_deadline.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "jobs",
+        "jobs_v3"
+      ]
+    },
+    {
+      "file": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "owner_crate": "axon-graph",
+      "tables_touched": [
+        "graph_aliases",
+        "graph_conflicts",
+        "graph_edges",
+        "graph_evidence",
+        "graph_nodes"
+      ]
+    },
+    {
+      "file": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
+      "owner_crate": "axon-memory",
+      "tables_touched": [
+        "memory_links",
+        "memory_records",
+        "memory_reinforcement",
+        "memory_reviews"
+      ]
+    },
+    {
+      "file": "crates/axon-memory/src/migrations/0002_batch_recovery_indexes.sql",
+      "owner_crate": "axon-memory",
+      "tables_touched": [
+        "memory_records",
+        "memory_reinforcement"
+      ]
+    },
+    {
+      "file": "crates/axon-memory/src/migrations/0003_add_memory_visibility.sql",
+      "owner_crate": "axon-memory",
+      "tables_touched": []
+    }
+  ],
+  "schema_version": 1,
+  "tables": [
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "url",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "config_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_text",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "attempt_count",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "active_attempt_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_reclaimed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_reclaimed_reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "progress_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0003_add_status_checks.sql",
+      "name": "axon_crawl_jobs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "input_text",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "config_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_text",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "attempt_count",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "active_attempt_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_reclaimed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_reclaimed_reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "fs_namespace",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "progress_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0003_add_status_checks.sql",
+      "name": "axon_embed_jobs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "urls_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "config_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_text",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "attempt_count",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "active_attempt_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_reclaimed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_reclaimed_reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "progress_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0003_add_status_checks.sql",
+      "name": "axon_extract_jobs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "command",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "target",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "identity_hash",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "request_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "config_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "every_seconds",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "enabled",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "next_run_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "lease_expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_run_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0015_freshness.sql",
+      "name": "axon_freshness_defs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "freshness_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "dispatched_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_text",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "heartbeat_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "freshness_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_freshness_defs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0015_freshness.sql",
+      "name": "axon_freshness_runs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "target",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "config_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_text",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "attempt_count",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "active_attempt_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_reclaimed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_reclaimed_reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "progress_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0003_add_status_checks.sql",
+      "name": "axon_ingest_jobs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "payload_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "payload_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_ingest_jobs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0006_create_ingest_payloads.sql",
+      "name": "axon_ingest_payloads",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "job_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "receipt_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "receipt_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "message",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0020_job_cutover_receipts.sql",
+      "name": "axon_job_cutover_receipts",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "receipt_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "target_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_memory_nodes"
+        },
+        {
+          "columns": [
+            "target_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_memory_nodes"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0009_create_memory_tables.sql",
+      "name": "axon_memory_edges",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "project",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "repo",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "file_path",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "source",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "access_count",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_seen_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "workspace",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "git_branch",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "git_commit",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "git_dirty",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "cwd",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0009_create_memory_tables.sql",
+      "name": "axon_memory_nodes",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "path_hash",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "provider",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "basename",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "redacted_display",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "file_size",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "file_mtime_ms",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "content_hash",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "failure_count",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "next_attempt_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_indexed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_error_code",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_error_redacted",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "state",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "remote_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0010_create_session_watch_tables.sql",
+      "name": "axon_session_watch_checkpoints",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "path_hash"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "path_hash",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "provider",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "basename",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_code",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_redacted",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "occurred_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0010_create_session_watch_tables.sql",
+      "name": "axon_session_watch_errors",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "watch_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "watch_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "watch_id"
+          ],
+          "references_table": "axon_source_watches"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0023_create_source_watch_store.sql",
+      "name": "axon_source_watch_runs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "watch_id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "source",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "canonical_uri",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "adapter_name",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "adapter_version",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "scope",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "embed",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "options_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "collection",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "enabled",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "every_seconds",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "cron",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "timezone",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "next_run_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_status",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0023_create_source_watch_store.sql",
+      "name": "axon_source_watches",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "watch_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "task_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "task_payload",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "every_seconds",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "enabled",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "next_run_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "lease_expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_run_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
+      "name": "axon_watch_defs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "watch_run_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "path",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "payload",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "watch_run_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_watch_runs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
+      "name": "axon_watch_run_artifacts",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "watch_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "dispatched_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_text",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "watch_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_watch_defs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
+      "name": "axon_watch_runs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "watch_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "url",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "etag",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_modified",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "content_hash",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_markdown",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_links_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_checked_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_changed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "last_crawl_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "watch_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_watch_defs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0007_create_watch_url_state.sql",
+      "name": "axon_watch_url_state",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "watch_id",
+        "url"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "debt_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "selector_hash",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "debt_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "attempts",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "next_retry_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "completed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "source_id"
+          ],
+          "references_table": "sources"
+        }
+      ],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "cleanup_debt",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "debt_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "document_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_item_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "source_id"
+          ],
+          "references_table": "sources"
+        }
+      ],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "document_status",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "document_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "alias_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "alias_value",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "node_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "node_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "node_id"
+          ],
+          "references_table": "graph_nodes"
+        }
+      ],
+      "introduced_in": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "name": "graph_aliases",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "alias_kind",
+        "alias_value"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "conflict_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "target_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "target_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "field",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "existing_value",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "incoming_value",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "existing_authority",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "incoming_authority",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "detected_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "name": "graph_conflicts",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "conflict_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "edge_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "from_node_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "to_node_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "authority",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "metadata_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "from_node_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "node_id"
+          ],
+          "references_table": "graph_nodes"
+        },
+        {
+          "columns": [
+            "to_node_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "node_id"
+          ],
+          "references_table": "graph_nodes"
+        }
+      ],
+      "introduced_in": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "name": "graph_edges",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "edge_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "evidence_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "edge_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "evidence_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_item_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "document_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "chunk_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "range_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "quote",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "metadata_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "edge_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "edge_id"
+          ],
+          "references_table": "graph_edges"
+        }
+      ],
+      "introduced_in": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "name": "graph_evidence",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "edge_id",
+        "evidence_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "node_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "stable_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "canonical_uri",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "display_name",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "authority",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "metadata_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_ids_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "name": "graph_nodes",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "node_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "artifact_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "artifact_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "uri",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "size_bytes",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "content_hash",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "name": "job_artifacts",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "artifact_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "attempt_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "worker_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "started_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "heartbeat_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "name": "job_attempts",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "attempt_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "event_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "sequence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "stage_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "phase",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "severity",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "visibility",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "message",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "timestamp",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "dedupe_key",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "details_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs"
+        },
+        {
+          "columns": [
+            "stage_id"
+          ],
+          "on_delete": "SET NULL",
+          "references_columns": [
+            "stage_id"
+          ],
+          "references_table": "job_stages"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "name": "job_events",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "event_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "heartbeat_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "heartbeat_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "name": "job_heartbeats",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "job_id",
+        "attempt"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "stage_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "phase",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "required",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "provider_requirements_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "counts_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "completed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "name": "job_stages",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "stage_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "intent",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "phase",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "priority",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "watch_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "parent_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "root_job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "counts_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "current_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "heartbeat_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_error_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "warnings_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "request_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "metadata_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "idempotency_key",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "started_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "finished_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "auth_snapshot_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "config_snapshot_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "stage_plan_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "requirements_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "result_schema",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "error_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_event_sequence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "cooldown_until",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "deadline_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id"
+          ],
+          "on_delete": "SET NULL",
+          "references_columns": [
+            "source_id"
+          ],
+          "references_table": "sources"
+        },
+        {
+          "columns": [
+            "watch_id"
+          ],
+          "on_delete": "SET NULL",
+          "references_columns": [
+            "id"
+          ],
+          "references_table": "axon_watch_defs"
+        },
+        {
+          "columns": [
+            "parent_job_id"
+          ],
+          "on_delete": "SET NULL",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs_v3"
+        },
+        {
+          "columns": [
+            "root_job_id"
+          ],
+          "on_delete": "SET NULL",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs_v3"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0024_job_intent_widen_and_deadline.sql",
+      "name": "jobs",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "job_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "lease_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "lease_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "owner_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "acquired_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "expires_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "heartbeat_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "lease_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "leases",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "lease_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "memory_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "link_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "target",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "evidence_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "memory_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "memory_id"
+          ],
+          "references_table": "memory_records"
+        }
+      ],
+      "introduced_in": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
+      "name": "memory_links",
+      "owner_crate": "axon-memory",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "memory_id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "memory_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "body",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "salience",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "scope_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "scope_value",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "decay_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "history_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "embedding_refs_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "superseded_by",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "contradicts",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "visibility",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
+      "name": "memory_records",
+      "owner_crate": "axon-memory",
+      "primary_key": [
+        "memory_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "memory_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "real"
+        },
+        {
+          "name": "reason",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "memory_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "memory_id"
+          ],
+          "references_table": "memory_records"
+        }
+      ],
+      "introduced_in": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
+      "name": "memory_reinforcement",
+      "owner_crate": "axon-memory",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "memory_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "resolved",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "resolved_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "memory_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "memory_id"
+          ],
+          "references_table": "memory_records"
+        }
+      ],
+      "introduced_in": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
+      "name": "memory_reviews",
+      "owner_crate": "axon-memory",
+      "primary_key": [
+        "id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "reservation_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "stage_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "provider_kind",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "provider_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "priority",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "requested_units",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "granted_units",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "acquired_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "queue_depth",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "cooling_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "job_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "job_id"
+          ],
+          "references_table": "jobs"
+        },
+        {
+          "columns": [
+            "stage_id"
+          ],
+          "on_delete": "SET NULL",
+          "references_columns": [
+            "stage_id"
+          ],
+          "references_table": "job_stages"
+        }
+      ],
+      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "name": "provider_reservations",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "reservation_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "sequence",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "publish_state",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "published_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "source_id"
+          ],
+          "references_table": "sources"
+        }
+      ],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "source_generations",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "source_id",
+        "generation"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "source_item_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "item_canonical_uri",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "content_hash",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "version",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "mtime",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "item_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id",
+            "generation"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "source_id",
+            "generation"
+          ],
+          "references_table": "source_manifests"
+        }
+      ],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "source_items",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "source_id",
+        "generation",
+        "source_item_key"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "manifest_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id",
+            "generation"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "source_id",
+            "generation"
+          ],
+          "references_table": "source_generations"
+        }
+      ],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "source_manifests",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "source_id",
+        "generation"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "committed_generation",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "summary_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "sources",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "source_id"
+      ]
+    }
+  ],
   "title": "AxonDatabaseSchema",
   "type": "object",
+  "views": [],
   "x-axon": {
     "clean_break": true,
     "contract_version": "2026-06-30",
     "generated_by": "cargo xtask schemas database",
     "owner_crates": [
       "axon-jobs",
-      "axon-ledger"
+      "axon-ledger",
+      "axon-graph",
+      "axon-memory"
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:d2b8be9e21365ef241acc5b763576f0e246863266efc639d422b30dc40378aa5",
+        "checksum": "sha256:0386be31730c916c31e940f4257a03380562634f67f634a96df4e71c2d5edc3b",
+        "kind": "sql_migration_directory",
+        "path": "crates/axon-graph/src/migrations"
+      },
+      {
+        "checksum": "sha256:8fd206e8313f599006b520d1504f2cb65cfe140650a8ab975722ab784f86b6f7",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },
@@ -233,9 +5071,24 @@
         "path": "crates/axon-ledger/src/migrations"
       },
       {
+        "checksum": "sha256:1d08bb6ab6696a4c7e574a3915cd003c270ec427b12ab2e68592aaf686c7958a",
+        "kind": "sql_migration_directory",
+        "path": "crates/axon-memory/src/migrations"
+      },
+      {
         "checksum": "sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/database-schema.md"
+      },
+      {
+        "checksum": "sha256:cbd4c77c0e062a56b476afc0b007c02d333c68f598d409101dbaf44610912386",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/database_defs.rs"
+      },
+      {
+        "checksum": "sha256:4ffeb151312c88f1b1d316f58d57450bed1224a374689d6fae02761de788ec4c",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/database_defs/parser.rs"
       }
     ]
   }

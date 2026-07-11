@@ -50,7 +50,7 @@ fn rejects_malformed_input() {
 fn age_days_prefers_last_reinforced_over_history() {
     use axon_api::source::{
         MemoryDecayPolicy, MemoryHistoryEvent, MemoryId, MemoryRecord, MemoryScope, MemoryStatus,
-        MemoryType, Timestamp,
+        MemoryType, Timestamp, Visibility,
     };
     let record = MemoryRecord {
         memory_id: MemoryId::new("m"),
@@ -69,6 +69,7 @@ fn age_days_prefers_last_reinforced_over_history() {
             // 10 days before "now"
             timestamp: Timestamp("2026-01-01T00:00:00Z".to_string()),
         }],
+        visibility: Visibility::Internal,
         title: None,
         links: Vec::new(),
         decay: Some(MemoryDecayPolicy {

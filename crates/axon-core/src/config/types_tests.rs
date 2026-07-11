@@ -153,7 +153,7 @@ fn config_default_minimal_applies_toml_tuning_when_env_unset() {
                 .expect("temp config");
             writeln!(
                 file,
-                "[tei]\nmax-retries = 4\n[workers]\ningest-lanes = 6\n[search]\nhnsw-ef = 300"
+                "[providers.embedding]\nmax-retries = 4\n[pipeline]\ningest-lanes = 6\n[providers.vector]\nhnsw-ef = 300"
             )
             .expect("write config");
             unsafe {

@@ -10,14 +10,12 @@
 //! `SqliteJobBackend::new_with_workers_and_registry` at composition time.
 //!
 //! Scope: this wave wires `ProviderProbe` (backed by the real
-//! `system::doctor::doctor` connectivity check) and `MemoryCompaction`
-//! (backed by the real `SqliteMemoryStore::capabilities` call — there is no
-//! dedicated memory-compaction domain entrypoint yet, so this runner reports
-//! store capabilities/health as an honest, safe, idempotent placeholder until
-//! real compaction logic lands). `GraphMutation`/`Prune`/`Watch` are
-//! intentionally left unregistered — they run as sub-steps of a parent
-//! operation or have their own scheduler, and forcing them through this seam
-//! here risks a rushed, wrong implementation of the trickiest cases.
+//! `system::doctor::doctor` connectivity check) and `Memory` (backed by real
+//! `SqliteMemoryStore::compact`/`import` calls — see [`MemoryCompactionRunner`]).
+//! `GraphMutation`/`Prune`/`Watch` are intentionally left unregistered — they
+//! run as sub-steps of a parent operation or have their own scheduler, and
+//! forcing them through this seam here risks a rushed, wrong implementation
+//! of the trickiest cases.
 
 use std::sync::Arc;
 
@@ -38,8 +36,10 @@ use tokio_util::sync::CancellationToken;
 
 mod crawl_runner;
 mod ingest_runner;
+mod source_runner;
 use crawl_runner::CrawlRunner;
 use ingest_runner::IngestRunner;
+use source_runner::SourceRunner;
 
 /// Build the [`JobRunnerRegistry`] handed to the unified worker at
 /// composition time. Additive by design — any kind not registered here keeps
@@ -81,6 +81,10 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
             cfg: Arc::clone(cfg),
         }),
     );
+    registry.register(
+        JobKind::Source,
+        Arc::new(SourceRunner::new(Arc::clone(cfg))),
+    );
 
     // Open once and reuse: `SqliteMemoryStore::open` runs a schema migration
     // via a bare `rusqlite::Connection` with no busy-timeout configured. Doing
@@ -116,6 +120,8 @@ pub(crate) async fn heartbeat_running(
             status: LifecycleStatus::Running,
             stage_id: None,
             heartbeat_at: Timestamp::from(chrono::Utc::now()),
+            sequence: 0,
+            last_progress_at: None,
             last_event_sequence: None,
             counts: None,
             provider_reservations: Vec::new(),
@@ -162,15 +168,31 @@ fn probe_error(message: impl Into<String>) -> ApiError {
     )
 }
 
-/// Runs a real (if minimal) memory-store operation for a `MemoryCompaction`
-/// job. There is no dedicated compaction entrypoint in `axon-memory` yet
-/// (`OperationKind::MemoryCompaction` is currently policy-only — see
-/// `crates/axon-services/src/jobs.rs`), so this runner opens the real
-/// `SqliteMemoryStore` on the unified jobs DB and calls its real
-/// `capabilities()` — a genuine, safe, idempotent domain call that proves the
-/// registry seam end-to-end without fabricating compaction behavior that
-/// does not exist. Replace the body with real compaction logic once that
-/// domain entrypoint lands.
+/// Runs a claimed `Memory` unified job by dispatching on
+/// `request_json.operation`:
+/// - `"memory_compaction"` — deserializes `request_json.payload` as a
+///   [`axon_api::source::MemoryCompactRequest`] and calls the real
+///   `SqliteMemoryStore::compact`.
+/// - `"memory_import"` — deserializes `request_json.payload` as a
+///   [`axon_api::source::MemoryImportRequest`] and calls the real
+///   `SqliteMemoryStore::import`.
+///
+/// `crates/axon-services/src/memory/compact.rs::compact` and
+/// `.../import_export.rs::import` embed exactly this `{operation, payload}`
+/// shape when they job-track a foreground call (contract R3-16: memory jobs
+/// pollable via `job_id`), so a job claimed here — whether created by that
+/// foreground path or enqueued directly against the unified store for
+/// detached execution — runs the same real domain call either way.
+///
+/// This runner opens a plain `SqliteMemoryStore` (not the graph/vector-
+/// decorated composition `crate::memory::store::memory_store` builds, which
+/// needs an async `ServiceContext` this registry-build seam does not have
+/// available) — so a compaction executed through this detached path mirrors
+/// into the graph and embeds into the vector store only when it *also* runs
+/// through the foreground `axon-services::memory` call. A job with no
+/// recognized `operation`/`payload` (e.g. a bare smoke-test job) falls back
+/// to a safe, idempotent `capabilities()` call rather than failing, so the
+/// registry seam itself stays provable independent of a real payload.
 struct MemoryCompactionRunner {
     memory_store: Arc<SqliteMemoryStore>,
 }
@@ -189,11 +211,47 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                 "memory compaction canceled before running",
             ));
         }
-        self.memory_store
-            .capabilities()
-            .await
-            .map(|_capability| ())
-            .map_err(|error| compaction_error(error.message))
+
+        let operation = claimed
+            .request_json
+            .as_ref()
+            .and_then(|json| json.get("operation"))
+            .and_then(|v| v.as_str());
+        let payload = claimed
+            .request_json
+            .as_ref()
+            .and_then(|json| json.get("payload"));
+
+        match (operation, payload) {
+            (Some("memory_compaction"), Some(payload)) => {
+                let request: axon_api::source::MemoryCompactRequest =
+                    serde_json::from_value(payload.clone()).map_err(|error| {
+                        compaction_error(format!("invalid memory_compaction payload: {error}"))
+                    })?;
+                self.memory_store
+                    .compact(request)
+                    .await
+                    .map(|_result| ())
+                    .map_err(|error| compaction_error(error.message))
+            }
+            (Some("memory_import"), Some(payload)) => {
+                let request: axon_api::source::MemoryImportRequest =
+                    serde_json::from_value(payload.clone()).map_err(|error| {
+                        compaction_error(format!("invalid memory_import payload: {error}"))
+                    })?;
+                self.memory_store
+                    .import(request)
+                    .await
+                    .map(|_result| ())
+                    .map_err(|error| compaction_error(error.message))
+            }
+            _ => self
+                .memory_store
+                .capabilities()
+                .await
+                .map(|_capability| ())
+                .map_err(|error| compaction_error(error.message)),
+        }
     }
 }
 

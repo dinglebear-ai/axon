@@ -203,7 +203,9 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "files",
   }),
   scrape: entry({
-    route: postRoute("/v1/scrape"),
+    // Verb route removed server-side; routes through the unified source
+    // pipeline (see the comment on `scrapeBody` in actionRequest.ts).
+    route: postRoute("/v1/sources"),
     buildBody: scrapeBody,
     outputKind: md,
     formatText: formatScrape,
@@ -211,7 +213,9 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "scrape",
   }),
   crawl: entry({
-    route: postRoute("/v1/crawl"),
+    // Verb route removed server-side; routes through the unified source
+    // pipeline (see the comment on `crawlBody` in actionRequest.ts).
+    route: postRoute("/v1/sources"),
     buildBody: crawlBody,
     outputKind: code,
     formatText: jobStartFormatter("crawl"),
@@ -301,7 +305,9 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "research",
   }),
   embed: entry({
-    route: postRoute("/v1/embed"),
+    // Verb route removed server-side; routes through the unified source
+    // pipeline (see the comment on `embedBody` in actionRequest.ts).
+    route: postRoute("/v1/sources"),
     buildBody: embedBody,
     outputKind: code,
     formatText: jobStartFormatter("embed"),
@@ -317,7 +323,9 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "extract",
   }),
   ingest: entry({
-    route: postRoute("/v1/ingest"),
+    // Verb route removed server-side; routes through the unified source
+    // pipeline (see the comment on `ingestBody` in actionRequest.ts).
+    route: postRoute("/v1/sources"),
     buildBody: ingestBody,
     outputKind: code,
     formatText: jobStartFormatter("ingest"),

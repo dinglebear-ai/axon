@@ -54,7 +54,7 @@ pub async fn get_mobile_session(
     responses(
         (status = 200, description = "Upserted mobile chat session", body = UpsertMobileSessionResponse),
         (status = 400, description = "Invalid session payload", body = crate::server::error::ErrorBody),
-        (status = 409, description = "Stale mobile session update", body = crate::server::error::ErrorBody)
+        (status = 409, description = "Stale mobile session update: `updated_at` is older than the stored session, or `sync_version` no longer matches the server's optimistic-concurrency counter", body = crate::server::error::ErrorBody)
     ),
     tag = "mobile"
 )]

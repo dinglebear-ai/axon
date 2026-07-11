@@ -1,0 +1,13 @@
+{
+  "memory_ids": ["mem_a1b2c3d4", "mem_e5f6a7b8"],
+  "strategy": "concatenate",
+  "result_type": "fact",
+  "title": "Vector collection default mode (resolved)",
+  "scope": {
+    "kind": "repo",
+    "value": "jmagar/axon"
+  },
+  "archive_sources": true,
+  "instructions": null,
+  "timestamp": "2026-07-09T00:00:00Z"
+}

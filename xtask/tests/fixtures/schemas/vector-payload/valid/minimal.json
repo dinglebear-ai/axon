@@ -82,5 +82,8 @@
   "source_scope": "source_scope",
   "vector_namespace": "vector_namespace",
   "vector_point_id": "vector_point_id",
-  "visibility": "internal"
+  "visibility": "internal",
+  "chunk_index": 0,
+  "chunking_profile": "markdown_sections",
+  "chunking_method": "heading_sections"
 }

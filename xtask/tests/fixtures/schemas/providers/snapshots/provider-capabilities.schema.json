@@ -685,6 +685,11 @@
           "type": "string"
         },
         {
+          "const": "enriching",
+          "description": "Enrichment (metadata/classification/summary/extraction/authority).",
+          "type": "string"
+        },
+        {
           "const": "normalizing",
           "description": "SourceDocument creation.",
           "type": "string"
@@ -705,8 +710,18 @@
           "type": "string"
         },
         {
+          "const": "batching",
+          "description": "Batch assembly for embedding/vectorizing.",
+          "type": "string"
+        },
+        {
           "const": "embedding",
           "description": "Embedding provider/batch.",
+          "type": "string"
+        },
+        {
+          "const": "vectorizing",
+          "description": "Vector point construction/payload build.",
           "type": "string"
         },
         {
@@ -735,8 +750,33 @@
           "type": "string"
         },
         {
+          "const": "evaluating",
+          "description": "RAG/evaluation scoring.",
+          "type": "string"
+        },
+        {
           "const": "observing",
           "description": "Progress/log/status emit.",
+          "type": "string"
+        },
+        {
+          "const": "storage",
+          "description": "Storage boundary (ledger/artifact/job store), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "provider",
+          "description": "Provider boundary (embedding/llm/render/search), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "transport",
+          "description": "Transport boundary (CLI/REST/MCP dispatch), phase-contextual.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Internal/unclassified failure within the active operation phase.",
           "type": "string"
         }
       ]
@@ -1518,6 +1558,84 @@
       "type": "string"
     },
     "enums": {
+      "ArtifactKind": {
+        "enum": [
+          "raw_content",
+          "normalized_content",
+          "manifest",
+          "report",
+          "screenshot",
+          "warc",
+          "provider_trace"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ArtifactKind"
+        }
+      },
+      "ArtifactMode": {
+        "enum": [
+          "none",
+          "on_large_output",
+          "always"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ArtifactMode"
+        }
+      },
+      "AuthorityLevel": {
+        "enum": [
+          "official",
+          "verified",
+          "user_pinned",
+          "inferred",
+          "community",
+          "mirror",
+          "conflicting",
+          "unknown"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "AuthorityLevel"
+        }
+      },
+      "CachePolicy": {
+        "enum": [
+          "bypass",
+          "use",
+          "revalidate",
+          "offline"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "CachePolicy"
+        }
+      },
+      "ChunkProfile": {
+        "enum": [
+          "code_symbol",
+          "code_manifest",
+          "markdown_sections",
+          "html_article",
+          "plain_text_windows",
+          "transcript_segments",
+          "structured_records",
+          "api_schema",
+          "tool_output",
+          "session_turns",
+          "atomic_metadata"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ChunkProfile"
+        }
+      },
       "CleanupDebtKind": {
         "enum": [
           "vector_delete",
@@ -1532,6 +1650,57 @@
         "x-axon": {
           "owner_crate": "providers",
           "rust_enum": "CleanupDebtKind"
+        }
+      },
+      "ContentKind": {
+        "enum": [
+          "code",
+          "markdown",
+          "html",
+          "plain_text",
+          "transcript",
+          "structured",
+          "json",
+          "yaml",
+          "toml",
+          "xml",
+          "binary_metadata"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ContentKind"
+        }
+      },
+      "CredentialKind": {
+        "enum": [
+          "api_key",
+          "o_auth_token",
+          "bearer_token",
+          "basic_auth",
+          "cookie",
+          "ssh_key",
+          "local_config"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "CredentialKind"
+        }
+      },
+      "DiffKind": {
+        "enum": [
+          "added",
+          "modified",
+          "removed",
+          "unchanged",
+          "skipped",
+          "failed"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "DiffKind"
         }
       },
       "DocumentLifecycleStatus": {
@@ -1556,6 +1725,86 @@
           "rust_enum": "DocumentLifecycleStatus"
         }
       },
+      "EnrichmentKind": {
+        "enum": [
+          "none",
+          "metadata",
+          "classification",
+          "summary",
+          "extraction",
+          "authority",
+          "dependency",
+          "api_schema",
+          "tool_schema",
+          "session",
+          "custom"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "EnrichmentKind"
+        }
+      },
+      "ExecutionAffinity": {
+        "enum": [
+          "inline",
+          "worker",
+          "scheduler",
+          "provider_bound"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ExecutionAffinity"
+        }
+      },
+      "ExecutionMode": {
+        "enum": [
+          "foreground",
+          "background",
+          "wait"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ExecutionMode"
+        }
+      },
+      "HealthStatus": {
+        "enum": [
+          "healthy",
+          "degraded",
+          "unavailable",
+          "cooling",
+          "unknown"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "HealthStatus"
+        }
+      },
+      "ItemKind": {
+        "enum": [
+          "web_page",
+          "repo_file",
+          "local_file",
+          "package_version",
+          "feed_entry",
+          "transcript",
+          "session_turn",
+          "tool_call",
+          "cli_output",
+          "mcp_tool_output",
+          "memory_record",
+          "artifact"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ItemKind"
+        }
+      },
       "JobKind": {
         "enum": [
           "source",
@@ -1570,12 +1819,29 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset"
+          "reset",
+          "crawl",
+          "ingest",
+          "embed"
         ],
         "type": "string",
         "x-axon": {
           "owner_crate": "providers",
           "rust_enum": "JobKind"
+        }
+      },
+      "JobPriority": {
+        "enum": [
+          "interactive",
+          "high",
+          "normal",
+          "background",
+          "maintenance"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "JobPriority"
         }
       },
       "LifecycleStatus": {
@@ -1635,6 +1901,34 @@
           "rust_enum": "PipelinePhase"
         }
       },
+      "ProviderKind": {
+        "enum": [
+          "llm",
+          "embedding",
+          "vector",
+          "search",
+          "fetch",
+          "render",
+          "network_capture",
+          "artifact",
+          "ledger",
+          "graph",
+          "memory",
+          "job",
+          "watch",
+          "config",
+          "credential",
+          "cache",
+          "security",
+          "rate_limiter",
+          "health_probe"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ProviderKind"
+        }
+      },
       "PublishState": {
         "enum": [
           "planning",
@@ -1649,6 +1943,50 @@
         "x-axon": {
           "owner_crate": "providers",
           "rust_enum": "PublishState"
+        }
+      },
+      "ResponseMode": {
+        "enum": [
+          "auto",
+          "summary",
+          "full",
+          "inline",
+          "artifact",
+          "path",
+          "job_only"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "ResponseMode"
+        }
+      },
+      "SafetyClass": {
+        "enum": [
+          "public_network",
+          "authenticated_network",
+          "local_filesystem",
+          "tool_execution"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "SafetyClass"
+        }
+      },
+      "Severity": {
+        "enum": [
+          "debug",
+          "info",
+          "warning",
+          "degraded",
+          "failed",
+          "fatal"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "Severity"
         }
       },
       "SourceIntent": {
@@ -1683,6 +2021,80 @@
         "x-axon": {
           "owner_crate": "providers",
           "rust_enum": "SourceKind"
+        }
+      },
+      "SourceRefreshPolicy": {
+        "enum": [
+          "if_stale",
+          "force",
+          "never"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "SourceRefreshPolicy"
+        }
+      },
+      "SourceScope": {
+        "enum": [
+          "page",
+          "site",
+          "docs",
+          "repo",
+          "workspace",
+          "branch",
+          "org",
+          "package",
+          "version",
+          "feed",
+          "subreddit",
+          "thread",
+          "comment",
+          "video",
+          "playlist",
+          "channel",
+          "issue",
+          "pull_request",
+          "merge_request",
+          "release",
+          "wiki",
+          "file",
+          "directory",
+          "map",
+          "tool",
+          "script",
+          "api"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "SourceScope"
+        }
+      },
+      "SourceWatchPolicy": {
+        "enum": [
+          "disabled",
+          "ensure",
+          "enabled"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "SourceWatchPolicy"
+        }
+      },
+      "Visibility": {
+        "enum": [
+          "public",
+          "internal",
+          "sensitive",
+          "redacted",
+          "derived"
+        ],
+        "type": "string",
+        "x-axon": {
+          "owner_crate": "providers",
+          "rust_enum": "Visibility"
         }
       }
     }
@@ -1734,7 +2146,7 @@
         "path": "crates/axon-core/src/boundary.rs"
       },
       {
-        "checksum": "sha256:0a7f6c9f4936ea017c78273c8ce43c93952c9ea147f34439429149b4c89d6e80",
+        "checksum": "sha256:ee3ae9d7dbee3455d25afb00a4e9c62689521a6b543cec31c74d3eb082c8b17f",
         "kind": "rust_module",
         "path": "crates/axon-embedding/src/fake.rs"
       },
@@ -1744,7 +2156,7 @@
         "path": "crates/axon-embedding/src/provider.rs"
       },
       {
-        "checksum": "sha256:434f6306076a521876554880cc676663e7cd94b3998e4c80422f263df3d92a06",
+        "checksum": "sha256:6b864926eb293c52751e81390fc85f13f014900e7399bb8bafd014c4915ef6d5",
         "kind": "rust_module",
         "path": "crates/axon-llm/src/fake.rs"
       },
@@ -1759,7 +2171,7 @@
         "path": "crates/axon-observe/src/reservation.rs"
       },
       {
-        "checksum": "sha256:dcb2623f2d3757a17c364cf377dc5d746524a9a439608f051e09e5e00a43be6b",
+        "checksum": "sha256:147f6b2e4f9e857456d6ef7dfc5dd5142ba18e050f8d96a85723e4bc0837fb62",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/store.rs"
       },

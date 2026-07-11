@@ -271,10 +271,14 @@ fn populate_services_and_ask_basics(
     cfg.codex_completion_concurrency =
         parse_positive_usize_env("AXON_CODEX_COMPLETION_CONCURRENCY", 4)?;
     cfg.codex_load_user_config = env_bool("AXON_CODEX_LOAD_USER_CONFIG", false);
-    cfg.llm_completion_concurrency =
-        parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
-    cfg.llm_completion_timeout_secs =
-        parse_positive_u64_env("AXON_LLM_COMPLETION_TIMEOUT_SECS", 300)?;
+    // llm_completion_concurrency / llm_completion_timeout_secs / codex_pool_idle_ttl_secs
+    // get their real env-over-toml-over-default value in
+    // `tuning::apply_env_toml_tuning` (config.toml keys `llm.completion-concurrency`,
+    // `llm.completion-timeout-secs`, `llm.codex-pool-idle-ttl-secs`); these are
+    // just placeholder defaults in case that pass is ever skipped.
+    cfg.llm_completion_concurrency = 4;
+    cfg.llm_completion_timeout_secs = 300;
+    cfg.codex_pool_idle_ttl_secs = 300;
     cfg.openai_base_url = non_empty_env("AXON_OPENAI_BASE_URL").unwrap_or_default();
     cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
     cfg.openai_model = non_empty_env("AXON_SYNTHESIS_OPENAI_MODEL")
@@ -288,7 +292,9 @@ fn populate_services_and_ask_basics(
     cfg.searxng_url = non_empty_env("AXON_SEARXNG_URL")
         .map(|u| u.trim_end_matches('/').to_string())
         .unwrap_or_default();
-    cfg.research_full_content = env_bool("AXON_RESEARCH_FULL_CONTENT", true);
+    // research_full_content resolved in `tuning::apply_env_toml_tuning`
+    // (config.toml key `search.research-full-content`); placeholder default here.
+    cfg.research_full_content = true;
     cfg.mcp_allowed_origins = env::var("AXON_ALLOWED_ORIGINS")
         .ok()
         .map(|raw| parse_origin_allowlist(&raw))
@@ -339,18 +345,6 @@ fn parse_positive_usize_env(var_name: &str, default: usize) -> Result<usize, Str
         Ok(raw) if raw.trim().is_empty() => Ok(default),
         Ok(raw) => raw
             .parse::<usize>()
-            .ok()
-            .filter(|value| *value > 0)
-            .ok_or_else(|| format!("{var_name} must be a positive integer, got {raw:?}")),
-        Err(_) => Ok(default),
-    }
-}
-
-fn parse_positive_u64_env(var_name: &str, default: u64) -> Result<u64, String> {
-    match env::var(var_name) {
-        Ok(raw) if raw.trim().is_empty() => Ok(default),
-        Ok(raw) => raw
-            .parse::<u64>()
             .ok()
             .filter(|value| *value > 0)
             .ok_or_else(|| format!("{var_name} must be a positive integer, got {raw:?}")),
@@ -409,6 +403,36 @@ fn populate_misc(
         .or(inputs.toml.workers.max_job_attempts)
         .map(|value| value.clamp(0, 1_000) as u32)
         .unwrap_or(cfg.max_job_attempts);
+    cfg.jobs_retention_terminal_days = parse_i64_env("AXON_JOBS_RETENTION_TERMINAL_DAYS")
+        .or(inputs.toml.workers.jobs_retention_terminal_days)
+        .unwrap_or(30)
+        .clamp(1, 3660);
+    cfg.jobs_retention_event_days = parse_i64_env("AXON_JOBS_RETENTION_EVENT_DAYS")
+        .or(inputs.toml.workers.jobs_retention_event_days)
+        .unwrap_or(14)
+        .clamp(1, 3660);
+    cfg.jobs_retention_failed_event_days = parse_i64_env("AXON_JOBS_RETENTION_FAILED_EVENT_DAYS")
+        .or(inputs.toml.workers.jobs_retention_failed_event_days)
+        .unwrap_or(60)
+        .clamp(1, 3660);
+    cfg.jobs_retention_provider_health_days =
+        parse_i64_env("AXON_JOBS_RETENTION_PROVIDER_HEALTH_DAYS")
+            .or(inputs.toml.workers.jobs_retention_provider_health_days)
+            .unwrap_or(7)
+            .clamp(1, 3660);
+    cfg.jobs_retention_artifact_days = parse_i64_env("AXON_JOBS_RETENTION_ARTIFACT_DAYS")
+        .or(inputs.toml.workers.jobs_retention_artifact_days)
+        .unwrap_or(30)
+        .clamp(1, 3660);
+    cfg.jobs_retention_sweep_secs = parse_i64_env("AXON_JOBS_RETENTION_SWEEP_SECS")
+        .or(inputs.toml.workers.jobs_retention_sweep_secs)
+        .unwrap_or(3600)
+        .clamp(60, 86_400);
+    cfg.jobs_interactive_starvation_slo_secs =
+        parse_i64_env("AXON_JOBS_INTERACTIVE_STARVATION_SLO_SECS")
+            .or(inputs.toml.workers.jobs_interactive_starvation_slo_secs)
+            .unwrap_or(30)
+            .clamp(0, 3600);
     cfg.json_output = g.json;
     cfg.reclaimed_status_only = g.reclaimed;
     cfg.active_status_only = g.active;

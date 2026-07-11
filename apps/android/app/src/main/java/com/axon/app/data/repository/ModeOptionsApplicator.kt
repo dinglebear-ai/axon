@@ -1,14 +1,14 @@
 package com.axon.app.data.repository
 
-import com.axon.app.data.remote.AskRequest
-import com.axon.app.data.remote.CrawlRequest
-import com.axon.app.data.remote.MapRequest
-import com.axon.app.data.remote.QueryRequest
-import com.axon.app.data.remote.ResearchRequest
-import com.axon.app.data.remote.ScrapeRequest
-import com.axon.app.data.remote.models.IngestRequest
-import com.axon.app.data.remote.models.SearchWebRequest
-import com.axon.app.data.remote.models.SummarizeRequest
+import com.axon.app.core.api.AskRequest
+import com.axon.app.core.api.CrawlRequest
+import com.axon.app.core.api.MapRequest
+import com.axon.app.core.api.QueryRequest
+import com.axon.app.core.api.ResearchRequest
+import com.axon.app.core.api.ScrapeRequest
+import com.axon.app.core.api.models.IngestRequest
+import com.axon.app.core.api.models.SearchWebRequest
+import com.axon.app.core.api.models.SummarizeRequest
 
 /**
  * One method per wire DTO that has user-configurable mode-options.

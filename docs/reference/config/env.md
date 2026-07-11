@@ -14,8 +14,9 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-core/src/config/schema_registry.rs` | `sha256:cf133557d1be1a4549756c82b260a4e17c15501c4d32ae900e2816c03d71f528` |
+| `docs/pipeline-unification/configuration/config-contract.md` | `sha256:c27557d30d13b7322aa6fe75e6fc1c761e4e421829245dbb25172983e063b993` |
 | `docs/pipeline-unification/schemas/config-schema.md` | `sha256:fcec11271050d626b8a4a42f1714c45bfcff2bd66b75ad4a3962e51d0ef84c24` |
+| `xtask/src/schemas/config_schema_registry.rs` | `sha256:db1e13e7a3d88268e9689776efce9f5b966739d80f90b16080087ff84a12534f` |
 
 ## Root Shape
 
@@ -53,6 +54,6 @@ Fixture paths are validated by `cargo xtask schemas`.
 
 Run `cargo xtask schemas generate --check`.
 
-## Config Keys
+## Env Variables
 
 Generated from the owner crate schema registry.

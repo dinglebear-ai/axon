@@ -1,3 +1,4 @@
+mod config_checks;
 pub mod cutover;
 pub(crate) mod sqlite;
 

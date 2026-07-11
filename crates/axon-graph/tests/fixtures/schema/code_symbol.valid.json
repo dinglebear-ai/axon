@@ -1,0 +1,55 @@
+{
+  "candidate_id": "gc_code_symbol_1",
+  "job_id": "00000000-0000-0000-0000-000000000002",
+  "source_id": "src_local_repo",
+  "source_item_key": "src/lib.rs",
+  "item_canonical_uri": "file:///repo/src/lib.rs",
+  "document_id": null,
+  "kind": "code_ast",
+  "merge_key": null,
+  "producer": {
+    "adapter": "local",
+    "parser": "code_ast",
+    "version": "1"
+  },
+  "nodes": [
+    {
+      "node_kind": "repo_commit",
+      "stable_key": "commit:local/x:abc123",
+      "label": "abc123",
+      "properties": {}
+    },
+    {
+      "node_kind": "repo_file",
+      "stable_key": "file:local/x:src/lib.rs",
+      "label": "src/lib.rs",
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "edge_kind": "commit_contains_file",
+      "from_stable_key": "commit:local/x:abc123",
+      "to_stable_key": "file:local/x:src/lib.rs",
+      "properties": {}
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_1",
+      "evidence_kind": "local_git_commit",
+      "source_id": "src_local_repo",
+      "source_item_key": "src/lib.rs",
+      "document_id": null,
+      "chunk_id": null,
+      "range": null,
+      "quote": null,
+      "confidence": 0.9,
+      "metadata": {}
+    }
+  ],
+  "confidence": 0.9,
+  "metadata": {
+    "note": "Module/symbol-level node and edge kinds are not yet registered in source-graph.md (graph-schema.md Parser-to-Graph Matrix marks code AST module/symbol as \"n/a\"); this fixture exercises the currently-registered repo_file identity instead of fabricating unregistered kinds."
+  }
+}

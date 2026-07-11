@@ -1,4 +1,4 @@
-use axon_core::config::{RenderMode, ScrapeFormat};
+use axon_core::config::RenderMode;
 use serde::{Deserialize, Serialize};
 
 #[path = "client_contract/contracts.rs"]
@@ -35,19 +35,6 @@ pub enum RestExtractMode {
     Auto,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum RestIngestSourceType {
-    Github,
-    Gitlab,
-    Gitea,
-    Git,
-    Reddit,
-    Youtube,
-    Rss,
-    Sessions,
-}
-
 impl From<RestExtractMode> for ClientExtractMode {
     fn from(value: RestExtractMode) -> Self {
         match value {
@@ -56,41 +43,76 @@ impl From<RestExtractMode> for ClientExtractMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RestCrawlRequest {
-    pub urls: Vec<String>,
-    pub max_pages: Option<u32>,
-    pub max_depth: Option<usize>,
-    pub render_mode: Option<RenderMode>,
-    pub include_subdomains: Option<bool>,
-    pub respect_robots: Option<bool>,
-    pub discover_sitemaps: Option<bool>,
-    pub max_sitemaps: Option<usize>,
-    pub sitemap_since_days: Option<u32>,
-    pub discover_llms_txt: Option<bool>,
-    pub max_llms_txt_urls: Option<usize>,
-    pub delay_ms: Option<u64>,
-    pub collection: Option<String>,
-    #[serde(default)]
-    pub headers: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RestScrapeRequest {
-    pub url: Option<String>,
-    pub urls: Option<Vec<String>>,
-    pub render_mode: Option<RenderMode>,
-    pub format: Option<ScrapeFormat>,
-    pub embed: Option<bool>,
-    pub collection: Option<String>,
-    pub root_selector: Option<String>,
-    pub exclude_selector: Option<String>,
-    #[serde(default)]
-    pub headers: Vec<String>,
-}
-
+// ── Remaining forbidden-fork audit (WS-E / Q2-06) ───────────────────────────
+//
+// Every `Rest*Request` below is a genuine fork of an `axon_api::mcp_schema`
+// counterpart (`ExtractRequest`, `QueryRequest`, `RetrieveRequest`,
+// `EvaluateRequest`, `SuggestRequest`, `MapRequest`, `SearchRequest`,
+// `ResearchRequest`, `AskRequest`, `SummarizeRequest`, `BrandRequest`,
+// `DiffRequest`, `ScreenshotRequest`) or, for `RestChatRequest`/
+// `RestChatResponse`, has no MCP/axon-api counterpart at all. None of them
+// were converted to `pub use axon_api::... as Rest*;` re-export aliases
+// because every one has a field-level shape difference from its MCP
+// counterpart — aliasing would silently change the REST wire contract (this
+// struct's `#[serde(deny_unknown_fields)]` currently rejects fields the MCP
+// DTO accepts, or vice versa). Per the Forbidden DTO Forks rule ("where the
+// canonical DTO differs in shape ... leave that fork in place and list it as
+// a followup with the exact field-level diff"), the diffs are:
+//
+// - `RestExtractRequest` vs `mcp_schema::ExtractRequest`: MCP's is a
+//   job-management action DTO (`subaction`, `job_id`, `limit`, `offset`,
+//   `response_mode`) for the async extract job lifecycle; REST's is a
+//   one-shot submission body (`collection`, `headers: Vec<String>`). No
+//   fields in common beyond `urls`/`prompt`/`max_pages`/`render_mode`/`embed`;
+//   not adaptable without changing one side's semantics.
+// - `RestQueryRequest` vs `QueryRequest`: identical field set
+//   (`query`/`collection`/`limit`/`offset`/`since`/`before`/`hybrid_search`)
+//   plus MCP-only `response_mode` (controls path/inline delivery, meaningless
+//   over REST, which is always inline).
+// - `RestRetrieveRequest` vs `RetrieveRequest`: identical fields
+//   (`url`/`collection`/`since`/`before`/`max_points`/`cursor`/
+//   `token_budget`) plus MCP-only `response_mode`.
+// - `RestEvaluateRequest` vs `EvaluateRequest`: REST's required field is
+//   named `question`; MCP's is `query` with `#[serde(alias = "question")]`.
+//   Otherwise identical (`collection`/`diagnostics`/`retrieval_ab`/`since`/
+//   `before`/`hybrid_search`) plus MCP-only `response_mode`.
+// - `RestSuggestRequest` vs `SuggestRequest`: MCP adds `limit` (REST has no
+//   result-count cap) plus `response_mode`; both alias `focus`/`query`
+//   naming loosely (MCP: `focus` aliased from `query`; REST: bare `focus`).
+// - `RestMapRequest` vs `MapRequest`: identical (`url`/`limit`/`offset`)
+//   plus MCP-only `response_mode`.
+// - `RestSearchRequest` vs `SearchRequest`: REST's `time_range: Option<String>`
+//   (free-form: "day"/"week"/etc. parsed downstream) vs MCP's
+//   `search_time_range: Option<SearchTimeRange>` (closed enum) — different
+//   field name AND type, plus MCP-only `response_mode`.
+// - `RestResearchRequest` vs `ResearchRequest`: same `time_range` (String) vs
+//   `search_time_range` (enum) name/type diff as Search, plus `response_mode`.
+// - `RestAskRequest` vs `AskRequest`: field-for-field identical across all
+//   `ask_*` tuning knobs plus `query`/`collection`/`since`/`before`/
+//   `diagnostics`/`explain`/`hybrid_search`; only diff is MCP-only
+//   `response_mode`. Closest candidate for a future alias if `response_mode`
+//   is ever made universally ignorable by REST deserialization.
+// - `RestSummarizeRequest` vs `SummarizeRequest`: REST adds `headers:
+//   Vec<String>` (custom fetch headers, REST-only capability); MCP adds
+//   `response_mode`. Otherwise identical (`url`/`urls`/`render_mode`/
+//   `root_selector`/`exclude_selector`).
+// - `RestBrandRequest` vs `BrandRequest`: REST has only `url`; MCP adds
+//   `render_mode` (currently unused by the handler) and `response_mode`.
+// - `RestDiffRequest` vs `DiffRequest`: identical (`url_a`/`url_b`/
+//   `render_mode`) plus MCP-only `response_mode`.
+// - `RestScreenshotRequest` vs `ScreenshotRequest`: MCP adds `output` (path
+//   override for saved screenshot) and `response_mode`; otherwise identical
+//   (`url`/`viewport`/`full_page`).
+// - `RestChatRequest`/`RestChatResponse`: no MCP or axon-api counterpart
+//   exists (`chat` is a REST/web-panel-only demo endpoint). Not a fork of an
+//   existing canonical DTO; flagged here only because it currently has no
+//   axon-api home. Candidate followup: promote to a canonical `axon-api`
+//   DTO if `chat` gains MCP/CLI parity, otherwise leave as REST-only.
+//
+// Rule (1) dead-route compat DTOs (`RestCrawlRequest`, `RestScrapeRequest`,
+// `RestEmbedRequest`, `RestIngestRequest`, `RestIngestSourceType`) were
+// deleted in a prior pass of this cleanup; they never appeared in
+// `docs/reference/api/schemas.json` (regen was not required for that step).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RestExtractRequest {
@@ -104,14 +126,6 @@ pub struct RestExtractRequest {
     pub collection: Option<String>,
     #[serde(default)]
     pub headers: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RestEmbedRequest {
-    pub input: String,
-    pub source_type: Option<String>,
-    pub collection: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -274,129 +288,6 @@ pub struct RestScreenshotRequest {
     pub full_page: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RestIngestRequest {
-    /// Source type for the ingest target. **Omit to auto-detect** from `target`
-    /// via the canonical shared classifier (`classify_target`) — the same path
-    /// the CLI uses, covering GitHub / GitLab / Gitea / generic-git / Reddit /
-    /// YouTube / RSS. Set explicitly only to force a specific interpretation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_type: Option<RestIngestSourceType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub include_source: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sessions: Option<RestSessionsIngestOptions>,
-}
-
-impl From<RestIngestSourceType> for axon_api::mcp_schema::IngestSourceType {
-    fn from(value: RestIngestSourceType) -> Self {
-        match value {
-            RestIngestSourceType::Github => Self::Github,
-            RestIngestSourceType::Gitlab => Self::Gitlab,
-            RestIngestSourceType::Gitea => Self::Gitea,
-            RestIngestSourceType::Git => Self::Git,
-            RestIngestSourceType::Reddit => Self::Reddit,
-            RestIngestSourceType::Youtube => Self::Youtube,
-            RestIngestSourceType::Rss => Self::Rss,
-            RestIngestSourceType::Sessions => Self::Sessions,
-        }
-    }
-}
-
-impl From<RestIngestRequest> for axon_api::mcp_schema::IngestRequest {
-    fn from(req: RestIngestRequest) -> Self {
-        Self {
-            source_type: req.source_type.map(Into::into),
-            target: req.target,
-            include_source: req.include_source,
-            sessions: req.sessions.map(Into::into),
-            ..Default::default()
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ClientCrawlRequest {
-    pub urls: Vec<String>,
-    pub max_pages: Option<u32>,
-    pub max_depth: Option<usize>,
-    pub render_mode: Option<RenderMode>,
-    pub include_subdomains: Option<bool>,
-    pub respect_robots: Option<bool>,
-    pub discover_sitemaps: Option<bool>,
-    pub max_sitemaps: Option<usize>,
-    pub sitemap_since_days: Option<u32>,
-    pub discover_llms_txt: Option<bool>,
-    pub max_llms_txt_urls: Option<usize>,
-    pub delay_ms: Option<u64>,
-    #[serde(default)]
-    pub headers: Vec<(String, String)>,
-    #[serde(default)]
-    pub route_preference: ClientRoutePreference,
-}
-
-impl From<ClientCrawlRequest> for RestCrawlRequest {
-    fn from(req: ClientCrawlRequest) -> Self {
-        Self {
-            urls: req.urls,
-            max_pages: req.max_pages,
-            max_depth: req.max_depth,
-            render_mode: req.render_mode,
-            include_subdomains: req.include_subdomains,
-            respect_robots: req.respect_robots,
-            discover_sitemaps: req.discover_sitemaps,
-            max_sitemaps: req.max_sitemaps,
-            sitemap_since_days: req.sitemap_since_days,
-            discover_llms_txt: req.discover_llms_txt,
-            max_llms_txt_urls: req.max_llms_txt_urls,
-            delay_ms: req.delay_ms,
-            collection: None,
-            headers: req
-                .headers
-                .into_iter()
-                .map(|(key, value)| format!("{key}: {value}"))
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ClientScrapeRequest {
-    pub url: String,
-    pub render_mode: Option<RenderMode>,
-    pub format: Option<ScrapeFormat>,
-    pub embed: Option<bool>,
-    pub root_selector: Option<String>,
-    pub exclude_selector: Option<String>,
-    #[serde(default)]
-    pub headers: Vec<(String, String)>,
-    #[serde(default)]
-    pub route_preference: ClientRoutePreference,
-}
-
-impl From<ClientScrapeRequest> for RestScrapeRequest {
-    fn from(req: ClientScrapeRequest) -> Self {
-        Self {
-            url: Some(req.url),
-            urls: None,
-            render_mode: req.render_mode,
-            format: req.format,
-            embed: req.embed,
-            collection: None,
-            root_selector: req.root_selector,
-            exclude_selector: req.exclude_selector,
-            headers: req
-                .headers
-                .into_iter()
-                .map(|(key, value)| format!("{key}: {value}"))
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClientExtractRequest {
     pub urls: Vec<String>,
@@ -437,25 +328,6 @@ impl From<ClientExtractRequest> for RestExtractRequest {
                 .into_iter()
                 .map(|(key, value)| format!("{key}: {value}"))
                 .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ClientEmbedRequest {
-    pub input: String,
-    pub source_type: Option<String>,
-    pub collection: Option<String>,
-    #[serde(default)]
-    pub route_preference: ClientRoutePreference,
-}
-
-impl From<ClientEmbedRequest> for RestEmbedRequest {
-    fn from(req: ClientEmbedRequest) -> Self {
-        Self {
-            input: req.input,
-            source_type: req.source_type,
-            collection: req.collection,
         }
     }
 }

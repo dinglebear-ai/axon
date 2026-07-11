@@ -8,10 +8,14 @@ async fn scope_security_policy_authorizes_source_requests() {
     let allowed = policy
         .authorize_source(SecurityPolicyRequest {
             caller: CallerContext {
-                actor: Some("tester".to_string()),
+                caller_id: Some("tester".to_string()),
                 transport: TransportKind::Cli,
+                trusted_local: true,
                 scopes: vec![AXON_READ_SCOPE.to_string()],
                 visibility_ceiling: Visibility::Internal,
+                auth_mode: AuthMode::TrustedLocal,
+                token_id: None,
+                display_name: None,
             },
             safety_class: SafetyClass::LocalFilesystem,
             target: "file:///repo".to_string(),
@@ -31,10 +35,14 @@ async fn scope_security_policy_accepts_combined_full_access_scope() {
     let allowed = policy
         .authorize_source(SecurityPolicyRequest {
             caller: CallerContext {
-                actor: Some("tester".to_string()),
+                caller_id: Some("tester".to_string()),
                 transport: TransportKind::Cli,
+                trusted_local: true,
                 scopes: vec![AXON_FULL_ACCESS_SCOPE.to_string()],
                 visibility_ceiling: Visibility::Internal,
+                auth_mode: AuthMode::TrustedLocal,
+                token_id: None,
+                display_name: None,
             },
             safety_class: SafetyClass::LocalFilesystem,
             target: "file:///repo".to_string(),

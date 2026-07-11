@@ -34,16 +34,16 @@ impl WebSourceAdapter {
 
 #[async_trait]
 impl SourceAdapter for WebSourceAdapter {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         ADAPTER_NAME
     }
 
-    fn version(&self) -> &str {
+    fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
 
-    async fn capabilities(&self) -> Result<AdapterCapability> {
-        Ok(web_capability(self.version()))
+    async fn capabilities(&self) -> Result<SourceAdapterCapability> {
+        Ok(web_capability(self.version()).into())
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {

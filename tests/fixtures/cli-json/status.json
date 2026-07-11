@@ -1,0 +1,31 @@
+{
+  "degraded": false,
+  "errors": [],
+  "local_crawl_jobs": [],
+  "local_embed_jobs": [],
+  "local_extract_jobs": [],
+  "local_ingest_jobs": [],
+  "sqlite": {
+    "active_lock_exists": true,
+    "active_lock_file_exists": true,
+    "active_lock_path": "<TMPDIR>/.axon/jobs.db.active.lock",
+    "active_owner_observed": true,
+    "active_owner_probe_error": null,
+    "corrupted_count": 0,
+    "exists": true,
+    "latest_corrupted_path": null,
+    "ok": true,
+    "path": "<TMPDIR>/.axon/jobs.db",
+    "quick_check": "ok",
+    "quick_check_error": null,
+    "runtime_ioerr_count": 0,
+    "runtime_last_error": null,
+    "runtime_last_error_at_ms": null
+  },
+  "totals": {
+    "crawl": 0,
+    "embed": 0,
+    "extract": 0,
+    "ingest": 0
+  }
+}

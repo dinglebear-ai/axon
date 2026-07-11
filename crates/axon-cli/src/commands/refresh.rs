@@ -20,7 +20,7 @@ pub async fn run_refresh(
         .map(String::as_str)
         .filter(|s| !s.is_empty());
 
-    let plan = refresh::plan_refresh(cfg, filter).await?;
+    let plan = refresh::plan_refresh(cfg, filter, Some(service_context)).await?;
     if plan.origins.is_empty() {
         return report_empty(cfg, filter);
     }

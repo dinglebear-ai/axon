@@ -8,7 +8,8 @@ use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder}
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
-use super::{WebAdapterRun, WebSourceIndexInput, timestamp};
+use super::WebSourceIndexInput;
+use super::run::{WebAdapterRun, timestamp};
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
 const WEB_CHANGED_CHUNK_BATCH_SIZE: usize = 512;
@@ -18,6 +19,12 @@ pub(super) struct VectorizeResult {
     pub(super) documents_prepared: u64,
     pub(super) chunks_prepared: u64,
     pub(super) document_statuses: Vec<DocumentStatus>,
+    /// Parser-produced graph candidates carried by each prepared document
+    /// (populated by `DocumentPreparer`'s self-parse when the caller supplies
+    /// no pre-computed facts). Collected here so the graphing stage
+    /// (`source::graph::write_baseline_graph`) can write them instead of
+    /// silently dropping them after vectorization.
+    pub(super) graph_candidates: Vec<GraphCandidate>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -30,6 +37,7 @@ struct VectorizeStats {
 struct VectorizeResultWithStats {
     stats: VectorizeStats,
     document_statuses: Vec<DocumentStatus>,
+    graph_candidates: Vec<GraphCandidate>,
 }
 
 pub(super) async fn vectorize_changed_documents(
@@ -61,6 +69,9 @@ pub(super) async fn vectorize_changed_documents(
             result
                 .document_statuses
                 .extend(batch_result.document_statuses);
+            result
+                .graph_candidates
+                .extend(batch_result.graph_candidates);
         }
     }
     Ok(result)
@@ -279,6 +290,9 @@ async fn vectorize_documents(
     for document in documents {
         result.stats.chunks_prepared += document.chunks.len() as u64;
         result.stats.documents_prepared += 1;
+        result
+            .graph_candidates
+            .extend(document.graph_candidates.clone());
         let status = document_status(
             &document,
             document.chunks.len() as u64,

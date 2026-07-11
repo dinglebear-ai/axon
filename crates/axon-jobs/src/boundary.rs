@@ -2,8 +2,35 @@ use async_trait::async_trait;
 use axon_api::source::*;
 
 pub use crate::fake_store::FakeJobWatchStore;
+pub use crate::watch_store::SqliteWatchStore;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
+
+/// Outcome of a scoped, per-job-id delete ([`JobStore::delete_jobs`]).
+///
+/// This is an internal maintenance-path type, not a wire DTO — unlike
+/// [`JobCleanupResult`] (bulk, age/kind-scoped retention, already exposed on
+/// CLI/REST/MCP), `delete_jobs` targets an explicit, caller-supplied id set
+/// and today is only consumed in-process by the `axon-services` cleanup-debt
+/// drain (`CleanupDebtKind::JobRetention` / `CleanupSelector::JobRows`), so it
+/// lives here rather than in `axon-api` (mirroring `JobStatusRow`/
+/// `JobSummary` in `backend.rs`, which are also internal-only shapes).
+///
+/// A row only ever moves into `deleted` when its status is terminal at the
+/// moment of the call — deleting a `running`/`waiting`/`canceling`/etc. row
+/// out from under its worker is unsafe, so such rows land in `skipped_live`
+/// instead. `missing` covers ids that named no row at all (already deleted,
+/// or never existed) — never an error.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JobDeleteResult {
+    /// Job ids whose row (and cascaded child rows — events, heartbeats,
+    /// attempts, stages, artifacts, provider reservations) was deleted.
+    pub deleted: Vec<JobId>,
+    /// Job ids that exist but are not in a terminal status; left untouched.
+    pub skipped_live: Vec<JobId>,
+    /// Job ids that named no existing row.
+    pub missing: Vec<JobId>,
+}
 
 #[async_trait]
 pub trait JobStore: Send + Sync {
@@ -32,6 +59,11 @@ pub trait JobStore: Send + Sync {
     async fn retry(&self, job_id: JobId, request: JobRetryRequest) -> Result<JobRetryResult>;
     async fn recover(&self, request: JobRecoveryRequest) -> Result<JobRecoveryResult>;
     async fn cleanup(&self, request: JobCleanupRequest) -> Result<JobCleanupResult>;
+    /// Delete specific job rows (and their cascaded child rows) by id,
+    /// refusing any row not currently in a terminal status. Unlike
+    /// [`JobStore::cleanup`] (bulk, age/kind-scoped), this targets an
+    /// explicit, caller-supplied id set — see [`JobDeleteResult`].
+    async fn delete_jobs(&self, job_ids: &[JobId]) -> Result<JobDeleteResult>;
     async fn artifacts(&self, request: JobArtifactListRequest) -> Result<JobArtifactListResult>;
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<JobStoreCapability>;

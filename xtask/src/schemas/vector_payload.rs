@@ -228,6 +228,11 @@ fn shared_field_schema(field: &str) -> Value {
         "embedding_dimensions" => {
             json!({ "type": "integer", "minimum": 1, "x-qdrant-index": "integer" })
         }
+        // chunk_index is Integer-typed (require_non_negative_integer);
+        // 0 is valid (atomic/first chunk), so minimum 0 not 1.
+        "chunk_index" => {
+            json!({ "type": "integer", "minimum": 0, "x-qdrant-index": "integer" })
+        }
         "chunk_locator" => json!({ "$ref": "#/$defs/ChunkLocator" }),
         "source_range" => json!({ "$ref": "#/$defs/SourceRange" }),
         "visibility" => json!({
@@ -397,6 +402,12 @@ fn required_example_value(field: &str, family: &str) -> Value {
         "embedding_provider" => json!("tei"),
         "embedding_profile" => json!("default"),
         "embedded_at" => json!("2026-06-30T00:00:00Z"),
+        // Chunk position + chunking descriptors required since the chunking
+        // cluster (S2-18/27). chunk_index is Integer-typed (never a string);
+        // profile/method are free strings.
+        "chunk_index" => json!(0),
+        "chunking_profile" => json!("markdown_sections"),
+        "chunking_method" => json!("heading_sections"),
         _ => json!(field),
     }
 }

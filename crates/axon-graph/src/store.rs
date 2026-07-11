@@ -18,6 +18,28 @@ pub trait GraphStore: Send + Sync {
     async fn resolve(&self, request: GraphResolveRequest) -> Result<GraphResolveResult>;
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<GraphStoreCapability>;
+
+    /// All edges incident to `node_id` (both directions), with evidence
+    /// loaded. Used by node-detail reads (REST `GET /v1/graph/nodes/{id}/edges`,
+    /// MCP `graph.node`).
+    async fn node_edges(&self, node_id: GraphNodeId) -> Result<Vec<GraphEdge>>;
+
+    /// All nodes whose `source_ids` contains `source_id`. Used by the
+    /// source-linked subgraph read (REST `GET /v1/graph/sources/{source_id}`,
+    /// MCP `graph.source`).
+    async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>>;
+
+    /// Delete graph nodes identified by stable key, cascading to their
+    /// incident edges (and, for the durable store, evidence/aliases via FK
+    /// `ON DELETE CASCADE`). Used by cleanup-debt `GraphPrune` drains — per
+    /// the pruning contract, graph orphan cleanup is identity-scoped, never a
+    /// blanket `reset()`. Idempotent: deleting an unknown stable key is a
+    /// no-op.
+    async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult>;
+
+    /// Delete graph edges by id. Idempotent: deleting an unknown edge id is a
+    /// no-op.
+    async fn delete_edges(&self, edge_ids: Vec<GraphEdgeId>) -> Result<GraphDeleteResult>;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -265,6 +287,26 @@ impl GraphStore for FakeGraphStore {
         })
     }
 
+    async fn node_edges(&self, node_id: GraphNodeId) -> Result<Vec<GraphEdge>> {
+        let state = self.state.lock().await;
+        Ok(state
+            .edges_by_id
+            .values()
+            .filter(|edge| edge.from_node_id == node_id || edge.to_node_id == node_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>> {
+        let state = self.state.lock().await;
+        Ok(state
+            .nodes_by_id
+            .values()
+            .filter(|node| node.source_ids.contains(&source_id))
+            .cloned()
+            .collect())
+    }
+
     async fn capabilities(&self) -> Result<GraphStoreCapability> {
         Ok(CapabilityBase {
             name: "fake-graph".to_string(),
@@ -280,6 +322,49 @@ impl GraphStore for FakeGraphStore {
     async fn reset(&self) -> Result<()> {
         *self.state.lock().await = FakeGraphState::default();
         Ok(())
+    }
+
+    async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {
+        let mut state = self.state.lock().await;
+        let mut nodes_deleted = 0;
+        let mut edges_deleted = 0;
+        for stable_key in stable_keys {
+            let Some(node_id) = state.node_id_by_key.remove(&stable_key) else {
+                continue;
+            };
+            if state.nodes_by_id.remove(&node_id).is_some() {
+                nodes_deleted += 1;
+            }
+            let incident: Vec<GraphEdgeId> = state
+                .edges_by_id
+                .values()
+                .filter(|edge| edge.from_node_id == node_id || edge.to_node_id == node_id)
+                .map(|edge| edge.edge_id.clone())
+                .collect();
+            for edge_id in incident {
+                if state.edges_by_id.remove(&edge_id).is_some() {
+                    edges_deleted += 1;
+                }
+            }
+        }
+        Ok(GraphDeleteResult {
+            nodes_deleted,
+            edges_deleted,
+        })
+    }
+
+    async fn delete_edges(&self, edge_ids: Vec<GraphEdgeId>) -> Result<GraphDeleteResult> {
+        let mut state = self.state.lock().await;
+        let mut edges_deleted = 0;
+        for edge_id in edge_ids {
+            if state.edges_by_id.remove(&edge_id).is_some() {
+                edges_deleted += 1;
+            }
+        }
+        Ok(GraphDeleteResult {
+            nodes_deleted: 0,
+            edges_deleted,
+        })
     }
 }
 

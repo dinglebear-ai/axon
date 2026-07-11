@@ -70,7 +70,7 @@ describe("App local help", () => {
     const input = await renderAndType(command);
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect((await screen.findAllByText("POST /v1/scrape")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("POST /v1/sources")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Scrape URL").length).toBeGreaterThan(0);
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
@@ -98,13 +98,13 @@ describe("App local help", () => {
     fireEvent.click(await screen.findByText("Help"));
 
     expect((await screen.findAllByText("Scrape URL")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("POST /v1/scrape").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("POST /v1/sources").length).toBeGreaterThan(0);
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
 
     fireEvent.click(screen.getByText("↺ recent"));
     fireEvent.click(await screen.findByRole("button", { name: /scrape.*Help.*just now/i }));
 
-    await waitFor(() => expect(screen.getAllByText("POST /v1/scrape").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("POST /v1/sources").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Scrape URL").length).toBeGreaterThan(0);
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });

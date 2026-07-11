@@ -45,14 +45,26 @@ impl Drop for AbortOnDropJobStream {
     }
 }
 
-fn sse_json(event_name: &'static str, value: &StreamEvent) -> Event {
+fn event_name(event: &StreamEvent) -> &'static str {
+    match event.kind {
+        axon_api::source::StreamKind::Progress => "progress",
+        axon_api::source::StreamKind::Token => "delta",
+        axon_api::source::StreamKind::Citation => "citation",
+        axon_api::source::StreamKind::Artifact => "artifact",
+        axon_api::source::StreamKind::Warning => "warning",
+        axon_api::source::StreamKind::Error => "error",
+        axon_api::source::StreamKind::Final => "done",
+    }
+}
+
+fn sse_json(event: &StreamEvent) -> Event {
     Event::default()
-        .event(event_name)
-        .json_data(value)
+        .event(event_name(event))
+        .json_data(event)
         .unwrap_or_else(|_| {
             Event::default()
                 .event("error")
-                .data("{\"kind\":\"error\",\"message\":\"encode failed\"}")
+                .data("{\"kind\":\"error\",\"data\":{},\"message\":\"encode failed\"}")
         })
 }
 
@@ -151,16 +163,11 @@ pub(crate) async fn unified_job_stream(
                 Ok(page) => {
                     for event in page.events {
                         after_sequence = Some(event.sequence);
-                        if tx
-                            .send(Ok(sse_json(
-                                "progress",
-                                &StreamEvent::Progress {
-                                    event: source_progress_from_job_event(event),
-                                },
-                            )))
-                            .await
-                            .is_err()
-                        {
+                        let sequence = event.sequence;
+                        let progress = source_progress_from_job_event(event);
+                        let stream_event =
+                            StreamEvent::progress(sequence, &progress).with_job_id(job_id);
+                        if tx.send(Ok(sse_json(&stream_event))).await.is_err() {
                             return;
                         }
                     }
@@ -172,14 +179,14 @@ pub(crate) async fn unified_job_stream(
                     }
                 }
                 Err(error) => {
-                    let event = StreamEvent::Error {
-                        error: axon_api::source::ApiError::new(
-                            "jobs.stream_error",
-                            axon_api::source::ErrorStage::Routing,
-                            error.to_string(),
-                        ),
-                    };
-                    let _ = tx.send(Ok(sse_json("error", &event))).await;
+                    let sequence = after_sequence.map(|s| s + 1).unwrap_or(0);
+                    let api_error = axon_api::source::ApiError::new(
+                        "jobs.stream_error",
+                        axon_api::source::ErrorStage::Routing,
+                        error.to_string(),
+                    );
+                    let event = StreamEvent::error_event(sequence, api_error).with_job_id(job_id);
+                    let _ = tx.send(Ok(sse_json(&event))).await;
                     break;
                 }
             }
