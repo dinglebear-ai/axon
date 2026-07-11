@@ -67,6 +67,7 @@ pub(crate) async fn resolve(
 #[utoipa::path(
     post,
     path = "/v1/graph/query",
+    operation_id = "graph_query",
     request_body = GraphQueryRequest,
     responses(
         (status = 200, description = "Typed graph traversal result", body = serde_json::Value),
