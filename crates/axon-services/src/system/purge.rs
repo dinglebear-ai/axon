@@ -51,6 +51,9 @@ pub async fn purge(
             vector_selector: None,
             source_id: None,
             generation: None,
+            graph_stable_keys: None,
+            graph_edge_ids: None,
+            memory_ids: None,
         }],
         warnings: Vec::new(),
     };

@@ -9,7 +9,7 @@
 //!
 //! See `docs/pipeline-unification/runtime/pruning-contract.md`.
 
-use axon_api::source::ids::JobId;
+use axon_api::source::ids::{GraphEdgeId, JobId, MemoryId};
 use axon_api::source::prune::{
     PruneEstimate, PrunePlan, PruneSelector, PruneStep, PruneTargetKind,
 };
@@ -75,6 +75,14 @@ fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> 
                 PruneTargetKind::Vector => vector_selector_for(selector),
                 _ => None,
             };
+            let (graph_stable_keys, graph_edge_ids) = match target {
+                PruneTargetKind::Graph => graph_identity_for(selector),
+                _ => (None, None),
+            };
+            let memory_ids = match target {
+                PruneTargetKind::Memory => memory_identity_for(selector),
+                _ => None,
+            };
             steps.push(PruneStep {
                 target,
                 description: desc.to_string(),
@@ -82,6 +90,9 @@ fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> 
                 vector_selector,
                 source_id: source_id.clone(),
                 generation: generation.clone(),
+                graph_stable_keys,
+                graph_edge_ids,
+                memory_ids,
             });
         }
     };
@@ -135,6 +146,30 @@ fn vector_selector_for(selector: &PruneSelector) -> Option<VectorDeleteSelector>
             source_id: source_id.clone(),
             generation: generation.clone(),
         }),
+        _ => None,
+    }
+}
+
+/// Extract the `(stable_keys, edge_ids)` a `PruneSelector::Graph` names, so
+/// the resulting `Graph` step can route through `PruneExecutor` /
+/// `GraphStore::delete_nodes`/`delete_edges`. Other selector kinds carry no
+/// per-item graph identity (a `Source`/`Generation` prune has no graph scope
+/// today).
+fn graph_identity_for(selector: &PruneSelector) -> (Option<Vec<String>>, Option<Vec<GraphEdgeId>>) {
+    match selector {
+        PruneSelector::Graph { node_id, edge_id } => (
+            node_id.as_ref().map(|id| vec![id.0.clone()]),
+            edge_id.as_ref().map(|id| vec![id.clone()]),
+        ),
+        _ => (None, None),
+    }
+}
+
+/// Extract the memory ids a `PruneSelector::Memory` names, so the resulting
+/// `Memory` step can route through `PruneExecutor` / `MemoryStore::forget`.
+fn memory_identity_for(selector: &PruneSelector) -> Option<Vec<MemoryId>> {
+    match selector {
+        PruneSelector::Memory { memory_id } => memory_id.as_ref().map(|id| vec![id.clone()]),
         _ => None,
     }
 }
