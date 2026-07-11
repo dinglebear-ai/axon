@@ -390,6 +390,11 @@
     "requiresAuth": true
   },
   {
+    "method": "POST",
+    "path": "/v1/watches",
+    "requiresAuth": true
+  },
+  {
     "method": "GET",
     "path": "/v1/watches",
     "requiresAuth": true

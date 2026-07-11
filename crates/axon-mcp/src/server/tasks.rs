@@ -177,10 +177,12 @@ fn authorize_task_tool_call<'a>(
 ) -> Result<Option<&'a lab_auth::AuthContext>, ErrorData> {
     let auth = server_authz::require_auth_context(&server.auth_policy, context)?;
     let (action, subaction) = action_pair_from_arguments(request.arguments.as_ref());
-    match (
-        auth,
-        server_authz::required_scope_for_tool("axon", &action, &subaction),
-    ) {
+    // mutates_if (axon #298 follow-up): mirrors the upgrade applied in
+    // `server.rs::call_tool` so the deferred-task path enforces the same
+    // effective scope as the synchronous dispatch path.
+    let base_required_scope = server_authz::required_scope_for_tool("axon", &action, &subaction);
+    let required_scope = server_authz::required_scope_with_mutates_if(&action, base_required_scope);
+    match (auth, required_scope) {
         (Some(_), Some("__deny__")) => Err(ErrorData::invalid_request(
             format!("forbidden: unknown action `{action}`"),
             None,

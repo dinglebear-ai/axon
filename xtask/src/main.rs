@@ -70,6 +70,8 @@ enum Command {
     /// Generate/check the docs-generator core: header rewrite, source-input
     /// manifest, repo-wide link check, and docs-inventory diff.
     Docs(docs::DocsArgs),
+    /// Generate/check presentation-token artifacts (colors/typography/spacing/icons).
+    Presentation(presentation::PresentationArgs),
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
     CheckReleaseVersions {
         #[arg(long)]
@@ -179,6 +181,7 @@ fn main() -> Result<()> {
         Command::PrePush(args) => pre_push::run(&root, args),
         Command::Schemas(args) => schemas::run(&root, args),
         Command::Docs(args) => docs::run(&root, args),
+        Command::Presentation(args) => presentation::run(&root, args),
         Command::CheckReleaseVersions {
             base,
             head,
@@ -248,4 +251,5 @@ mod bench_embed;
 mod checks;
 mod docs;
 mod pre_push;
+mod presentation;
 pub mod schemas;

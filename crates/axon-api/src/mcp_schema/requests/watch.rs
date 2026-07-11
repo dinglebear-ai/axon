@@ -18,9 +18,16 @@ pub struct WatchRequest {
     pub enabled: Option<bool>,
     pub limit: Option<i64>,
     /// Target collection for the source-request-backed watch store
-    /// (`subaction=update`). Unused by the legacy create/list/get/exec/history
-    /// subactions above.
+    /// (`subaction=update`/`subaction=create`). Unused by the legacy
+    /// create/list/get/exec/history subactions above.
     pub collection: Option<String>,
+    /// Source URI to watch (issue #298 WS-B `subaction=create`), e.g.
+    /// `https://example.com/docs` or `file:///path/to/repo`. Required for
+    /// `subaction=create`; unused otherwise.
+    pub source: Option<String>,
+    /// Whether the source-request-backed watch (`subaction=create`) should
+    /// embed content on each run. Defaults to `false` when omitted.
+    pub embed: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 

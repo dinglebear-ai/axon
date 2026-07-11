@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "colors": {
+      "items": {
+        "properties": {
+          "dark": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "type": "string"
+          },
+          "light": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dark",
+          "light",
+          "note"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "density": {
+      "type": "object"
+    },
+    "icons": {
+      "items": {
+        "properties": {
+          "cli_symbol": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "intent",
+          "slot",
+          "cli_symbol"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "radius": {
+      "type": "object"
+    },
+    "source_doc": {
+      "type": "string"
+    },
+    "spacing": {
+      "type": "object"
+    },
+    "status_mapping": {
+      "items": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "token"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "typography": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "contract_version",
+    "source_doc",
+    "colors",
+    "typography",
+    "spacing",
+    "radius",
+    "density",
+    "status_mapping",
+    "icons"
+  ],
+  "title": "Axon Presentation Token Source",
+  "type": "object"
+}

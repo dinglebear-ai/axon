@@ -132,6 +132,15 @@ fn rest_and_mcp_scope_classes_match_fixture_for_every_operation() {
 /// classes. Lock that the MCP side actually matches the doc (independent of
 /// the REST-side KNOWN_DIVERGENCE rows above, which track where REST hasn't
 /// caught up to the documented class yet).
+///
+/// This checks the *nominal* class only. `search`/`research` additionally
+/// upgrade to `axon:write` at dispatch time via `mutates_if_upgrade` (see
+/// `tests/mcp_contract_parity.rs::mutates_if_upgrades_search_and_research_to_write_only`)
+/// because they unconditionally enqueue background jobs — that dynamic
+/// upgrade is orthogonal to the static class asserted here and is why their
+/// rows were removed from the KNOWN_DIVERGENCE fixture above (resolved) while
+/// `ask`/`evaluate`/`suggest`/`summarize` remain (no job-enqueuing trigger
+/// exists for them yet).
 #[test]
 fn mcp_matches_tool_contract_read_only_query_surface_class() {
     for (action, subaction) in [

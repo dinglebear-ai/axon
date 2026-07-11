@@ -1273,7 +1273,7 @@ export interface paths {
         };
         get: operations["list_watches"];
         put?: never;
-        post?: never;
+        post: operations["create_watch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3007,6 +3007,15 @@ export interface components {
             task_type: string;
         };
         WatchId: string;
+        WatchRequest: {
+            collection?: string | null;
+            embed: boolean;
+            enabled?: boolean | null;
+            options: components["schemas"]["AdapterOptions"];
+            schedule: components["schemas"]["WatchSchedule"];
+            scope?: null | components["schemas"]["SourceScope"];
+            source: string;
+        };
         WatchResult: {
             adapter: components["schemas"]["AdapterRef"];
             canonical_uri: string;
@@ -7678,6 +7687,57 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Paged watch summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Created (or dual-write-ensured) watch detail */
             200: {
                 headers: {
                     [name: string]: unknown;

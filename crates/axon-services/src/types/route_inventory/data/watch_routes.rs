@@ -9,6 +9,12 @@ pub(crate) const WATCH_ROUTES: &[RestRouteInfo] = &[
     // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
     // Routes). Distinct from the legacy `/v1/watch` routes above.
     RestRouteInfo {
+        method: "POST",
+        path: "/v1/watches",
+        auth: RestRouteAuth::Write,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "GET",
         path: "/v1/watches",
         auth: RestRouteAuth::Read,

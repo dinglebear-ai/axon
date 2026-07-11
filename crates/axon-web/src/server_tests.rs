@@ -518,6 +518,7 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("POST", "/v1/prune/purge"),
         ("POST", "/v1/sources"),
         ("POST", "/v1/watch"),
+        ("POST", "/v1/watches"),
         ("POST", watch_run.as_str()),
         ("POST", "/v1/extract"),
         ("POST", extract_cancel.as_str()),
