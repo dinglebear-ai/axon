@@ -1,17 +1,20 @@
 //! `ask` retrieval half routed through the new `axon-retrieval` engine.
 //!
-//! Issue #298 cutover: the SEARCH + CONTEXT portion of `ask` now embeds +
+//! Issue #298 cutover: the SEARCH + CONTEXT portion of `ask` embeds +
 //! hybrid-searches through [`axon_retrieval::run_query`] (dense + bm42 RRF)
-//! instead of the legacy `axon_vector::ops::commands::ask::build_ask_context`
-//! reranker + full-doc fetcher. The retrieved chunks are formatted into the
-//! same `Sources:\n ## Top Chunk [S#]: …` context string the synthesis prompt
-//! expects, wrapped in the `AskContext`, and handed to the UNCHANGED synthesis
-//! pipeline (`axon_vector::ops::commands::ask::ask_result_from_context`), which
-//! keeps the existing Gemini/core-llm completion, citation validation, and
-//! result assembly.
+//! instead of legacy axon-vector's `build_ask_context` reranker + full-doc
+//! fetcher. The retrieved chunks are formatted into the `Sources:\n ## Top
+//! Chunk [S#]: …` context string the synthesis prompt expects, wrapped in
+//! [`super::synthesis::AskContext`], and handed to the synthesis pipeline in
+//! `super::synthesis` (also ported off legacy axon-vector in this same
+//! cutover — see that module's doc comment), which runs the LLM completion,
+//! citation validation/repair, and result assembly.
 //!
-//! The LLM synthesis half is deliberately left on the legacy path per the slice
-//! scope; only retrieval + context-build were cut over.
+//! `cfg.ask_explain` (`ask --explain`, used by `train`) is the one remaining
+//! exception: it redirects to the full legacy pipeline via
+//! [`super::ask_explain::ask_result_via_legacy_explain`] before any of the
+//! above runs — see that module's doc comment for why the legacy reranker
+//! was not also cut over in this slice.
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -22,10 +25,10 @@ use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_retrieval::{QueryServiceHit, QueryServiceRequest, run_query};
-use axon_vector::ops::commands::ask::ask_result_from_context_with_deltas;
-use axon_vector::ops::commands::ask::{AskContext, ask_result, ask_result_from_context};
 use axon_vectors::store::VectorStore;
 
+use super::ask_explain::ask_result_via_legacy_explain;
+use super::synthesis::{AskContext, ask_result_from_context, ask_result_from_context_with_deltas};
 use crate::context::{ServiceContext, build_read_stores_from_config};
 use crate::types::AskResult;
 
@@ -50,12 +53,14 @@ where
     F: FnMut(&str) + Send,
 {
     // Explain mode traces the LEGACY reranker's per-candidate decisions
-    // (`AskResult.explain`), which the retrieval engine does not produce. The
-    // #298 cutover replaces only the normal ask retrieval path; explain-ask
-    // (used by `train`) stays on the legacy `build_ask_context` reranker so its
-    // candidate trace remains available.
+    // (`AskResult.explain`), which the retrieval engine does not produce.
+    // `ask --explain` (used by `train`) stays on the legacy `build_ask_context`
+    // reranker so its candidate trace remains available — see
+    // `super::ask_explain` for why this is the one remaining `axon_vector`
+    // dependency in the `ask`/`evaluate`/`suggest`/`retrieve` read+synthesis
+    // path.
     if cfg.ask_explain {
-        return ask_result(cfg, question)
+        return ask_result_via_legacy_explain(cfg, question)
             .await
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(ServiceError::new(format!(

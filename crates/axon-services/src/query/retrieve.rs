@@ -2,14 +2,19 @@ use std::error::Error;
 use std::time::Duration;
 
 use axon_core::config::{Config, ConfigOverrides, ScrapeFormat};
-use axon_vector::ops::qdrant::retrieve_result;
+use axon_retrieval::retrieve::{RetrievedDocument, retrieve_document};
+use axon_vectors::qdrant::QdrantVectorStore;
 
 use crate::document::{
     decode_document_cursor_backend, is_stale, paginate_document, read_latest_stored_source,
 };
-use crate::query::map_direct_retrieve_result;
 use crate::scrape as scrape_svc;
 use crate::types::{DocumentBackend, RetrieveOptions, RetrieveResult, ServiceRetrieveVariantError};
+
+/// Provider id tag for the read-only Qdrant store `retrieve` constructs
+/// directly from `cfg.qdrant_url` (mirrors `suggest`'s equivalent — this path
+/// has no dependency on the injected-runtime read stores).
+const RETRIEVE_VECTOR_PROVIDER_ID: &str = "axon-services-retrieve";
 
 const RETRIEVE_STALE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -146,25 +151,59 @@ async fn resolve_qdrant_document(
     url: &str,
     max_points: Option<usize>,
 ) -> Result<Option<ResolvedDocument>, Box<dyn Error + Send + Sync>> {
-    let result = retrieve_result(cfg, url, max_points).await.map_err(
-        |e| -> Box<dyn Error + Send + Sync> {
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), RETRIEVE_VECTOR_PROVIDER_ID);
+    let doc = retrieve_document(&store, &cfg.collection, url, max_points)
+        .await
+        .map_err(|e| -> Box<dyn Error + Send + Sync> {
             format!("qdrant retrieve failed for {url}: {e}").into()
-        },
-    )?;
-    if result.chunk_count == 0 {
-        return Ok(None);
+        })?;
+    Ok(map_retrieved_document(url, doc))
+}
+
+/// Map a fetched [`RetrievedDocument`] into the service-level
+/// [`ResolvedDocument`] shape, or `None` when nothing was indexed for the URL.
+///
+/// Ports legacy `axon-services`' `map_direct_retrieve_result` for the new
+/// `axon_retrieval::retrieve::RetrievedDocument` shape.
+///
+/// **Disclosed gap:** legacy `retrieve_result` also warned on "N malformed
+/// Qdrant point(s) skipped for URL variant X" when a stored payload failed to
+/// parse into its typed struct. `QdrantVectorStore::retrieve_by_url` reads raw
+/// JSON payload fields instead of a strongly-typed struct, so there is no
+/// "malformed point" concept to warn about any more — this diagnostic is
+/// intentionally dropped (not a correctness change: the underlying point is
+/// still included either way).
+fn map_retrieved_document(requested_url: &str, doc: RetrievedDocument) -> Option<ResolvedDocument> {
+    if doc.result.points.is_empty() {
+        return None;
     }
-    let mapped = map_direct_retrieve_result(result);
-    Ok(Some(ResolvedDocument {
+    let chunk_count = doc.result.points.len();
+    let mut warnings = Vec::new();
+    if doc.result.truncated {
+        warnings.push(format!(
+            "retrieve result truncated at {} point(s) for URL variant {}",
+            doc.result.max_points,
+            doc.result.matched_url.as_deref().unwrap_or(requested_url),
+        ));
+    }
+    Some(ResolvedDocument {
         backend: DocumentBackend::Qdrant,
-        content: mapped.content,
-        chunk_count: mapped.chunk_count,
-        matched_url: mapped.matched_url,
-        warnings: mapped.warnings,
-        variant_errors: mapped.variant_errors,
-        source_truncated: mapped.truncated,
+        content: doc.content,
+        chunk_count,
+        matched_url: doc.result.matched_url,
+        warnings,
+        variant_errors: doc
+            .result
+            .variant_errors
+            .into_iter()
+            .map(|e| ServiceRetrieveVariantError {
+                url: e.url,
+                error: e.error,
+            })
+            .collect(),
+        source_truncated: doc.result.truncated,
         refresh_status: None,
-    }))
+    })
 }
 
 async fn resolve_stored_source_document(
@@ -241,3 +280,7 @@ async fn resolve_live_scrape_document(
         refresh_status,
     })
 }
+
+#[cfg(test)]
+#[path = "retrieve_map_tests.rs"]
+mod map_tests;
