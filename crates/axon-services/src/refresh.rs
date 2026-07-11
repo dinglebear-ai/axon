@@ -1,43 +1,53 @@
 //! Full-corpus refresh: re-enqueue source jobs for previously indexed origins.
 //!
-//! Every chunk records a `seed_url` payload field (the crawl start URL or ingest
-//! target that produced it — see `vector::ops::tei::pipeline`). `refresh` facets
-//! the collection on `seed_url` (scoped per `source_type`) to *discover* the set
-//! of distinct origins — the ledger has no bulk "list all sources" API yet
-//! (`axon_ledger::store::LedgerStore` only exposes `get_source` by id), so this
-//! Qdrant facet remains the only enumeration mechanism available today. Once
-//! discovered, each origin is looked up in the source ledger
-//! (`docs/pipeline-unification/foundation/source-pipeline.md`'s `refresh
-//! existing` crosswalk row) via its deterministically-derived `SourceId`
-//! (`axon_route::source_id`, the same id `index_source`/`enqueue_source` would
-//! compute for that origin):
+//! Origin *discovery* has two paths, tried in order:
 //!
-//! - **Ledger-driven** (origin's `SourceId` exists in the ledger): re-enqueued
-//!   through the unified source pipeline — a `SourceRequest` with
-//!   `refresh = Force` submitted via [`crate::source::enqueue::enqueue_source`]
-//!   (`JobKind::Source`, run by `SourceRunner` -> `index_source_with_auth`).
-//!   This is the target #298 path (F1-03/C4-05): `SourceRequest.refresh`
+//! - **Ledger-driven** (issue #298 target path, `LedgerStore::list_sources` —
+//!   see `docs/pipeline-unification/runtime/ledger-contract.md`'s Public
+//!   Boundary and `docs/pipeline-unification/foundation/source-pipeline.md`'s
+//!   `refresh existing` crosswalk row): every registered source is enumerated
+//!   directly, paginated via `list_sources`, with no Qdrant facet involved.
+//!   Each ledger source already carries its own `SourceId`, so every
+//!   ledger-discovered origin re-enqueues through the unified source
+//!   pipeline — a `SourceRequest` with `refresh = Force` submitted via
+//!   [`crate::source::enqueue::enqueue_source`] (`JobKind::Source`, run by
+//!   `SourceRunner` -> `index_source_with_auth`). `SourceRequest.refresh`
 //!   semantics decide staleness, not a replayed job-table config blob.
-//! - **Legacy fallback** (origin predates ledger registration, or the ledger
-//!   is unavailable on this runtime): re-enqueued directly via
+//! - **Legacy Qdrant-facet fallback** (kept ONLY for pre-ledger content — do
+//!   not extend it for new origins once every origin is ledger-registered):
+//!   used when the ledger is unreachable on this runtime, or reachable but
+//!   holds *zero* registered sources — meaning this indexed corpus entirely
+//!   predates ledger registration. Every chunk records a `seed_url` payload
+//!   field (the crawl start URL or ingest target that produced it — see
+//!   `vector::ops::tei::pipeline`); this path facets the collection on
+//!   `seed_url` (scoped per `source_type`) to discover origins, then looks
+//!   each one up in the ledger by its deterministically-derived `SourceId`
+//!   (`axon_route::source_id`, the same id `index_source`/`enqueue_source`
+//!   would compute for that origin) in case it was registered after the fact.
+//!   Origins without a ledger hit re-enqueue directly via
 //!   `crawl_start_with_context`/`ingest_start_with_context`, replaying the
 //!   **original job's** stored `axon_crawl_jobs`/`axon_ingest_jobs` config
-//!   snapshot when one exists. This path is kept ONLY for pre-ledger content —
-//!   do not extend it for new origins once every origin is ledger-registered.
+//!   snapshot when one exists. Only content indexed with the `seed_url` field
+//!   participates in this fallback — chunks indexed before origin tracking
+//!   shipped carry no `seed_url` and are invisible to the facet (re-crawl/
+//!   re-ingest them once to populate the marker).
 //!
-//! Only content indexed with the `seed_url` field participates — chunks indexed
-//! before origin tracking shipped carry no `seed_url` and are invisible to the
-//! facet (re-crawl/re-ingest them once to populate the marker).
+//! Both paths share the same re-enqueue core once an origin's `SourceId` is
+//! known: [`enqueue_via_source_pipeline`].
 
 use std::error::Error;
 
 use crate::context::ServiceContext;
 use crate::source::enqueue::enqueue_source;
 use crate::source::routing::resolve_source_route;
-use axon_api::source::SourceRequest;
+use axon_api::source::{SourceKind, SourceListRequest, SourceRequest, SourceSummary};
 use axon_core::config::Config;
 use axon_jobs::ingest::RE_INGESTABLE_SOURCE_TYPES;
 use axon_vector::ops::qdrant::{env_usize_clamped, qdrant_facet, qdrant_facet_filtered};
+
+/// Page size used when paginating [`axon_ledger::store::LedgerStore::list_sources`]
+/// during ledger-driven discovery.
+const LEDGER_LIST_PAGE_SIZE: usize = 200;
 
 /// What `refresh` will do with a single indexed origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,20 +177,128 @@ fn matches_filter(origin: &RefreshOrigin, filter: Option<&str>) -> bool {
     }
 }
 
-/// Build the refresh plan by faceting the collection on `seed_url` per
-/// `source_type` (the only origin-discovery mechanism available — see the
-/// module docs). Read-only — performs no enqueues.
+/// Human-readable `source_type` label for a ledger-registered `SourceKind`.
+/// Used for `RefreshOrigin::source_type` (CLI table display and
+/// [`matches_filter`]) — deliberately coarser than the legacy Qdrant
+/// `source_type` payload strings (`"github"`, `"reddit"`, …), since the
+/// ledger tracks provider family at the `SourceKind` level.
+fn source_kind_label(kind: SourceKind) -> &'static str {
+    match kind {
+        SourceKind::Web => "web",
+        SourceKind::Local => "local",
+        SourceKind::Git => "git",
+        SourceKind::Registry => "registry",
+        SourceKind::Feed => "feed",
+        SourceKind::Reddit => "reddit",
+        SourceKind::Youtube => "youtube",
+        SourceKind::Session => "session",
+        SourceKind::CliTool => "cli_tool",
+        SourceKind::McpTool => "mcp_tool",
+        SourceKind::Memory => "memory",
+        SourceKind::Upload => "upload",
+    }
+}
+
+/// Classify a ledger-registered source into a re-runnable action based on its
+/// `SourceKind` — the ledger-driven counterpart to [`classify_action`], which
+/// classifies legacy Qdrant-facet origins by `source_type` string instead.
+fn classify_action_for_kind(kind: SourceKind) -> RefreshAction {
+    match kind {
+        SourceKind::Web | SourceKind::Registry => RefreshAction::Crawl,
+        SourceKind::Git | SourceKind::Feed | SourceKind::Youtube | SourceKind::Reddit => {
+            RefreshAction::Ingest
+        }
+        SourceKind::Local => {
+            RefreshAction::Skip("local sources are not re-crawlable from an origin marker")
+        }
+        SourceKind::Session => {
+            RefreshAction::Skip("sessions are not re-runnable from an origin marker")
+        }
+        SourceKind::Memory | SourceKind::Upload | SourceKind::CliTool | SourceKind::McpTool => {
+            RefreshAction::Skip("source kind is not re-runnable")
+        }
+    }
+}
+
+/// Turn one ledger-registered [`SourceSummary`] directly into a
+/// [`RefreshOrigin`] — no Qdrant facet round-trip needed since the ledger
+/// already carries everything `execute_refresh` needs: the canonical URI
+/// (`seed_url`), a chunk count for display/sort, and the `SourceId` itself
+/// (`ledger_source_id` is always `Some` for these origins).
+fn refresh_origin_from_source(source: SourceSummary) -> RefreshOrigin {
+    RefreshOrigin {
+        source_type: source_kind_label(source.source_kind).to_string(),
+        chunks: source.counts.chunks_total as usize,
+        action: classify_action_for_kind(source.source_kind),
+        ledger_source_id: Some(source.source_id.0),
+        seed_url: source.canonical_uri,
+    }
+}
+
+/// Enumerate every source registered in the ledger via `list_sources`,
+/// paginating until exhausted or `cap` is reached.
 ///
-/// `service_context` is used only to look up each actionable origin's ledger
-/// registration status (`RefreshOrigin::ledger_source_id`); pass `None` to
-/// always plan the legacy fallback path (e.g. contexts with no data plane).
-pub async fn plan_refresh(
+/// Returns `None` — "use the legacy Qdrant-facet fallback" — when there is no
+/// reachable ledger on this runtime (no `service_context`, no
+/// `target_local_source_runtime`) or the `list_sources` call itself fails.
+/// Returns `Some(sources)` (which may be empty) when the ledger answered
+/// successfully; `plan_refresh` treats an empty result the same as `None`
+/// (falls back), per the module docs.
+async fn ledger_registered_sources(
+    service_context: Option<&ServiceContext>,
+    cap: usize,
+) -> Option<Vec<SourceSummary>> {
+    let ledger = service_context?
+        .target_local_source_runtime()?
+        .ledger
+        .clone();
+
+    let mut sources = Vec::new();
+    let mut cursor = None;
+    loop {
+        let remaining = cap.saturating_sub(sources.len());
+        if remaining == 0 {
+            break;
+        }
+        let request = SourceListRequest {
+            source_kind: None,
+            adapter: None,
+            status: None,
+            authority: None,
+            watch_enabled: None,
+            tag: None,
+            query: None,
+            limit: Some(remaining.min(LEDGER_LIST_PAGE_SIZE) as u32),
+            cursor: cursor.take(),
+        };
+        let page = match ledger.list_sources(request).await {
+            Ok(page) => page,
+            Err(e) => {
+                tracing::warn!(error = %e, "refresh: ledger list_sources failed; using legacy facet fallback");
+                return None;
+            }
+        };
+        let got_any = !page.items.is_empty();
+        cursor = page.next_cursor;
+        sources.extend(page.items);
+        if cursor.is_none() || !got_any {
+            break;
+        }
+    }
+    Some(sources)
+}
+
+/// Legacy Qdrant-facet origin discovery (documented fallback — see module
+/// docs): facets the collection on `seed_url` scoped per `source_type`, then
+/// opportunistically checks each actionable origin's ledger registration
+/// status via [`ledger_source_id_for`]. Only reached from [`plan_refresh`]
+/// when ledger-driven discovery found no registered sources.
+async fn facet_discovered_origins(
     cfg: &Config,
+    cap: usize,
     filter: Option<&str>,
     service_context: Option<&ServiceContext>,
-) -> Result<RefreshPlan, Box<dyn Error>> {
-    let cap = env_usize_clamped("AXON_REFRESH_FACET_LIMIT", 10_000, 1, 1_000_000);
-
+) -> Result<Vec<RefreshOrigin>, Box<dyn Error>> {
     let source_types = qdrant_facet(cfg, "source_type", 256)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("facet source_type: {e}").into() })?;
@@ -213,13 +331,49 @@ pub async fn plan_refresh(
             }
         }
     }
+    Ok(origins)
+}
 
-    // Largest origins first, then stable by URL for deterministic output.
+/// Largest origins first, then stable by URL for deterministic output.
+fn sort_origins(origins: &mut [RefreshOrigin]) {
     origins.sort_by(|a, b| {
         b.chunks
             .cmp(&a.chunks)
             .then_with(|| a.seed_url.cmp(&b.seed_url))
     });
+}
+
+/// Build the refresh plan. Read-only — performs no enqueues.
+///
+/// Discovery tries the ledger first ([`ledger_registered_sources`]); only when
+/// that finds no registered sources (unreachable ledger, or a ledger that
+/// genuinely has none yet) does it fall back to the legacy Qdrant-facet path
+/// ([`facet_discovered_origins`]) — see the module docs for the full
+/// crosswalk. `service_context` is also used by the fallback path to
+/// opportunistically look up each actionable origin's ledger registration
+/// status; pass `None` to always plan the legacy fallback path (e.g. contexts
+/// with no data plane).
+pub async fn plan_refresh(
+    cfg: &Config,
+    filter: Option<&str>,
+    service_context: Option<&ServiceContext>,
+) -> Result<RefreshPlan, Box<dyn Error>> {
+    let cap = env_usize_clamped("AXON_REFRESH_FACET_LIMIT", 10_000, 1, 1_000_000);
+
+    if let Some(sources) = ledger_registered_sources(service_context, cap).await
+        && !sources.is_empty()
+    {
+        let mut origins: Vec<RefreshOrigin> = sources
+            .into_iter()
+            .map(refresh_origin_from_source)
+            .filter(|origin| matches_filter(origin, filter))
+            .collect();
+        sort_origins(&mut origins);
+        return Ok(RefreshPlan { origins });
+    }
+
+    let mut origins = facet_discovered_origins(cfg, cap, filter, service_context).await?;
+    sort_origins(&mut origins);
     Ok(RefreshPlan { origins })
 }
 

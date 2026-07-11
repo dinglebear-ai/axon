@@ -77,6 +77,10 @@ impl LedgerStore for SqliteLedgerStore {
         source::get_source(self, source_id).await
     }
 
+    async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
+        source::list_sources(self, request).await
+    }
+
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
         manifest::put_manifest(self, manifest).await
     }
@@ -177,6 +181,7 @@ impl LedgerStore for SqliteLedgerStore {
                 "document_status".to_string(),
                 "cleanup_debt".to_string(),
                 "leases".to_string(),
+                "source_listing".to_string(),
             ],
             limits: MetadataMap::new(),
         }
