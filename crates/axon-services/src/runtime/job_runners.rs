@@ -329,8 +329,9 @@ fn extract_error(message: impl Into<String>) -> ApiError {
     )
 }
 
-/// Runs a claimed `Embed` unified job via
-/// `axon_vector::ops::embed_path_native_with_progress`.
+/// Runs a claimed `Embed` unified job via `crate::embed::local_write::embed_local_path`
+/// (the ledger-tracked `local_source` pipeline — `axon-document` +
+/// `axon-embedding` + `axon-vectors`).
 ///
 /// `claimed.request_json` carries `{"input": "...", "config_json": "..."}`
 /// (see `embed_start_with_context` in `crates/axon-services/src/embed.rs`).
@@ -370,11 +371,10 @@ impl UnifiedJobRunner for EmbedRunner {
                 error.to_string(),
             )
         })?;
-        let embed_fut =
-            axon_vector::ops::embed_path_native_with_progress(&effective_cfg, &input, None, None);
+        let embed_fut = crate::embed::local_write::embed_local_path(&effective_cfg, &input, None);
         tokio::select! {
             _ = shutdown.cancelled() => Err(embed_error("embed canceled")),
-            result = embed_fut => result.map(|_summary| ()).map_err(|error| embed_error(error.to_string())),
+            result = embed_fut => result.map(|_output| ()).map_err(|error| embed_error(error.to_string())),
         }
     }
 }

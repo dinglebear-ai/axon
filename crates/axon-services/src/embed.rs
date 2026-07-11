@@ -1,5 +1,8 @@
 //! Service-layer wrappers for embed job lifecycle operations and synchronous embedding entry points.
 
+pub(crate) mod local_write;
+mod select;
+
 use crate::context::ServiceContext;
 use crate::events::{ServiceEvent, is_secret_like};
 use crate::jobs as job_service;
@@ -14,9 +17,7 @@ use axon_api::source::{
 use axon_core::config::Config;
 use axon_jobs::backend::JobKind;
 use axon_jobs::config_snapshot::config_snapshot_json;
-use axon_vector::ops::input::classify::path_extension;
-use axon_vector::ops::input::select;
-use axon_vector::ops::{embed_path_native, embed_path_native_with_progress};
+use local_write::embed_local_path;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
@@ -172,13 +173,20 @@ pub async fn embed_start(
     embed_start_with_context(cfg, &input, service_context, tx, None, None).await
 }
 
+/// Embed a local directory or file through the ledger-tracked `local_source`
+/// pipeline (`axon-document` + `axon-embedding` + `axon-vectors`).
+///
+/// Behavior note: unlike the legacy (now-retired) `embed_path_native` in the
+/// old vector-crate embed pipeline, this path only supports local filesystem
+/// inputs (directories/files) —
+/// `local_source` is filesystem-scoped by design. A URL or free-text `input`
+/// now fails fast with an "invalid local source root" error instead of being
+/// scraped/embedded as plain text; both `embed_now` and `embed_now_with_source`
+/// have had zero production callers since the CLI/MCP/web `embed` action
+/// moved onto the unified `source`/`scrape` surfaces, so this narrowing has no
+/// live behavioral impact today.
 pub async fn embed_now(cfg: &Config, input: &str) -> Result<EmbedJobResult, Box<dyn Error>> {
-    embed_path_native(cfg, input).await?;
-    Ok(map_embed_job_result(serde_json::json!({
-        "input": input,
-        "collection": cfg.collection,
-        "completed": true,
-    })))
+    embed_now_with_source(cfg, input, None).await
 }
 
 pub async fn embed_now_with_source(
@@ -186,20 +194,18 @@ pub async fn embed_now_with_source(
     input: &str,
     source_type: Option<&str>,
 ) -> Result<EmbedJobResult, Box<dyn Error>> {
-    // Surface the embed counts (matching the enqueued worker's result shape in
-    // crates/axon-jobs/src/workers/runners/embed.rs) so a partial embed
-    // (`docs_failed > 0`) is visible to the caller rather than reported as a bare
-    // success. NOTE: this path intentionally does not call `require_success` —
-    // crawl_sync also calls it and tolerates partial embeds; enforcing
-    // all-or-nothing across every embed surface is a separate policy decision.
-    let summary = embed_path_native_with_progress(cfg, input, None, source_type).await?;
+    let output = embed_local_path(cfg, input, source_type)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     Ok(map_embed_job_result(serde_json::json!({
         "input": input,
         "collection": cfg.collection,
         "completed": true,
-        "docs_embedded": summary.docs_embedded,
-        "docs_failed": summary.docs_failed,
-        "chunks_embedded": summary.chunks_embedded,
+        "docs_embedded": output.documents_prepared,
+        "docs_failed": 0,
+        "chunks_embedded": output.chunks_prepared,
+        "vector_points_written": output.vector_points_written,
+        "removed_files": output.removed_files,
     })))
 }
 
@@ -387,7 +393,7 @@ fn validate_local_embed_directory(
             )?;
         } else if child_meta.is_file() {
             let name_lower = name.to_ascii_lowercase();
-            if select::is_binary_ext(path_extension(name))
+            if select::is_binary_ext(select::path_extension(name))
                 || select::is_generated_filename(&name_lower)
             {
                 continue;
