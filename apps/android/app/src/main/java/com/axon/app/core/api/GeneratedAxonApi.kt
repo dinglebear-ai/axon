@@ -9,6 +9,7 @@ import com.axon.app.generated.model.MobileChatItem as GeneratedMobileChatItem
 import com.axon.app.generated.model.MobileSession as GeneratedMobileSession
 import com.axon.app.generated.model.MobileSessionDetailResponse as GeneratedMobileSessionDetailResponse
 import com.axon.app.generated.model.MobileSessionListResponse as GeneratedMobileSessionListResponse
+import com.axon.app.generated.model.MobileSessionStatus as GeneratedMobileSessionStatus
 import com.axon.app.generated.model.MobileSessionSummary as GeneratedMobileSessionSummary
 import com.axon.app.generated.model.UpsertMobileSessionRequest as GeneratedUpsertMobileSessionRequest
 import com.axon.app.generated.model.UpsertMobileSessionResponse as GeneratedUpsertMobileSessionResponse
@@ -187,6 +188,10 @@ internal class GeneratedAxonApi(
             updatedAt = updatedAt,
             pinnedAt = pinnedAt,
             items = items.orEmpty().map { it.toAppModel() },
+            status = status?.value ?: "active",
+            sourceRefs = sourceRefs.orEmpty(),
+            draft = draft,
+            syncVersion = syncVersion,
         )
 
     private fun GeneratedMobileChatItem.toAppModel(): MobileChatItemDto =
@@ -208,6 +213,10 @@ internal class GeneratedAxonApi(
             updatedAt = updatedAt,
             pinnedAt = pinnedAt,
             items = items.map { it.toGenerated() },
+            status = GeneratedMobileSessionStatus.decode(status) ?: GeneratedMobileSessionStatus.active,
+            sourceRefs = sourceRefs,
+            draft = draft,
+            syncVersion = syncVersion,
         )
 
     private fun MobileChatItemDto.toGenerated(): GeneratedMobileChatItem =

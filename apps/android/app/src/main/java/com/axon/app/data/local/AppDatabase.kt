@@ -32,8 +32,9 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Mobile Session Model fields (android-contract.md) — client-side cache
-        // columns only; see Session.kt kdoc for the joint-deferred server note.
+        // Mobile Session Model fields (android-contract.md); the server's
+        // MobileSession DTO now carries these too — see Session.kt kdoc for
+        // how the local cache and the full-detail server routes interact.
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")

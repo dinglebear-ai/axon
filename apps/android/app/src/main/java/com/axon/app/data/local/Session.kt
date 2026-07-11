@@ -27,10 +27,13 @@ data class Session(
      * `docs/pipeline-unification/surfaces/android-contract.md` ("Mobile
      * Session Model": `status`, `source_refs`, `draft`, `sync_version`; `id`
      * above already serves as the contract's `session_id`). The server's
-     * `MobileSession` DTO (`crates/axon-services/src/mobile_sessions.rs`)
-     * does not carry these fields yet — they are cached client-side only
-     * until that axon-api model is upgraded to match (joint deferred item;
-     * see android-contract.md audit U3-08/U3-09). `source_refs` is stored as
+     * `MobileSession` DTO (`crates/axon-services/src/mobile_sessions.rs`) now
+     * carries these fields and round-trips them through
+     * `getMobileSession`/`upsertMobileSession`. The list route
+     * (`GET /v1/mobile/sessions`) still returns the lean
+     * `MobileSessionSummary` shape without them, so `SessionsViewModel`
+     * carries forward the locally cached values here on every list refresh
+     * instead of resetting them to DTO defaults. `source_refs` is stored as
      * a JSON-encoded string column — see [sourceRefs]/[encodeSourceRefs] —
      * rather than adding Room `TypeConverter` infrastructure for one column.
      */

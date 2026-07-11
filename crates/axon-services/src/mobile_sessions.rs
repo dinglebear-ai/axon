@@ -22,6 +22,25 @@ pub struct MobileChatItem {
     pub timestamp: i64,
 }
 
+/// Mobile session lifecycle/sync status.
+///
+/// Contract: `docs/pipeline-unification/surfaces/android-contract.md`
+/// ("Mobile Session Model" -- `active`, `archived`, `deleted`, or
+/// `sync_conflict`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MobileSessionStatus {
+    /// Normal, in-use session.
+    #[default]
+    Active,
+    /// Hidden from the default list but retained.
+    Archived,
+    /// Soft-deleted; retained briefly for sync propagation.
+    Deleted,
+    /// A concurrent update was rejected and the client must reconcile.
+    SyncConflict,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MobileSession {
     pub id: String,
@@ -35,6 +54,19 @@ pub struct MobileSession {
     pub pinned_at: Option<i64>,
     #[serde(default)]
     pub items: Vec<MobileChatItem>,
+    #[serde(default)]
+    pub status: MobileSessionStatus,
+    /// Sources/jobs/artifacts linked to this session (ids or URLs).
+    #[serde(default)]
+    pub source_refs: Vec<String>,
+    /// Optional redacted/encrypted draft payload the client is composing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<String>,
+    /// Optimistic concurrency token. Clients must echo back the version they
+    /// last observed; the server increments it on every successful upsert and
+    /// rejects mismatched versions with a stale-update conflict.
+    #[serde(default)]
+    pub sync_version: i64,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -170,8 +202,13 @@ pub async fn upsert_session(
     let _guard = STORE_LOCK.lock().await;
     let mut store = read_store().await?;
     migrate_legacy_entries(&mut store, owner);
-    let session = request.session.clone();
     upsert_into_store(&mut store, owner, path_id, request.session)?;
+    // Read back the persisted state (not the request body) so the response
+    // reflects the server-incremented `sync_version`, not the client's guess.
+    let session = store
+        .get(&store_key(owner, path_id))
+        .cloned()
+        .ok_or(MobileSessionError::NotFound)?;
     write_store(&store).await?;
     Ok(UpsertMobileSessionResponse { ok: true, session })
 }
@@ -214,15 +251,29 @@ fn upsert_into_store(
     store: &mut BTreeMap<String, MobileSession>,
     owner: &str,
     path_id: &str,
-    session: MobileSession,
+    mut session: MobileSession,
 ) -> Result<()> {
     validate_session(&session)?;
     let key = store_key(owner, path_id);
-    if store
-        .get(&key)
-        .is_some_and(|existing| existing.updated_at > session.updated_at)
-    {
-        return Err(MobileSessionError::StaleUpdate);
+    match store.get(&key) {
+        Some(existing) => {
+            // Additive optimistic-concurrency check on top of the existing
+            // `updated_at` ordering guard: a caller must echo back the
+            // `sync_version` it last observed. Either guard failing is a
+            // stale update -- the client based its edit on out-of-date state.
+            if existing.updated_at > session.updated_at
+                || existing.sync_version != session.sync_version
+            {
+                return Err(MobileSessionError::StaleUpdate);
+            }
+            session.sync_version = existing.sync_version.saturating_add(1);
+        }
+        None => {
+            // First write for this id: the client cannot know the server's
+            // version yet, so any submitted value is accepted and the
+            // session starts at version 1.
+            session.sync_version = 1;
+        }
     }
     store.insert(key, session);
     Ok(())
@@ -254,6 +305,7 @@ fn validate_session(session: &MobileSession) -> Result<()> {
             "pinned_at must be non-negative".to_string(),
         ));
     }
+    validate_sync_fields(session)?;
 
     let turn_count = usize::try_from(session.turn_count)
         .map_err(|_| MobileSessionError::InvalidSession("turn_count is too large".to_string()))?;
@@ -279,6 +331,40 @@ fn validate_session(session: &MobileSession) -> Result<()> {
         return Err(MobileSessionError::InvalidSession(format!(
             "injected_op_count {injected_op_count} does not match {actual_injected_op_count} operation items"
         )));
+    }
+    Ok(())
+}
+
+/// Bounds-checks the optimistic-concurrency/sync fields added for the Android
+/// contract's Mobile Session Model (`sync_version`, `source_refs`, `draft`).
+fn validate_sync_fields(session: &MobileSession) -> Result<()> {
+    if session.sync_version < 0 {
+        return Err(MobileSessionError::InvalidSession(
+            "sync_version must be non-negative".to_string(),
+        ));
+    }
+    if session.source_refs.len() > 256 {
+        return Err(MobileSessionError::InvalidSession(
+            "source_refs must have at most 256 entries".to_string(),
+        ));
+    }
+    if session
+        .source_refs
+        .iter()
+        .any(|reference| reference.len() > 512)
+    {
+        return Err(MobileSessionError::InvalidSession(
+            "each source_refs entry must be at most 512 bytes".to_string(),
+        ));
+    }
+    if session
+        .draft
+        .as_ref()
+        .is_some_and(|draft| draft.len() > 8192)
+    {
+        return Err(MobileSessionError::InvalidSession(
+            "draft must be at most 8192 bytes".to_string(),
+        ));
     }
     Ok(())
 }
@@ -360,133 +446,5 @@ fn store_path() -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_path_like_ids() {
-        assert!(validate_id("../nope").is_err());
-        assert!(validate_id("abc/def").is_err());
-        assert!(validate_id("ok-123_ABC").is_ok());
-    }
-
-    #[test]
-    fn pinned_sessions_sort_first_then_recent() {
-        let mut sessions = vec![
-            MobileSessionSummary {
-                id: "a".into(),
-                title: "A".into(),
-                first_message_preview: String::new(),
-                turn_count: 0,
-                injected_op_count: 0,
-                created_at: 1,
-                updated_at: 10,
-                pinned_at: None,
-            },
-            MobileSessionSummary {
-                id: "b".into(),
-                title: "B".into(),
-                first_message_preview: String::new(),
-                turn_count: 0,
-                injected_op_count: 0,
-                created_at: 1,
-                updated_at: 5,
-                pinned_at: Some(20),
-            },
-        ];
-        sort_summaries(&mut sessions);
-        assert_eq!(sessions[0].id, "b");
-    }
-
-    #[test]
-    fn sessions_are_owner_scoped() {
-        let mut store = BTreeMap::new();
-
-        upsert_into_store(&mut store, "owner-a", "shared", test_session("shared", 100))
-            .expect("owner a insert");
-
-        upsert_into_store(&mut store, "owner-b", "shared", test_session("shared", 200))
-            .expect("owner b insert");
-
-        assert_eq!(
-            store
-                .get(&store_key("owner-b", "shared"))
-                .unwrap()
-                .updated_at,
-            200
-        );
-        assert!(store_key_owner_matches(
-            &store_key("owner-a", "shared"),
-            "owner-a"
-        ));
-        assert!(!store_key_owner_matches(
-            &store_key("owner-a", "shared"),
-            "owner-c"
-        ));
-    }
-
-    #[test]
-    fn rejects_stale_updates() {
-        let mut store = BTreeMap::new();
-
-        upsert_into_store(&mut store, "owner", "shared", test_session("shared", 200))
-            .expect("initial insert");
-
-        let stale = upsert_into_store(&mut store, "owner", "shared", test_session("shared", 150));
-        assert!(matches!(stale, Err(MobileSessionError::StaleUpdate)));
-        assert_eq!(
-            store.get(&store_key("owner", "shared")).unwrap().updated_at,
-            200
-        );
-    }
-
-    #[test]
-    fn rejects_inconsistent_denormalized_counts() {
-        let mut store = BTreeMap::new();
-        let mut session = test_session("shared", 200);
-        session.turn_count = 1;
-
-        let result = upsert_into_store(&mut store, "owner", "shared", session);
-
-        assert!(matches!(result, Err(MobileSessionError::InvalidSession(_))));
-    }
-
-    #[test]
-    fn migrates_legacy_unscoped_sessions_to_current_owner() {
-        let mut store = BTreeMap::new();
-        store.insert("shared".to_string(), test_session("shared", 200));
-
-        assert!(migrate_legacy_entries(&mut store, "owner"));
-
-        assert!(!store.contains_key("shared"));
-        assert!(store.contains_key(&store_key("owner", "shared")));
-    }
-
-    #[test]
-    fn legacy_migration_does_not_overwrite_owner_session() {
-        let mut store = BTreeMap::new();
-        store.insert("shared".to_string(), test_session("shared", 100));
-        store.insert(store_key("owner", "shared"), test_session("shared", 200));
-
-        assert!(migrate_legacy_entries(&mut store, "owner"));
-
-        assert_eq!(
-            store.get(&store_key("owner", "shared")).unwrap().updated_at,
-            200
-        );
-    }
-
-    fn test_session(id: &str, updated_at: i64) -> MobileSession {
-        MobileSession {
-            id: id.to_string(),
-            title: "Test".into(),
-            first_message_preview: String::new(),
-            turn_count: 0,
-            injected_op_count: 0,
-            created_at: 1,
-            updated_at,
-            pinned_at: None,
-            items: Vec::new(),
-        }
-    }
-}
+#[path = "mobile_sessions_tests.rs"]
+mod tests;

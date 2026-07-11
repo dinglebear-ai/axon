@@ -554,11 +554,15 @@ export type components = {
         };
         "MobileSession": {
             "created_at": number;
+            "draft"?: string | null;
             "first_message_preview": string;
             "id": string;
             "injected_op_count": number;
             "items"?: components['schemas']['MobileChatItem'][];
             "pinned_at"?: number | null;
+            "source_refs"?: string[];
+            "status"?: components['schemas']['MobileSessionStatus'];
+            "sync_version"?: number;
             "title": string;
             "turn_count": number;
             "updated_at": number;
@@ -569,6 +573,7 @@ export type components = {
         "MobileSessionListResponse": {
             "sessions": components['schemas']['MobileSessionSummary'][];
         };
+        "MobileSessionStatus": "active" | "archived" | "deleted" | "sync_conflict";
         "MobileSessionSummary": {
             "created_at": number;
             "first_message_preview": string;
