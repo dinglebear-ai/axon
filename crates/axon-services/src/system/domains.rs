@@ -6,14 +6,37 @@ use crate::types::{
     Pagination,
 };
 use axon_core::config::Config;
-use axon_vector::ops::qdrant::{
-    domains_payload, env_usize_clamped, payload_domain, payload_url, qdrant_domain_has_indexed_url,
-    qdrant_scroll_pages_selective,
-};
+use axon_core::env::env_usize_clamped;
+use axon_vectors::qdrant::QdrantVectorStore;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
 const DEFAULT_DOMAINS_DETAILED_LIMIT: usize = 10_000_000;
+/// Mirrors legacy `domains_payload`'s facet-fetch cap.
+const DEFAULT_DOMAINS_FACET_LIMIT: usize = 100_000;
+/// Payload page size for the detailed-domains scroll — matches legacy
+/// `qdrant_scroll_pages_selective`'s fixed 256-point page.
+const SCROLL_PAGE_LIMIT: usize = 256;
+
+/// `domain` field from a raw point payload, or `"unknown"` when absent.
+/// Ports legacy `axon-vector`'s `payload_domain`.
+fn payload_domain(payload: &serde_json::Value) -> String {
+    payload
+        .get("domain")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+/// `url` field from a raw point payload, or `""` when absent. Ports legacy
+/// `axon-vector`'s `payload_url`.
+fn payload_url(payload: &serde_json::Value) -> String {
+    payload
+        .get("url")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
 
 pub fn map_domains_payload(
     payload: &serde_json::Value,
@@ -57,14 +80,46 @@ pub fn map_domains_payload(
     })
 }
 
+/// Ports legacy `axon-vector`'s `domains_payload`: fetch the `domain` facet
+/// (capped by `AXON_DOMAINS_FACET_LIMIT`) and slice it into one
+/// limit/offset page, in the same JSON shape [`map_domains_payload`] expects.
+async fn domains_payload(
+    store: &QdrantVectorStore,
+    cfg: &Config,
+    limit: usize,
+    offset: usize,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let facet_cap = env_usize_clamped(
+        "AXON_DOMAINS_FACET_LIMIT",
+        DEFAULT_DOMAINS_FACET_LIMIT,
+        1,
+        1_000_000,
+    );
+    let fetch = limit.saturating_add(offset).max(1).min(facet_cap);
+    let domains = store
+        .facet(&cfg.collection, "domain", None, fetch)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("domains facet query failed: {e}").into() })?;
+    let values = domains
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|(domain, vectors)| serde_json::json!({ "domain": domain, "vectors": vectors }))
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({
+        "domains": values,
+        "limit": limit,
+        "offset": offset,
+    }))
+}
+
 #[must_use = "domains returns a Result that should be handled"]
 pub async fn domains(
     cfg: &Config,
     pagination: Pagination,
 ) -> Result<DomainsResult, Box<dyn Error>> {
-    let payload = domains_payload(cfg, pagination.limit, pagination.offset)
-        .await
-        .map_err(|e| -> Box<dyn Error> { format!("domains facet query failed: {e}").into() })?;
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let payload = domains_payload(&store, cfg, pagination.limit, pagination.offset).await?;
     Ok(map_domains_payload(&payload)?)
 }
 
@@ -74,7 +129,9 @@ pub async fn domain_indexed(
     domain: &str,
 ) -> Result<DomainIndexedResult, Box<dyn Error>> {
     let normalized = normalize_domain_query(domain)?;
-    let indexed = qdrant_domain_has_indexed_url(cfg, &normalized)
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let indexed = store
+        .domain_has_indexed_url(&cfg.collection, &normalized)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("domain indexed check failed: {e}").into() })?;
     Ok(DomainIndexedResult {
@@ -127,20 +184,23 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
     // spiking memory on large collections.
     let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
     let mut count = 0usize;
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
     // Selective payload: only fetch domain + url fields. Avoids transferring
     // multi-KB chunk_text per point — the detailed domains scan only aggregates
     // domain membership and URL sets.
-    qdrant_scroll_pages_selective(
-        cfg,
-        serde_json::json!({"include": ["domain", "url"]}),
-        |points: &[serde_json::Value]| {
-            for point in points {
-                if count >= limit {
-                    return false;
-                }
-                if let Some(payload) = point.get("payload") {
-                    let domain = payload_domain(payload);
-                    let url = payload_url(payload);
+    store
+        .scroll_pages(
+            &cfg.collection,
+            None,
+            serde_json::json!({"include": ["domain", "url"]}),
+            SCROLL_PAGE_LIMIT,
+            |points| {
+                for point in points {
+                    if count >= limit {
+                        return false;
+                    }
+                    let domain = payload_domain(&point.payload);
+                    let url = payload_url(&point.payload);
                     let entry = by_domain.entry(domain).or_insert((0, HashSet::new()));
                     entry.0 += 1;
                     if !url.is_empty() {
@@ -148,12 +208,11 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
                     }
                     count += 1;
                 }
-            }
-            count < limit
-        },
-    )
-    .await
-    .map_err(|e| -> Box<dyn Error> { format!("detailed domains scroll failed: {e}").into() })?;
+                count < limit
+            },
+        )
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("detailed domains scroll failed: {e}").into() })?;
 
     let mut domains: Vec<DetailedDomainFacet> = by_domain
         .into_iter()
