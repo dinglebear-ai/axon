@@ -60,6 +60,9 @@ pub(crate) fn validate_cleanup_debt(debt: &CleanupDebt) -> Result<()> {
         } if source_id != &debt.source_id || Some(generation) != debt.generation.as_ref() => {
             Err(cleanup_selector_mismatch_error(debt))
         }
+        CleanupSelector::LedgerGenerations { source_id, .. } if source_id != &debt.source_id => {
+            Err(cleanup_selector_mismatch_error(debt))
+        }
         _ => Ok(()),
     }
 }

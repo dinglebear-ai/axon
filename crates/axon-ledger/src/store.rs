@@ -45,6 +45,18 @@ pub trait LedgerStore: Send + Sync {
     /// stamp `completed_at`. Idempotent — resolving an already-resolved or
     /// unknown debt id is a no-op.
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()>;
+    /// Delete ledger rows (generation, manifest, items, document status) for
+    /// one superseded generation of `source_id`. This is the `LedgerPrune`
+    /// cleanup-debt boundary from `docs/pipeline-unification/runtime/
+    /// ledger-contract.md` — it never touches the committed/current
+    /// generation (callers must fence that, same as vector deletes).
+    /// Idempotent: deleting an already-deleted or unknown generation is a
+    /// no-op returning `0`. Returns the number of ledger rows removed.
+    async fn delete_generation(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<u64>;
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>>;
     async fn heartbeat_lease(
         &self,

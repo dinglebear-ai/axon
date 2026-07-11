@@ -270,6 +270,21 @@ impl MemoryStore for FakeMemoryStore {
         Ok(result_from_record(record, memory_score(record)))
     }
 
+    async fn forget(&self, request: MemoryForgetRequest) -> Result<MemoryResult> {
+        let mut state = self.state.lock().await;
+        let record = state
+            .records
+            .get_mut(&request.memory_id)
+            .ok_or_else(|| missing_memory(&request.memory_id))?;
+        record.status = MemoryStatus::Forgotten;
+        record.history.push(MemoryHistoryEvent {
+            status: MemoryStatus::Forgotten,
+            message: request.reason.unwrap_or_else(|| "forgotten".to_string()),
+            timestamp: request.timestamp,
+        });
+        Ok(result_from_record(record, memory_score(record)))
+    }
+
     async fn review(&self, request: MemoryReviewRequest) -> Result<MemoryReviewResult> {
         let state = self.state.lock().await;
         let limit = request
@@ -334,6 +349,7 @@ impl MemoryStore for FakeMemoryStore {
                 "search".to_string(),
                 "context".to_string(),
                 "reinforce".to_string(),
+                "forget".to_string(),
             ],
             limits: MetadataMap::new(),
         }

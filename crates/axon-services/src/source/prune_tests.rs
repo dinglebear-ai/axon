@@ -3,14 +3,18 @@ use super::*;
 use std::sync::Mutex;
 
 use axon_api::source::{
-    AdapterRef, ApiError, AuthorityLevel, CollectionSpec, DocumentCounts, ErrorStage, ItemCounts,
-    ItemKind, JobId, LifecycleStatus, ManifestItem, MetadataMap, ProviderCapability,
-    PublishGenerationRequest, PublishState, SourceCounts, SourceGeneration, SourceGenerationId,
-    SourceId, SourceItemKey, SourceKind, SourceManifest, SourceScope, SourceSummary, Timestamp,
-    VectorDeleteSelector, VectorPointBatch, VectorSearchRequest, VectorSearchResult,
-    VectorStoreDeleteResult, VectorStoreWriteResult,
+    AdapterRef, ApiError, AuthorityLevel, CleanupDebt, CleanupDebtId, CleanupDebtKind,
+    CleanupSelector, CollectionSpec, DocumentCounts, ErrorStage, GraphCandidate,
+    GraphCandidateProducer, GraphNodeCandidate, GraphNodeId, ItemCounts, ItemKind, JobId,
+    LifecycleStatus, ManifestItem, MemoryId, MemoryRequest, MemoryScope, MemoryStatus, MemoryType,
+    MetadataMap, ProviderCapability, PublishGenerationRequest, PublishState, SourceCounts,
+    SourceGeneration, SourceGenerationId, SourceId, SourceItemKey, SourceKind, SourceManifest,
+    SourceScope, SourceSummary, Timestamp, VectorDeleteSelector, VectorPointBatch,
+    VectorSearchRequest, VectorSearchResult, VectorStoreDeleteResult, VectorStoreWriteResult,
 };
+use axon_graph::store::{FakeGraphStore, GraphStore};
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
+use axon_memory::store::{FakeMemoryStore, MemoryStore};
 use axon_vectors::store::{Result as VectorResult, VectorStore};
 use uuid::Uuid;
 
@@ -329,4 +333,233 @@ async fn drain_is_noop_when_no_pending_debt() {
 
     assert_eq!(summary, DebtDrainSummary::default());
     assert!(vector.deletes.lock().unwrap().is_empty());
+}
+
+fn cleanup_debt(kind: CleanupDebtKind, selector: CleanupSelector) -> CleanupDebt {
+    CleanupDebt {
+        debt_id: CleanupDebtId::new(format!("debt_{kind:?}")),
+        job_id: JobId::new(Uuid::from_u128(0)),
+        source_id: SourceId::new(SRC),
+        generation: None,
+        kind,
+        selector,
+        status: LifecycleStatus::Pending,
+        created_at: ts(),
+        attempts: 0,
+        last_error: None,
+        next_retry_at: None,
+        completed_at: None,
+    }
+}
+
+#[tokio::test]
+async fn drain_full_deletes_named_graph_nodes_when_graph_store_wired() {
+    let ledger = FakeLedgerStore::new();
+    let (_previous, committed) = seed_two_generations(&ledger).await;
+    let vector = RecordingVectorStore::default();
+    let graph = FakeGraphStore::new();
+
+    graph
+        .upsert_candidates(vec![GraphCandidate {
+            candidate_id: "cand1".to_string(),
+            job_id: JobId::new(Uuid::from_u128(0)),
+            source_id: SourceId::new(SRC),
+            source_item_key: SourceItemKey::new("index"),
+            item_canonical_uri: "https://example.com/docs/index".to_string(),
+            document_id: None,
+            kind: "concept".to_string(),
+            merge_key: None,
+            producer: GraphCandidateProducer {
+                adapter: "web".to_string(),
+                parser: None,
+                version: "test".to_string(),
+            },
+            nodes: vec![GraphNodeCandidate {
+                node_kind: "concept".to_string(),
+                stable_key: "node1".to_string(),
+                label: "Node One".to_string(),
+                properties: MetadataMap::new(),
+            }],
+            edges: Vec::new(),
+            evidence: Vec::new(),
+            confidence: 1.0,
+            metadata: MetadataMap::new(),
+        }])
+        .await
+        .unwrap();
+    assert!(
+        graph
+            .get_node(GraphNodeId::new("node1"))
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::GraphPrune,
+            CleanupSelector::GraphNodes {
+                stable_keys: vec!["node1".to_string()],
+            },
+        ))
+        .await
+        .unwrap();
+
+    let summary = drain_cleanup_debt_full(
+        &ledger,
+        &vector,
+        Some(&graph as &dyn GraphStore),
+        None,
+        COLLECTION,
+        &index_counts(&committed),
+    )
+    .await;
+
+    // The pre-existing VectorDelete debt from `seed_two_generations` plus the
+    // GraphPrune debt just added: both should resolve.
+    assert_eq!(summary.resolved, 2);
+    assert_eq!(summary.failed, 0);
+    assert!(
+        graph
+            .get_node(GraphNodeId::new("node1"))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn drain_full_leaves_graph_debt_pending_without_graph_store() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::GraphPrune,
+            CleanupSelector::GraphNodes {
+                stable_keys: vec!["node1".to_string()],
+            },
+        ))
+        .await
+        .unwrap();
+    let vector = RecordingVectorStore::default();
+
+    let summary = drain_cleanup_debt(
+        &ledger,
+        &vector,
+        COLLECTION,
+        &index_counts(&SourceGenerationId::new("gen_none")),
+    )
+    .await;
+
+    assert_eq!(summary.resolved, 0);
+    assert_eq!(summary.failed, 0);
+    assert_eq!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn drain_full_forgets_named_memory_records_when_memory_store_wired() {
+    let ledger = FakeLedgerStore::new();
+    let (_previous, committed) = seed_two_generations(&ledger).await;
+    let vector = RecordingVectorStore::default();
+    let memory = FakeMemoryStore::new();
+
+    memory
+        .remember(MemoryRequest {
+            memory_type: MemoryType::Fact,
+            body: "the sky is blue".to_string(),
+            confidence: 0.9,
+            salience: 0.5,
+            scope: MemoryScope {
+                kind: "global".to_string(),
+                value: "test".to_string(),
+            },
+            title: None,
+            tags: Vec::new(),
+            links: Vec::new(),
+            decay: None,
+            embed: false,
+            visibility: None,
+        })
+        .await
+        .unwrap();
+    let memory_id = MemoryId::new("mem_1");
+    assert!(memory.get(memory_id.clone()).await.unwrap().is_some());
+
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::MemoryPrune,
+            CleanupSelector::MemoryRecords {
+                ids: vec![memory_id.clone()],
+            },
+        ))
+        .await
+        .unwrap();
+
+    let summary = drain_cleanup_debt_full(
+        &ledger,
+        &vector,
+        None,
+        Some(&memory as &dyn MemoryStore),
+        COLLECTION,
+        &index_counts(&committed),
+    )
+    .await;
+
+    assert_eq!(summary.resolved, 2);
+    assert_eq!(summary.failed, 0);
+    let record = memory.get(memory_id).await.unwrap().unwrap();
+    assert_eq!(record.status, MemoryStatus::Forgotten);
+}
+
+#[tokio::test]
+async fn drain_full_deletes_superseded_ledger_generation_rows() {
+    let ledger = FakeLedgerStore::new();
+    let (previous, committed) = seed_two_generations(&ledger).await;
+    let vector = RecordingVectorStore::default();
+
+    assert!(
+        ledger
+            .get_manifest(SourceId::new(SRC), previous.clone())
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::LedgerPrune,
+            CleanupSelector::LedgerGenerations {
+                source_id: SourceId::new(SRC),
+                up_to_generation: previous.clone(),
+            },
+        ))
+        .await
+        .unwrap();
+
+    let summary = drain_cleanup_debt_full(
+        &ledger,
+        &vector,
+        None,
+        None,
+        COLLECTION,
+        &index_counts(&committed),
+    )
+    .await;
+
+    assert_eq!(summary.resolved, 2);
+    assert_eq!(summary.failed, 0);
+    assert!(
+        ledger
+            .get_manifest(SourceId::new(SRC), previous)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
