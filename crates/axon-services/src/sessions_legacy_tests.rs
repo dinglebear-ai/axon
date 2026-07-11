@@ -245,7 +245,7 @@ fn session_text_redacts_common_secret_tokens() {
 }
 
 #[test]
-fn prepared_session_doc_converts_to_prepared_doc_without_extra_override() {
+fn prepared_session_doc_converts_to_session_doc_without_extra_override() {
     let doc = PreparedSessionDoc {
         url: "file:///home/me/.codex/sessions/2026/foo.jsonl".to_string(),
         title: Some("foo.jsonl".to_string()),
@@ -261,12 +261,18 @@ fn prepared_session_doc_converts_to_prepared_doc_without_extra_override() {
             "session_file": "/tmp/spoofed"
         }),
     };
+    let cfg = Config::test_default();
+    let request = IngestSessionsPreparedRequest {
+        docs: vec![doc],
+        project: None,
+        collection: Some("test-collection".to_string()),
+    };
 
-    let prepared = doc.to_prepared_doc().expect("valid prepared doc");
+    let docs = request.into_session_docs(&cfg).expect("valid session docs");
+    let session_doc = docs.first().expect("one session doc");
 
-    assert_eq!(prepared.source_type(), "codex_session");
-    assert_eq!(prepared.content_type(), "text");
-    let extra = prepared.extra().cloned().expect("extra metadata");
+    assert_eq!(session_doc.source_type, "codex_session");
+    let extra = session_doc.extra.clone().expect("extra metadata");
     assert_eq!(extra["agent"], "codex");
     assert_eq!(
         extra["session_file"],

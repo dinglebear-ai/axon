@@ -1,6 +1,4 @@
 use axon_core::config::Config;
-use axon_core::content::url_to_domain;
-use axon_vector::ops::{PreparedDoc, prepare_plain_text_source};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_PREPARED_SESSION_DOCS: usize = 256;
@@ -68,11 +66,7 @@ impl IngestSessionsPreparedRequest {
                 let resolved_collection = collection
                     .clone()
                     .unwrap_or_else(|| super::resolve_collection(cfg, &doc.collection_stem()));
-                Ok(super::SessionDoc {
-                    doc: doc.to_prepared_doc()?,
-                    collection: resolved_collection,
-                    raw_text: doc.text,
-                })
+                doc.to_session_doc(resolved_collection)
             })
             .collect()
     }
@@ -111,7 +105,10 @@ impl PreparedSessionDoc {
         Ok(())
     }
 
-    pub(crate) fn to_prepared_doc(&self) -> Result<PreparedDoc, String> {
+    /// Build the [`super::SessionDoc`] this prepared session doc represents.
+    /// Preparation into a chunked `PreparedDocument` (`DocumentPreparer`) is
+    /// deferred to embed time — see `super::SessionDoc::to_prepared_document`.
+    fn to_session_doc(&self, collection: String) -> Result<super::SessionDoc, String> {
         self.validate(usize::MAX)?;
         let source_type = match self.session_platform.as_str() {
             "claude" => "claude_session",
@@ -156,14 +153,14 @@ impl PreparedSessionDoc {
             serde_json::Value::String(self.session_file.clone()),
         );
 
-        Ok(prepare_plain_text_source(
-            self.url.clone(),
-            url_to_domain(&self.url),
-            self.text.clone(),
+        Ok(super::SessionDoc {
+            url: self.url.clone(),
+            title: self.title.clone(),
             source_type,
-            self.title.clone(),
-            Some(serde_json::Value::Object(extra)),
-        ))
+            extra: Some(serde_json::Value::Object(extra)),
+            collection,
+            raw_text: self.text.clone(),
+        })
     }
 
     fn collection_stem(&self) -> String {

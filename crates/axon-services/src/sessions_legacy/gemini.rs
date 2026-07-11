@@ -3,7 +3,6 @@ use super::{
 };
 use axon_core::config::Config;
 use axon_core::logging::log_warn;
-use axon_vector::ops::prepare_plain_text_source;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -218,19 +217,11 @@ async fn process_gemini_file(
         "session_id": session_id,
         "session_date": mtime_chrono.to_rfc3339(),
     });
-    let doc = prepare_plain_text_source(
-        url.clone(),
-        "local".to_string(),
-        session_text.clone(),
-        "gemini_session",
-        title,
-        Some(extra),
-    );
-    if doc.is_empty() {
-        return Ok(None);
-    }
     Ok(Some(SessionDoc {
-        doc,
+        url,
+        title,
+        source_type: "gemini_session",
+        extra: Some(extra),
         collection,
         raw_text: session_text,
     }))
