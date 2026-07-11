@@ -9,6 +9,7 @@ pub mod document_status;
 pub mod generation;
 pub mod item;
 pub mod lease;
+pub mod listing;
 pub mod manifest;
 pub mod migration;
 pub mod source;
