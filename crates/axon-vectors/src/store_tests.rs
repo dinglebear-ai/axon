@@ -732,6 +732,26 @@ async fn point_delete_selector_only_deletes_named_points() {
 }
 
 #[tokio::test]
+async fn collection_delete_selector_removes_every_point_and_keeps_the_collection() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    let deleted = store
+        .delete(VectorDeleteSelector::Collection {
+            collection: "axon-test".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(deleted.points_deleted, 3);
+    assert!(store.points("axon-test").await.is_empty());
+    // Whole-collection prune keeps the (now-empty) collection — distinct from
+    // `axon reset`, which also wipes SQLite/job state.
+    assert!(store.collection_spec("axon-test").await.is_some());
+}
+
+#[tokio::test]
 async fn cleanup_debt_generation_delete_cannot_delete_unrelated_generations() {
     let store = FakeVectorStore::new("fake-vector");
     store.ensure_collection(collection()).await.unwrap();
