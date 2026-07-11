@@ -8,7 +8,10 @@ use std::sync::Arc;
 use axon_api::source::*;
 use tokio::sync::Mutex;
 
-use super::{FakeLedgerMode, FakeLedgerState, record_removed_item_cleanup_debt};
+use super::{
+    FakeLedgerMode, FakeLedgerState, record_graph_prune_cleanup_debt,
+    record_ledger_prune_cleanup_debt, record_removed_item_cleanup_debt,
+};
 use crate::store::Result;
 use crate::store::util::{generation_missing_error, source_missing_error, timestamp};
 use crate::validation::{
@@ -191,15 +194,11 @@ pub(super) async fn publish_generation(
         )
         .with_source_id(generation.source_id.0));
     }
-    record_removed_item_cleanup_debt(&mut state, &generation);
-    let cleanup_debt = state
-        .cleanup_debt
-        .values()
-        .filter(|debt| {
-            debt.source_id == generation.source_id
-                && debt.generation == generation.previous_generation
-                && matches!(debt.kind, CleanupDebtKind::VectorDelete)
-        })
+    let mut new_debt = record_removed_item_cleanup_debt(&mut state, &generation);
+    new_debt.extend(record_graph_prune_cleanup_debt(&mut state, &generation));
+    new_debt.extend(record_ledger_prune_cleanup_debt(&mut state, &generation));
+    let cleanup_debt = new_debt
+        .iter()
         .map(|debt| debt.debt_id.clone())
         .collect::<Vec<_>>();
     let mut published = generation.clone();

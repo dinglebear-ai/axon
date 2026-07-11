@@ -311,22 +311,44 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
         .expect("put gen2");
     let published = complete_and_publish(&store, completed_generation_from(&gen2)).await;
 
-    assert_eq!(store.cleanup_debt_count().await.expect("count"), 1);
-    let debt_json: String = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
-        .fetch_one(&store.pool)
+    // "src/old.rs" is genuinely removed (absent from gen2's manifest, not
+    // merely modified) so it produces both a `VectorDelete` debt (points
+    // always need deletion across a generation change) and a `GraphPrune`
+    // debt (the item's own document-node stable key is now orphaned).
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 2);
+    let debt_rows: Vec<String> = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
+        .fetch_all(&store.pool)
         .await
         .expect("read cleanup debt");
-    let debt: CleanupDebt = serde_json::from_str(&debt_json).expect("parse cleanup debt");
-    assert_eq!(debt.kind, CleanupDebtKind::VectorDelete);
-    assert_eq!(debt.generation, Some(gen1.generation.clone()));
+    let debts: Vec<CleanupDebt> = debt_rows
+        .iter()
+        .map(|json| serde_json::from_str(json).expect("parse cleanup debt"))
+        .collect();
+    let vector_debt = debts
+        .iter()
+        .find(|debt| debt.kind == CleanupDebtKind::VectorDelete)
+        .expect("vector delete debt");
+    assert_eq!(vector_debt.generation, Some(gen1.generation.clone()));
     assert_eq!(
-        debt.selector,
+        vector_debt.selector,
         CleanupSelector::SourceItem {
             source_id: SourceId::new("src_sqlite"),
             source_item_key: SourceItemKey::new("src/old.rs"),
-            generation: gen1.generation,
+            generation: gen1.generation.clone(),
         }
     );
+    let graph_debt = debts
+        .iter()
+        .find(|debt| debt.kind == CleanupDebtKind::GraphPrune)
+        .expect("graph prune debt");
+    assert_eq!(graph_debt.generation, Some(gen1.generation.clone()));
+    assert_eq!(
+        graph_debt.selector,
+        CleanupSelector::GraphNodes {
+            stable_keys: vec!["src/old.rs".to_string()],
+        }
+    );
+
     let generation_json: String =
         sqlx::query_scalar("SELECT generation_json FROM source_generations WHERE generation = ?1")
             .bind(&gen2.generation.0)
@@ -335,7 +357,11 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
             .expect("read generation json");
     let stored_generation: SourceGeneration =
         serde_json::from_str(&generation_json).expect("parse generation json");
-    assert_eq!(stored_generation.cleanup_debt, vec![debt.debt_id]);
+    let mut expected_ids = vec![vector_debt.debt_id.clone(), graph_debt.debt_id.clone()];
+    let mut actual_ids = stored_generation.cleanup_debt.clone();
+    expected_ids.sort_by(|a, b| a.0.cmp(&b.0));
+    actual_ids.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(actual_ids, expected_ids);
     assert_eq!(
         stored_generation.publish_state,
         PublishState::CleanupPending
@@ -441,26 +467,103 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         .expect("put gen4");
     complete_and_publish(&store, completed_generation_from(&gen4)).await;
 
+    // Each removal of "src/old.rs" (gen1->gen2, gen3->gen4) creates a distinct
+    // `VectorDelete` + `GraphPrune` pair (4 rows), plus one `LedgerPrune` row
+    // once the chain leaves gen2 (an always-empty generation, never
+    // re-touched by any later debt) past the retention window — see
+    // `sqlite_publish_creates_ledger_prune_debt_past_retention` for an
+    // isolated LedgerPrune-only trace of this same mechanism.
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 5);
+    let rows = sqlx::query_scalar::<_, String>("SELECT debt_json FROM cleanup_debt")
+        .fetch_all(&store.pool)
+        .await
+        .expect("read cleanup debt");
+    let debts = rows
+        .into_iter()
+        .map(|json| serde_json::from_str::<CleanupDebt>(&json).expect("parse cleanup debt"))
+        .collect::<Vec<_>>();
+    let selectors = debts.iter().map(|debt| &debt.selector).collect::<Vec<_>>();
+    assert!(selectors.contains(&&CleanupSelector::SourceItem {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/old.rs"),
+        generation: gen1.generation.clone(),
+    }));
+    assert!(selectors.contains(&&CleanupSelector::SourceItem {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/old.rs"),
+        generation: gen3.generation.clone(),
+    }));
+    assert!(selectors.contains(&&CleanupSelector::GraphNodes {
+        stable_keys: vec!["src/old.rs".to_string()],
+    }));
+    let ledger_prune_targets = debts
+        .iter()
+        .filter(|debt| debt.kind == CleanupDebtKind::LedgerPrune)
+        .map(|debt| match &debt.selector {
+            CleanupSelector::LedgerGenerations {
+                up_to_generation, ..
+            } => up_to_generation.clone(),
+            other => panic!("expected LedgerGenerations selector, got {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ledger_prune_targets, vec![gen2.generation]);
+}
+
+/// A source that publishes generation after generation with an always-
+/// unchanged item never produces `VectorDelete`/`GraphPrune` debt (nothing
+/// removed or modified), which isolates `LedgerPrune` production: once a
+/// supersede chain leaves more than `LEDGER_GENERATION_RETENTION_COMMITTED`
+/// (2 — the just-published generation plus its immediate predecessor) old
+/// generations behind, the oldest ones become `LedgerPrune` candidates, one
+/// debt row per stale generation.
+#[tokio::test]
+async fn sqlite_publish_creates_ledger_prune_debt_past_retention() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let mut generations = Vec::new();
+    for _ in 0..4 {
+        let generation = store
+            .create_generation(SourceId::new("src_sqlite"))
+            .await
+            .expect("create generation");
+        store
+            .put_manifest(manifest_with_items(
+                &generation.generation.0,
+                vec![manifest_item("README.md", "stable")],
+            ))
+            .await
+            .expect("put manifest");
+        complete_and_publish(&store, completed_generation_from(&generation)).await;
+        generations.push(generation);
+    }
+
+    // No item was ever removed or modified, so the only debt possible is
+    // `LedgerPrune`. Retention keeps generations 3 and 4 (the newest
+    // committed plus its predecessor); generations 1 and 2 age out.
     assert_eq!(store.cleanup_debt_count().await.expect("count"), 2);
     let rows = sqlx::query_scalar::<_, String>("SELECT debt_json FROM cleanup_debt")
         .fetch_all(&store.pool)
         .await
         .expect("read cleanup debt");
-    let selectors = rows
+    let debts = rows
         .into_iter()
-        .map(|json| {
-            let debt: CleanupDebt = serde_json::from_str(&json).expect("parse cleanup debt");
-            debt.selector
-        })
+        .map(|json| serde_json::from_str::<CleanupDebt>(&json).expect("parse cleanup debt"))
         .collect::<Vec<_>>();
-    assert!(selectors.contains(&CleanupSelector::SourceItem {
-        source_id: SourceId::new("src_sqlite"),
-        source_item_key: SourceItemKey::new("src/old.rs"),
-        generation: gen1.generation,
-    }));
-    assert!(selectors.contains(&CleanupSelector::SourceItem {
-        source_id: SourceId::new("src_sqlite"),
-        source_item_key: SourceItemKey::new("src/old.rs"),
-        generation: gen3.generation,
-    }));
+    for debt in &debts {
+        assert_eq!(debt.kind, CleanupDebtKind::LedgerPrune);
+    }
+    let up_to_generations: Vec<SourceGenerationId> = debts
+        .iter()
+        .map(|debt| match &debt.selector {
+            CleanupSelector::LedgerGenerations {
+                up_to_generation, ..
+            } => up_to_generation.clone(),
+            other => panic!("expected LedgerGenerations selector, got {other:?}"),
+        })
+        .collect();
+    assert!(up_to_generations.contains(&generations[0].generation));
+    assert!(up_to_generations.contains(&generations[1].generation));
+    assert!(!up_to_generations.contains(&generations[2].generation));
+    assert!(!up_to_generations.contains(&generations[3].generation));
 }

@@ -446,35 +446,43 @@ async fn sqlite_lists_pending_cleanup_debt_and_resolves_it() {
         .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
         .await
         .expect("list pending debt");
-    assert_eq!(pending.len(), 1, "one superseded item creates one debt");
-    let debt = &pending[0];
-    assert_eq!(debt.status, LifecycleStatus::Pending);
-    assert!(debt.completed_at.is_none());
-    // The debt targets the superseded (previous) generation, not the new one.
-    assert_eq!(debt.generation.as_ref(), Some(&gen1.generation));
+    // One removed item creates both a `VectorDelete` and a `GraphPrune` debt.
+    assert_eq!(
+        pending.len(),
+        2,
+        "one superseded item creates a vector-delete and a graph-prune debt"
+    );
+    for debt in &pending {
+        assert_eq!(debt.status, LifecycleStatus::Pending);
+        assert!(debt.completed_at.is_none());
+        // The debt targets the superseded (previous) generation, not the new one.
+        assert_eq!(debt.generation.as_ref(), Some(&gen1.generation));
+        store
+            .resolve_cleanup_debt(debt.debt_id.clone())
+            .await
+            .expect("resolve debt");
+    }
 
-    // Resolve it → status Completed, completed_at stamped, and it drops out of
+    // Resolving → status Completed, completed_at stamped, and dropped out of
     // the pending list.
-    store
-        .resolve_cleanup_debt(debt.debt_id.clone())
-        .await
-        .expect("resolve debt");
     let after = store
         .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
         .await
         .expect("list after resolve");
     assert!(after.is_empty(), "resolved debt is no longer pending");
-    let resolved = store
-        .cleanup_debt(&debt.debt_id)
-        .await
-        .expect("read debt")
-        .expect("debt still stored");
-    assert_eq!(resolved.status, LifecycleStatus::Completed);
-    assert!(resolved.completed_at.is_some());
+    for debt in &pending {
+        let resolved = store
+            .cleanup_debt(&debt.debt_id)
+            .await
+            .expect("read debt")
+            .expect("debt still stored");
+        assert_eq!(resolved.status, LifecycleStatus::Completed);
+        assert!(resolved.completed_at.is_some());
+    }
 
     // Idempotent: resolving again is a no-op that still succeeds.
     store
-        .resolve_cleanup_debt(debt.debt_id.clone())
+        .resolve_cleanup_debt(pending[0].debt_id.clone())
         .await
         .expect("re-resolve is idempotent");
     // Resolving an unknown id is also a no-op.
@@ -482,4 +490,57 @@ async fn sqlite_lists_pending_cleanup_debt_and_resolves_it() {
         .resolve_cleanup_debt(CleanupDebtId::new("nope"))
         .await
         .expect("resolve unknown id is a no-op");
+}
+
+/// A retried publish (or any caller replaying the exact debt payload the
+/// producer derived) must not create a second `GraphPrune`/`LedgerPrune` row:
+/// the natural key is `(source_id, generation_key, kind, selector_hash)`, not
+/// `debt_id`, so recording the same selector under a fresh `debt_id` is a
+/// no-op. Mirrors `sqlite_cleanup_debt_uses_natural_key_and_terminal_state_is_
+/// monotonic`'s coverage of this mechanism for `VectorDelete`.
+#[tokio::test]
+async fn sqlite_recommitting_graph_and_ledger_prune_debt_does_not_duplicate() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    store
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![manifest_item("src/old.rs", "removed")],
+        ))
+        .await
+        .expect("put gen1");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
+
+    let gen2 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen2");
+    store
+        .put_manifest(manifest_with_items(&gen2.generation.0, vec![]))
+        .await
+        .expect("put gen2");
+    complete_and_publish(&store, completed_generation_from(&gen2)).await;
+
+    let before = store.cleanup_debt_count().await.expect("count");
+    assert_eq!(before, 2); // VectorDelete + GraphPrune for src/old.rs@gen1
+
+    let pending = store
+        .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
+        .await
+        .expect("list pending debt");
+    for debt in pending {
+        let mut replay = debt;
+        replay.debt_id = CleanupDebtId::new(format!("replay-{}", replay.debt_id.0));
+        store
+            .record_cleanup_debt(replay)
+            .await
+            .expect("idempotent replay");
+    }
+
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), before);
 }

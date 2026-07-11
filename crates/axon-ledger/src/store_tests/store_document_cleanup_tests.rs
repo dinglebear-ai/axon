@@ -426,9 +426,41 @@ async fn fake_publish_creates_cleanup_debt_for_removed_items() {
         .unwrap();
     let published = complete_and_publish(&ledger, completed_generation(gen2)).await;
 
-    assert_eq!(ledger.cleanup_debt_count().await, 1);
+    // "src/old.rs" is genuinely removed (absent from gen2's manifest, not
+    // merely modified) so it produces both a `VectorDelete` debt (points
+    // always need deletion across a generation change) and a `GraphPrune`
+    // debt (the item's own document-node stable key is now orphaned).
+    assert_eq!(ledger.cleanup_debt_count().await, 2);
     assert_eq!(published.publish_state, PublishState::CleanupPending);
-    assert_eq!(published.cleanup_debt.len(), 1);
+    assert_eq!(published.cleanup_debt.len(), 2);
+
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    let vector_debt = pending
+        .iter()
+        .find(|debt| debt.kind == CleanupDebtKind::VectorDelete)
+        .expect("vector delete debt");
+    assert_eq!(
+        vector_debt.selector,
+        CleanupSelector::SourceItem {
+            source_id: SourceId::new("src_a"),
+            source_item_key: SourceItemKey::new("src/old.rs"),
+            generation: gen1.generation.clone(),
+        }
+    );
+    let graph_debt = pending
+        .iter()
+        .find(|debt| debt.kind == CleanupDebtKind::GraphPrune)
+        .expect("graph prune debt");
+    assert_eq!(graph_debt.generation.as_ref(), Some(&gen1.generation));
+    assert_eq!(
+        graph_debt.selector,
+        CleanupSelector::GraphNodes {
+            stable_keys: vec!["src/old.rs".to_string()],
+        }
+    );
 }
 
 #[tokio::test]
@@ -469,16 +501,17 @@ async fn fake_lists_pending_cleanup_debt_and_resolves_it() {
         .list_pending_cleanup_debt(SourceId::new("src_a"))
         .await
         .unwrap();
-    assert_eq!(pending.len(), 1);
-    let debt = &pending[0];
-    assert_eq!(debt.status, LifecycleStatus::Pending);
-    assert!(debt.completed_at.is_none());
-    assert_eq!(debt.generation.as_ref(), Some(&gen1.generation));
-
-    ledger
-        .resolve_cleanup_debt(debt.debt_id.clone())
-        .await
-        .unwrap();
+    // One removed item creates both a `VectorDelete` and a `GraphPrune` debt.
+    assert_eq!(pending.len(), 2);
+    for debt in &pending {
+        assert_eq!(debt.status, LifecycleStatus::Pending);
+        assert!(debt.completed_at.is_none());
+        assert_eq!(debt.generation.as_ref(), Some(&gen1.generation));
+        ledger
+            .resolve_cleanup_debt(debt.debt_id.clone())
+            .await
+            .unwrap();
+    }
     assert!(
         ledger
             .list_pending_cleanup_debt(SourceId::new("src_a"))
@@ -486,20 +519,127 @@ async fn fake_lists_pending_cleanup_debt_and_resolves_it() {
             .unwrap()
             .is_empty()
     );
-    let resolved = ledger
-        .cleanup_debt(&debt.debt_id)
-        .await
-        .expect("debt still stored");
-    assert_eq!(resolved.status, LifecycleStatus::Completed);
-    assert!(resolved.completed_at.is_some());
+    for debt in &pending {
+        let resolved = ledger
+            .cleanup_debt(&debt.debt_id)
+            .await
+            .expect("debt still stored");
+        assert_eq!(resolved.status, LifecycleStatus::Completed);
+        assert!(resolved.completed_at.is_some());
+    }
 
     // Idempotent replays.
     ledger
-        .resolve_cleanup_debt(debt.debt_id.clone())
+        .resolve_cleanup_debt(pending[0].debt_id.clone())
         .await
         .unwrap();
     ledger
         .resolve_cleanup_debt(CleanupDebtId::new("nope"))
         .await
         .unwrap();
+}
+
+/// A retried publish (or any caller replaying the exact debt payload the
+/// producer derived) must not create a second `GraphPrune`/`LedgerPrune` row:
+/// the natural key is `(source_id, generation, kind, selector)`, not
+/// `debt_id`, so recording the same selector under a fresh `debt_id` is a
+/// no-op. Mirrors `fake_cleanup_debt_uses_natural_key_and_terminal_state_is_
+/// monotonic`'s coverage of this mechanism for `VectorDelete`.
+#[tokio::test]
+async fn fake_recommitting_graph_and_ledger_prune_debt_does_not_duplicate() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let gen1 = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_with_items(
+            &gen1.generation.0,
+            vec![manifest_item("src/old.rs", "removed")],
+        ))
+        .await
+        .unwrap();
+    complete_and_publish(&ledger, completed_generation(gen1.clone())).await;
+
+    let gen2 = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    ledger
+        .put_manifest(manifest_with_items(&gen2.generation.0, vec![]))
+        .await
+        .unwrap();
+    complete_and_publish(&ledger, completed_generation(gen2)).await;
+
+    let before = ledger.cleanup_debt_count().await;
+    assert_eq!(before, 2); // VectorDelete + GraphPrune for src/old.rs@gen1
+
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    for debt in pending {
+        let mut replay = debt;
+        replay.debt_id = CleanupDebtId::new(format!("replay-{}", replay.debt_id.0));
+        ledger.record_cleanup_debt(replay).await.unwrap();
+    }
+
+    assert_eq!(ledger.cleanup_debt_count().await, before);
+}
+
+/// A source that publishes generation after generation with an always-
+/// unchanged item never produces `VectorDelete`/`GraphPrune` debt (nothing
+/// removed or modified), which isolates `LedgerPrune` production: once a
+/// supersede chain leaves more than `LEDGER_GENERATION_RETENTION_COMMITTED`
+/// (2 — the just-published generation plus its immediate predecessor) old
+/// generations behind, the oldest ones become `LedgerPrune` candidates, one
+/// debt row per stale generation.
+#[tokio::test]
+async fn fake_publish_creates_ledger_prune_debt_past_retention() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+
+    let mut generations = Vec::new();
+    for _ in 0..4 {
+        let generation = ledger
+            .create_generation(SourceId::new("src_a"))
+            .await
+            .unwrap();
+        ledger
+            .put_manifest(manifest_with_items(
+                &generation.generation.0,
+                vec![manifest_item("README.md", "stable")],
+            ))
+            .await
+            .unwrap();
+        complete_and_publish(&ledger, completed_generation(generation.clone())).await;
+        generations.push(generation);
+    }
+
+    // No item was ever removed or modified, so the only debt possible is
+    // `LedgerPrune`. Retention keeps generations 3 and 4 (the newest
+    // committed plus its predecessor); generations 1 and 2 age out.
+    assert_eq!(ledger.cleanup_debt_count().await, 2);
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    for debt in &pending {
+        assert_eq!(debt.kind, CleanupDebtKind::LedgerPrune);
+    }
+    let up_to_generations: Vec<SourceGenerationId> = pending
+        .iter()
+        .map(|debt| match &debt.selector {
+            CleanupSelector::LedgerGenerations {
+                up_to_generation, ..
+            } => up_to_generation.clone(),
+            other => panic!("expected LedgerGenerations selector, got {other:?}"),
+        })
+        .collect();
+    assert!(up_to_generations.contains(&generations[0].generation));
+    assert!(up_to_generations.contains(&generations[1].generation));
+    assert!(!up_to_generations.contains(&generations[2].generation));
+    assert!(!up_to_generations.contains(&generations[3].generation));
 }
