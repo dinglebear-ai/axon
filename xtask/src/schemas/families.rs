@@ -26,6 +26,10 @@ mod config_schema_registry;
 mod graph_defs;
 #[path = "families/markdown.rs"]
 mod markdown_render;
+#[path = "mcp_action_registry.rs"]
+mod mcp_action_registry;
+#[path = "families/mcp_markdown.rs"]
+mod mcp_markdown;
 #[path = "provider_capabilities.rs"]
 mod provider_capabilities;
 #[path = "runtime_defs.rs"]
@@ -291,37 +295,68 @@ fn cli_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
 fn mcp_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let spec = family_specs::spec_for(SchemaFamily::Mcp);
     let inputs = source_inputs(root, spec.source_paths)?;
-    let actions = axon_mcp::schema_registry::action_registry()
-        .iter()
-        .map(|action| {
-            json!({
-                "action": action.action,
-                "request_dto": action.request_dto,
-                "result_dto": action.result_dto,
-                "requires_auth_scope": action.required_scope,
-                "mutates": action.mutates,
-                "async": action.async_job,
-                "subaction": null
-            })
-        })
-        .collect::<Vec<_>>();
-    let schema = registry_schema_bundle(
-        schema_id(SchemaFamily::Mcp),
-        spec.title,
-        "cargo xtask schemas mcp",
-        spec.owner_crates,
-        &inputs,
-        "actions",
-        actions,
-        &[],
+
+    // Real request-DTO + subaction-enum defs, namespaced via the shared
+    // schema_defs()/rewrite_refs() helper exactly like every other family.
+    let mut raw_defs: Vec<(&str, Value)> = mcp_action_registry::build::def_pairs();
+    raw_defs.push((
+        "ResponseMode",
+        schemars::schema_for!(axon_api::mcp_schema::ResponseMode).into(),
+    ));
+    raw_defs.push((
+        "AxonToolResponse",
+        schemars::schema_for!(axon_api::mcp_schema::AxonToolResponse).into(),
+    ));
+    let mut defs = schema_defs(&raw_defs, None)
+        .as_object()
+        .cloned()
+        .expect("schema_defs returns an object");
+
+    // Subaction enum defs use computed (non-`&'static str`) names, so they're
+    // inserted directly rather than through the `(&str, Value)` pair list.
+    for (name, value) in mcp_action_registry::build::subaction_def_pairs() {
+        defs.insert(name, value);
+    }
+
+    // `Action`, `ActionDiscriminatorRules`, and `AxonToolInput` all embed raw
+    // `#/$defs/...` refs to the entries above by name — insert them *after*
+    // schema_defs()'s ref-rewriting pass, never through it, or their refs
+    // would be incorrectly namespaced.
+    defs.insert(
+        "Action".to_string(),
+        mcp_action_registry::build::action_enum_def(),
     );
+    defs.insert(
+        "ActionDiscriminatorRules".to_string(),
+        mcp_action_registry::build::discriminator_rules(),
+    );
+    defs.insert(
+        "AxonToolInput".to_string(),
+        mcp_action_registry::build::root_input_schema(),
+    );
+
+    let schema = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": schema_id(SchemaFamily::Mcp),
+        "title": spec.title,
+        "description": "Generated Axon MCP tool schema contract artifact.",
+        "type": "object",
+        "additionalProperties": false,
+        "$defs": Value::Object(defs),
+        "x-axon": {
+            "contract_version": "2026-06-30",
+            "generated_by": "cargo xtask schemas mcp",
+            "owner_crates": spec.owner_crates,
+            "source_inputs": inputs,
+            "clean_break": true,
+            "live_action_count": mcp_action_registry::live_action_names().len(),
+            "deferred_actions": mcp_action_registry::build::deferred_actions_value(),
+        }
+    });
     Ok(vec![
         SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
         SchemaArtifact::new(rel(spec.extra_json.unwrap().path), json_string(&schema)?),
-        SchemaArtifact::new(
-            rel(spec.markdown_path),
-            registry_markdown("mcp", &inputs, "Actions"),
-        ),
+        SchemaArtifact::new(rel(spec.markdown_path), mcp_markdown::mcp_markdown(&inputs)),
     ])
 }
 

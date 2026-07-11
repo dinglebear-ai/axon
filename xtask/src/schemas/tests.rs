@@ -66,6 +66,16 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
         "crates/axon-web/src/schema_registry.rs",
         "crates/axon-mcp/src/schema_registry.rs",
+        "xtask/src/schemas/mcp_action_registry.rs",
+        "crates/axon-mcp/src/server/authz.rs",
+        "crates/axon-mcp/src/server.rs",
+        "crates/axon-api/src/mcp_schema.rs",
+        "crates/axon-api/src/mcp_schema/requests.rs",
+        "crates/axon-api/src/mcp_schema/requests/discovery.rs",
+        "crates/axon-api/src/mcp_schema/requests/graph.rs",
+        "crates/axon-api/src/mcp_schema/requests/watch.rs",
+        "crates/axon-api/src/mcp_schema/prune_request.rs",
+        "crates/axon-api/src/mcp_schema/utility.rs",
         "crates/axon-observe/src/schema_registry.rs",
         "crates/axon-observe/src/metric.rs",
         "crates/axon-graph/src/schema_registry.rs",
@@ -158,7 +168,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
     match family {
         SchemaFamily::Cli => r#"{"commands":[]}"#,
         SchemaFamily::Openapi => r#"{"routes":[]}"#,
-        SchemaFamily::Mcp => r#"{"actions":[]}"#,
+        SchemaFamily::Mcp => "{}",
         SchemaFamily::Config => r#"{"config_keys":[]}"#,
         SchemaFamily::Graph => r#"{"graph_kinds":[]}"#,
         SchemaFamily::Providers => "{}",
@@ -885,18 +895,31 @@ fn mcp_schema_is_registry_backed_and_validates_action_branches() {
         &std::fs::read_to_string(tmp.path().join("docs/reference/mcp/tool-schema.json")).unwrap(),
     )
     .unwrap();
+    // The `extract` action is live and must have its real request DTO def.
+    assert!(value["$defs"]["ExtractRequest"].is_object());
+    let action_enum = value["$defs"]["Action"]["enum"].as_array().unwrap();
+    assert!(action_enum.iter().any(|a| a == "extract"));
+    // Removed/HTTP-only/never-contracted actions must be absent from the
+    // live Action enum.
+    for removed in ["crawl", "embed", "ingest", "purge", "dedupe", "scrape"] {
+        assert!(
+            !action_enum.iter().any(|a| a == removed),
+            "removed action {removed:?} must not appear in the Action enum"
+        );
+    }
+    // Contract-only actions with no live DTO surface as `deferred_actions`,
+    // not fabricated schemas.
+    let deferred = value["x-axon"]["deferred_actions"].as_array().unwrap();
     assert!(
-        value["actions"].as_array().unwrap().iter().any(
-            |action| action["action"] == "extract" && action["request_dto"] == "ExtractRequest"
-        )
-    );
-    assert!(
-        !value["actions"]
-            .as_array()
-            .unwrap()
+        deferred
             .iter()
-            .any(|action| action["action"] == "crawl")
+            .any(|entry| entry["action"] == "chat" || entry["action"] == "watches")
     );
+    // Every live action has an if/then discriminator branch.
+    let branches = value["$defs"]["ActionDiscriminatorRules"]["oneOf"]
+        .as_array()
+        .unwrap();
+    assert_eq!(branches.len(), action_enum.len());
 }
 
 #[test]
