@@ -5,13 +5,21 @@
 //! destination collection. No TEI calls; no re-crawling.
 
 use crate::types::MigrateResult;
+use axon_api::source::ChunkId;
 use axon_core::config::Config;
 use axon_core::http::http_client;
 use axon_core::logging::{log_info, log_warn};
-use axon_vector::ops::sparse::compute_sparse_vector_for_indexing;
-use axon_vector::ops::tei::qdrant_store::clear_collection_mode_cache;
+use axon_vectors::bm42::compute_bm42_sparse;
 use reqwest::StatusCode;
 use std::error::Error;
+
+/// Qdrant REST base URL derived from `cfg.qdrant_url` (trailing slash
+/// trimmed). Inlined rather than pulled from the legacy `axon-vector` crate —
+/// `axon-vectors` has no equivalent free function, and this is a one-line
+/// derivation, not worth wrapping a whole `QdrantVectorStore` for.
+fn qdrant_base(cfg: &Config) -> &str {
+    cfg.qdrant_url.trim_end_matches('/')
+}
 
 /// Run the full migration from an unnamed-vector collection to a named-mode
 /// collection (dense + bm42 sparse). Returns stats about the migration.
@@ -34,7 +42,7 @@ pub async fn migrate(cfg: &Config) -> Result<MigrateResult, Box<dyn Error>> {
     log_info(&format!("command=migrate from={from} to={to}"));
 
     let client = http_client()?;
-    let qdrant_url = axon_vector::ops::qdrant::qdrant_base(cfg);
+    let qdrant_url = qdrant_base(cfg);
 
     let dim = inspect_source_collection(client, qdrant_url, &from).await?;
     log_info(&format!("migrate source={from} dim={dim}"));
@@ -48,17 +56,16 @@ pub async fn migrate(cfg: &Config) -> Result<MigrateResult, Box<dyn Error>> {
         "migrate complete from={from} to={to} points={total_points} pages={pages}"
     ));
 
-    // Invalidate the process-wide VectorMode cache so long-running workers
-    // re-detect the new schema on their next embed/query instead of continuing
-    // on the stale Unnamed (dense-only) path.
-    clear_collection_mode_cache(&from);
-    clear_collection_mode_cache(&to);
-
+    // No process-wide vector-mode cache to invalidate in this process:
+    // `axon-vectors` (the replacement for the legacy `axon-vector` crate)
+    // resolves a collection's vector mode per request rather than caching it
+    // in a process-wide static, so there is nothing stale left behind here.
+    //
     // O-L2: Loud success-gated worker-restart warning.
-    // The VectorMode cache invalidation above handles the current process.
-    // Any OTHER running process (a separate `axon serve` or `axon mcp`) still
-    // holds a stale `Unnamed` mode in memory and will use dense-only retrieval
-    // for queries/embeds against the new named-mode collection until restarted.
+    // Any OTHER running process (a separate `axon serve` or `axon mcp`, or one
+    // still on the legacy `axon-vector` path) may still hold a stale `Unnamed`
+    // mode in memory and will use dense-only retrieval for queries/embeds
+    // against the new named-mode collection until restarted.
     log_warn(&format!(
         "IMPORTANT: migration complete — restart all running axon workers/servers to flush \
          their stale VectorMode cache (from={from} to={to}). Workers that are not restarted \
@@ -314,16 +321,31 @@ fn transform_point(point: &serde_json::Value) -> Result<serde_json::Value, Box<d
     let chunk_text = point["payload"]["chunk_text"]
         .as_str()
         .unwrap_or_else(|| point["payload"]["text"].as_str().unwrap_or(""));
-    let sparse = compute_sparse_vector_for_indexing(chunk_text);
+    let sparse = compute_bm42_sparse(point_chunk_id(id), chunk_text);
 
     Ok(serde_json::json!({
         "id": id,
         "vector": {
             "dense": dense_vec,
-            "bm42": sparse
+            "bm42": {
+                "indices": sparse.indices,
+                "values": sparse.values,
+            }
         },
         "payload": point["payload"]
     }))
+}
+
+/// Derive a [`ChunkId`] from a raw Qdrant point id for tagging the BM42
+/// sparse-vector computation. The migration only reads back `.indices`/
+/// `.values` from the result (the raw Qdrant PUT body has no `chunk_id`
+/// field), so any stable string derived from the point id is sufficient —
+/// this just avoids losing the point identity in passing.
+fn point_chunk_id(id: &serde_json::Value) -> ChunkId {
+    match id {
+        serde_json::Value::String(s) => ChunkId::new(s.clone()),
+        other => ChunkId::new(other.to_string()),
+    }
 }
 
 async fn upsert_batch_raw(
