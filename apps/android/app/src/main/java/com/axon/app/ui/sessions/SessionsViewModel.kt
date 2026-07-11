@@ -113,11 +113,14 @@ class SessionsViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 /**
- * Maps a server session onto the local Room cache. `status`/`sourceRefsJson`/
- * `draft`/`syncVersion` are not yet echoed by the server (see
- * `MobileSessionDto` kdoc), so when [existing] is supplied its values are
- * carried forward instead of being reset to the DTO defaults on every
- * refresh — otherwise a locally-set draft would be wiped by the next sync.
+ * Maps a server session onto the local Room cache. [refresh] populates this
+ * from `listMobileSessions`, which returns the lean `MobileSessionSummary`
+ * shape and does not include `status`/`sourceRefsJson`/`draft`/`syncVersion`
+ * (see `MobileSessionDto` kdoc) — only the full-detail `getMobileSession`/
+ * `upsertMobileSession` routes echo those. So when [existing] is supplied its
+ * values are carried forward instead of being reset to the DTO defaults on
+ * every list refresh — otherwise a locally-set draft would be wiped by the
+ * next sync.
  */
 private fun MobileSessionDto.toLocalSession(existing: Session? = null): Session =
     Session(

@@ -4730,7 +4730,7 @@
             }
           },
           "409": {
-            "description": "Stale mobile session update",
+            "description": "Stale mobile session update: `updated_at` is older than the stored session, or `sync_version` no longer matches the server's optimistic-concurrency counter",
             "content": {
               "application/json": {
                 "schema": {
@@ -10426,6 +10426,13 @@
             "type": "integer",
             "format": "int64"
           },
+          "draft": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional redacted/encrypted draft payload the client is composing."
+          },
           "first_message_preview": {
             "type": "string"
           },
@@ -10449,6 +10456,21 @@
               "null"
             ],
             "format": "int64"
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sources/jobs/artifacts linked to this session (ids or URLs)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MobileSessionStatus"
+          },
+          "sync_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Optimistic concurrency token. Clients must echo back the version they\nlast observed; the server increments it on every successful upsert and\nrejects mismatched versions with a stale-update conflict."
           },
           "title": {
             "type": "string"
@@ -10488,6 +10510,16 @@
             }
           }
         }
+      },
+      "MobileSessionStatus": {
+        "type": "string",
+        "description": "Mobile session lifecycle/sync status.\n\nContract: `docs/pipeline-unification/surfaces/android-contract.md`\n(\"Mobile Session Model\" -- `active`, `archived`, `deleted`, or\n`sync_conflict`).",
+        "enum": [
+          "active",
+          "archived",
+          "deleted",
+          "sync_conflict"
+        ]
       },
       "MobileSessionSummary": {
         "type": "object",

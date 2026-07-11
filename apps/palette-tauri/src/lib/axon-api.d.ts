@@ -2117,6 +2117,8 @@ export interface components {
         MobileSession: {
             /** Format: int64 */
             created_at: number;
+            /** @description Optional redacted/encrypted draft payload the client is composing. */
+            draft?: string | null;
             first_message_preview: string;
             id: string;
             /** Format: int32 */
@@ -2124,6 +2126,16 @@ export interface components {
             items?: components["schemas"]["MobileChatItem"][];
             /** Format: int64 */
             pinned_at?: number | null;
+            /** @description Sources/jobs/artifacts linked to this session (ids or URLs). */
+            source_refs?: string[];
+            status?: components["schemas"]["MobileSessionStatus"];
+            /**
+             * Format: int64
+             * @description Optimistic concurrency token. Clients must echo back the version they
+             *     last observed; the server increments it on every successful upsert and
+             *     rejects mismatched versions with a stale-update conflict.
+             */
+            sync_version?: number;
             title: string;
             /** Format: int32 */
             turn_count: number;
@@ -2136,6 +2148,15 @@ export interface components {
         MobileSessionListResponse: {
             sessions: components["schemas"]["MobileSessionSummary"][];
         };
+        /**
+         * @description Mobile session lifecycle/sync status.
+         *
+         *     Contract: `docs/pipeline-unification/surfaces/android-contract.md`
+         *     ("Mobile Session Model" -- `active`, `archived`, `deleted`, or
+         *     `sync_conflict`).
+         * @enum {string}
+         */
+        MobileSessionStatus: "active" | "archived" | "deleted" | "sync_conflict";
         MobileSessionSummary: {
             /** Format: int64 */
             created_at: number;
@@ -6201,7 +6222,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description Stale mobile session update */
+            /** @description Stale mobile session update: `updated_at` is older than the stored session, or `sync_version` no longer matches the server's optimistic-concurrency counter */
             409: {
                 headers: {
                     [name: string]: unknown;
