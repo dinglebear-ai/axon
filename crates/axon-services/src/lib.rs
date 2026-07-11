@@ -10,6 +10,7 @@ pub mod brand;
 pub mod client_contract;
 pub mod code_search_watch;
 pub mod config;
+pub mod config_snapshot_hash;
 pub mod context;
 pub mod crawl;
 pub mod crawl_sync;

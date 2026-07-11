@@ -6,6 +6,7 @@ fn origin(source_type: &str, seed_url: &str) -> RefreshOrigin {
         source_type: source_type.to_string(),
         chunks: 1,
         action: classify_action(source_type, seed_url),
+        ledger_source_id: None,
     }
 }
 
