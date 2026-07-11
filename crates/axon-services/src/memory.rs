@@ -40,7 +40,11 @@ mod store;
 
 pub use compact::compact;
 pub use import_export::{MAX_MEMORY_IMPORT_RECORDS, MemoryAuthz, export, import};
-use store::memory_store;
+// `pub(crate)` (not just `use`) so `crate::source::open_cleanup_debt_stores`
+// can open the same composed (graph-mirrored, vector-backed) memory store
+// this module's own subactions use, instead of a bare `SqliteMemoryStore`
+// that would skip that composition's extra cleanup on `forget()`.
+pub(crate) use store::memory_store;
 #[cfg(test)]
 mod tests;
 

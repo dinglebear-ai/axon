@@ -261,13 +261,19 @@ pub async fn index_source_with_auth(
     .await;
 
     // Drain cleanup debt: after the new generation is committed, the ledger has
-    // recorded superseded-item vector deletes for the prior generation. Run the
-    // prune executor to perform those generation-fenced deletes and mark the
-    // debt resolved. Failures degrade gracefully — the index is already
-    // published, so a cleanup problem must not fail acquisition.
-    let drain = prune::drain_cleanup_debt(
+    // recorded superseded-item deletes (vector, ledger, graph, memory) for the
+    // prior generation. Run the prune executor against every store boundary we
+    // can open here so `GraphPrune`/`MemoryPrune` debt actually drains in
+    // production, not just vector/ledger. Failures degrade gracefully — the
+    // index is already published, so a cleanup problem must not fail
+    // acquisition; a store that fails to open just leaves its debt kind
+    // pending (see `open_cleanup_debt_stores`).
+    let (graph_store, memory_store) = open_cleanup_debt_stores(ctx).await;
+    let drain = prune::drain_cleanup_debt_full(
         runtime.ledger.as_ref(),
         runtime.vector_store.as_ref(),
+        graph_store.as_deref(),
+        memory_store.as_deref(),
         &collection,
         &counts,
     )
@@ -294,6 +300,50 @@ pub async fn index_source_with_auth(
         counts,
         graph,
     ))
+}
+
+/// Open the `GraphStore`/`MemoryStore` handles the cleanup-debt drain uses to
+/// resolve `GraphPrune`/`MemoryPrune` debt in production.
+///
+/// Degrades independently per store — a failure to open either one is logged
+/// and yields `None` for that store rather than failing `index_source` (the
+/// generation is already published by the time this runs). The memory store
+/// is opened through [`crate::memory::memory_store`] — the same composed
+/// (graph-mirrored, vector-backed) store every `memory` subaction uses — so a
+/// drained `forget()` also hides the memory's vector points and graph recall
+/// edges, not just its SQLite row.
+async fn open_cleanup_debt_stores(
+    ctx: &ServiceContext,
+) -> (
+    Option<std::sync::Arc<dyn axon_graph::store::GraphStore>>,
+    Option<std::sync::Arc<dyn axon_memory::store::MemoryStore>>,
+) {
+    let pool = ctx.jobs.sqlite_pool();
+    let graph_store = match crate::graph::open_graph_store(ctx.cfg(), pool.as_deref()).await {
+        Ok(store) => {
+            Some(std::sync::Arc::new(store) as std::sync::Arc<dyn axon_graph::store::GraphStore>)
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "failed to open graph store for cleanup-debt drain; GraphPrune debt will stay pending"
+            );
+            None
+        }
+    };
+
+    let memory_store = match crate::memory::memory_store(ctx).await {
+        Ok(store) => Some(store),
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "failed to open memory store for cleanup-debt drain; MemoryPrune debt will stay pending"
+            );
+            None
+        }
+    };
+
+    (graph_store, memory_store)
 }
 
 /// Route the classified kind to its dispatch function.

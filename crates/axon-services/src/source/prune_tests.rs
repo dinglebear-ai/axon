@@ -451,8 +451,13 @@ async fn drain_full_leaves_graph_debt_pending_without_graph_store() {
     )
     .await;
 
+    // Graph/Memory steps now route through the same `PruneExecutor` as
+    // Vector/Ledger (no more direct-store fallback): with no `GraphStore`
+    // wired, `LedgerPruneTarget::apply` returns `Err`, the executor reports
+    // that step `Failed`, and the debt stays pending — a failed-closed
+    // outcome, not a silent skip.
     assert_eq!(summary.resolved, 0);
-    assert_eq!(summary.failed, 0);
+    assert_eq!(summary.failed, 1);
     assert_eq!(
         ledger
             .list_pending_cleanup_debt(SourceId::new(SRC))
@@ -516,6 +521,44 @@ async fn drain_full_forgets_named_memory_records_when_memory_store_wired() {
     assert_eq!(summary.failed, 0);
     let record = memory.get(memory_id).await.unwrap().unwrap();
     assert_eq!(record.status, MemoryStatus::Forgotten);
+}
+
+/// Symmetric with `drain_full_leaves_graph_debt_pending_without_graph_store`:
+/// a `MemoryPrune` debt with no `MemoryStore` wired also fails closed through
+/// the executor (never fake-resolved), leaving the debt pending.
+#[tokio::test]
+async fn drain_full_leaves_memory_debt_pending_without_memory_store() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::MemoryPrune,
+            CleanupSelector::MemoryRecords {
+                ids: vec![MemoryId::new("mem_1")],
+            },
+        ))
+        .await
+        .unwrap();
+    let vector = RecordingVectorStore::default();
+
+    let summary = drain_cleanup_debt(
+        &ledger,
+        &vector,
+        COLLECTION,
+        &index_counts(&SourceGenerationId::new("gen_none")),
+    )
+    .await;
+
+    assert_eq!(summary.resolved, 0);
+    assert_eq!(summary.failed, 1);
+    assert_eq!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]

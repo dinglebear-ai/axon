@@ -55,7 +55,7 @@ impl CompactionSynthesizer for LlmCompactionSynthesizer {
 /// its own pool against the same path (`SqliteGraphStore::connect` runs its
 /// own idempotent `ensure_schema`) — safe alongside the sync rusqlite handle
 /// SQLite memory store holds, same file, different table set.
-pub(super) async fn memory_store(ctx: &ServiceContext) -> Result<Arc<dyn MemoryStore>> {
+pub(crate) async fn memory_store(ctx: &ServiceContext) -> Result<Arc<dyn MemoryStore>> {
     let path = ctx.cfg().sqlite_path.to_string_lossy().to_string();
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let sqlite: Arc<dyn MemoryStore> = Arc::new(

@@ -5,14 +5,25 @@
 //! the *previous* generation and are now stale (their point ids embed the old
 //! generation, so a re-index writes fresh points and leaves the old ones behind).
 //! This module drains that debt: it reads the source's pending debt, runs the
-//! real [`axon_prune::PruneExecutor`] against the [`VectorStore`] with
-//! generation-fenced deletes, and marks each resolved entry in the ledger.
+//! real [`axon_prune::PruneExecutor`] against the relevant store boundary, and
+//! marks each resolved entry in the ledger.
 //!
 //! Per the pruning contract, deletes are generation-fenced: the executor refuses
 //! to delete the *current committed* generation by accident. The committed
-//! generation for the just-published source is passed in as the fence.
+//! generation for the just-published source is passed in as the fence for
+//! `Vector`/`Ledger` steps. `Graph`/`Memory` steps are identity-scoped (stable
+//! keys / memory ids), not generation-fenced.
 //!
-//! Failure degrades gracefully — a vector delete error, an unfenced-current
+//! Every debt kind this module can drain — `VectorDelete`, `LedgerPrune`,
+//! `GraphPrune`, `MemoryPrune` — now routes through the single
+//! [`axon_prune::PruneExecutor::execute`] call in [`drain_via_executor`], using
+//! the identity carried on [`PruneStep`] (`vector_selector` /
+//! `source_id`+`generation` / `graph_stable_keys`+`graph_edge_ids` /
+//! `memory_ids`). There is no direct-store fallback: a debt kind whose store
+//! is not wired for this call fails closed (the executor reports the step
+//! `Failed`, debt stays pending) rather than fake-resolving.
+//!
+//! Failure degrades gracefully — a delete error, an unfenced-current
 //! collision, or a ledger error is logged and leaves the debt row pending for a
 //! later retry. Acquisition never crashes because of a cleanup failure: the
 //! source is already acquired, embedded, and published by the time this runs.
@@ -34,19 +45,21 @@
 
 use async_trait::async_trait;
 use axon_api::source::{
-    CleanupDebt, CleanupDebtKind, CleanupSelector, JobId, MemoryForgetRequest, SourceGenerationId,
-    SourceId, Timestamp, VectorDeleteSelector,
+    CleanupDebt, CleanupDebtKind, MemoryForgetRequest, SourceGenerationId, SourceId, Timestamp,
+    VectorDeleteSelector,
 };
 use axon_graph::store::GraphStore;
 use axon_ledger::store::LedgerStore;
 use axon_memory::store::MemoryStore;
 use axon_prune::{
-    PruneAuthz, PruneExecutor, PrunePlan, PruneStep, PruneTarget, PruneTargetKind, StepExecution,
+    PruneAuthz, PruneExecutor, PruneStep, PruneTarget, PruneTargetKind, StepExecution,
 };
 use axon_vectors::store::VectorStore;
-use uuid::Uuid;
 
 use super::result_map::IndexCounts;
+
+mod step_map;
+use step_map::{debt_to_step, single_step_plan, skip_reason_for_kind};
 
 /// Outcome of a cleanup-debt drain pass (for logging only — never surfaced on
 /// the wire).
@@ -70,11 +83,9 @@ pub struct DebtDrainSummary {
 /// Never returns an error — every failure path logs and degrades to leaving the
 /// debt pending, so a cleanup problem cannot fail an already-committed index.
 ///
-/// This is the vector-only entry point `index_source` calls today. Use
-/// [`drain_cleanup_debt_full`] to also drain `GraphPrune`/`MemoryPrune` debt
-/// when a `GraphStore`/`MemoryStore` are available — wiring the real stores
-/// into the `index_source` call site is a followup for whichever fleet owns
-/// `crates/axon-services/src/source.rs` (out of this module's territory).
+/// This is the vector-only entry point; prefer [`drain_cleanup_debt_full`] so
+/// `GraphPrune`/`MemoryPrune` debt also drains when a `GraphStore`/
+/// `MemoryStore` are available.
 pub async fn drain_cleanup_debt(
     ledger: &dyn LedgerStore,
     vector_store: &dyn VectorStore,
@@ -87,9 +98,9 @@ pub async fn drain_cleanup_debt(
 /// Full cleanup-debt drain: vector, ledger, graph, and memory boundaries.
 ///
 /// `graph_store`/`memory_store` are optional — when `None`, `GraphPrune`/
-/// `MemoryPrune` debt is left pending with a "no store wired" skip reason
-/// (never faked as resolved), matching the "no fake drains" requirement in
-/// `docs/pipeline-unification/runtime/pruning-contract.md`.
+/// `MemoryPrune` debt is left pending (the executor step fails closed with
+/// "no store wired", never faked as resolved), matching the "no fake drains"
+/// requirement in `docs/pipeline-unification/runtime/pruning-contract.md`.
 pub async fn drain_cleanup_debt_full(
     ledger: &dyn LedgerStore,
     vector_store: &dyn VectorStore,
@@ -119,6 +130,8 @@ pub async fn drain_cleanup_debt_full(
     let target = LedgerPruneTarget {
         vector_store,
         ledger,
+        graph_store,
+        memory_store,
         collection: collection.to_string(),
         source_id: source_id.clone(),
         committed_generation,
@@ -133,16 +146,7 @@ pub async fn drain_cleanup_debt_full(
 
     let mut summary = DebtDrainSummary::default();
     for debt in pending {
-        drain_one_debt(
-            ledger,
-            &executor,
-            graph_store,
-            memory_store,
-            &authz,
-            &debt,
-            &mut summary,
-        )
-        .await;
+        drain_one_debt(ledger, &executor, &authz, &debt, &mut summary).await;
     }
 
     tracing::debug!(
@@ -155,25 +159,22 @@ pub async fn drain_cleanup_debt_full(
     summary
 }
 
-/// Execute one debt entry and, on clean success, mark it resolved.
+/// Execute one debt entry and, on clean success, mark it resolved. Every
+/// drainable kind (`VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`)
+/// routes through the same [`drain_via_executor`] path.
 async fn drain_one_debt(
     ledger: &dyn LedgerStore,
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
-    graph_store: Option<&dyn GraphStore>,
-    memory_store: Option<&dyn MemoryStore>,
     authz: &PruneAuthz,
     debt: &CleanupDebt,
     summary: &mut DebtDrainSummary,
 ) {
     match debt.kind {
-        CleanupDebtKind::VectorDelete | CleanupDebtKind::LedgerPrune => {
+        CleanupDebtKind::VectorDelete
+        | CleanupDebtKind::LedgerPrune
+        | CleanupDebtKind::GraphPrune
+        | CleanupDebtKind::MemoryPrune => {
             drain_via_executor(ledger, executor, authz, debt, summary).await;
-        }
-        CleanupDebtKind::GraphPrune => {
-            drain_graph_debt(ledger, graph_store, authz, debt, summary).await;
-        }
-        CleanupDebtKind::MemoryPrune => {
-            drain_memory_debt(ledger, memory_store, authz, debt, summary).await;
         }
         CleanupDebtKind::ArtifactDelete
         | CleanupDebtKind::JobRetention
@@ -196,9 +197,10 @@ async fn drain_one_debt(
     }
 }
 
-/// Drive the `axon-prune` executor for a debt kind whose identity fits
-/// `PruneStep`'s existing fields (`Vector`: `vector_selector`; `Ledger`:
-/// `source_id`+`generation`).
+/// Drive the `axon-prune` executor for a debt kind that maps onto a
+/// `PruneStep` (`Vector`: `vector_selector`; `Ledger`: `source_id`+
+/// `generation`; `Graph`: `graph_stable_keys`/`graph_edge_ids`; `Memory`:
+/// `memory_ids`).
 async fn drain_via_executor(
     ledger: &dyn LedgerStore,
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
@@ -216,7 +218,7 @@ async fn drain_via_executor(
         return;
     };
 
-    let plan = single_step_plan(step);
+    let plan = single_step_plan(step, debt.debt_id.clone());
     let result = match executor.execute(&plan, authz).await {
         Ok(result) => result,
         Err(denied) => {
@@ -255,267 +257,16 @@ async fn drain_via_executor(
     summary.points_deleted += result.deleted_counts.vector_points;
 }
 
-/// Drain a `GraphPrune` debt: delete the named graph nodes (and their
-/// incident edges) by stable key.
-///
-/// `GraphStore::delete_nodes` has no per-item identity slot in `PruneStep`
-/// (an `axon-prune`/axon-api DTO outside this module's territory) yet, so
-/// this calls the store directly rather than through `PruneExecutor`. It
-/// still enforces the same admin gate the executor would
-/// (`docs/pipeline-unification/runtime/pruning-contract.md`, "destructive
-/// prune requires axon:admin") using the same `PruneAuthz` passed at the
-/// drain call site, and is idempotent (deleting an already-deleted node is a
-/// no-op). Wiring an identity-bearing `PruneStep` variant so this can route
-/// through `PruneExecutor::execute()` like the other kinds is a named
-/// followup for whichever fleet owns `axon-prune`/`axon-api::source::prune`.
-async fn drain_graph_debt(
-    ledger: &dyn LedgerStore,
-    graph_store: Option<&dyn GraphStore>,
-    authz: &PruneAuthz,
-    debt: &CleanupDebt,
-    summary: &mut DebtDrainSummary,
-) {
-    let Some(graph_store) = graph_store else {
-        tracing::debug!(
-            debt_id = %debt.debt_id.0,
-            "skipping graph cleanup debt: no GraphStore wired for this drain call"
-        );
-        return;
-    };
-    if !authz.is_admin {
-        tracing::warn!(
-            debt_id = %debt.debt_id.0,
-            "graph cleanup debt delete refused: axon:admin required; leaving pending"
-        );
-        summary.failed += 1;
-        return;
-    }
-    let CleanupSelector::GraphNodes { stable_keys } = &debt.selector else {
-        tracing::warn!(
-            debt_id = %debt.debt_id.0,
-            "graph cleanup debt selector is not GraphNodes; leaving pending"
-        );
-        summary.failed += 1;
-        return;
-    };
-    match graph_store.delete_nodes(stable_keys.clone()).await {
-        Ok(_) => resolve_debt(ledger, debt, summary).await,
-        Err(err) => {
-            tracing::warn!(
-                error = %err.message,
-                debt_id = %debt.debt_id.0,
-                "graph node delete failed; leaving pending"
-            );
-            summary.failed += 1;
-        }
-    }
-}
-
-/// Drain a `MemoryPrune` debt: forget the named memory records.
-///
-/// Same rationale as [`drain_graph_debt`] for calling the store directly
-/// instead of through `PruneExecutor` — `MemoryStore::forget` is a real,
-/// scoped, idempotent delete, but `PruneStep` has no `MemoryId`-bearing
-/// field yet.
-async fn drain_memory_debt(
-    ledger: &dyn LedgerStore,
-    memory_store: Option<&dyn MemoryStore>,
-    authz: &PruneAuthz,
-    debt: &CleanupDebt,
-    summary: &mut DebtDrainSummary,
-) {
-    let Some(memory_store) = memory_store else {
-        tracing::debug!(
-            debt_id = %debt.debt_id.0,
-            "skipping memory cleanup debt: no MemoryStore wired for this drain call"
-        );
-        return;
-    };
-    if !authz.is_admin {
-        tracing::warn!(
-            debt_id = %debt.debt_id.0,
-            "memory cleanup debt delete refused: axon:admin required; leaving pending"
-        );
-        summary.failed += 1;
-        return;
-    }
-    let CleanupSelector::MemoryRecords { ids } = &debt.selector else {
-        tracing::warn!(
-            debt_id = %debt.debt_id.0,
-            "memory cleanup debt selector is not MemoryRecords; leaving pending"
-        );
-        summary.failed += 1;
-        return;
-    };
-    for memory_id in ids {
-        let request = MemoryForgetRequest {
-            memory_id: memory_id.clone(),
-            reason: Some(format!("cleanup debt {}", debt.debt_id.0)),
-            timestamp: Timestamp(chrono::Utc::now().to_rfc3339()),
-        };
-        if let Err(err) = memory_store.forget(request).await {
-            tracing::warn!(
-                error = %err.message,
-                debt_id = %debt.debt_id.0,
-                memory_id = %memory_id.0,
-                "memory forget failed; leaving pending"
-            );
-            summary.failed += 1;
-            return;
-        }
-    }
-    resolve_debt(ledger, debt, summary).await;
-}
-
-/// Mark a debt resolved after a successful direct-call drain (graph/memory).
-async fn resolve_debt(
-    ledger: &dyn LedgerStore,
-    debt: &CleanupDebt,
-    summary: &mut DebtDrainSummary,
-) {
-    if let Err(err) = ledger.resolve_cleanup_debt(debt.debt_id.clone()).await {
-        tracing::warn!(
-            error = %err.message,
-            debt_id = %debt.debt_id.0,
-            "delete succeeded but failed to mark debt resolved; leaving pending"
-        );
-        summary.failed += 1;
-        return;
-    }
-    summary.resolved += 1;
-}
-
-/// Name the specific, current reason a debt kind cannot be drained yet. Kept
-/// in one place so the reasons stay in sync with the prerequisites named in
-/// the pruning contract's "Cleanup Debt Execution" section and don't drift
-/// into a vague "not wired" blanket excuse.
-///
-/// Only `ArtifactDelete`/`JobRetention`/`CachePrune` reach this function today
-/// — `VectorDelete`/`LedgerPrune` drain via [`drain_via_executor`] and
-/// `GraphPrune`/`MemoryPrune` via their direct-call drains in
-/// [`drain_one_debt`].
-///
-/// Followups (tracked against out-of-territory crates, not yet beaded
-/// individually):
-/// - `ArtifactDelete`: no durable `ArtifactStore` exists in this codebase yet
-///   (see `docs/pipeline-unification/runtime/pruning-contract.md`'s "artifact
-///   deletes" ownership row) — there is nothing to call.
-/// - `JobRetention`: `axon-jobs`' `cleanup_jobs`/`clear_jobs` are real but are
-///   bulk, age/kind-scoped operations, and `axon-jobs` is out of this
-///   module's territory — draining `CleanupSelector::JobRows { job_ids }`
-///   needs a per-job-id delete added there.
-/// - `CachePrune`: no `CacheStore` boundary exists in this codebase.
-fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
-    match kind {
-        CleanupDebtKind::VectorDelete
-        | CleanupDebtKind::LedgerPrune
-        | CleanupDebtKind::GraphPrune
-        | CleanupDebtKind::MemoryPrune => "drained (should not reach the skip path)",
-        CleanupDebtKind::ArtifactDelete => "no ArtifactStore exists yet",
-        CleanupDebtKind::JobRetention => {
-            "axon-jobs cleanup is bulk age/kind-scoped; no per-job-id delete exists (out of territory)"
-        }
-        CleanupDebtKind::CachePrune => "no CacheStore boundary exists yet",
-    }
-}
-
-/// Map a `VectorDelete`/`LedgerPrune` cleanup-debt entry to a single prune
-/// step that fits `PruneStep`'s existing `vector_selector`/`source_id`+
-/// `generation` fields. Returns `None` for any other kind, or when the
-/// selector doesn't carry the identity the kind needs.
-fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
-    match debt.kind {
-        CleanupDebtKind::VectorDelete => {
-            let (source_id, generation) = debt_scope(debt)?;
-            Some(PruneStep {
-                target: PruneTargetKind::Vector,
-                description: format!(
-                    "delete superseded vector points for debt {}",
-                    debt.debt_id.0
-                ),
-                estimated_deletes: 1,
-                vector_selector: Some(VectorDeleteSelector::Generation {
-                    collection: "axon".to_string(),
-                    source_id: source_id.clone(),
-                    generation: generation.clone(),
-                }),
-                source_id: Some(source_id),
-                generation: Some(generation),
-            })
-        }
-        CleanupDebtKind::LedgerPrune => {
-            let CleanupSelector::LedgerGenerations {
-                source_id,
-                up_to_generation,
-            } = &debt.selector
-            else {
-                return None;
-            };
-            Some(PruneStep {
-                target: PruneTargetKind::Ledger,
-                description: format!(
-                    "delete superseded ledger generation rows for debt {}",
-                    debt.debt_id.0
-                ),
-                estimated_deletes: 1,
-                vector_selector: None,
-                source_id: Some(source_id.clone()),
-                generation: Some(up_to_generation.clone()),
-            })
-        }
-        _ => None,
-    }
-}
-
-/// Extract the `(source_id, superseded_generation)` a vector-delete debt names.
-/// The generation is the *previous* (now stale) generation the debt targets.
-fn debt_scope(debt: &CleanupDebt) -> Option<(SourceId, SourceGenerationId)> {
-    match &debt.selector {
-        CleanupSelector::SourceItem {
-            source_id,
-            generation,
-            ..
-        }
-        | CleanupSelector::Generation {
-            source_id,
-            generation,
-        } => Some((source_id.clone(), generation.clone())),
-        // A source-wide vector delete carries the generation on the debt row.
-        CleanupSelector::Source { source_id } => debt
-            .generation
-            .clone()
-            .map(|generation| (source_id.clone(), generation)),
-        // Document/Chunk/Artifact selectors are not generation-fenced source
-        // deletes; leave them to their owning executor.
-        _ => None,
-    }
-}
-
-/// Wrap a step in a minimal, execution-ordered plan for the executor.
-fn single_step_plan(step: PruneStep) -> PrunePlan {
-    PrunePlan {
-        job_id: JobId::new(Uuid::new_v4()),
-        selector: axon_api::source::prune::PruneSelector::Generation {
-            source_id: step.source_id.clone().unwrap_or_else(|| SourceId::new("")),
-            generation: step
-                .generation
-                .clone()
-                .unwrap_or_else(|| SourceGenerationId::new("")),
-        },
-        destructive: true,
-        requires_admin: true,
-        estimated: Default::default(),
-        steps: vec![step],
-        warnings: Vec::new(),
-    }
-}
-
-/// [`PruneTarget`] backed by the real vector store and ledger. Deletes are
-/// scoped to the debt's superseded generation and fenced against the
-/// committed generation.
+/// [`PruneTarget`] backed by the real vector store, ledger, and (optionally)
+/// graph/memory stores. Vector/ledger deletes are scoped to the debt's
+/// superseded generation and fenced against the committed generation;
+/// graph/memory deletes are identity-scoped (stable keys / memory ids) and
+/// not generation-fenced.
 struct LedgerPruneTarget<'a> {
     vector_store: &'a dyn VectorStore,
     ledger: &'a dyn LedgerStore,
+    graph_store: Option<&'a dyn GraphStore>,
+    memory_store: Option<&'a dyn MemoryStore>,
     collection: String,
     source_id: SourceId,
     committed_generation: SourceGenerationId,
@@ -524,46 +275,107 @@ struct LedgerPruneTarget<'a> {
 #[async_trait]
 impl PruneTarget for LedgerPruneTarget<'_> {
     async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
-        // The committed generation is the fence for every step in this drain —
-        // all steps belong to the one source just published.
+        // The committed generation is the fence for every generation-scoped
+        // step in this drain — all steps belong to the one source just
+        // published.
         Some(self.committed_generation.clone())
     }
 
     async fn apply(&self, step: &PruneStep) -> Result<StepExecution, String> {
-        let Some(generation) = &step.generation else {
-            return Ok(StepExecution::skipped("no generation on step"));
-        };
-        // Defensive: never delete the committed generation even if fencing was
-        // bypassed. The executor already fences, this is belt-and-suspenders.
-        if generation == &self.committed_generation {
-            return Ok(StepExecution::skipped(
-                "refusing to delete committed generation",
-            ));
-        }
         match step.target {
-            PruneTargetKind::Vector => {
-                let deleted = self
-                    .vector_store
-                    .delete(VectorDeleteSelector::Generation {
-                        collection: self.collection.clone(),
-                        source_id: self.source_id.clone(),
-                        generation: generation.clone(),
-                    })
-                    .await
-                    .map_err(|err| err.message.clone())?;
-                Ok(StepExecution::deleted(deleted.points_deleted))
+            PruneTargetKind::Vector | PruneTargetKind::Ledger => {
+                let Some(generation) = &step.generation else {
+                    return Ok(StepExecution::skipped("no generation on step"));
+                };
+                // Defensive: never delete the committed generation even if
+                // fencing was bypassed. The executor already fences, this is
+                // belt-and-suspenders.
+                if generation == &self.committed_generation {
+                    return Ok(StepExecution::skipped(
+                        "refusing to delete committed generation",
+                    ));
+                }
+                match step.target {
+                    PruneTargetKind::Vector => {
+                        let deleted = self
+                            .vector_store
+                            .delete(VectorDeleteSelector::Generation {
+                                collection: self.collection.clone(),
+                                source_id: self.source_id.clone(),
+                                generation: generation.clone(),
+                            })
+                            .await
+                            .map_err(|err| err.message.clone())?;
+                        Ok(StepExecution::deleted(deleted.points_deleted))
+                    }
+                    PruneTargetKind::Ledger => {
+                        let source_id = step
+                            .source_id
+                            .clone()
+                            .unwrap_or_else(|| self.source_id.clone());
+                        let deleted = self
+                            .ledger
+                            .delete_generation(source_id, generation.clone())
+                            .await
+                            .map_err(|err| err.message.clone())?;
+                        Ok(StepExecution::deleted(deleted))
+                    }
+                    _ => unreachable!("outer match already narrowed to Vector | Ledger"),
+                }
             }
-            PruneTargetKind::Ledger => {
-                let source_id = step
-                    .source_id
-                    .clone()
-                    .unwrap_or_else(|| self.source_id.clone());
-                let deleted = self
-                    .ledger
-                    .delete_generation(source_id, generation.clone())
-                    .await
-                    .map_err(|err| err.message.clone())?;
+            PruneTargetKind::Graph => {
+                let Some(graph_store) = self.graph_store else {
+                    return Err("no GraphStore wired for this drain".to_string());
+                };
+                let mut deleted = 0u64;
+                let mut touched = false;
+                if let Some(stable_keys) = &step.graph_stable_keys {
+                    if !stable_keys.is_empty() {
+                        touched = true;
+                        let result = graph_store
+                            .delete_nodes(stable_keys.clone())
+                            .await
+                            .map_err(|err| err.message.clone())?;
+                        deleted += result.nodes_deleted;
+                    }
+                }
+                if let Some(edge_ids) = &step.graph_edge_ids {
+                    if !edge_ids.is_empty() {
+                        touched = true;
+                        let result = graph_store
+                            .delete_edges(edge_ids.clone())
+                            .await
+                            .map_err(|err| err.message.clone())?;
+                        deleted += result.edges_deleted;
+                    }
+                }
+                if !touched {
+                    return Ok(StepExecution::skipped("no graph identity on step"));
+                }
                 Ok(StepExecution::deleted(deleted))
+            }
+            PruneTargetKind::Memory => {
+                let Some(memory_store) = self.memory_store else {
+                    return Err("no MemoryStore wired for this drain".to_string());
+                };
+                let Some(memory_ids) = &step.memory_ids else {
+                    return Ok(StepExecution::skipped("no memory identity on step"));
+                };
+                if memory_ids.is_empty() {
+                    return Ok(StepExecution::skipped("no memory identity on step"));
+                }
+                for memory_id in memory_ids {
+                    let request = MemoryForgetRequest {
+                        memory_id: memory_id.clone(),
+                        reason: Some("cleanup debt drain".to_string()),
+                        timestamp: Timestamp(chrono::Utc::now().to_rfc3339()),
+                    };
+                    memory_store
+                        .forget(request)
+                        .await
+                        .map_err(|err| err.message.clone())?;
+                }
+                Ok(StepExecution::deleted(memory_ids.len() as u64))
             }
             other => Ok(StepExecution::skipped(format!(
                 "unsupported prune target for this drain: {other:?}"
