@@ -77,7 +77,7 @@ pub fn validate_session_file_path(
         let Ok(relative) = canonical.strip_prefix(&root) else {
             continue;
         };
-        if !crate::sessions::has_supported_session_extension(provider, &canonical) {
+        if !crate::sessions_legacy::has_supported_session_extension(provider, &canonical) {
             return Err(anyhow!("unsupported session file extension"));
         }
         let relative = relative.to_path_buf();

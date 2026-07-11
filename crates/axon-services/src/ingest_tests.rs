@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use axon_api::mcp_schema::{IngestRequest, IngestSourceType};
 use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_core::config::Config;
-use axon_ingest as ingest;
 use axon_jobs::backend::{BackendResult, JobKind as LegacyJobKind, JobPayload, JobSidecarPayload};
 use axon_jobs::config_snapshot::decode_ingest_job_config;
 use std::error::Error;
@@ -482,9 +481,9 @@ async fn ingest_start_with_context_enqueues_sessions_source_on_unified_job_store
 /// `cancel_job`/etc. for `JobKind::Ingest` bridge onto the same store (see
 /// `runtime/sqlite/ingest_bridge.rs`) so existing CLI/MCP/REST callers keep
 /// working unchanged. Session-export scanning always reads real `~/...`
-/// paths (`expand_home` in `axon-ingest`), and — importantly — passing
-/// `sessions_claude`/`codex`/`gemini` all `false` does NOT mean "scan
-/// nothing": `axon-ingest`'s `all_platforms = !claude && !codex && !gemini`
+/// paths (`expand_home` in `crate::sessions_legacy`), and — importantly —
+/// passing `sessions_claude`/`codex`/`gemini` all `false` does NOT mean "scan
+/// nothing": `sessions_legacy`'s `all_platforms = !claude && !codex && !gemini`
 /// treats that as "no filter" and scans every platform's real home
 /// directory, which is slow and non-deterministic in CI. `HOME` is
 /// redirected to an empty tempdir for the duration of this test (guarded by
@@ -566,8 +565,8 @@ async fn prepared_sessions_start_enqueues_ingest_job_with_sidecar_payload() {
         sidecars: Mutex::new(Vec::new()),
     });
     let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
-    let request = ingest::sessions::IngestSessionsPreparedRequest {
-        docs: vec![ingest::sessions::PreparedSessionDoc {
+    let request = crate::sessions_legacy::IngestSessionsPreparedRequest {
+        docs: vec![crate::sessions_legacy::PreparedSessionDoc {
             url: "file:///tmp/session.jsonl".to_string(),
             title: None,
             text: "### USER:\nhello".to_string(),
