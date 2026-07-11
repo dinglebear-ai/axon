@@ -1,7 +1,6 @@
 use crate::context::ServiceContext;
 use crate::types::{ExecutionMode, IngestStartResult, JobStartOutcome, StartDisposition};
 use axon_core::config::Config;
-use axon_ingest as ingest;
 use axon_jobs::backend::{JobPayload, JobSidecarPayload};
 use axon_jobs::config_snapshot::ingest_config_json;
 use axon_jobs::ingest::types::{source_type_label, target_label};
@@ -11,7 +10,7 @@ use super::{IngestSource, map_ingest_start_result};
 
 pub async fn ingest_sessions_prepared_start_with_context(
     cfg: &Config,
-    request: ingest::sessions::IngestSessionsPreparedRequest,
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
     service_context: &ServiceContext,
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
     request

@@ -1,5 +1,5 @@
 use super::*;
-use crate::sessions::watch::validate::{SessionProvider, ValidatedSessionPath};
+use crate::sessions_legacy::watch::validate::{SessionProvider, ValidatedSessionPath};
 use axon_core::sqlite::open_pool as open_sqlite_pool;
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};

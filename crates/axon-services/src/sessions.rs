@@ -1,11 +1,11 @@
 use crate::context::ServiceContext;
-use anyhow::{Result, anyhow};
-use async_trait::async_trait;
-use axon_core::config::{Config, SessionWatchConfig};
-use axon_ingest::sessions::watch::{
+use crate::sessions_legacy::watch::{
     NoopSessionWatchEventSink, SessionWatchEventSink, SessionWatchIngestor, WatchIngestResult,
     run_session_watch, smoke_watch,
 };
+use anyhow::{Result, anyhow};
+use async_trait::async_trait;
+use axon_core::config::{Config, SessionWatchConfig};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -64,7 +64,7 @@ pub async fn watch_status(
         .jobs
         .sqlite_pool()
         .ok_or_else(|| anyhow!("watch-status requires the SQLite job runtime"))?;
-    axon_ingest::sessions::checkpoint::watch_status(pool.as_ref(), limit as i64)
+    crate::sessions_legacy::checkpoint::watch_status(pool.as_ref(), limit as i64)
         .await
         .map(SessionWatchStatus::from)
 }
@@ -90,7 +90,7 @@ impl SessionWatchIngestor for ServiceSessionWatchIngestor {
     async fn ingest_prepared_request_for_watch(
         &self,
         cfg: &Config,
-        request: axon_ingest::sessions::IngestSessionsPreparedRequest,
+        request: crate::sessions_legacy::IngestSessionsPreparedRequest,
     ) -> Result<WatchIngestResult> {
         let outcome =
             crate::ingest::ingest_sessions_prepared_with_progress(cfg, request, None, None)
@@ -107,8 +107,8 @@ impl SessionWatchIngestor for ServiceSessionWatchIngestor {
     }
 }
 
-impl From<axon_ingest::sessions::checkpoint::SessionWatchStatus> for SessionWatchStatus {
-    fn from(status: axon_ingest::sessions::checkpoint::SessionWatchStatus) -> Self {
+impl From<crate::sessions_legacy::checkpoint::SessionWatchStatus> for SessionWatchStatus {
+    fn from(status: crate::sessions_legacy::checkpoint::SessionWatchStatus) -> Self {
         Self {
             checkpoint_count: status.checkpoint_count,
             error_count: status.error_count,
@@ -121,8 +121,8 @@ impl From<axon_ingest::sessions::checkpoint::SessionWatchStatus> for SessionWatc
     }
 }
 
-impl From<axon_ingest::sessions::checkpoint::SessionWatchError> for SessionWatchError {
-    fn from(error: axon_ingest::sessions::checkpoint::SessionWatchError) -> Self {
+impl From<crate::sessions_legacy::checkpoint::SessionWatchError> for SessionWatchError {
+    fn from(error: crate::sessions_legacy::checkpoint::SessionWatchError) -> Self {
         Self {
             path_hash: error.path_hash,
             provider: error.provider,
@@ -134,8 +134,8 @@ impl From<axon_ingest::sessions::checkpoint::SessionWatchError> for SessionWatch
     }
 }
 
-impl From<axon_ingest::sessions::watch::SessionWatchSmokeReport> for SessionWatchSmokeReport {
-    fn from(report: axon_ingest::sessions::watch::SessionWatchSmokeReport) -> Self {
+impl From<crate::sessions_legacy::watch::SessionWatchSmokeReport> for SessionWatchSmokeReport {
+    fn from(report: crate::sessions_legacy::watch::SessionWatchSmokeReport) -> Self {
         Self {
             transcript_path: report.transcript_path,
             probe_text: report.probe_text,

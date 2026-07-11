@@ -5,12 +5,12 @@ use std::error::Error;
 use tokio::sync::mpsc;
 
 use super::{ingest_payload, map_ingest_result};
-use crate::progress::PhaseReporter;
+use crate::ingest::progress::PhaseReporter;
 
 #[must_use = "ingest_sessions_prepared_with_progress returns a Result that should be handled"]
 pub async fn ingest_sessions_prepared_with_progress(
     cfg: &Config,
-    request: crate::sessions::IngestSessionsPreparedRequest,
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
     tx: Option<mpsc::Sender<ServiceEvent>>,
     progress_tx: Option<mpsc::Sender<serde_json::Value>>,
 ) -> Result<IngestResult, Box<dyn Error>> {
@@ -24,7 +24,7 @@ pub async fn ingest_sessions_prepared_with_progress(
     .await;
 
     let reporter = PhaseReporter::new(progress_tx);
-    let chunks = crate::sessions::ingest_prepared_sessions(cfg, request, &reporter)
+    let chunks = crate::sessions_legacy::ingest_prepared_sessions(cfg, request, &reporter)
         .await
         .map_err(|e| -> Box<dyn Error> {
             format!("prepared session exports ingest failed: {e}").into()

@@ -1,10 +1,10 @@
 use crate::commands::ingest_common;
 use axon_core::config::{Config, SessionsRuntimeAction};
-use axon_ingest::sessions::watch::{SessionWatchEventSink, SessionWatchProcessEvent};
 use axon_jobs::ingest::IngestSource;
 use axon_services::context::ServiceContext;
 use axon_services::ingest as ingest_service;
 use axon_services::sessions as sessions_service;
+use axon_services::sessions_legacy::watch::{SessionWatchEventSink, SessionWatchProcessEvent};
 use std::error::Error;
 
 pub async fn run_sessions(
