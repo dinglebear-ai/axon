@@ -1,5 +1,5 @@
 use super::validate::{SessionWatchRoots, validate_session_file_path};
-use crate::sessions::checkpoint::checkpoint_success_exists_for_path_hash;
+use crate::sessions_legacy::checkpoint::checkpoint_success_exists_for_path_hash;
 use anyhow::{Result, anyhow};
 use axon_core::config::Config;
 use serde::Serialize;
@@ -19,7 +19,7 @@ pub async fn smoke_watch(
     pool: &sqlx::SqlitePool,
     timeout_secs: u64,
 ) -> Result<SessionWatchSmokeReport> {
-    let root = crate::sessions::expand_home("~/.codex/sessions/axon-smoke-watch");
+    let root = crate::sessions_legacy::expand_home("~/.codex/sessions/axon-smoke-watch");
     std::fs::create_dir_all(&root)?;
     let probe_text = format!(
         "axon-session-watch-smoke-{}-{}",

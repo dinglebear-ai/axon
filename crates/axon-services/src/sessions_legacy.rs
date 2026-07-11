@@ -1,5 +1,5 @@
-use crate::progress::PhaseReporter;
-use crate::sessions::watch::validate::{SessionProvider, ValidatedSessionPath};
+use crate::ingest::progress::PhaseReporter;
+use crate::sessions_legacy::watch::validate::{SessionProvider, ValidatedSessionPath};
 use axon_core::config::Config;
 use axon_core::logging::{log_done, log_info, log_warn};
 use axon_vector::ops::{PreparedDoc, embed_prepared_docs};
@@ -429,7 +429,7 @@ pub(crate) fn matches_project_filter(cfg: &Config, name: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "sessions_tests.rs"]
+#[path = "sessions_legacy_tests.rs"]
 mod tests;
 
 /// Session-level metadata collected once per project directory, injected into
@@ -562,5 +562,5 @@ pub(crate) fn normalize_git_remote_to_owner_repo(url: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "sessions_decode_tests.rs"]
+#[path = "sessions_legacy_decode_tests.rs"]
 mod decode_tests;

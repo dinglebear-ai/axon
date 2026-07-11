@@ -2,7 +2,7 @@ use super::SessionWatchOptions;
 use super::queue::{PendingFiles, PendingState};
 use super::targets::provider_allowed;
 use super::validate::{SessionWatchRoots, ValidatedSessionPath, validate_session_file_path};
-use crate::sessions::checkpoint::{
+use crate::sessions_legacy::checkpoint::{
     SessionFileMetadata, checkpoint_record_matches, checkpoint_record_metadata_matches,
     checkpoint_records_by_path_hash, record_error, record_no_content, record_remote_accepted,
     record_success, refresh_checkpoint_metadata, stream_content_hash,
@@ -67,7 +67,7 @@ pub trait SessionWatchIngestor: Send + Sync {
     async fn ingest_prepared_request_for_watch(
         &self,
         cfg: &Config,
-        request: crate::sessions::IngestSessionsPreparedRequest,
+        request: crate::sessions_legacy::IngestSessionsPreparedRequest,
     ) -> Result<WatchIngestResult>;
 }
 
@@ -133,8 +133,9 @@ pub async fn process_session_batch_for_watch(
         let (index, validated, meta, known_hash, parsed) = parsed;
         match parsed {
             Ok(Some(session_doc)) => {
-                let doc = crate::sessions::prepared_session_doc_from_session_doc(session_doc)
-                    .map_err(anyhow::Error::msg)?;
+                let doc =
+                    crate::sessions_legacy::prepared_session_doc_from_session_doc(session_doc)
+                        .map_err(anyhow::Error::msg)?;
                 let content_hash = match known_hash {
                     Some(hash) => Some(hash),
                     None => stream_content_hash(&validated.canonical).await.ok(),
@@ -198,7 +199,7 @@ async fn process_prepared_meta(
         collection.as_ref(),
     )?;
     for meta_chunk in meta_chunks {
-        let request = crate::sessions::IngestSessionsPreparedRequest {
+        let request = crate::sessions_legacy::IngestSessionsPreparedRequest {
             docs: meta_chunk
                 .iter()
                 .map(|(_, _, _, doc, _)| (*doc).clone())
@@ -293,7 +294,7 @@ type ParseResult = (
     ValidatedSessionPath,
     SessionFileMetadata,
     Option<String>,
-    Result<Option<crate::sessions::SessionDoc>, String>,
+    Result<Option<crate::sessions_legacy::SessionDoc>, String>,
 );
 
 async fn prepare_session_docs_for_watch(
@@ -315,7 +316,7 @@ async fn prepare_session_docs_for_watch(
                     return (index, validated, meta, known_hash, Err(error.to_string()));
                 }
             };
-            let parsed = crate::sessions::collect_session_file_doc(&cfg, &validated)
+            let parsed = crate::sessions_legacy::collect_session_file_doc(&cfg, &validated)
                 .await
                 .map_err(|error| error.to_string());
             (index, validated, meta, known_hash, parsed)
@@ -342,7 +343,7 @@ pub enum WatchIngestResult {
 async fn ingest_prepared_request_for_watch(
     cfg: &Config,
     ingestor: &dyn SessionWatchIngestor,
-    request: crate::sessions::IngestSessionsPreparedRequest,
+    request: crate::sessions_legacy::IngestSessionsPreparedRequest,
     options: &SessionWatchOptions,
 ) -> Result<WatchIngestResult> {
     if options.upload_to_server {
@@ -482,10 +483,10 @@ fn redact_local_paths(raw: &str) -> String {
         redacted = redacted.replace(&home, "[REDACTED-HOME]");
     }
     for root in [
-        crate::sessions::expand_home("~/.claude/projects"),
-        crate::sessions::expand_home("~/.codex/sessions"),
-        crate::sessions::expand_home("~/.gemini/history"),
-        crate::sessions::expand_home("~/.gemini/tmp"),
+        crate::sessions_legacy::expand_home("~/.claude/projects"),
+        crate::sessions_legacy::expand_home("~/.codex/sessions"),
+        crate::sessions_legacy::expand_home("~/.gemini/history"),
+        crate::sessions_legacy::expand_home("~/.gemini/tmp"),
     ] {
         let root = root.display().to_string();
         if root.len() > 1 {

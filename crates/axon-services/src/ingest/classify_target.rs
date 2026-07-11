@@ -45,7 +45,7 @@ pub fn classify_target(input: &str, include_source: bool) -> Result<IngestSource
     // 3. GitLab: URL or explicit prefix. Bare nested paths are ambiguous, so
     // keep `owner/repo` reserved for the existing GitHub shorthand.
     if is_host(s, &["gitlab.com", "www.gitlab.com"]) || s.starts_with("gitlab:") {
-        let target = crate::target_parse::normalize_gitlab_target(s)?;
+        let target = crate::ingest::target_parse::normalize_gitlab_target(s)?;
         return Ok(IngestSource::Gitlab {
             target,
             include_source,
@@ -63,7 +63,7 @@ pub fn classify_target(input: &str, include_source: bool) -> Result<IngestSource
     ) || s.starts_with("gitea:")
         || s.starts_with("forgejo:")
     {
-        let target = crate::target_parse::normalize_gitea_target(s)?;
+        let target = crate::ingest::target_parse::normalize_gitea_target(s)?;
         return Ok(IngestSource::Gitea {
             target,
             include_source,
@@ -71,7 +71,7 @@ pub fn classify_target(input: &str, include_source: bool) -> Result<IngestSource
     }
 
     if s.starts_with("git:") {
-        let target = crate::target_parse::normalize_generic_git_target(s)?;
+        let target = crate::ingest::target_parse::normalize_generic_git_target(s)?;
         return Ok(IngestSource::GenericGit {
             target,
             include_source,
@@ -211,5 +211,5 @@ fn extract_github_repo_from_url(s: &str) -> Result<String, Box<dyn Error>> {
 }
 
 #[cfg(test)]
-#[path = "classify_tests.rs"]
+#[path = "classify_target_tests.rs"]
 mod tests;

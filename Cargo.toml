@@ -20,7 +20,6 @@ members = [
     "crates/axon-prune",
     "crates/axon-crawl",
     "crates/axon-vector",
-    "crates/axon-ingest",
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

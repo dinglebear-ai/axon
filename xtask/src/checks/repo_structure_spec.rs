@@ -42,12 +42,18 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-document",
     "crates/axon-crawl",
     "crates/axon-vector",
-    "crates/axon-ingest",
     // axon-extract was deleted outright in Phase 12 (clean break, not a
     // staged cutover) -- see
     // docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md.
     // Its two genuinely self-contained pieces (extract_sync, generic
     // scrape's HTTP-fetch fallback) moved to axon-services/axon-crawl.
+    // axon-ingest was likewise deleted outright (issue #298 cleanup, not a
+    // staged cutover): its still-live pieces (sessions machinery, ingest
+    // orchestration/classification) moved to axon-services (sessions_legacy,
+    // ingest::{orchestrate,progress,classify_target,target_parse}); the
+    // provider-orchestration code it used to own for github/gitlab/gitea/
+    // generic_git/reddit/youtube/rss was deleted outright in the earlier
+    // Phase 12 clean break.
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

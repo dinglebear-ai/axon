@@ -1,4 +1,4 @@
-use crate::sessions::watch::validate::ValidatedSessionPath;
+use crate::sessions_legacy::watch::validate::ValidatedSessionPath;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool, sqlite::SqliteRow};

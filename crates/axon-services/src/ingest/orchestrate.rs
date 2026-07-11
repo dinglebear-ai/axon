@@ -2,15 +2,18 @@
 //! progress over an optional `ServiceEvent` channel, returning an `IngestResult`.
 //!
 //! These functions take only `cfg` + progress channels (no `ServiceContext`,
-//! no jobs), so they live here in `axon-ingest` and are called by both the
-//! services layer and the jobs ingest runner.
+//! no jobs), so they live here under `axon-services::ingest` and are called by
+//! both the services layer and the jobs ingest runner.
 //!
 //! Phase 12 clean break (issue #298): the github/gitlab/gitea/generic_git/
 //! reddit/youtube/rss provider orchestration that used to live here was
 //! deleted outright — only session-export ingest is still executed by the
 //! legacy per-family job runner. `classify_target`'s IngestSource variants
-//! for those providers remain (backed by `crate::target_parse`) since
+//! for those providers remain (backed by `crate::ingest::target_parse`) since
 //! `axon refresh` still needs to classify previously-ingested origins.
+//!
+//! Migrated from the (now-deleted) `axon-ingest` crate as part of issue #298's
+//! pipeline-unification cleanup.
 
 use axon_api::job_dto::IngestResult;
 use axon_core::config::Config;
@@ -18,7 +21,7 @@ use axon_core::events::{LogLevel, ServiceEvent, emit};
 use std::error::Error;
 use tokio::sync::mpsc;
 
-use crate::progress::PhaseReporter;
+use crate::ingest::progress::PhaseReporter;
 
 mod sessions_prepared;
 
@@ -72,7 +75,7 @@ pub async fn ingest_sessions_with_progress(
     )
     .await;
     let reporter = PhaseReporter::new(progress_tx);
-    let chunks = crate::sessions::ingest_sessions(cfg, &reporter)
+    let chunks = crate::sessions_legacy::ingest_sessions(cfg, &reporter)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("session exports ingest failed: {e}").into() })?;
     emit(
