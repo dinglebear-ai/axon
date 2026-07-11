@@ -2,14 +2,15 @@ use super::*;
 
 use std::sync::Mutex;
 
-use axon_api::source::ids::{JobId, SourceGenerationId, SourceId};
+use axon_api::source::ids::{BatchId, JobId, SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneSelector, PruneStep, PruneTargetKind};
 use axon_api::source::{
     ApiError, CollectionSpec, ErrorStage, SourceItemKey, VectorPointBatch, VectorStoreDeleteResult,
     VectorStoreWriteResult,
 };
 use axon_prune::{PruneAuthz, PruneExecutor};
-use axon_vectors::store::{Result as VectorResult, VectorStore};
+use axon_vectors::store::{FakeVectorStore, Result as VectorResult, VectorStore};
+use axon_vectors::testing::{TestPointSpec, test_clean_point, test_collection_spec};
 use uuid::Uuid;
 
 fn selector() -> PruneSelector {
@@ -163,51 +164,100 @@ async fn execute_without_admin_scope_is_rejected() {
     assert_eq!(err, PruneDenied::AdminRequired);
 }
 
-#[tokio::test]
-async fn execute_collection_selector_is_refused_not_silently_noop() {
-    let cfg = std::sync::Arc::new(axon_core::config::Config::test_default());
-    let runtime: std::sync::Arc<dyn crate::runtime::ServiceJobRuntime> =
-        std::sync::Arc::new(crate::test_support::NoopServiceRuntime);
-    let ctx = ServiceContext::from_runtime(cfg, runtime);
-
-    let plan = PrunePlan {
-        job_id: JobId::new(Uuid::new_v4()),
-        selector: PruneSelector::Collection {
-            collection: "axon".to_string(),
-        },
-        destructive: true,
-        requires_admin: true,
-        estimated: PruneEstimate::default(),
-        steps: Vec::new(),
-        warnings: Vec::new(),
-    };
-    // Admin + confirmed, so it clears the auth/confirm gates and reaches the
-    // unsupported-selector guard — which must refuse rather than report a
-    // no-op "success".
-    let err = prune_execute(&ctx, &plan, /* confirm = */ true, &PruneAuthz::admin())
-        .await
-        .expect_err("collection prune must be refused, not a silent no-op success");
+#[test]
+fn collection_selector_is_no_longer_unsupported() {
+    // The guidance-refusal guard `prune_execute` checks before ever touching a
+    // store must clear for `Collection` now that it is wired — this is the
+    // "un-refuse" half of the change; the "actually deletes" half is
+    // `execute_collection_selector_deletes_all_points_and_keeps_collection`
+    // below.
     assert!(
-        matches!(err, PruneDenied::Unsupported { .. }),
-        "expected Unsupported, got {err:?}"
+        unsupported_selector_guidance(&PruneSelector::Collection {
+            collection: "axon".to_string(),
+        })
+        .is_none(),
+        "collection prune should no longer carry unsupported-selector guidance"
     );
 }
 
-#[test]
-fn collection_plan_carries_unsupported_warning() {
-    let request = PruneRequest::dry_run(
-        PruneSelector::Collection {
-            collection: "axon".to_string(),
+#[tokio::test]
+async fn execute_collection_selector_deletes_all_points_and_keeps_collection() {
+    let store = FakeVectorStore::new("fake-vector");
+    let spec = test_collection_spec(3);
+    store
+        .ensure_collection(spec.clone())
+        .await
+        .expect("ensure_collection");
+
+    let batch_id = Uuid::from_u128(1);
+    let point = test_clean_point(TestPointSpec {
+        collection: &spec.collection,
+        point_id: "p1",
+        chunk_id: "c1",
+        vector: &[0.1, 0.2, 0.3],
+        text: "hello",
+        namespace: "dense",
+        batch_id: &batch_id.to_string(),
+        model: "fake-embedding",
+        dimensions: 3,
+        job_id: "00000000-0000-0000-0000-000000000000",
+    });
+    store
+        .upsert(VectorPointBatch {
+            batch_id: BatchId::new(batch_id),
+            collection: spec.collection.clone(),
+            points: vec![point],
+            model: "fake-embedding".to_string(),
+            dimensions: 3,
+            sparse_vectors: None,
+            payload_indexes: Vec::new(),
+        })
+        .await
+        .expect("seed point");
+    assert_eq!(store.points(&spec.collection).await.len(), 1);
+
+    let target = VectorOnlyPruneTarget::new(&store, spec.collection.clone());
+    let executor = PruneExecutor::new(target);
+    let plan = PrunePlan {
+        job_id: JobId::new(Uuid::new_v4()),
+        selector: PruneSelector::Collection {
+            collection: spec.collection.clone(),
         },
-        "test",
-    );
-    let plan = prune_plan(&request);
+        destructive: true,
+        requires_admin: true,
+        estimated: PruneEstimate {
+            vector_points: 1,
+            ..Default::default()
+        },
+        steps: vec![PruneStep {
+            target: PruneTargetKind::Vector,
+            description: "delete vector points".to_string(),
+            estimated_deletes: 1,
+            vector_selector: Some(VectorDeleteSelector::Collection {
+                collection: spec.collection.clone(),
+            }),
+            source_id: None,
+            generation: None,
+            graph_stable_keys: None,
+            graph_edge_ids: None,
+            memory_ids: None,
+        }],
+        warnings: Vec::new(),
+    };
+
+    let result = executor
+        .execute(&plan, &PruneAuthz::admin())
+        .await
+        .expect("collection prune executes, not refused");
+
+    assert_eq!(result.deleted_counts.vector_points, 1);
     assert!(
-        plan.warnings
-            .iter()
-            .any(|w| w.code == "prune.selector_unsupported"),
-        "collection plan should carry the unsupported-selector warning"
+        store.points(&spec.collection).await.is_empty(),
+        "collection should be emptied by the prune"
     );
+    // Collection-wide prune keeps the (now-empty) collection — distinct from
+    // `axon reset`, which also wipes SQLite/job state.
+    assert!(store.collection_spec(&spec.collection).await.is_some());
 }
 
 // ---------------------------------------------------------------------
@@ -269,6 +319,7 @@ impl VectorStore for RecordingVectorStore {
         let collection = match &selector {
             VectorDeleteSelector::Source { collection, .. }
             | VectorDeleteSelector::Generation { collection, .. }
+            | VectorDeleteSelector::Collection { collection, .. }
             | VectorDeleteSelector::Document { collection, .. }
             | VectorDeleteSelector::Chunks { collection, .. }
             | VectorDeleteSelector::Points { collection, .. }

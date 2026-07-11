@@ -18,11 +18,14 @@
 //! result step is only emitted when the boundary has a real, non-fabricated
 //! estimate.
 //!
-//! `axon-vectors::store::VectorStore` also has no live "count without
-//! deleting" primitive, so `plan()` cannot report a real point count for
-//! `Source`/`Generation`/`Collection` selectors either. Rather than fabricate a
-//! number, the plan carries a warning saying so — the dry-run still proves out
-//! the request is well-formed and authorized without lying about impact.
+//! `Source`/`Generation` selectors are sized from the ledger's committed
+//! manifest item count; `Collection` selectors are sized by counting points
+//! directly against the live vector store (`QdrantVectorStore::
+//! count_collection_points`) since a whole collection has no ledger-tracked
+//! source/generation to read a manifest for. For selectors this module cannot
+//! size at all yet (CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache), the
+//! plan carries a warning saying so — the dry-run still proves out the
+//! request is well-formed and authorized without lying about impact.
 //!
 //! ## Safety
 //!
@@ -70,27 +73,53 @@ pub fn prune_plan(request: &PruneRequest) -> PrunePlan {
 /// [`axon_ledger::store::LedgerStore`] for a genuine, non-fabricated impact
 /// estimate before resolving the plan.
 ///
-/// Only `Source`/`Generation` selectors are sizeable from the ledger today —
+/// `Source`/`Generation` selectors are sizeable from the ledger —
 /// `vector_points` is reported from the committed manifest's item count (a
-/// real, ledger-backed proxy for chunk count; `VectorStore` still has no
-/// count-without-deleting primitive, see module docs) and `ledger_generations`
+/// real, ledger-backed proxy for chunk count) and `ledger_generations`
 /// reflects whether a committed generation/manifest was actually found.
-/// Other selector shapes (`Collection`, `CleanupDebt`, `Artifact`, `Graph`,
-/// `Memory`, `JobRetention`, `Cache`) still resolve to a zero estimate for the
-/// same honest-zero reason `NullScopeSource` documents — the ledger has
-/// nothing to size for them.
+/// `Collection` selectors are sizeable from the live vector store instead (see
+/// [`estimate_collection_points`]) — the ledger has nothing to say about a
+/// whole collection. Other selector shapes (`CleanupDebt`, `Artifact`,
+/// `Graph`, `Memory`, `JobRetention`, `Cache`) still resolve to a zero
+/// estimate for the same honest-zero reason `NullScopeSource` documents —
+/// neither store has anything to size for them yet.
 pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) -> PrunePlan {
-    let estimate = match ctx.target_local_source_runtime() {
-        Some(runtime) => estimate_from_ledger(runtime.ledger.as_ref(), &request.selector).await,
-        // No target-local ledger wired for this `ServiceContext` (e.g. a
-        // pure-vector `ServiceContext::new`) — honest zero, same rationale as
-        // `NullScopeSource`.
-        None => PruneEstimate::default(),
+    let estimate = match &request.selector {
+        PruneSelector::Collection { collection } => {
+            estimate_collection_points(ctx, collection).await
+        }
+        _ => match ctx.target_local_source_runtime() {
+            Some(runtime) => estimate_from_ledger(runtime.ledger.as_ref(), &request.selector).await,
+            // No target-local ledger wired for this `ServiceContext` (e.g. a
+            // pure-vector `ServiceContext::new`) — honest zero, same
+            // rationale as `NullScopeSource`.
+            None => PruneEstimate::default(),
+        },
     };
     let planner = PrunePlanner::new(PrefetchedScopeSource(estimate));
     let mut plan = planner.resolve(&request.selector);
     warn_if_unsupported(&mut plan);
     plan
+}
+
+/// Real point-count estimate for a `Collection` selector: counts every point
+/// currently stored in `collection` via the live vector store (the same
+/// store `prune_execute` deletes against). Best-effort — an unreachable
+/// Qdrant or an absent collection degrades to the same honest zero
+/// `NullScopeSource`/`estimate_from_ledger` report elsewhere in this module,
+/// rather than erroring a dry-run plan.
+async fn estimate_collection_points(ctx: &ServiceContext, collection: &str) -> PruneEstimate {
+    let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    match vector_store
+        .count_collection_points(collection, axon_error::ErrorStage::Planning)
+        .await
+    {
+        Ok(count) => PruneEstimate {
+            vector_points: count,
+            ..Default::default()
+        },
+        Err(_) => PruneEstimate::default(),
+    }
 }
 
 /// Compute a real `PruneEstimate` for `selector` from ledger data. See
@@ -112,9 +141,10 @@ async fn estimate_from_ledger(
             source_id,
             generation,
         } => manifest_estimate(ledger, source_id.clone(), generation.clone()).await,
-        // Collection/CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache
-        // selectors don't name a ledger-sizeable source+generation — honest
-        // zero, same as `NullScopeSource`.
+        // CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache selectors don't
+        // name a ledger-sizeable source+generation — honest zero, same as
+        // `NullScopeSource`. `Collection` is sized separately by
+        // `estimate_collection_points` before this function is ever called.
         _ => PruneEstimate::default(),
     }
 }
@@ -135,18 +165,15 @@ async fn manifest_estimate(
 }
 
 /// Guidance for selectors this vector-only prune target cannot execute a delete
-/// against today. `Source`/`Generation` are wired; everything else (Collection,
-/// CleanupDebt, Artifact, Graph, Memory, JobRetention, Cache) has no store
+/// against today. `Source`/`Generation`/`Collection` are wired; everything else
+/// (CleanupDebt, Artifact, Graph, Memory, JobRetention, Cache) has no store
 /// adapter, so executing it would silently delete nothing. We refuse loudly and
-/// warn on the plan instead — collection-wide wipes belong to `axon reset`.
+/// warn on the plan instead.
 fn unsupported_selector_guidance(selector: &PruneSelector) -> Option<String> {
     match selector {
-        PruneSelector::Source { .. } | PruneSelector::Generation { .. } => None,
-        PruneSelector::Collection { .. } => Some(
-            "collection-wide prune is not implemented; use `axon reset` to wipe an entire \
-             collection, or prune by `--source`/`--generation`"
-                .to_string(),
-        ),
+        PruneSelector::Source { .. }
+        | PruneSelector::Generation { .. }
+        | PruneSelector::Collection { .. } => None,
         _ => Some(
             "this selector's boundary has no delete adapter yet; only `--source` and \
              `--generation` prunes are wired to a store today"
@@ -206,7 +233,7 @@ pub async fn prune_execute(
 
     // Refuse selectors with no wired delete adapter rather than running an empty
     // plan and reporting a no-op as success (the vector-only target can only
-    // execute `Source`/`Generation`).
+    // execute `Source`/`Generation`/`Collection`).
     if let Some(guidance) = unsupported_selector_guidance(&plan.selector) {
         return Err(PruneDenied::Unsupported {
             selector: format!("{:?}", plan.selector),
