@@ -172,22 +172,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/dedupe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["dedupe"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/diff": {
         parameters: {
             query?: never;
@@ -342,6 +326,118 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["cancel_extract_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/edges/{edge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_edge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["kinds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_node"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/nodes/{node_id}/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_node_edges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["graph_query"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/graph/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_source_subgraph"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -816,6 +912,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_provider"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/prune/dedupe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["dedupe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/prune/exec": {
         parameters: {
             query?: never;
@@ -848,7 +992,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/purge": {
+    "/v1/prune/purge": {
         parameters: {
             query?: never;
             header?: never;
@@ -906,6 +1050,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["research_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolve_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -970,6 +1130,22 @@ export interface paths {
         get: operations["sources"];
         put?: never;
         post: operations["index_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_source"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1088,6 +1264,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/watches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_watches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watches/{watch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_watch"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_watch"];
+        options?: never;
+        head?: never;
+        patch: operations["update_watch"];
+        trace?: never;
+    };
+    "/v1/watches/{watch_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["pause_watch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watches/{watch_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resume_watch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1188,8 +1428,6 @@ export interface components {
         };
         /** @enum {string} */
         AuthorityLevel: "official" | "verified" | "user_pinned" | "inferred" | "community" | "mirror" | "conflicting" | "unknown";
-        /** Format: uuid */
-        BatchId: string;
         BrandColor: {
             count: number;
             hex: string;
@@ -1205,8 +1443,14 @@ export interface components {
             og_image?: string | null;
             url: string;
         };
-        CheckpointId: string;
+        ChunkHint: {
+            options: components["schemas"]["MetadataMap"];
+            profile: components["schemas"]["ChunkProfile"];
+            reason: string;
+        };
         ChunkId: string;
+        /** @enum {string} */
+        ChunkProfile: "code_symbol" | "code_manifest" | "markdown_sections" | "html_article" | "plain_text_windows" | "transcript_segments" | "structured_records" | "api_schema" | "tool_output" | "session_turns" | "atomic_metadata";
         CleanupDebtId: string;
         /** @enum {string} */
         ColorUsage: "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
@@ -1228,6 +1472,14 @@ export interface components {
             /** @enum {string} */
             kind: "external";
             uri: string;
+        };
+        /** @enum {string} */
+        CredentialKind: "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
+        CredentialRequirement: {
+            credential_kind: components["schemas"]["CredentialKind"];
+            reason: string;
+            required: boolean;
+            secret_ref?: null | components["schemas"]["SecretRef"];
         };
         DedupeRequest: {
             collection?: string | null;
@@ -1259,6 +1511,8 @@ export interface components {
             value: string;
             verified?: null | components["schemas"]["EndpointVerification"];
         };
+        /** @enum {string} */
+        DocumentBackend: "qdrant" | "stored_source" | "live_scrape";
         DocumentId: string;
         /** @enum {string} */
         EndpointKind: "relative_path" | "absolute_url" | "graphql" | "websocket";
@@ -1326,7 +1580,7 @@ export interface components {
          * @description Pipeline/transport stage an error is attributed to.
          * @enum {string}
          */
-        ErrorStage: "parsing" | "validation" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "normalizing" | "parsing_content" | "graphing" | "preparing" | "embedding" | "upserting" | "publishing" | "cleaning" | "retrieving" | "synthesizing" | "observing";
+        ErrorStage: "parsing" | "validation" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "enriching" | "normalizing" | "parsing_content" | "graphing" | "preparing" | "batching" | "embedding" | "vectorizing" | "upserting" | "publishing" | "cleaning" | "retrieving" | "synthesizing" | "evaluating" | "observing" | "storage" | "provider" | "transport" | "internal";
         /**
          * @description Where a context entry (or error) may be surfaced.
          *
@@ -1335,6 +1589,8 @@ export interface components {
          * @enum {string}
          */
         ErrorVisibility: "public" | "internal" | "sensitive";
+        /** @enum {string} */
+        ExecutionAffinity: "inline" | "worker" | "scheduler" | "provider_bound";
         /** @enum {string} */
         ExecutionMode: "foreground" | "background" | "wait";
         ExecutionPolicy: {
@@ -1345,6 +1601,19 @@ export interface components {
             priority: components["schemas"]["JobPriority"];
             /** Format: int64 */
             wait_timeout_secs?: number | null;
+        };
+        /** @enum {string} */
+        GraphDirection: "in" | "out" | "both";
+        GraphEdge: {
+            authority: components["schemas"]["AuthorityLevel"];
+            /** Format: float */
+            confidence: number;
+            edge_id: components["schemas"]["GraphEdgeId"];
+            evidence: components["schemas"]["GraphEvidence"][];
+            from_node_id: components["schemas"]["GraphNodeId"];
+            kind: string;
+            metadata: components["schemas"]["MetadataMap"];
+            to_node_id: components["schemas"]["GraphNodeId"];
         };
         GraphEdgeId: string;
         GraphEvidence: {
@@ -1360,7 +1629,86 @@ export interface components {
             source_id: components["schemas"]["SourceId"];
             source_item_key: components["schemas"]["SourceItemKey"];
         };
+        GraphIdentifier: {
+            canonical_uri?: string | null;
+            kind: string;
+            metadata: components["schemas"]["MetadataMap"];
+            node_id?: null | components["schemas"]["GraphNodeId"];
+            source_id?: null | components["schemas"]["SourceId"];
+            source_item_key?: null | components["schemas"]["SourceItemKey"];
+            value?: string | null;
+        };
+        GraphKindDocument: {
+            authority_levels: components["schemas"]["AuthorityLevel"][];
+            edge_kinds: string[];
+            evidence_kinds: string[];
+            node_kinds: string[];
+        };
+        GraphNode: {
+            authority: components["schemas"]["AuthorityLevel"];
+            canonical_uri: string;
+            /** Format: float */
+            confidence: number;
+            created_at?: null | components["schemas"]["Timestamp"];
+            display_name: string;
+            kind: string;
+            metadata: components["schemas"]["MetadataMap"];
+            node_id: components["schemas"]["GraphNodeId"];
+            source_ids?: components["schemas"]["SourceId"][];
+            updated_at?: null | components["schemas"]["Timestamp"];
+        };
         GraphNodeId: string;
+        GraphQueryFilters: {
+            metadata: components["schemas"]["MetadataMap"];
+            /** Format: float */
+            min_confidence?: number | null;
+            node_kinds?: string[];
+            source_ids?: components["schemas"]["SourceId"][];
+        };
+        GraphQueryRequest: {
+            cursor?: string | null;
+            /** Format: int32 */
+            depth: number;
+            direction: components["schemas"]["GraphDirection"];
+            edges?: string[];
+            filters?: null | components["schemas"]["GraphQueryFilters"];
+            /** Format: int32 */
+            limit: number;
+            start: components["schemas"]["GraphIdentifier"];
+        };
+        GraphQueryResult: {
+            edges: components["schemas"]["GraphEdge"][];
+            evidence: components["schemas"]["GraphEvidence"][];
+            next_cursor?: string | null;
+            nodes: components["schemas"]["GraphNode"][];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        GraphRef: {
+            candidate_id?: string | null;
+            edge_id?: null | components["schemas"]["GraphEdgeId"];
+            node_id?: null | components["schemas"]["GraphNodeId"];
+        };
+        GraphResolveMatch: {
+            /** Format: float */
+            confidence: number;
+            edges?: components["schemas"]["GraphEdge"][];
+            evidence: components["schemas"]["GraphEvidence"][];
+            identifier: components["schemas"]["GraphIdentifier"];
+            node: components["schemas"]["GraphNode"];
+        };
+        GraphResolveMiss: {
+            identifier: components["schemas"]["GraphIdentifier"];
+            reason: string;
+        };
+        GraphResolveRequest: {
+            identifiers: components["schemas"]["GraphIdentifier"][];
+            include_edges?: boolean;
+        };
+        GraphResolveResult: {
+            misses: components["schemas"]["GraphResolveMiss"][];
+            resolved: components["schemas"]["GraphResolveMatch"][];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
         GraphWriteSummary: {
             degraded: boolean;
             /** Format: int64 */
@@ -1382,14 +1730,29 @@ export interface components {
             next_cursor?: string | null;
         };
         JobCancelRequest: {
+            /**
+             * @description User/system identity requesting the cancellation, echoed back on
+             *     `JobCancelResult::canceled_by`.
+             */
+            actor?: string | null;
             /** Format: int64 */
             force_after_ms?: number | null;
             reason?: string | null;
         };
         JobCancelResult: {
             canceled_at?: null | components["schemas"]["Timestamp"];
+            /**
+             * @description User/system identity that requested the cancellation.
+             *     Per `docs/pipeline-unification/runtime/job-contract.md` "Cancellation".
+             */
+            canceled_by?: string | null;
+            /** @description Cleanup work created for any published partial side effect. */
+            cleanup_debt_ids?: string[];
             job_id: components["schemas"]["JobId"];
+            last_safe_stage?: null | components["schemas"]["PipelinePhase"];
             reason?: string | null;
+            /** @description Published/written side effects that survived the cooperative unwind. */
+            side_effects?: string[];
             status: components["schemas"]["LifecycleStatus"];
         };
         JobCleanupRequest: {
@@ -1618,10 +1981,18 @@ export interface components {
          */
         MemoryExportRequest: {
             include_archived?: boolean;
+            /**
+             * @description Include `working`-status memories in the export. Contract "Import and
+             *     Export" implies the "Type rules" exclusion ("working memories are
+             *     excluded from long-term exports by default") applies to export, not
+             *     just ask/context; defaults to `false` to match that default.
+             */
+            include_working?: boolean;
             scope?: null | components["schemas"]["MemoryScope"];
         };
         /** @description Exported memory records. */
         MemoryExportResult: {
+            artifact?: null | components["schemas"]["ArtifactRef"];
             /** Format: int32 */
             count: number;
             records: components["schemas"]["MemoryRecord"][];
@@ -1696,6 +2067,13 @@ export interface components {
             status: components["schemas"]["MemoryStatus"];
             superseded_by?: null | components["schemas"]["MemoryId"];
             title?: string | null;
+            /**
+             * @description Security classification (contract "Security and Redaction": "classify
+             *     every memory by visibility"). Drives caller-scope filtering on
+             *     export/context (e.g. `sensitive` records excluded from export unless
+             *     the caller is authorized) independent of `MemoryStatus`.
+             */
+            visibility?: components["schemas"]["Visibility"];
         };
         /**
          * @description Memory scope controlling recall and visibility.
@@ -1781,36 +2159,42 @@ export interface components {
             json: boolean;
             response_mode: components["schemas"]["ResponseMode"];
         };
+        PageInfo: {
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
         PanelCollectionsResponse: {
             collections: string[];
         };
+        ParserHint: {
+            options: components["schemas"]["MetadataMap"];
+            parser_id: string;
+            reason: string;
+        };
         /** @enum {string} */
         PipelinePhase: "queued" | "requested" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "enriching" | "normalizing" | "parsing" | "graphing" | "preparing" | "batching" | "embedding" | "vectorizing" | "upserting" | "retrieving" | "synthesizing" | "evaluating" | "publishing" | "cleaning" | "complete" | "canceled";
-        ProgressCurrent: {
-            adapter?: string | null;
-            chunk_id?: null | components["schemas"]["ChunkId"];
-            document_id?: null | components["schemas"]["DocumentId"];
-            message?: string | null;
-            provider?: null | components["schemas"]["ProviderId"];
-            source_item_key?: null | components["schemas"]["SourceItemKey"];
-        };
-        ProgressThroughput: {
-            /** Format: double */
-            bytes_per_second?: number | null;
-            /** Format: double */
-            chunks_per_second?: number | null;
-            /** Format: double */
-            items_per_second?: number | null;
-        };
-        ProgressTiming: {
-            /** Format: int64 */
-            elapsed_ms: number;
-            /** Format: int64 */
-            eta_ms?: number | null;
-            started_at: components["schemas"]["Timestamp"];
-            updated_at: components["schemas"]["Timestamp"];
-        };
         ProviderId: string;
+        /** @enum {string} */
+        ProviderKind: "llm" | "embedding" | "vector" | "search" | "fetch" | "render" | "network_capture" | "artifact" | "ledger" | "graph" | "memory" | "job" | "watch" | "config" | "credential" | "cache" | "security" | "rate_limiter" | "health_probe";
+        ProviderListResponse: {
+            providers: components["schemas"]["ProviderSummary"][];
+        };
+        ProviderRequirement: {
+            capability: string;
+            provider_kind: components["schemas"]["ProviderKind"];
+            reason: string;
+            required: boolean;
+        };
+        ProviderSummary: {
+            /** @description Raw per-provider diagnostics payload from the doctor report. */
+            detail: unknown;
+            id: string;
+            /** @description `true` when the doctor probe for this provider reported healthy. */
+            ok: boolean;
+        };
         /** @description Actual deletion counts from an executed prune (the receipt's tallies). */
         PruneCounts: {
             /** Format: int64 */
@@ -1948,6 +2332,22 @@ export interface components {
             /** Format: int64 */
             estimated_deletes: number;
             generation?: null | components["schemas"]["SourceGenerationId"];
+            /**
+             * @description Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching
+             *     `GraphStore::delete_edges`. Additive.
+             */
+            graph_edge_ids?: components["schemas"]["GraphEdgeId"][] | null;
+            /**
+             * @description Identity for a [`PruneTargetKind::Graph`] node-delete step (stable
+             *     keys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —
+             *     existing `Vector`/`Ledger` steps never set this.
+             */
+            graph_stable_keys?: string[] | null;
+            /**
+             * @description Identity for a [`PruneTargetKind::Memory`] forget step, matching
+             *     `MemoryStore::forget`. Additive.
+             */
+            memory_ids?: components["schemas"]["MemoryId"][] | null;
             source_id?: null | components["schemas"]["SourceId"];
             target: components["schemas"]["PruneTargetKind"];
             vector_selector?: null | components["schemas"]["VectorDeleteSelector"];
@@ -2003,6 +2403,35 @@ export interface components {
             sample_urls: string[];
             target: string;
         };
+        QueryHit: {
+            /** Format: int64 */
+            chunk_index?: number | null;
+            chunking_method?: string | null;
+            content_kind?: string | null;
+            /** Format: int32 */
+            end_line?: number | null;
+            file_path?: string | null;
+            file_type?: string | null;
+            kind?: string | null;
+            language?: string | null;
+            provider?: string | null;
+            /** Format: int64 */
+            rank: number;
+            /** Format: double */
+            rerank_score: number;
+            /** Format: double */
+            score: number;
+            snippet: string;
+            source: string;
+            /** Format: int32 */
+            start_line?: number | null;
+            symbol?: string | null;
+            symbol_extraction_status?: string | null;
+            url: string;
+        };
+        QueryResult: {
+            results: components["schemas"]["QueryHit"][];
+        };
         ReadinessBody: {
             ok: boolean;
             qdrant: string;
@@ -2011,7 +2440,20 @@ export interface components {
         };
         /** @enum {string} */
         RenderMode: "http" | "chrome" | "auto-switch";
-        ReservationId: string;
+        ResolvedSource: {
+            adapter: components["schemas"]["AdapterRef"];
+            authority: components["schemas"]["AuthorityLevel"];
+            available_scopes: components["schemas"]["SourceScope"][];
+            canonical_uri: string;
+            /** Format: float */
+            confidence: number;
+            default_scope: components["schemas"]["SourceScope"];
+            graph?: components["schemas"]["GraphRef"][];
+            reason: string;
+            source: string;
+            source_kind: components["schemas"]["SourceKind"];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
         /** @enum {string} */
         ResponseMode: "path" | "inline" | "both" | "auto_inline";
         RestAskRequest: {
@@ -2160,13 +2602,35 @@ export interface components {
             url?: string | null;
             urls?: string[] | null;
         };
-        RetryState: {
-            /** Format: int32 */
-            attempt: number;
-            /** Format: int32 */
-            max_attempts?: number | null;
-            next_retry_at?: null | components["schemas"]["Timestamp"];
-            reason: string;
+        RetrieveResult: {
+            backend?: null | components["schemas"]["DocumentBackend"];
+            chunk_count: number;
+            content: string;
+            matched_url?: string | null;
+            next_cursor?: string | null;
+            refresh_status?: string | null;
+            remaining_tokens_estimate?: number | null;
+            requested_url?: string | null;
+            token_estimate?: number | null;
+            truncated?: boolean;
+            variant_errors?: components["schemas"]["ServiceRetrieveVariantError"][];
+            warnings?: string[];
+        };
+        RoutePlan: {
+            adapter: components["schemas"]["AdapterRef"];
+            chunking_hints: components["schemas"]["ChunkHint"][];
+            credential_requirements: components["schemas"]["CredentialRequirement"][];
+            execution_affinity: components["schemas"]["ExecutionAffinity"];
+            graph_fact_kinds: string[];
+            option_schema_id: string;
+            parser_hints: components["schemas"]["ParserHint"][];
+            provider_requirements: components["schemas"]["ProviderRequirement"][];
+            refresh_supported: boolean;
+            safety_class: components["schemas"]["SafetyClass"];
+            scope: components["schemas"]["SourceScope"];
+            source: components["schemas"]["ResolvedSource"];
+            validated_options: components["schemas"]["AdapterOptions"];
+            watch_supported: boolean;
         };
         /**
          * @description Result of probing a discovered endpoint for JSON-RPC 2.0 / OpenRPC / MCP support.
@@ -2199,12 +2663,19 @@ export interface components {
          * @enum {string}
          */
         RpcTransport: "http" | "sse";
+        /** @enum {string} */
+        SafetyClass: "public_network" | "authenticated_network" | "local_filesystem" | "tool_execution";
         ScreenshotResult: {
             artifact_handle?: null | components["schemas"]["ArtifactHandle"];
             path: string;
             /** Format: int64 */
             size_bytes: number;
             url: string;
+        };
+        SecretRef: {
+            key: string;
+            label: string;
+            provider: string;
         };
         ServerInfo: {
             minimum_client_schema_version: string;
@@ -2219,6 +2690,10 @@ export interface components {
             supported_actions?: string[];
             supported_routes: string[];
             version: string;
+        };
+        ServiceRetrieveVariantError: {
+            error: string;
+            url: string;
         };
         /** @enum {string} */
         Severity: "debug" | "info" | "warning" | "degraded" | "failed" | "fatal";
@@ -2267,37 +2742,6 @@ export interface components {
             max_total_bytes?: number | null;
             /** Format: int64 */
             provider_timeout_ms?: number | null;
-        };
-        SourceProgressEvent: {
-            adapter?: null | components["schemas"]["AdapterRef"];
-            /** Format: int32 */
-            attempt?: number;
-            batch_id?: null | components["schemas"]["BatchId"];
-            canonical_uri?: string | null;
-            checkpoint_id?: null | components["schemas"]["CheckpointId"];
-            counts: components["schemas"]["StageCounts"];
-            current?: null | components["schemas"]["ProgressCurrent"];
-            dedupe_key?: string | null;
-            error?: null | components["schemas"]["ApiError"];
-            event_id: string;
-            generation?: null | components["schemas"]["SourceGenerationId"];
-            job_id: components["schemas"]["JobId"];
-            message: string;
-            phase: components["schemas"]["PipelinePhase"];
-            reservation_id?: null | components["schemas"]["ReservationId"];
-            retry?: null | components["schemas"]["RetryState"];
-            scope?: null | components["schemas"]["SourceScope"];
-            /** Format: int64 */
-            sequence: number;
-            severity: components["schemas"]["Severity"];
-            source_id?: null | components["schemas"]["SourceId"];
-            stage_id?: null | components["schemas"]["StageId"];
-            status: components["schemas"]["LifecycleStatus"];
-            throughput?: null | components["schemas"]["ProgressThroughput"];
-            timestamp: components["schemas"]["Timestamp"];
-            timing?: null | components["schemas"]["ProgressTiming"];
-            visibility: components["schemas"]["Visibility"];
-            warning?: null | components["schemas"]["SourceWarning"];
         };
         SourceRange: {
             /** Format: int64 */
@@ -2361,13 +2805,26 @@ export interface components {
             warnings: components["schemas"]["SourceWarning"][];
             watch?: null | components["schemas"]["WatchResult"];
         };
-        SourceResultRef: {
-            job_id: components["schemas"]["JobId"];
-            source_id: components["schemas"]["SourceId"];
-            status: components["schemas"]["LifecycleStatus"];
-        };
         /** @enum {string} */
         SourceScope: "page" | "site" | "docs" | "repo" | "workspace" | "branch" | "org" | "package" | "version" | "feed" | "subreddit" | "thread" | "comment" | "video" | "playlist" | "channel" | "issue" | "pull_request" | "merge_request" | "release" | "wiki" | "file" | "directory" | "map" | "tool" | "script" | "api";
+        SourceSummary: {
+            adapter: components["schemas"]["AdapterRef"];
+            authority: components["schemas"]["AuthorityLevel"];
+            canonical_uri: string;
+            counts: components["schemas"]["SourceCounts"];
+            created_at: components["schemas"]["Timestamp"];
+            display_name: string;
+            graph_node_ids?: components["schemas"]["GraphNodeId"][];
+            last_job_id?: null | components["schemas"]["JobId"];
+            last_refreshed_at?: null | components["schemas"]["Timestamp"];
+            source_id: components["schemas"]["SourceId"];
+            source_kind: components["schemas"]["SourceKind"];
+            status: components["schemas"]["LifecycleStatus"];
+            tags?: string[];
+            updated_at: components["schemas"]["Timestamp"];
+            user_label?: string | null;
+            watch_id?: null | components["schemas"]["WatchId"];
+        };
         SourceWarning: {
             code: string;
             message: string;
@@ -2397,22 +2854,67 @@ export interface components {
         };
         /** Format: uuid */
         StageId: string;
+        /**
+         * @description The contracted flat SSE/MCP streaming envelope. `data` carries the
+         *     kind-specific payload (a `SourceProgressEvent` for `progress`, the
+         *     route-specific result DTO for `final`, a `{ "text": ... }` object for
+         *     `token`, etc.) — see the contract doc for the per-kind validation rules.
+         */
         StreamEvent: {
-            event: components["schemas"]["SourceProgressEvent"];
-            /** @enum {string} */
-            kind: "progress";
-        } | {
-            /** @enum {string} */
-            kind: "result";
-            result: components["schemas"]["SourceResultRef"];
-        } | {
-            error: components["schemas"]["ApiError"];
-            /** @enum {string} */
-            kind: "error";
-        } | {
-            /** @enum {string} */
-            kind: "heartbeat";
+            data?: unknown;
+            error?: null | components["schemas"]["ApiError"];
+            event_id: string;
+            job_id?: null | components["schemas"]["JobId"];
+            kind: components["schemas"]["StreamKind"];
+            request_id?: string | null;
+            /** Format: int64 */
+            sequence: number;
             timestamp: components["schemas"]["Timestamp"];
+            warning?: null | components["schemas"]["SourceWarning"];
+        };
+        /**
+         * @description `StreamEvent.kind` — the flat set of streaming event kinds shared by SSE
+         *     and MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`
+         *     ("StreamEvent Shape").
+         * @enum {string}
+         */
+        StreamKind: "progress" | "token" | "citation" | "artifact" | "warning" | "error" | "final";
+        SuccessEnvelope_QueryResult: {
+            artifacts: components["schemas"]["ArtifactRef"][];
+            contract_version: string;
+            data: {
+                results: components["schemas"]["QueryHit"][];
+            };
+            job?: null | components["schemas"]["JobDescriptor"];
+            ok: boolean;
+            pagination?: null | components["schemas"]["PageInfo"];
+            request_id: string;
+            trace: components["schemas"]["TraceContext"];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        SuccessEnvelope_RetrieveResult: {
+            artifacts: components["schemas"]["ArtifactRef"][];
+            contract_version: string;
+            data: {
+                backend?: null | components["schemas"]["DocumentBackend"];
+                chunk_count: number;
+                content: string;
+                matched_url?: string | null;
+                next_cursor?: string | null;
+                refresh_status?: string | null;
+                remaining_tokens_estimate?: number | null;
+                requested_url?: string | null;
+                token_estimate?: number | null;
+                truncated?: boolean;
+                variant_errors?: components["schemas"]["ServiceRetrieveVariantError"][];
+                warnings?: string[];
+            };
+            job?: null | components["schemas"]["JobDescriptor"];
+            ok: boolean;
+            pagination?: null | components["schemas"]["PageInfo"];
+            request_id: string;
+            trace: components["schemas"]["TraceContext"];
+            warnings: components["schemas"]["SourceWarning"][];
         };
         /** Format: date-time */
         Timestamp: string;
@@ -2501,6 +3003,13 @@ export interface components {
             /** Format: int64 */
             every_seconds: number;
             timezone?: string | null;
+        };
+        WatchUpdateRequest: {
+            collection?: string | null;
+            embed?: boolean | null;
+            enabled?: boolean | null;
+            options?: null | components["schemas"]["AdapterOptions"];
+            schedule?: null | components["schemas"]["WatchSchedule"];
         };
     };
     responses: never;
@@ -3019,75 +3528,6 @@ export interface operations {
                 };
             };
             /** @description Qdrant collections request failed */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    dedupe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": null | components["schemas"]["DedupeRequest"];
-            };
-        };
-        responses: {
-            /** @description Dedupe result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Invalid dedupe request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unsupported request body content type */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Upstream vector service unavailable */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -3674,6 +4114,379 @@ export interface operations {
             };
             /** @description Authenticated token lacks Axon access */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_edge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Graph edge id */
+                edge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Edge detail and evidence */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Edge not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Graph storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    kinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Supported node/edge/evidence kinds and authority levels */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphKindDocument"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_node: {
+        parameters: {
+            query?: {
+                include_edges?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Graph node id */
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Node detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Node not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Graph storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_node_edges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Graph node id */
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Edges incident to the node */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Node not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Graph storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graph_query: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Typed graph traversal result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Graph storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Resolved graph nodes for each identifier */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Graph storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_source_subgraph: {
+        parameters: {
+            query?: {
+                depth?: number | null;
+                edge_kind?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Ledger source id */
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Graph nodes/edges tied to the source */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Graph storage unavailable */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5449,6 +6262,181 @@ export interface operations {
             };
         };
     };
+    list_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider capability/health list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderListResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Health check failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider id, e.g. qdrant/tei/chrome/llm */
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One provider capability/health report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSummary"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unknown provider id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Health check failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dedupe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["DedupeRequest"];
+            };
+        };
+        responses: {
+            /** @description Dedupe result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid dedupe request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Caller lacks axon:admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unsupported request body content type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Upstream vector service unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     prune_exec: {
         parameters: {
             query?: never;
@@ -5609,7 +6597,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description Authenticated token lacks Axon access */
+            /** @description Caller lacks axon:admin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5648,7 +6636,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessEnvelope_QueryResult"];
                 };
             };
             /** @description Invalid query request */
@@ -5800,6 +6788,66 @@ export interface operations {
             };
         };
     };
+    resolve_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Resolved source route plan (no mutation) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlan"];
+                };
+            };
+            /** @description Invalid source request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Source could not be resolved */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     retrieve: {
         parameters: {
             query?: never;
@@ -5819,7 +6867,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessEnvelope_RetrieveResult"];
                 };
             };
             /** @description Invalid retrieve request */
@@ -6045,8 +7093,17 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Source indexing result */
+            /** @description Source indexing result (synchronous) */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceResult"];
+                };
+            };
+            /** @description Source indexing enqueued as a detached job */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6083,6 +7140,65 @@ export interface operations {
             };
             /** @description Upstream service unavailable */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Ledger source id */
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Source detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSummary"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Source not found in the ledger */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Source ledger not configured on this deployment */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6515,6 +7631,358 @@ export interface operations {
                 };
             };
             /** @description Watch execution failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_watches: {
+        parameters: {
+            query?: {
+                enabled?: boolean | null;
+                source_id?: string | null;
+                adapter?: string | null;
+                limit?: number | null;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paged watch summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Watch detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deletion result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated watch detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated watch detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resume_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated watch detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch storage unavailable */
             502: {
                 headers: {
                     [name: string]: unknown;

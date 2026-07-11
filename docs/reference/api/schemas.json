@@ -1533,6 +1533,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupDebt_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupDebt_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -1558,6 +1664,9 @@
         "expired",
         "skipped"
       ],
+      "type": "string"
+    },
+    "CleanupDebt_MemoryId": {
       "type": "string"
     },
     "CleanupDebt_ProviderId": {
@@ -1749,6 +1858,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupSelector_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/CleanupSelector_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/CleanupSelector_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ],
       "title": "CleanupSelector"
@@ -1760,6 +1975,13 @@
       "type": "string"
     },
     "CleanupSelector_DocumentId": {
+      "type": "string"
+    },
+    "CleanupSelector_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "CleanupSelector_MemoryId": {
       "type": "string"
     },
     "CleanupSelector_SourceGenerationId": {
@@ -11437,6 +11659,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/PreparedDocument_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/PreparedDocument_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -11724,6 +12052,9 @@
     },
     "PreparedDocument_JobId": {
       "format": "uuid",
+      "type": "string"
+    },
+    "PreparedDocument_MemoryId": {
       "type": "string"
     },
     "PreparedDocument_PreparedChunk": {
@@ -13519,6 +13850,36 @@
             }
           ]
         },
+        "graph_edge_ids": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PruneExecuteRequest_GraphEdgeId"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "graph_stable_keys": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "memory_ids": {
+          "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PruneExecuteRequest_MemoryId"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "source_id": {
           "anyOf": [
             {
@@ -14138,6 +14499,36 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "graph_edge_ids": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PrunePlan_GraphEdgeId"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "graph_stable_keys": {
+          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "memory_ids": {
+          "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive.",
+          "items": {
+            "$ref": "#/$defs/PrunePlan_MemoryId"
+          },
+          "type": [
+            "array",
+            "null"
           ]
         },
         "source_id": {
@@ -17309,6 +17700,112 @@
             "artifact_id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "properties": {
+            "kind": {
+              "const": "graph_nodes",
+              "type": "string"
+            },
+            "stable_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "stable_keys"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific memory records for `MemoryPrune` debt to delete via\n`MemoryStore::forget`.",
+          "properties": {
+            "ids": {
+              "items": {
+                "$ref": "#/$defs/SourceGenerationDetail_MemoryId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "memory_records",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name a source's generations up to (and including) `up_to_generation`\nfor `LedgerPrune` debt to delete (ledger rows: generation, manifest,\nitems, document status).",
+          "properties": {
+            "kind": {
+              "const": "ledger_generations",
+              "type": "string"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            },
+            "up_to_generation": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "up_to_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific job rows for `JobRetention` debt to delete.",
+          "properties": {
+            "job_ids": {
+              "items": {
+                "$ref": "#/$defs/SourceGenerationDetail_JobId"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "job_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Name specific cache keys for `CachePrune` debt to delete.",
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "cache_keys",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -17471,6 +17968,9 @@
         "expired",
         "skipped"
       ],
+      "type": "string"
+    },
+    "SourceGenerationDetail_MemoryId": {
       "type": "string"
     },
     "SourceGenerationDetail_ProviderId": {
@@ -28454,7 +28954,7 @@
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:0395b09638d4265bc795fa64409dfaee4df517883d6e62b909889e3537a78f1c",
+        "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -28464,7 +28964,7 @@
         "path": "crates/axon-api/src/source/enums.rs"
       },
       {
-        "checksum": "sha256:d96090e8b5089f0d19f68e755eeee577e86961a46269ad98c7de1548ba0558f0",
+        "checksum": "sha256:ca3c484a987057b7cc4c7fb9cce1b2ceb773384307f9fbd7b09cfd3ece9d0511",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/graph.rs"
       },
@@ -28499,7 +28999,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:5f98e4a52fe7dd507955161917635f3c1bcaf7839737ea03c3c0378551e26233",
+        "checksum": "sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
