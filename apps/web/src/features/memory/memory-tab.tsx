@@ -1,9 +1,9 @@
 'use client';
 
 import { Brain, Eye, Save, Search, Trash2, X } from 'lucide-react';
-import { EmptyState, StatusBadge, SubsectionTitle } from './panel-components';
-import { MEMORY_TYPE_OPTIONS } from './panel-types';
-import type { MemoryItem } from './panel-types';
+import { EmptyState, StatusBadge, SubsectionTitle } from '../../lib/panel-components';
+import { MEMORY_TYPE_OPTIONS } from '../../lib/panel-types';
+import type { MemoryItem } from '../../lib/panel-types';
 import { memoryEntryKey, memoryResultsSummaryLabel, memoryScopeLabel, memoryTimestampLabel } from './memory-helpers';
 import { useMemoryPanel } from './use-memory';
 

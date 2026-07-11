@@ -1,5 +1,5 @@
-import { AxonApiError } from '../lib/axon-client';
-import type { WatchPage, WatchSchedule, WatchSummary } from './panel-types';
+import { AxonApiError } from '../../api/axon-client';
+import type { WatchPage, WatchSchedule, WatchSummary } from '../../lib/panel-types';
 
 export function normalizeWatchEntries(result: WatchPage | null): WatchSummary[] {
   if (!result) return [];

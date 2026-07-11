@@ -25,7 +25,7 @@
     "openapi:check": "cd ../.. && cargo xtask check-openapi-drift",
     "openapi:export": "mkdir -p openapi && cargo run --quiet --manifest-path ../../Cargo.toml --bin axon-openapi > openapi/axon.json",
     "openapi:generate": "npm run openapi:export && npm run openapi:types",
-    "openapi:types": "node scripts/generate-openapi-types.mjs openapi/axon.json lib/generated/axon-api.ts",
+    "openapi:types": "node scripts/generate-openapi-types.mjs openapi/axon.json src/api/generated/axon-api.ts",
     "test": "vitest run"
   },
   "version": "6.2.2"

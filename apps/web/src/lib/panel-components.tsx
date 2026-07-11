@@ -33,15 +33,15 @@ import {
   panelArtifactUrl,
   titleLabel
 } from './command-format';
-import { normalizeJobStatus, jobTargetFromUrls, jobKindLabel } from './job-helpers';
+import { normalizeJobStatus, jobTargetFromUrls, jobKindLabel } from '../features/jobs/job-helpers';
 import type { ServiceJob, SourceListEntry } from './panel-types';
-import type { SourceResult } from '../lib/axon-client';
+import type { SourceResult } from '../api/axon-client';
 import {
   sourceEntryAdapterName,
   sourceEntryChunkCount,
   sourceEntryFamily,
   sourceEntryLabel
-} from './source-helpers';
+} from '../features/sources/source-helpers';
 
 // ---------------------------------------------------------------------------
 // Icon maps (used by UrlCard and CheckCard)

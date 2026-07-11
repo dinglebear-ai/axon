@@ -10,8 +10,8 @@ import {
   watchStatusLabel,
   watchSummaryLabel
 } from './watch-helpers';
-import type { WatchPage, WatchSummary } from './panel-types';
-import { AxonApiError } from '../lib/axon-client';
+import type { WatchPage, WatchSummary } from '../../lib/panel-types';
+import { AxonApiError } from '../../api/axon-client';
 
 function watchSummary(overrides: Partial<WatchSummary> = {}): WatchSummary {
   return {

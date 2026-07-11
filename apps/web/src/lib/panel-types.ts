@@ -246,7 +246,7 @@ export type WatchUpdateRequest = {
 // set) is the listing surface. Hand-typed rather than generated because the
 // REST handlers return `serde_json::Value` (untyped in the OpenAPI schema);
 // `RestMemoryRequest`/`RestMemoryNodeType` are the one part that is generated
-// (see lib/axon-client.ts).
+// (see src/api/axon-client.ts).
 export type MemoryNodeType = 'decision' | 'fact' | 'preference' | 'task' | 'bug';
 
 export const MEMORY_TYPE_OPTIONS: Array<{ value: MemoryNodeType; label: string }> = [

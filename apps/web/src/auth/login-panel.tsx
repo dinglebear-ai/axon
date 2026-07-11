@@ -2,7 +2,7 @@
 
 import { LockKeyhole } from 'lucide-react';
 
-import type { PanelState } from './panel-types';
+import type { PanelState } from '../lib/panel-types';
 
 export function LoginPanel({
   panelState,

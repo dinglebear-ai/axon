@@ -1,49 +1,19 @@
 'use client';
 
-import {
-  Activity,
-  Ban,
-  Braces,
-  ClipboardCopy,
-  Command,
-  Database,
-  FileCog,
-  Globe2,
-  ListChecks,
-  LockKeyhole,
-  Play,
-  RefreshCw,
-  RotateCcw,
-  Save,
-  Settings2,
-  Terminal,
-  UploadCloud
-} from 'lucide-react';
+import { Command, LockKeyhole } from 'lucide-react';
 
-import { commandExamples } from './command-format';
-import {
-  CheckCard,
-  DoctorCard,
-  EmptyState,
-  JobRow,
-  SourceListRow,
-  SourceSubmitResultCard,
-  StatusGlyph,
-  SubsectionTitle,
-  SummaryPill,
-  UrlCard,
-  overallStatusLabel,
-  summarizeChecks
-} from './panel-components';
-import { jobSummary } from './job-helpers';
-import { SOURCE_FAMILY_OPTIONS, sourceEntryKey, sourcesSummaryLabel } from './source-helpers';
-import { TOKEN_KEY } from './panel-types';
-import { usePanelData } from './use-panel-data';
-import { WatchesTab } from './watches-tab';
-import { MemoryTab } from './memory-tab';
-import { PanelNav } from './panel-nav';
-import { CommandPalette } from './command-palette';
-import { LoginPanel } from './login-panel';
+import { commandExamples } from '../src/lib/command-format';
+import { CommandPalette } from '../src/lib/command-palette';
+import { PanelNav } from '../src/lib/panel-nav';
+import { TOKEN_KEY } from '../src/lib/panel-types';
+import { usePanelData } from '../src/lib/use-panel-data';
+import { LoginPanel } from '../src/auth/login-panel';
+import { DashboardTab } from '../src/features/dashboard/DashboardTab';
+import { JobsTab } from '../src/features/jobs/JobsTab';
+import { SourcesTab } from '../src/features/sources/SourcesTab';
+import { WatchesTab } from '../src/features/watches/watches-tab';
+import { MemoryTab } from '../src/features/memory/memory-tab';
+import { ConfiguratorTab } from '../src/features/config/ConfiguratorTab';
 
 export default function Page() {
   const {
@@ -89,7 +59,6 @@ export default function Page() {
     runCommand,
     refreshDashboard,
     refreshAxonStatus,
-    savedMessage,
     sourceEntries,
     sourcesResult,
     sourcesLoading,
@@ -150,241 +119,59 @@ export default function Page() {
       />
 
       {activePanelTab === 'dashboard' && (
-        <section className="stack-panel">
-          <div className="section-heading">
-            <div className="health-title">
-              <div className={`status-orb ${overallStatus}`}>
-                <StatusGlyph status={overallStatus} />
-              </div>
-              <div>
-                <p className="eyebrow">Dashboard</p>
-                <h2>Runtime Health</h2>
-                <p>
-                  {stack
-                    ? `${overallStatusLabel(overallStatus)} · ${stack.server_url} · doctor ${doctor?.payload.all_ok ? 'clear' : 'checking'}`
-                    : stackLoading
-                      ? 'Checking runtime'
-                      : stackStatus || 'Runtime status unavailable'}
-                </p>
-              </div>
-            </div>
-            <button className="ghost" onClick={() => void refreshDashboard()} disabled={stackLoading}>
-              <RefreshCw aria-hidden="true" className={`button-icon ${stackLoading ? 'spin' : ''}`} />
-              {stackLoading ? 'Refreshing' : 'Refresh'}
-            </button>
-          </div>
-          <div className="summary-strip" aria-label="Runtime health summary">
-            <SummaryPill label="Service URLs" summary={urlSummary} />
-            <SummaryPill label="Dependencies" summary={summarizeChecks(runtimeChecks)} />
-            <SummaryPill label="Doctor" summary={doctorSummary} />
-            <span className="timestamp">{doctorUpdatedAt || stackUpdatedAt ? `Live ${doctorUpdatedAt || stackUpdatedAt}` : 'Starting live view'}</span>
-          </div>
-          {(stackStatus || doctorMessage) && <p className="error">{stackStatus || doctorMessage}</p>}
-          <div className="runtime-grid">
-            <div className="runtime-primary">
-              <SubsectionTitle icon={Globe2} title="Service URLs" note="Reachability from this Axon server." />
-              {stack?.urls?.length ? (
-                <div className="url-list" aria-label="Service URL reachability">
-                  {stack.urls.map((urlCheck) => (
-                    <UrlCard check={urlCheck} key={urlCheck.label} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState loading={stackLoading} text="No URL checks returned." />
-              )}
-            </div>
-            <div className="runtime-secondary">
-              <SubsectionTitle icon={Settings2} title="Runtime Dependencies" note="Server-context checks." />
-              {runtimeChecks.length ? (
-                <div className="dependency-list">
-                  {runtimeChecks.map((check) => (
-                    <CheckCard check={check} key={check.label} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState loading={stackLoading} text="No dependency checks returned." />
-              )}
-              {skippedHostChecks.length > 0 && (
-                <div className="skip-strip">
-                  <div>
-                    <Ban aria-hidden="true" className="heading-icon" />
-                    <strong>Host-only checks unavailable</strong>
-                  </div>
-                  <p>{skippedHostChecks.map((check) => check.label).join(' · ')}</p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="doctor-panel">
-            <SubsectionTitle icon={Activity} title="Doctor" note="Live `axon doctor` service report." />
-            {doctorServices.length ? (
-              <div className="doctor-grid">
-                {doctorServices.map((service) => (
-                  <DoctorCard service={service} key={service.name} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState loading={stackLoading} text="No doctor report returned." />
-            )}
-          </div>
-        </section>
+        <DashboardTab
+          stack={stack}
+          stackLoading={stackLoading}
+          stackStatus={stackStatus}
+          stackUpdatedAt={stackUpdatedAt}
+          doctor={doctor}
+          doctorMessage={doctorMessage}
+          doctorUpdatedAt={doctorUpdatedAt}
+          urlSummary={urlSummary}
+          runtimeChecks={runtimeChecks}
+          skippedHostChecks={skippedHostChecks}
+          overallStatus={overallStatus}
+          doctorServices={doctorServices}
+          doctorSummary={doctorSummary}
+          refreshDashboard={refreshDashboard}
+        />
       )}
 
       {activePanelTab === 'jobs' && (
-        <section className="stack-panel">
-          <div className="section-heading">
-            <div className="health-title">
-              <div className={`status-orb ${activeJobs.length ? 'warn' : 'ok'}`}>
-                <ListChecks aria-hidden="true" className="status-glyph" />
-              </div>
-              <div>
-                <p className="eyebrow">Jobs</p>
-                <h2>Axon Status</h2>
-                <p>{activeJobs.length} active jobs · {liveJobs.length} recent rows</p>
-              </div>
-            </div>
-            <button className="ghost" onClick={() => void refreshAxonStatus()} disabled={stackLoading}>
-              <RefreshCw aria-hidden="true" className={`button-icon ${stackLoading ? 'spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
-          <div className="summary-strip" aria-label="Job summary">
-            <SummaryPill label="Active jobs" summary={jobSummary(activeJobs)} />
-            <span className="timestamp">{statusUpdatedAt ? `Live ${statusUpdatedAt}` : 'Starting live view'}</span>
-          </div>
-          {statusMessage && <p className="error">{statusMessage}</p>}
-          <div className="status-grid">
-            <div className="status-panel">
-              <SubsectionTitle icon={Activity} title="Axon Status" note="Queue totals and recent jobs." />
-              <div className="job-total-grid">
-                {Object.entries(axonStatus?.totals ?? {}).map(([label, value]) => (
-                  <div className="job-total" key={label}>
-                    <span>{label}</span>
-                    <strong>{value}</strong>
-                  </div>
-                ))}
-              </div>
-              {liveJobs.length ? (
-                <div className="job-list">
-                  {liveJobs.slice(0, 10).map((job) => (
-                    <JobRow job={job} key={job.id} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState loading={stackLoading} text="No recent jobs returned." />
-              )}
-            </div>
-            <div className="status-panel command-card">
-              <SubsectionTitle icon={Command} title="Command Palette" note="Run Axon commands from the browser." />
-              <button className="command-open" onClick={() => setPaletteOpen(true)}>
-                <Terminal aria-hidden="true" className="button-icon" />
-                Open command palette
-                <kbd>⌘K</kbd>
-              </button>
-              <div className="command-examples">
-                {commandExamples.map((example) => (
-                  <button
-                    className="ghost"
-                    key={example}
-                    onClick={() => {
-                      setCommandInput(example);
-                      setPaletteOpen(true);
-                    }}
-                  >
-                    {example}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
+        <JobsTab
+          activeJobs={activeJobs}
+          liveJobs={liveJobs}
+          axonStatus={axonStatus}
+          statusMessage={statusMessage}
+          statusUpdatedAt={statusUpdatedAt}
+          stackLoading={stackLoading}
+          refreshAxonStatus={refreshAxonStatus}
+          setPaletteOpen={setPaletteOpen}
+          setCommandInput={setCommandInput}
+        />
       )}
 
       {activePanelTab === 'sources' && (
-        <section className="stack-panel">
-          <div className="section-heading">
-            <div className="health-title">
-              <div className={`status-orb ${sourcesMessage ? 'error' : sourcesResult ? 'ok' : 'warn'}`}>
-                <Database aria-hidden="true" className="status-glyph" />
-              </div>
-              <div>
-                <p className="eyebrow">Sources</p>
-                <h2>Indexed Sources</h2>
-                <p>{sourcesSummaryLabel(sourcesResult)}</p>
-              </div>
-            </div>
-            <button className="ghost" onClick={() => void refreshSources()} disabled={sourcesLoading}>
-              <RefreshCw aria-hidden="true" className={`button-icon ${sourcesLoading ? 'spin' : ''}`} />
-              {sourcesLoading ? 'Refreshing' : 'Refresh'}
-            </button>
-          </div>
-          <div className="summary-strip" aria-label="Source summary">
-            <span className="timestamp">{sourcesUpdatedAt ? `Live ${sourcesUpdatedAt}` : 'Not loaded yet'}</span>
-          </div>
-          {sourcesMessage && <p className="error">{sourcesMessage}</p>}
-          <div className="status-grid">
-            <div className="status-panel">
-              <SubsectionTitle icon={Database} title="Indexed Sources" note="GET /v1/sources — family, adapter, and chunk counts." />
-              {sourceEntries.length ? (
-                <div className="job-list">
-                  {sourceEntries.map((entry, index) => (
-                    <SourceListRow entry={entry} key={sourceEntryKey(entry, index)} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState loading={sourcesLoading} text="No sources indexed yet." />
-              )}
-            </div>
-            <div className="status-panel command-card">
-              <SubsectionTitle icon={UploadCloud} title="Submit Source" note="POST /v1/sources — acquires and indexes a URL, repo, feed, or path." />
-              <label>
-                Source URL or target
-                <input
-                  value={sourceFormValue}
-                  onChange={(event) => setSourceFormValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') void submitSourceForm();
-                  }}
-                  placeholder="https://example.com/docs"
-                />
-              </label>
-              <label>
-                Family
-                <select value={sourceFormFamily} onChange={(event) => setSourceFormFamily(event.target.value)}>
-                  {SOURCE_FAMILY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Max pages (optional)
-                <input
-                  type="number"
-                  min={0}
-                  value={sourceFormMaxPages}
-                  onChange={(event) => setSourceFormMaxPages(event.target.value)}
-                  placeholder="unbounded"
-                />
-              </label>
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={sourceFormEmbed}
-                  onChange={(event) => setSourceFormEmbed(event.target.checked)}
-                />
-                Embed into Qdrant
-              </label>
-              <button onClick={() => void submitSourceForm()} disabled={sourceSubmitBusy || !sourceFormValue.trim()}>
-                <Play aria-hidden="true" className="button-icon" />
-                {sourceSubmitBusy ? 'Submitting' : 'Submit source'}
-              </button>
-              {sourceSubmitError && <p className="error">{sourceSubmitError}</p>}
-              {sourceSubmitResult && <SourceSubmitResultCard result={sourceSubmitResult} />}
-            </div>
-          </div>
-        </section>
+        <SourcesTab
+          sourceEntries={sourceEntries}
+          sourcesResult={sourcesResult}
+          sourcesLoading={sourcesLoading}
+          sourcesMessage={sourcesMessage}
+          sourcesUpdatedAt={sourcesUpdatedAt}
+          refreshSources={refreshSources}
+          sourceFormValue={sourceFormValue}
+          setSourceFormValue={setSourceFormValue}
+          sourceFormFamily={sourceFormFamily}
+          setSourceFormFamily={setSourceFormFamily}
+          sourceFormEmbed={sourceFormEmbed}
+          setSourceFormEmbed={setSourceFormEmbed}
+          sourceFormMaxPages={sourceFormMaxPages}
+          setSourceFormMaxPages={setSourceFormMaxPages}
+          sourceSubmitBusy={sourceSubmitBusy}
+          sourceSubmitResult={sourceSubmitResult}
+          sourceSubmitError={sourceSubmitError}
+          submitSourceForm={submitSourceForm}
+        />
       )}
 
       {activePanelTab === 'watches' && <WatchesTab token={token} active={activePanelTab === 'watches'} />}
@@ -392,88 +179,20 @@ export default function Page() {
       {activePanelTab === 'memory' && <MemoryTab />}
 
       {activePanelTab === 'configurator' && (
-        <section className="workbench-shell">
-          <div className="workbench-header">
-            <div className="section-heading">
-              <div>
-                <h2>
-                  <FileCog aria-hidden="true" className="heading-icon" />
-                  Configurator
-                </h2>
-                <p>Manage `config.toml` and `.env` without leaving the dashboard.</p>
-              </div>
-            </div>
-            <span className="workbench-path">config.toml and .env</span>
-          </div>
-
-          <div className="editor-panel">
-            <div className="editor-toolbar">
-              <div>
-                <h2>
-                  <FileCog aria-hidden="true" className="heading-icon" />
-                  Configurator
-                </h2>
-                <p>{activeConfigPath}</p>
-              </div>
-              <div className="editor-actions">
-                <button
-                  className="ghost"
-                  onClick={() => void navigator.clipboard?.writeText(activeConfigPath ?? '')}
-                  disabled={!activeConfigPath}
-                  title="Copy active config path"
-                >
-                  <ClipboardCopy aria-hidden="true" className="button-icon" />
-                  Copy path
-                </button>
-                <button className="ghost" onClick={revertConfig} disabled={!activeDirty}>
-                  <RotateCcw aria-hidden="true" className="button-icon" />
-                  Revert
-                </button>
-                <button onClick={() => void saveConfig()} disabled={!activeDirty}>
-                  <Save aria-hidden="true" className="button-icon" />
-                  Save
-                </button>
-              </div>
-            </div>
-            <div className="config-tabs" role="tablist" aria-label="Config file">
-              <button
-                className={activeConfigFile === 'toml' ? 'selected' : ''}
-                onClick={() => setActiveConfigFile('toml')}
-                role="tab"
-                aria-selected={activeConfigFile === 'toml'}
-              >
-                <FileCog aria-hidden="true" className="button-icon" />
-                config.toml
-                {configDirty && <span className="dirty-dot" aria-label="Modified" />}
-              </button>
-              <button
-                className={activeConfigFile === 'env' ? 'selected' : ''}
-                onClick={() => setActiveConfigFile('env')}
-                role="tab"
-                aria-selected={activeConfigFile === 'env'}
-              >
-                <Braces aria-hidden="true" className="button-icon" />
-                .env
-                {envDirty && <span className="dirty-dot" aria-label="Modified" />}
-              </button>
-            </div>
-            <div className="editor-meta" aria-label="Config metadata">
-              <span>
-                <Braces aria-hidden="true" className="inline-icon" />
-                {activeConfigMeta.lines} lines
-              </span>
-              <span>{activeConfigMeta.characters} chars</span>
-              <span>{activeConfigFile === 'toml' ? 'TOML validated on save' : 'dotenv parsed on save'}</span>
-              <span className={activeDirty ? 'meta-dirty' : ''}>{activeDirty ? 'Modified' : 'Saved'}</span>
-            </div>
-            <textarea
-              value={activeConfigValue}
-              onChange={(event) => updateActiveConfig(event.target.value)}
-              spellCheck={false}
-            />
-            {message && <p className={savedMessage(message) ? 'ok' : 'error'}>{message}</p>}
-          </div>
-        </section>
+        <ConfiguratorTab
+          activeConfigFile={activeConfigFile}
+          setActiveConfigFile={setActiveConfigFile}
+          activeConfigPath={activeConfigPath}
+          activeConfigMeta={activeConfigMeta}
+          activeConfigValue={activeConfigValue}
+          activeDirty={activeDirty}
+          configDirty={configDirty}
+          envDirty={envDirty}
+          updateActiveConfig={updateActiveConfig}
+          revertConfig={revertConfig}
+          saveConfig={saveConfig}
+          message={message}
+        />
       )}
 
       <CommandPalette
