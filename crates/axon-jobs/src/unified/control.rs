@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use axon_api::source::*;
 use axon_error::cooling::ProviderCooling;
 use sqlx::Row;
 
 use super::SqliteUnifiedJobStore;
 use super::control_helpers::*;
-use crate::boundary::Result;
+use crate::boundary::{JobDeleteResult, Result};
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
 use crate::unified::MAX_PROVIDER_COOLDOWN_WINDOW;
@@ -435,6 +437,71 @@ impl SqliteUnifiedJobStore {
             reservations_pruned,
             artifacts_pruned,
         })
+    }
+
+    /// Delete specific job rows by id, refusing any row not currently in a
+    /// terminal status (see [`JobDeleteResult`]).
+    ///
+    /// Runs the status check and the delete in one transaction so a
+    /// concurrent status write (claim, heartbeat, cancel, …) cannot slip a
+    /// job from terminal to live — or vice versa — between the read and the
+    /// write. Child rows (`job_events`/`job_heartbeats`/`job_attempts`/
+    /// `job_stages`/`job_artifacts`/`provider_reservations`) all declare
+    /// `ON DELETE CASCADE` against `jobs.job_id` (see migration
+    /// `0018_unified_jobs_observability.sql`) and this pool always runs with
+    /// `PRAGMA foreign_keys = ON` (`axon_core::sqlite::open_pool_unlocked`),
+    /// so deleting the `jobs` row is sufficient — no separate per-table
+    /// deletes are needed the way `cleanup_jobs` above only *counts* them.
+    pub(crate) async fn delete_job_rows(&self, job_ids: &[JobId]) -> Result<JobDeleteResult> {
+        if job_ids.is_empty() {
+            return Ok(JobDeleteResult::default());
+        }
+        let ids = job_ids
+            .iter()
+            .map(|id| id.0.to_string())
+            .collect::<Vec<_>>();
+        let quoted = quoted_job_ids(&ids);
+
+        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let rows = sqlx::query(&format!(
+            "SELECT job_id, status FROM jobs WHERE job_id IN ({quoted})"
+        ))
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+
+        let mut found_status = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let id = row.get::<String, _>("job_id");
+            let status = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+            found_status.insert(id, status);
+        }
+
+        let mut result = JobDeleteResult::default();
+        let mut delete_ids: Vec<String> = Vec::new();
+        for (job_id, key) in job_ids.iter().zip(ids.iter()) {
+            match found_status.get(key) {
+                None => result.missing.push(*job_id),
+                Some(status) if is_terminal(*status) => {
+                    delete_ids.push(key.clone());
+                    result.deleted.push(*job_id);
+                }
+                Some(_) => result.skipped_live.push(*job_id),
+            }
+        }
+
+        if !delete_ids.is_empty() {
+            let quoted_delete = quoted_job_ids(&delete_ids);
+            sqlx::query(&format!(
+                "DELETE FROM jobs WHERE job_id IN ({quoted_delete})"
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(sql_error)?;
+        }
+
+        tx.commit().await.map_err(sql_error)?;
+        Ok(result)
     }
 
     pub(crate) async fn list_job_artifacts(

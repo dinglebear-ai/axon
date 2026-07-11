@@ -15,13 +15,16 @@
 //! keys / memory ids), not generation-fenced.
 //!
 //! Every debt kind this module can drain — `VectorDelete`, `LedgerPrune`,
-//! `GraphPrune`, `MemoryPrune` — now routes through the single
+//! `GraphPrune`, `MemoryPrune`, `JobRetention` — now routes through the single
 //! [`axon_prune::PruneExecutor::execute`] call in [`drain_via_executor`], using
 //! the identity carried on [`PruneStep`] (`vector_selector` /
 //! `source_id`+`generation` / `graph_stable_keys`+`graph_edge_ids` /
-//! `memory_ids`). There is no direct-store fallback: a debt kind whose store
-//! is not wired for this call fails closed (the executor reports the step
-//! `Failed`, debt stays pending) rather than fake-resolving.
+//! `memory_ids`) or, for `JobRetention` (whose `job_ids` identity has no
+//! matching `PruneStep` field — see `step_map::debt_to_step`'s doc comment),
+//! a per-debt field on [`LedgerPruneTarget`] itself. There is no direct-store
+//! fallback: a debt kind whose store is not wired for this call fails closed
+//! (the executor reports the step `Failed`, debt stays pending) rather than
+//! fake-resolving.
 //!
 //! Failure degrades gracefully — a delete error, an unfenced-current
 //! collision, or a ledger error is logged and leaves the debt row pending for a
@@ -45,10 +48,11 @@
 
 use async_trait::async_trait;
 use axon_api::source::{
-    CleanupDebt, CleanupDebtKind, MemoryForgetRequest, SourceGenerationId, SourceId, Timestamp,
-    VectorDeleteSelector,
+    CleanupDebt, CleanupDebtKind, JobId, MemoryForgetRequest, SourceGenerationId, SourceId,
+    Timestamp, VectorDeleteSelector,
 };
 use axon_graph::store::GraphStore;
+use axon_jobs::boundary::{JobDeleteResult, JobStore};
 use axon_ledger::store::LedgerStore;
 use axon_memory::store::MemoryStore;
 use axon_prune::{
@@ -59,7 +63,7 @@ use axon_vectors::store::VectorStore;
 use super::result_map::IndexCounts;
 
 mod step_map;
-use step_map::{debt_to_step, single_step_plan, skip_reason_for_kind};
+use step_map::{debt_to_step, job_ids_for_debt, single_step_plan, skip_reason_for_kind};
 
 /// Outcome of a cleanup-debt drain pass (for logging only — never surfaced on
 /// the wire).
@@ -101,11 +105,53 @@ pub async fn drain_cleanup_debt(
 /// `MemoryPrune` debt is left pending (the executor step fails closed with
 /// "no store wired", never faked as resolved), matching the "no fake drains"
 /// requirement in `docs/pipeline-unification/runtime/pruning-contract.md`.
+///
+/// This is the job-store-unaware entry point (`job_store` is always `None`,
+/// so any `JobRetention` debt fails closed exactly like an unwired
+/// `GraphStore`/`MemoryStore`) — kept so existing call sites' signatures stay
+/// untouched. Prefer [`drain_cleanup_debt_full_with_jobs`] once the caller
+/// has a `JobStore` handle available to drain `JobRetention` debt too.
 pub async fn drain_cleanup_debt_full(
     ledger: &dyn LedgerStore,
     vector_store: &dyn VectorStore,
     graph_store: Option<&dyn GraphStore>,
     memory_store: Option<&dyn MemoryStore>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_jobs(
+        ledger,
+        vector_store,
+        graph_store,
+        memory_store,
+        None,
+        collection,
+        counts,
+    )
+    .await
+}
+
+/// Full cleanup-debt drain across every boundary this module can drive:
+/// vector, ledger, graph, memory, and job-retention.
+///
+/// `graph_store`/`memory_store`/`job_store` are each optional — when `None`,
+/// that boundary's debt kind is left pending (the executor step fails closed
+/// with "no store wired", never faked as resolved), matching the "no fake
+/// drains" requirement in
+/// `docs/pipeline-unification/runtime/pruning-contract.md`.
+///
+/// Unlike `Vector`/`Ledger`/`Graph`/`Memory` identity, a `JobRetention`
+/// debt's `job_ids` (from `CleanupSelector::JobRows`) have no matching field
+/// on the transport-neutral `PruneStep` DTO, so [`LedgerPruneTarget`] is
+/// (re)constructed once per debt (cheap — every field but `job_ids` is an
+/// unchanged reference/clone) rather than once for the whole batch, purely so
+/// it can carry that one debt's job ids into `apply()`.
+pub async fn drain_cleanup_debt_full_with_jobs(
+    ledger: &dyn LedgerStore,
+    vector_store: &dyn VectorStore,
+    graph_store: Option<&dyn GraphStore>,
+    memory_store: Option<&dyn MemoryStore>,
+    job_store: Option<&dyn JobStore>,
     collection: &str,
     counts: &IndexCounts,
 ) -> DebtDrainSummary {
@@ -127,17 +173,6 @@ pub async fn drain_cleanup_debt_full(
         return DebtDrainSummary::default();
     }
 
-    let target = LedgerPruneTarget {
-        vector_store,
-        ledger,
-        graph_store,
-        memory_store,
-        collection: collection.to_string(),
-        source_id: source_id.clone(),
-        committed_generation,
-    };
-    let executor = PruneExecutor::new(target);
-
     // System-trusted authorization for this automatic, in-process cleanup
     // drain — see the module-level "Authorization" note. Passed explicitly
     // (never implicitly defaulted) so the executor's admin gate is exercised
@@ -146,6 +181,18 @@ pub async fn drain_cleanup_debt_full(
 
     let mut summary = DebtDrainSummary::default();
     for debt in pending {
+        let target = LedgerPruneTarget {
+            vector_store,
+            ledger,
+            graph_store,
+            memory_store,
+            job_store,
+            collection: collection.to_string(),
+            source_id: source_id.clone(),
+            committed_generation: committed_generation.clone(),
+            job_ids: job_ids_for_debt(&debt),
+        };
+        let executor = PruneExecutor::new(target);
         drain_one_debt(ledger, &executor, &authz, &debt, &mut summary).await;
     }
 
@@ -160,8 +207,8 @@ pub async fn drain_cleanup_debt_full(
 }
 
 /// Execute one debt entry and, on clean success, mark it resolved. Every
-/// drainable kind (`VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`)
-/// routes through the same [`drain_via_executor`] path.
+/// drainable kind (`VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`/
+/// `JobRetention`) routes through the same [`drain_via_executor`] path.
 async fn drain_one_debt(
     ledger: &dyn LedgerStore,
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
@@ -173,18 +220,17 @@ async fn drain_one_debt(
         CleanupDebtKind::VectorDelete
         | CleanupDebtKind::LedgerPrune
         | CleanupDebtKind::GraphPrune
-        | CleanupDebtKind::MemoryPrune => {
+        | CleanupDebtKind::MemoryPrune
+        | CleanupDebtKind::JobRetention => {
             drain_via_executor(ledger, executor, authz, debt, summary).await;
         }
-        CleanupDebtKind::ArtifactDelete
-        | CleanupDebtKind::JobRetention
-        | CleanupDebtKind::CachePrune => {
+        CleanupDebtKind::ArtifactDelete | CleanupDebtKind::CachePrune => {
             // No real drain available for this kind yet. This is not a
             // "not wired" placeholder — it is a documented gap per kind (see
             // `skip_reason_for_kind`): either the store boundary has no real
-            // per-item deletion API, or (for job/cache) the owning crate is
-            // out of this module's territory. Faking a drain for any of
-            // these would violate the pruning contract's "no fake drains"
+            // per-item deletion API, or (for cache) the owning crate is out
+            // of this module's territory. Faking a drain for either of these
+            // would violate the pruning contract's "no fake drains"
             // requirement, so they are left pending for their owning
             // executor until the prerequisite lands.
             tracing::debug!(
@@ -258,18 +304,27 @@ async fn drain_via_executor(
 }
 
 /// [`PruneTarget`] backed by the real vector store, ledger, and (optionally)
-/// graph/memory stores. Vector/ledger deletes are scoped to the debt's
+/// graph/memory/job stores. Vector/ledger deletes are scoped to the debt's
 /// superseded generation and fenced against the committed generation;
-/// graph/memory deletes are identity-scoped (stable keys / memory ids) and
-/// not generation-fenced.
+/// graph/memory/job-retention deletes are identity-scoped (stable keys /
+/// memory ids / job ids) and not generation-fenced.
+///
+/// Constructed fresh per debt entry by
+/// [`drain_cleanup_debt_full_with_jobs`] rather than once for a whole batch,
+/// so `job_ids` can carry the current debt's identity (see that function's
+/// doc comment for why `job_ids` can't instead ride on `PruneStep`).
 struct LedgerPruneTarget<'a> {
     vector_store: &'a dyn VectorStore,
     ledger: &'a dyn LedgerStore,
     graph_store: Option<&'a dyn GraphStore>,
     memory_store: Option<&'a dyn MemoryStore>,
+    job_store: Option<&'a dyn JobStore>,
     collection: String,
     source_id: SourceId,
     committed_generation: SourceGenerationId,
+    /// Job ids named by the current `JobRetention` debt's
+    /// `CleanupSelector::JobRows`. Empty for every other debt kind.
+    job_ids: Vec<JobId>,
 }
 
 #[async_trait]
@@ -377,10 +432,48 @@ impl PruneTarget for LedgerPruneTarget<'_> {
                 }
                 Ok(StepExecution::deleted(memory_ids.len() as u64))
             }
+            PruneTargetKind::JobRetention => self.apply_job_retention().await,
             other => Ok(StepExecution::skipped(format!(
                 "unsupported prune target for this drain: {other:?}"
             ))),
         }
+    }
+}
+
+impl LedgerPruneTarget<'_> {
+    /// Drain this debt's `self.job_ids` (a `JobRetention` debt's
+    /// `CleanupSelector::JobRows`) via `JobStore::delete_jobs`. Split out of
+    /// `apply()` to keep that function under the monolith line cap.
+    async fn apply_job_retention(&self) -> Result<StepExecution, String> {
+        let Some(job_store) = self.job_store else {
+            return Err("no JobStore wired for this drain".to_string());
+        };
+        if self.job_ids.is_empty() {
+            return Ok(StepExecution::skipped("no job identity on step"));
+        }
+        let JobDeleteResult {
+            deleted,
+            skipped_live,
+            missing,
+        } = job_store
+            .delete_jobs(&self.job_ids)
+            .await
+            .map_err(|err| err.message.clone())?;
+        // Rows still live (running/claimed) or already gone are not store
+        // errors — `delete_jobs` refuses to touch a live row rather than
+        // erroring, and a missing row just means someone else already
+        // cleaned it up. Both are reported here for observability; they do
+        // not fail the step (fail-closed is reserved for an actual store
+        // error, propagated above via `?`).
+        if !skipped_live.is_empty() || !missing.is_empty() {
+            tracing::debug!(
+                deleted = deleted.len(),
+                skipped_live = skipped_live.len(),
+                missing = missing.len(),
+                "job retention drain: some job rows were skipped (still live) or already gone"
+            );
+        }
+        Ok(StepExecution::deleted(deleted.len() as u64))
     }
 }
 
