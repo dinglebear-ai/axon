@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
-import com.axon.app.data.remote.ResearchHit
+import com.axon.app.core.api.ResearchHit
 import com.axon.app.data.repository.CrawlStatusUi
 import com.axon.app.data.repository.MapResultUi
 import com.axon.app.data.repository.ResearchResultUi

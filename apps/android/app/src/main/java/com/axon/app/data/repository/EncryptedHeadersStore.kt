@@ -2,7 +2,7 @@ package com.axon.app.data.repository
 
 import android.content.Context
 import android.util.Log
-import com.axon.app.data.security.SecurePrefsFactory
+import com.axon.app.core.auth.security.SecurePrefsFactory
 
 /**
  * Encrypted storage for user-configured HTTP headers.

@@ -42,11 +42,11 @@ import androidx.navigation.toRoute
 import com.axon.app.AxonApp
 import com.axon.app.data.repository.AxonSettings
 import com.axon.app.ui.common.pressScale
-import com.axon.app.ui.document.DocumentScreen
-import com.axon.app.ui.knowledge.SuggestScreen
+import com.axon.app.feature.artifacts.DocumentScreen
+import com.axon.app.feature.memory.SuggestScreen
 import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.options.ModeOptionsScreen
-import com.axon.app.ui.settings.SettingsScreen
+import com.axon.app.feature.settings.SettingsScreen
 import com.axon.app.ui.status.StatusDiagnostics
 import com.axon.app.ui.status.TopChromeStatus
 import com.axon.app.ui.theme.AxonTheme
