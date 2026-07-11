@@ -135,6 +135,14 @@ impl LedgerStore for SqliteLedgerStore {
         cleanup::resolve_cleanup_debt(self, &debt_id).await
     }
 
+    async fn delete_generation(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<u64> {
+        cleanup::delete_generation(self, &source_id, &generation).await
+    }
+
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
         lease::acquire_lease(self, request).await
     }

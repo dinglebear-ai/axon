@@ -45,6 +45,42 @@ pub(in crate::store) async fn resolve_cleanup_debt(
     Ok(())
 }
 
+/// Delete ledger rows for one superseded generation: the generation row
+/// itself, its manifest, and any document-status rows recorded against it.
+/// Idempotent — an unknown `(source_id, generation)` pair deletes nothing and
+/// returns `0`. Callers (the prune drain) are responsible for never passing
+/// the currently committed generation; this is the ledger-side `LedgerPrune`
+/// boundary from `docs/pipeline-unification/runtime/ledger-contract.md`.
+pub(in crate::store) async fn delete_generation(
+    state: &Arc<Mutex<FakeLedgerState>>,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<u64> {
+    let mut state = state.lock().await;
+    let mut deleted = 0u64;
+    let key = (source_id.clone(), generation.clone());
+    if state.generations.remove(&key).is_some() {
+        deleted += 1;
+    }
+    if state.manifests.remove(&key).is_some() {
+        deleted += 1;
+    }
+    let stale_documents: Vec<DocumentId> = state
+        .document_statuses
+        .values()
+        .filter(|status| {
+            &status.source_id == source_id && status.generation.as_ref() == Some(generation)
+        })
+        .map(|status| status.document_id.clone())
+        .collect();
+    for document_id in stale_documents {
+        if state.document_statuses.remove(&document_id).is_some() {
+            deleted += 1;
+        }
+    }
+    Ok(deleted)
+}
+
 pub(super) fn record_removed_item_cleanup_debt(
     state: &mut FakeLedgerState,
     generation: &SourceGeneration,
