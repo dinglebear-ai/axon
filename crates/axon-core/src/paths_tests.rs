@@ -1,5 +1,44 @@
 use super::*;
 
+/// Save + clear `AXON_DATA_DIR` so HOME-focused tests exercise the HOME branch
+/// of `axon_home_dir()` (which now prefers `AXON_DATA_DIR` when set).
+#[allow(unsafe_code)]
+fn take_axon_data_dir() -> Option<String> {
+    let saved = std::env::var("AXON_DATA_DIR").ok();
+    unsafe { std::env::remove_var("AXON_DATA_DIR") };
+    saved
+}
+
+#[allow(unsafe_code)]
+fn restore_axon_data_dir(saved: Option<String>) {
+    match saved {
+        Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
+        None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+    }
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn axon_home_dir_prefers_axon_data_dir_when_set() {
+    let saved_home = std::env::var("HOME").ok();
+    let saved_data = std::env::var("AXON_DATA_DIR").ok();
+    unsafe {
+        std::env::set_var("HOME", "/home/testuser");
+        std::env::set_var("AXON_DATA_DIR", "/mnt/axon-data");
+    }
+    let home = axon_home_dir();
+    let config = axon_config_path();
+    match saved_home {
+        Some(v) => unsafe { std::env::set_var("HOME", v) },
+        None => unsafe { std::env::remove_var("HOME") },
+    }
+    restore_axon_data_dir(saved_data);
+    // AXON_DATA_DIR is used verbatim (no `.axon` appended) and wins over HOME.
+    assert_eq!(home, Some(PathBuf::from("/mnt/axon-data")));
+    assert_eq!(config, Some(PathBuf::from("/mnt/axon-data/config.toml")));
+}
+
 #[cfg(unix)]
 #[test]
 fn ensure_private_dir_creates_with_0700_when_absent() {
@@ -68,12 +107,14 @@ fn path_basename_uses_fallback_for_empty() {
 #[test]
 fn axon_home_dir_returns_some_when_home_set() {
     let saved = std::env::var("HOME").ok();
+    let saved_data = take_axon_data_dir();
     unsafe { std::env::set_var("HOME", "/home/testuser") };
     let result = axon_home_dir();
     match saved {
         Some(v) => unsafe { std::env::set_var("HOME", v) },
         None => unsafe { std::env::remove_var("HOME") },
     }
+    restore_axon_data_dir(saved_data);
     let path = result.expect("axon_home_dir should return Some when HOME is set");
     assert!(path.to_string_lossy().ends_with(".axon"));
 }
@@ -83,12 +124,14 @@ fn axon_home_dir_returns_some_when_home_set() {
 #[test]
 fn axon_home_dir_returns_none_when_home_unset() {
     let saved = std::env::var("HOME").ok();
+    let saved_data = take_axon_data_dir();
     unsafe { std::env::remove_var("HOME") };
     let result = axon_home_dir();
     match saved {
         Some(v) => unsafe { std::env::set_var("HOME", v) },
         None => unsafe { std::env::remove_var("HOME") },
     }
+    restore_axon_data_dir(saved_data);
     assert_eq!(result, None);
 }
 
@@ -97,12 +140,14 @@ fn axon_home_dir_returns_none_when_home_unset() {
 #[test]
 fn axon_home_dir_returns_none_when_home_is_whitespace() {
     let saved = std::env::var("HOME").ok();
+    let saved_data = take_axon_data_dir();
     unsafe { std::env::set_var("HOME", "   ") };
     let result = axon_home_dir();
     match saved {
         Some(v) => unsafe { std::env::set_var("HOME", v) },
         None => unsafe { std::env::remove_var("HOME") },
     }
+    restore_axon_data_dir(saved_data);
     assert_eq!(result, None);
 }
 
@@ -228,12 +273,14 @@ fn axon_data_dir_accepts_windows_absolute_path() {
 #[test]
 fn axon_config_path_returns_none_when_home_unset() {
     let saved = std::env::var("HOME").ok();
+    let saved_data = take_axon_data_dir();
     unsafe { std::env::remove_var("HOME") };
     let result = axon_config_path();
     match saved {
         Some(v) => unsafe { std::env::set_var("HOME", v) },
         None => unsafe { std::env::remove_var("HOME") },
     }
+    restore_axon_data_dir(saved_data);
     assert_eq!(result, None);
 }
 
@@ -242,12 +289,14 @@ fn axon_config_path_returns_none_when_home_unset() {
 #[test]
 fn axon_home_dir_returns_none_when_home_is_relative() {
     let saved = std::env::var("HOME").ok();
+    let saved_data = take_axon_data_dir();
     unsafe { std::env::set_var("HOME", "../relative/path") };
     let result = axon_home_dir();
     match saved {
         Some(v) => unsafe { std::env::set_var("HOME", v) },
         None => unsafe { std::env::remove_var("HOME") },
     }
+    restore_axon_data_dir(saved_data);
     assert_eq!(
         result, None,
         "relative HOME should return None to prevent path traversal"
@@ -259,12 +308,14 @@ fn axon_home_dir_returns_none_when_home_is_relative() {
 #[test]
 fn axon_home_dir_returns_none_when_home_contains_dotdot() {
     let saved = std::env::var("HOME").ok();
+    let saved_data = take_axon_data_dir();
     unsafe { std::env::set_var("HOME", "/tmp/../etc") };
     let result = axon_home_dir();
     match saved {
         Some(v) => unsafe { std::env::set_var("HOME", v) },
         None => unsafe { std::env::remove_var("HOME") },
     }
+    restore_axon_data_dir(saved_data);
     assert_eq!(
         result, None,
         "HOME containing .. should return None to prevent path traversal"

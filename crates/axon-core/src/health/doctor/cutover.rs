@@ -88,7 +88,7 @@ pub async fn build_cutover_block(cfg: &Config, qdrant_reachable: bool, sqlite_ok
 fn reset_guidance(sqlite: bool, vectors_non_empty: bool, vectors_incompatible: bool) -> String {
     let mut reasons = Vec::new();
     if sqlite {
-        reasons.push("SQLite store holds pre-cutover job/ledger/memory rows");
+        reasons.push("SQLite store holds pre-cutover ledger/memory/content rows");
     }
     if vectors_incompatible {
         reasons.push("Qdrant collection carries an old payload schema");
@@ -128,6 +128,15 @@ async fn sqlite_store_status(cfg: &Config, sqlite_ok: bool) -> Value {
 
 /// Sum rows across the primary content-bearing tables that exist. Read-only
 /// (`mode=ro`), best-effort — a missing table contributes zero.
+///
+/// Job-queue tables are intentionally EXCLUDED. Job rows — whether in the
+/// unified `jobs`/`job_events`/`job_artifacts` tables or the legacy
+/// `axon_*_jobs` tables — are transient runtime state, not the indexed content
+/// a cutover wipe is about. Counting them made a single post-cutover `extract`
+/// (or any other) job write trip the `startup.incompatible_store` guard on the
+/// very next invocation, forcing an `axon reset` before every run. The genuine
+/// pre-cutover signals (non-empty `sources`/`source_documents`/…, or an
+/// old Qdrant payload schema) are still detected below and by the vector probe.
 async fn count_sqlite_content_rows(path: &std::path::Path) -> Result<u64, String> {
     use sqlx::SqlitePool;
     let connect = format!("sqlite://{}?mode=ro", path.display());
@@ -136,9 +145,6 @@ async fn count_sqlite_content_rows(path: &std::path::Path) -> Result<u64, String
         .map_err(|e| e.to_string())?;
     let mut total: u64 = 0;
     for table in [
-        "jobs",
-        "job_events",
-        "job_artifacts",
         "sources",
         "source_generations",
         "source_documents",
@@ -151,10 +157,6 @@ async fn count_sqlite_content_rows(path: &std::path::Path) -> Result<u64, String
         "memory_edges",
         "graph_nodes",
         "graph_edges",
-        "axon_crawl_jobs",
-        "axon_embed_jobs",
-        "axon_extract_jobs",
-        "axon_ingest_jobs",
     ] {
         let present: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",

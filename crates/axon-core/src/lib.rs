@@ -6,6 +6,7 @@ pub mod config;
 pub mod content;
 pub mod endpoints;
 pub mod env;
+pub mod hardening;
 pub mod error;
 pub mod events;
 pub mod health;

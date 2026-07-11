@@ -21,6 +21,10 @@ pub enum PruneDenied {
     CurrentGenerationFenced { generation: SourceGenerationId },
     /// A destructive request lacked explicit confirmation.
     ConfirmationRequired,
+    /// The selector names a boundary this build cannot execute a delete
+    /// against yet (only `Source`/`Generation` vector prunes are wired).
+    /// Refused rather than silently reporting a no-op "success".
+    Unsupported { selector: String, guidance: String },
 }
 
 impl core::fmt::Display for PruneDenied {
@@ -36,6 +40,9 @@ impl core::fmt::Display for PruneDenied {
             ),
             PruneDenied::ConfirmationRequired => {
                 write!(f, "destructive prune requires explicit confirmation")
+            }
+            PruneDenied::Unsupported { selector, guidance } => {
+                write!(f, "prune selector {selector} is not supported yet: {guidance}")
             }
         }
     }

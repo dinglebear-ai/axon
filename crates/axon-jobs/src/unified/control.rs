@@ -276,7 +276,7 @@ impl SqliteUnifiedJobStore {
             return Err(ApiError::new(
                 "job_recovery.cutoff_required",
                 ErrorStage::Planning,
-                "recovery requires older_than_seconds unless allow_without_cutoff is explicit",
+                "recovery requires a stale cutoff (--stale-before) unless allow_without_cutoff is explicit",
             ));
         }
         let kind_filter = request.kind.map(enum_name).transpose()?;

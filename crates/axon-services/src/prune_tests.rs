@@ -163,6 +163,53 @@ async fn execute_without_admin_scope_is_rejected() {
     assert_eq!(err, PruneDenied::AdminRequired);
 }
 
+#[tokio::test]
+async fn execute_collection_selector_is_refused_not_silently_noop() {
+    let cfg = std::sync::Arc::new(axon_core::config::Config::test_default());
+    let runtime: std::sync::Arc<dyn crate::runtime::ServiceJobRuntime> =
+        std::sync::Arc::new(crate::test_support::NoopServiceRuntime);
+    let ctx = ServiceContext::from_runtime(cfg, runtime);
+
+    let plan = PrunePlan {
+        job_id: JobId::new(Uuid::new_v4()),
+        selector: PruneSelector::Collection {
+            collection: "axon".to_string(),
+        },
+        destructive: true,
+        requires_admin: true,
+        estimated: PruneEstimate::default(),
+        steps: Vec::new(),
+        warnings: Vec::new(),
+    };
+    // Admin + confirmed, so it clears the auth/confirm gates and reaches the
+    // unsupported-selector guard — which must refuse rather than report a
+    // no-op "success".
+    let err = prune_execute(&ctx, &plan, /* confirm = */ true, &PruneAuthz::admin())
+        .await
+        .expect_err("collection prune must be refused, not a silent no-op success");
+    assert!(
+        matches!(err, PruneDenied::Unsupported { .. }),
+        "expected Unsupported, got {err:?}"
+    );
+}
+
+#[test]
+fn collection_plan_carries_unsupported_warning() {
+    let request = PruneRequest::dry_run(
+        PruneSelector::Collection {
+            collection: "axon".to_string(),
+        },
+        "test",
+    );
+    let plan = prune_plan(&request);
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|w| w.code == "prune.selector_unsupported"),
+        "collection plan should carry the unsupported-selector warning"
+    );
+}
+
 // ---------------------------------------------------------------------
 // `VectorOnlyPruneTarget` — the real (non-fake) PruneTarget impl, exercised
 // directly against a recording VectorStore double so the delete call shape
