@@ -9,10 +9,13 @@
 //! - [`store_impl`] — the `VectorStore` trait implementation.
 //! - [`search`] — `/points/query` named-dense and dense+bm42 RRF hybrid.
 //! - [`commit`] — generation-aware publish (`mark_*_committed`).
+//! - [`read`] — raw-payload read/query primitives ported from legacy
+//!   `axon-vector` (facet, scroll, retrieve-by-url, url/prefix purge).
 
 pub(crate) mod commit;
 pub mod convert;
 mod http;
+mod read;
 mod search;
 mod store_impl;
 
@@ -24,6 +27,13 @@ use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationMa
 pub use convert::{
     QdrantCollectionSettings, qdrant_collection_request, qdrant_filter,
     qdrant_payload_index_requests, qdrant_upsert_points,
+};
+// Read/query primitives — see `read.rs`. Methods themselves are inherent
+// `impl QdrantVectorStore` blocks defined inside the submodule; only the new
+// public types and the free-standing render helper need re-exporting here.
+pub use read::{
+    QdrantRetrieveByUrlResult, QdrantScrolledPoint, QdrantUrlVariantError, ScrollPage,
+    render_full_doc_from_points,
 };
 
 #[allow(dead_code)]
