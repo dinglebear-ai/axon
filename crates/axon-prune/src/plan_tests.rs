@@ -1,6 +1,7 @@
 use super::*;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneEstimate, PruneSelector, PruneTargetKind};
+use axon_api::source::vector::VectorDeleteSelector;
 
 use crate::executor::steps_in_execution_order;
 use crate::testing::{FakeScopeSource, cleanup_debt_estimate};
@@ -76,6 +77,35 @@ fn generation_selector_stamps_source_and_generation_on_steps() {
         assert_eq!(step.source_id, Some(SourceId::new("owner/repo")));
         assert_eq!(step.generation, Some(SourceGenerationId::new("gen-2")));
     }
+}
+
+#[test]
+fn collection_selector_produces_vector_step_with_collection_delete_selector() {
+    let sel = PruneSelector::Collection {
+        collection: "axon".to_string(),
+    };
+    // A real, non-fabricated point count (the shape `estimate_collection_points`
+    // in `axon-services` would feed in from the live vector store).
+    let est = PruneEstimate {
+        vector_points: 42,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est));
+    let plan = planner.resolve(&sel);
+
+    assert_eq!(plan.steps.len(), 1);
+    let step = &plan.steps[0];
+    assert_eq!(step.target, PruneTargetKind::Vector);
+    assert_eq!(step.estimated_deletes, 42);
+    assert_eq!(
+        step.vector_selector,
+        Some(VectorDeleteSelector::Collection {
+            collection: "axon".to_string(),
+        })
+    );
+    // Collection prunes name no source/generation identity.
+    assert_eq!(step.source_id, None);
+    assert_eq!(step.generation, None);
 }
 
 #[test]

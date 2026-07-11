@@ -183,11 +183,15 @@ impl QdrantVectorStore {
         let http = self.http()?;
         validate_delete_selector(&selector)?;
         let collection = selector_collection(&selector).to_string();
-        self.require_collection_spec(&http, &collection, stage)
+        let spec = self
+            .require_collection_spec(&http, &collection, stage)
             .await?;
         if let VectorDeleteSelector::Generation { .. } = &selector {
             return delete_generation_points_server_side(&http, &collection, &selector, stage)
                 .await;
+        }
+        if let VectorDeleteSelector::Collection { .. } = &selector {
+            return delete_collection_points_server_side(self, &http, spec, stage).await;
         }
         let body = delete_body(&selector)?;
         let url = http
@@ -206,6 +210,21 @@ impl QdrantVectorStore {
             .require_collection_spec(&http, &request.collection, stage)
             .await?;
         qdrant_search(&http, &spec, &request).await
+    }
+}
+
+impl QdrantVectorStore {
+    /// Count every point currently stored in `collection` (exact server-side
+    /// count, no filter). Used by `axon-prune`'s `Collection` selector to size
+    /// a real, non-fabricated `estimated_deletes` without duplicating HTTP/JSON
+    /// wiring outside this crate.
+    pub async fn count_collection_points(
+        &self,
+        collection: &str,
+        stage: axon_error::ErrorStage,
+    ) -> Result<u64> {
+        let http = self.http()?;
+        count_all_points(&http, collection, stage).await
     }
 }
 
@@ -299,6 +318,54 @@ async fn delete_generation_points_server_side(
     Ok(delete_result(collection.to_string(), count.result.count))
 }
 
+/// Count every point in `collection`, no filter (exact server-side count).
+async fn count_all_points(
+    http: &QdrantHttp,
+    collection: &str,
+    stage: axon_error::ErrorStage,
+) -> Result<u64> {
+    let url = http.endpoint().collection_path(collection, "points/count");
+    let body = serde_json::json!({ "exact": true });
+    let response: CountResponse = http
+        .post_json(stage, &url, &body, "qdrant_count_collection")
+        .await?;
+    Ok(response.result.count)
+}
+
+/// Delete every point in `collection`, keeping the collection itself.
+///
+/// Rather than a match-all delete-by-filter (Qdrant's REST filter semantics
+/// for "everything" are not a documented, stable contract point the way a
+/// scoped `must`/`should` filter is), this drops the collection and recreates
+/// it empty with the exact same dense/sparse vector config and payload
+/// indexes observed on `spec` — mirroring the drop+recreate approach
+/// `axon-services`' `reset` flow already uses to wipe a collection. The point
+/// count is read before the drop so the returned `points_deleted` reflects
+/// what was actually there, not an unverifiable acknowledgement.
+async fn delete_collection_points_server_side(
+    store: &QdrantVectorStore,
+    http: &QdrantHttp,
+    spec: CollectionSpec,
+    stage: axon_error::ErrorStage,
+) -> Result<VectorStoreDeleteResult> {
+    let collection = spec.collection.clone();
+    let count = count_all_points(http, &collection, stage).await?;
+
+    let collection_url = http.endpoint().collection_path(&collection, "");
+    http.delete_json(stage, &collection_url, "qdrant_delete_collection_for_prune")
+        .await?;
+    http.put_json(
+        stage,
+        &collection_url,
+        &collection_create_json(&spec),
+        "qdrant_recreate_collection_for_prune",
+    )
+    .await?;
+    store.ensure_payload_indexes(http, &spec, stage).await?;
+
+    Ok(delete_result(collection, count))
+}
+
 fn generation_delete_filter(
     source_id: &SourceId,
     generation: &SourceGenerationId,
@@ -347,6 +414,11 @@ fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
         } => Ok(serde_json::json!({
             "filter": generation_delete_filter(source_id, generation)?
         })),
+        // Never reached: `delete_inner` intercepts `Collection` before calling
+        // `delete_body` and routes it through
+        // `delete_collection_points_server_side` instead (drop+recreate, not a
+        // filter-shaped delete). Kept exhaustive defensively.
+        VectorDeleteSelector::Collection { .. } => Ok(serde_json::json!({})),
         VectorDeleteSelector::Document {
             document_id,
             generation,
