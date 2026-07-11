@@ -97,7 +97,7 @@ describe('watchSummaryLabel', () => {
 
 describe('watchErrorMessage', () => {
   it('explains 401/403 as missing an API token', () => {
-    expect(watchErrorMessage(new AxonApiError(401, {}))).toContain('AXON_HTTP_TOKEN');
+    expect(watchErrorMessage(new AxonApiError(401, {}))).toContain('bearer token or OAuth');
   });
 
   it('passes through other AxonApiError messages', () => {

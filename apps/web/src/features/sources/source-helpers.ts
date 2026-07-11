@@ -55,7 +55,7 @@ export function sourcesSummaryLabel(result: SourcesListResult | null): string {
 export function sourceErrorMessage(error: unknown): string {
   if (error instanceof AxonApiError) {
     if (error.status === 401 || error.status === 403) {
-      return 'Requires an Axon API token (AXON_HTTP_TOKEN or OAuth) — the panel session token does not grant /v1 access.';
+      return 'Requires an Axon API bearer token or OAuth (see the server env settings) — the panel session token does not grant /v1 access.';
     }
     return error.message;
   }
