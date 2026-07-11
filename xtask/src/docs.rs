@@ -1,10 +1,12 @@
 //! `cargo xtask docs` — the docs-generator command family described by
 //! `docs-generator-contract.md`.
 //!
-//! This is the CORE slice only: `generate` and `check` verbs. The full
-//! contract describes 17 per-family subcommands, an example-validation
-//! harness, presentation-token generation, and CI wiring — those are
-//! intentionally deferred (see the wave summary in the delivering PR).
+//! This is the CORE slice plus the example-validation pass: `generate` and
+//! `check` verbs, where `check` also validates marker-annotated fenced
+//! examples (see `examples.rs`). The full contract describes 17 per-family
+//! subcommands, presentation-token generation, README<->CLAUDE.md drift
+//! checks, anchor validation, and CI wiring — those remain intentionally
+//! deferred (see the wave summary in the delivering PR).
 //!
 //! `docs generate` does not re-render markdown from scratch (that job
 //! belongs to the frozen `schemas` generator). It post-processes the
@@ -15,6 +17,7 @@
 //! metadata already embedded in each family's generated JSON schema
 //! artifact.
 
+mod examples;
 mod generate;
 mod header;
 mod inventory;
@@ -59,9 +62,10 @@ pub fn run(root: &Path, args: DocsArgs) -> Result<()> {
 }
 
 /// `docs check`: repo-wide link check, the existing removed-surface doc
-/// contract check, and a docs-inventory-vs-Final-Docs-Tree diff. All three
-/// run and report; the first failure's message is what propagates, but every
-/// check runs so a single invocation surfaces everything.
+/// contract check, a docs-inventory-vs-Final-Docs-Tree diff, and the
+/// marker-annotated example-validation pass. All four run and report; the
+/// first failure's message is what propagates, but every check runs so a
+/// single invocation surfaces everything.
 fn check(root: &Path) -> Result<()> {
     let mut failures = Vec::new();
 
@@ -72,6 +76,9 @@ fn check(root: &Path) -> Result<()> {
         failures.push(err.to_string());
     }
     if let Err(err) = inventory::check(root) {
+        failures.push(err.to_string());
+    }
+    if let Err(err) = examples::check(root) {
         failures.push(err.to_string());
     }
 
