@@ -1,5 +1,5 @@
 use axon_core::config::{Config, McpTransport};
-use axon_vector::cache::enforce_core_dump_disabled_for_ask_cache;
+use axon_core::hardening::enforce_core_dump_disabled_for_ask_cache;
 use std::error::Error;
 
 pub async fn run_mcp(cfg: &Config) -> Result<(), Box<dyn Error>> {

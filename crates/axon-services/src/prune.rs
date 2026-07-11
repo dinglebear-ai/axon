@@ -36,6 +36,8 @@
 use std::error::Error;
 
 use async_trait::async_trait;
+use axon_api::source::common::SourceWarning;
+use axon_api::source::enums::Severity;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneEstimate, PrunePlan, PruneRequest, PruneResult, PruneSelector};
 use axon_api::source::vector::VectorDeleteSelector;
@@ -59,7 +61,9 @@ use crate::context::ServiceContext;
 /// reports real ledger-backed counts for `Source`/`Generation` selectors.
 pub fn prune_plan(request: &PruneRequest) -> PrunePlan {
     let planner = PrunePlanner::new(NullScopeSource);
-    planner.resolve(&request.selector)
+    let mut plan = planner.resolve(&request.selector);
+    warn_if_unsupported(&mut plan);
+    plan
 }
 
 /// Real-count variant of [`prune_plan`]: reads `ctx`'s
@@ -84,7 +88,9 @@ pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) 
         None => PruneEstimate::default(),
     };
     let planner = PrunePlanner::new(PrefetchedScopeSource(estimate));
-    planner.resolve(&request.selector)
+    let mut plan = planner.resolve(&request.selector);
+    warn_if_unsupported(&mut plan);
+    plan
 }
 
 /// Compute a real `PruneEstimate` for `selector` from ledger data. See
@@ -128,6 +134,42 @@ async fn manifest_estimate(
     }
 }
 
+/// Guidance for selectors this vector-only prune target cannot execute a delete
+/// against today. `Source`/`Generation` are wired; everything else (Collection,
+/// CleanupDebt, Artifact, Graph, Memory, JobRetention, Cache) has no store
+/// adapter, so executing it would silently delete nothing. We refuse loudly and
+/// warn on the plan instead — collection-wide wipes belong to `axon reset`.
+fn unsupported_selector_guidance(selector: &PruneSelector) -> Option<String> {
+    match selector {
+        PruneSelector::Source { .. } | PruneSelector::Generation { .. } => None,
+        PruneSelector::Collection { .. } => Some(
+            "collection-wide prune is not implemented; use `axon reset` to wipe an entire \
+             collection, or prune by `--source`/`--generation`"
+                .to_string(),
+        ),
+        _ => Some(
+            "this selector's boundary has no delete adapter yet; only `--source` and \
+             `--generation` prunes are wired to a store today"
+                .to_string(),
+        ),
+    }
+}
+
+/// Push a warning onto the plan when its selector cannot be executed, so the
+/// dry-run (and the plan returned alongside an execute) never reads as a clean
+/// no-op success.
+fn warn_if_unsupported(plan: &mut PrunePlan) {
+    if let Some(guidance) = unsupported_selector_guidance(&plan.selector) {
+        plan.warnings.push(SourceWarning {
+            code: "prune.selector_unsupported".to_string(),
+            severity: Severity::Warning,
+            message: guidance,
+            source_item_key: None,
+            retryable: false,
+        });
+    }
+}
+
 /// A [`PruneScopeSource`] that always returns a single, precomputed estimate
 /// regardless of the selector passed to `estimate()`. Valid because a caller
 /// only ever resolves one selector per [`PrunePlanner::resolve`] call — the
@@ -161,6 +203,16 @@ pub async fn prune_execute(
         confirm,
         authz,
     )?;
+
+    // Refuse selectors with no wired delete adapter rather than running an empty
+    // plan and reporting a no-op as success (the vector-only target can only
+    // execute `Source`/`Generation`).
+    if let Some(guidance) = unsupported_selector_guidance(&plan.selector) {
+        return Err(PruneDenied::Unsupported {
+            selector: format!("{:?}", plan.selector),
+            guidance,
+        });
+    }
 
     let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
     let target = VectorOnlyPruneTarget {

@@ -490,7 +490,6 @@ dependencies = [
  "axon-llm",
  "axon-mcp",
  "axon-services",
- "axon-vector",
  "axon-web",
  "axum 0.8.9",
  "chrono",

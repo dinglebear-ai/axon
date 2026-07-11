@@ -36,8 +36,17 @@ pub(super) fn into_config_with_sources(
     let mut global = cli.global;
 
     let dispatched = command_dispatch::dispatch(cli.command);
-    if global.watch && dispatched.command != CommandKind::Status {
-        return Err("--watch is only supported with `axon status`".to_string());
+    // `--watch` is a `global = true` flag, so it lands in `global.watch` for any
+    // subcommand. Only `status` and `monitor jobs` implement a live-poll loop;
+    // `monitor` reads the global flag via `cfg.watch_mode` (its local `--watch`
+    // is shadowed by the global one), so it must be exempted here too.
+    if global.watch
+        && dispatched.command != CommandKind::Status
+        && dispatched.command != CommandKind::Monitor
+    {
+        return Err(
+            "--watch is only supported with `axon status` and `axon monitor jobs`".to_string(),
+        );
     }
 
     // Completions and setup metadata/deploy commands do not need service URLs at

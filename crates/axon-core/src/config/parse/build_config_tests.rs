@@ -100,6 +100,28 @@ pub(super) fn into_config_via_args(extra: &[&str]) -> Result<Config, String> {
     into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
 }
 
+#[test]
+fn monitor_jobs_watch_is_accepted() {
+    let _guard = env_guard();
+    // `--watch` is a `global = true` flag; `monitor jobs --watch` must parse
+    // without the "only supported with axon status" guard rejecting it.
+    let cfg = into_config_via_args(&["monitor", "jobs", "--watch"])
+        .expect("monitor jobs --watch should be accepted");
+    assert_eq!(cfg.command, crate::config::types::CommandKind::Monitor);
+    assert!(cfg.watch_mode, "global --watch should populate watch_mode");
+}
+
+#[test]
+fn watch_rejected_for_non_status_non_monitor_command() {
+    let _guard = env_guard();
+    let err = into_config_via_args(&["stats", "--watch"])
+        .expect_err("global --watch on a plain command should be rejected");
+    assert!(
+        err.contains("--watch is only supported"),
+        "unexpected error: {err}"
+    );
+}
+
 #[allow(unsafe_code)]
 #[test]
 fn extract_and_crawl_defaults_are_bounded_but_explicit_zero_stays_uncapped() {

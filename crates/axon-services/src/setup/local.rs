@@ -390,7 +390,9 @@ async fn run_smoke_phases(env_values: &BTreeMap<String, String>) -> Vec<LocalSet
         runtime::prewarm_tei(&tei_url).await,
         runtime::run_smoke(
             "crawl-smoke",
-            ["crawl", "https://example.com", "--wait", "true"],
+            // `crawl` is no longer a top-level subcommand — the unified `source`
+            // command handles web URLs (a bare clap error surfaced here before).
+            ["source", "https://example.com", "--wait", "true"],
         )
         .await,
         runtime::run_smoke("ask-smoke", ["ask", "What did we crawl?"]).await,

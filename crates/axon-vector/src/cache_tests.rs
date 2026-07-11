@@ -1,10 +1,8 @@
 //! Tests for the document-chunk cache.
 
 use super::doc_cache::{DocCache, DocCacheConfig, DocCacheKey, doc_cache_for_config};
-use super::enforce_core_dump_disabled_for_ask_cache;
 use super::generation::{bump_generation, current_generation};
 use crate::ops::qdrant::{QdrantPayload, QdrantPoint};
-use axon_core::config::Config;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -248,16 +246,6 @@ fn process_cache_registry_is_keyed_by_configured_capacity_and_ttl() {
     assert_eq!(a.config().effective_ttl_secs(), 1);
     assert_eq!(b.config().max_capacity_bytes, 8192);
     assert_eq!(b.config().effective_ttl_secs(), 2);
-}
-
-#[test]
-fn core_dump_guard_is_noop_when_cache_disabled() {
-    let cfg = Config {
-        ask_cache_enabled: false,
-        ..Config::default()
-    };
-
-    enforce_core_dump_disabled_for_ask_cache(&cfg).expect("disabled cache must not alter limits");
 }
 
 #[tokio::test]
