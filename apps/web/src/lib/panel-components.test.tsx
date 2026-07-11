@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ArtifactRow, CommandResultCard, EmptyState, SourceListRow, SourceSubmitResultCard } from './panel-components';
 import type { ArtifactHandle, CommandResultView, SourceListEntry } from './panel-types';
-import type { SourceResult } from '../lib/axon-client';
+import type { SourceResult } from '../api/axon-client';
 
 const artifact: ArtifactHandle = {
   relative_path: 'screenshots/shot.png',

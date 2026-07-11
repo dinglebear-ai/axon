@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MemoryTab } from './memory-tab';
-import type { MemoryItem } from './panel-types';
+import type { MemoryItem } from '../../lib/panel-types';
 
 function memoryItem(overrides: Partial<MemoryItem> = {}): MemoryItem {
   return {

@@ -1,9 +1,9 @@
 'use client';
 
 import { Eye, Pause, Pencil, Play, RefreshCw, Save, Trash2 } from 'lucide-react';
-import { EmptyState, StatusBadge, SubsectionTitle } from './panel-components';
-import { normalizeJobStatus } from './job-helpers';
-import type { WatchSummary } from './panel-types';
+import { EmptyState, StatusBadge, SubsectionTitle } from '../../lib/panel-components';
+import { normalizeJobStatus } from '../jobs/job-helpers';
+import type { WatchSummary } from '../../lib/panel-types';
 import { useWatchesPanel } from './use-watches';
 import { watchEntryKey, watchScheduleLabel, watchStatusLabel, watchSummaryLabel } from './watch-helpers';
 

@@ -4,7 +4,7 @@ import type {
   MemorySearchResponse,
   MemoryShowResponse,
   WatchUpdateRequest
-} from '../app/panel-types';
+} from '../lib/panel-types';
 
 type FetchLike = typeof fetch;
 

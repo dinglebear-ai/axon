@@ -17,10 +17,10 @@ import {
   type StackResponse
 } from './panel-types';
 import { formatCommandResponse } from './command-format';
-import { collectDoctorServices, collectJobs, doctorCheckSummary, savedMessage } from './job-helpers';
+import { collectDoctorServices, collectJobs, doctorCheckSummary, savedMessage } from '../features/jobs/job-helpers';
 import { mergeStatus, summarizeChecks, summarizeConfig } from './panel-components';
-import { AxonClient, type SourceRequest, type SourceResult } from '../lib/axon-client';
-import { normalizeSourceEntries, sourceErrorMessage } from './source-helpers';
+import { AxonClient, type SourceRequest, type SourceResult } from '../api/axon-client';
+import { normalizeSourceEntries, sourceErrorMessage } from '../features/sources/source-helpers';
 
 export function usePanelData() {
   const [token, setToken] = useState('');

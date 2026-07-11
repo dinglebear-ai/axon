@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WatchListRow, WatchesTab } from './watches-tab';
-import type { WatchPage, WatchSummary } from './panel-types';
+import type { WatchPage, WatchSummary } from '../../lib/panel-types';
 
 function watchSummary(overrides: Partial<WatchSummary> = {}): WatchSummary {
   return {

@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AxonClient } from '../lib/axon-client';
-import type { MemoryItem, MemoryNodeType } from './panel-types';
+import { AxonClient } from '../../api/axon-client';
+import type { MemoryItem, MemoryNodeType } from '../../lib/panel-types';
 import { memoryErrorMessage, parseConfidence } from './memory-helpers';
 
 /**

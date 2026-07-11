@@ -1,5 +1,5 @@
-import { AxonApiError } from '../lib/axon-client';
-import type { MemoryItem } from './panel-types';
+import { AxonApiError } from '../../api/axon-client';
+import type { MemoryItem } from '../../lib/panel-types';
 
 export function memoryEntryKey(entry: MemoryItem, index: number): string {
   return entry.id || String(index);

@@ -1,5 +1,5 @@
-import { AxonApiError } from '../lib/axon-client';
-import type { SourceListEntry, SourcesListResult } from './panel-types';
+import { AxonApiError } from '../../api/axon-client';
+import type { SourceListEntry, SourcesListResult } from '../../lib/panel-types';
 
 // Options for the `adapter` field of `SourceRequest`. `adapter` is a free
 // string resolved server-side by the source resolver — there is no enum in

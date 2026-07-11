@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AxonClient } from '../lib/axon-client';
-import type { WatchPage, WatchUpdateRequest } from './panel-types';
+import { AxonClient } from '../../api/axon-client';
+import type { WatchPage, WatchUpdateRequest } from '../../lib/panel-types';
 import { normalizeWatchEntries, parseScheduleSeconds, watchErrorMessage } from './watch-helpers';
 
 /**

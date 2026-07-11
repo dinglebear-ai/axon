@@ -1,4 +1,4 @@
-import type { CheckSummary, DoctorService, PanelDoctorResponse, PanelStatusResponse, ServiceJob } from './panel-types';
+import type { CheckSummary, DoctorService, PanelDoctorResponse, PanelStatusResponse, ServiceJob } from '../../lib/panel-types';
 
 export function savedMessage(message: string): boolean {
   return message.toLowerCase().includes('saved');
