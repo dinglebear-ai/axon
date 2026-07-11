@@ -3,7 +3,6 @@ use super::{
     matches_project_filter, resolve_collection,
 };
 use axon_core::config::Config;
-use axon_vector::ops::prepare_plain_text_source;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -308,19 +307,11 @@ async fn parse_claude_file(
         "git_branch": parsed.git_branch,
         "last_message_at": parsed.last_message_at,
     });
-    let doc = prepare_plain_text_source(
-        url.clone(),
-        "local".to_string(),
-        parsed.text.clone(),
-        "claude_session",
-        title,
-        Some(extra),
-    );
-    if doc.is_empty() {
-        return Ok(None);
-    }
     Ok(Some(SessionDoc {
-        doc,
+        url,
+        title,
+        source_type: "claude_session",
+        extra: Some(extra),
         collection,
         raw_text: parsed.text,
     }))

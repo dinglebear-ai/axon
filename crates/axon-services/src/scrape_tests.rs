@@ -96,14 +96,14 @@ async fn scrape_result_embedding_uses_markdown_not_public_output() {
     assert_eq!(result.output, "<article>Package</article>");
     assert!(
         prepared
-            .chunks()
+            .chunks
             .iter()
-            .any(|chunk| chunk.contains("# Package"))
+            .any(|chunk| chunk.content.contains("# Package"))
     );
     assert!(
         !prepared
-            .chunks()
+            .chunks
             .iter()
-            .any(|chunk| chunk.contains("<article>"))
+            .any(|chunk| chunk.content.contains("<article>"))
     );
 }
