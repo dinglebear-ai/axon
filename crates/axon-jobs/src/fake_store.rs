@@ -6,7 +6,7 @@ use axon_api::source::*;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::boundary::{JobStore, Result};
+use crate::boundary::{JobDeleteResult, JobStore, Result};
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
 use crate::unified_codec::reject_non_public_visibility;
@@ -468,6 +468,27 @@ impl JobStore for FakeJobWatchStore {
             reservations_pruned: 0,
             artifacts_pruned: 0,
         })
+    }
+
+    async fn delete_jobs(&self, job_ids: &[JobId]) -> Result<JobDeleteResult> {
+        let mut state = self.state.lock().await;
+        let mut result = JobDeleteResult::default();
+        for job_id in job_ids {
+            match state.jobs.get(job_id) {
+                None => result.missing.push(*job_id),
+                Some(job) if is_terminal_status(job.status) => {
+                    result.deleted.push(*job_id);
+                }
+                Some(_) => result.skipped_live.push(*job_id),
+            }
+        }
+        for job_id in &result.deleted {
+            state.jobs.remove(job_id);
+            state.requests.remove(job_id);
+            state.stages.remove(job_id);
+            state.events.remove(job_id);
+        }
+        Ok(result)
     }
 
     async fn artifacts(&self, request: JobArtifactListRequest) -> Result<JobArtifactListResult> {

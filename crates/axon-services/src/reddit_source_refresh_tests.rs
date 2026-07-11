@@ -202,7 +202,11 @@ async fn refresh_vectorizes_added_and_modified_posts_and_debts_removed_items() {
             .count(),
         1
     );
-    assert_eq!(ledger.cleanup_debt_count().await, 2);
+    // 2 VectorDelete debts (old removed, keep modified) plus 1 auto-emitted
+    // GraphPrune debt for the genuinely-removed "old" post (a modified item
+    // like "keep" keeps its stable key, so it never gets a GraphPrune debt —
+    // see `record_graph_prune_cleanup_debt`).
+    assert_eq!(ledger.cleanup_debt_count().await, 3);
     assert_eq!(
         ledger.committed_generation(&second.source_id).await,
         Some(second.generation.clone())

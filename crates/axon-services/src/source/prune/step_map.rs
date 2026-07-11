@@ -15,30 +15,24 @@ use uuid::Uuid;
 /// the pruning contract's "Cleanup Debt Execution" section and don't drift
 /// into a vague "not wired" blanket excuse.
 ///
-/// Only `ArtifactDelete`/`JobRetention`/`CachePrune` reach the skip path in
-/// `drain_one_debt` today — `VectorDelete`/`LedgerPrune`/`GraphPrune`/
-/// `MemoryPrune` all drain via [`super::drain_via_executor`].
+/// Only `ArtifactDelete`/`CachePrune` reach the skip path in `drain_one_debt`
+/// today — `VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`/
+/// `JobRetention` all drain via [`super::drain_via_executor`].
 ///
 /// Followups (tracked against out-of-territory crates, not yet beaded
 /// individually):
 /// - `ArtifactDelete`: no durable `ArtifactStore` exists in this codebase yet
 ///   (see `docs/pipeline-unification/runtime/pruning-contract.md`'s "artifact
 ///   deletes" ownership row) — there is nothing to call.
-/// - `JobRetention`: `axon-jobs`' `cleanup_jobs`/`clear_jobs` are real but are
-///   bulk, age/kind-scoped operations, and `axon-jobs` is out of this
-///   module's territory — draining `CleanupSelector::JobRows { job_ids }`
-///   needs a per-job-id delete added there.
 /// - `CachePrune`: no `CacheStore` boundary exists in this codebase.
 pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
     match kind {
         CleanupDebtKind::VectorDelete
         | CleanupDebtKind::LedgerPrune
         | CleanupDebtKind::GraphPrune
-        | CleanupDebtKind::MemoryPrune => "drained (should not reach the skip path)",
+        | CleanupDebtKind::MemoryPrune
+        | CleanupDebtKind::JobRetention => "drained (should not reach the skip path)",
         CleanupDebtKind::ArtifactDelete => "no ArtifactStore exists yet",
-        CleanupDebtKind::JobRetention => {
-            "axon-jobs cleanup is bulk age/kind-scoped; no per-job-id delete exists (out of territory)"
-        }
         CleanupDebtKind::CachePrune => "no CacheStore boundary exists yet",
     }
 }
@@ -47,8 +41,14 @@ pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
 /// kind needs: `VectorDelete`/`LedgerPrune` use `PruneStep`'s
 /// `vector_selector`/`source_id`+`generation` fields; `GraphPrune`/
 /// `MemoryPrune` use the per-item identity fields `graph_stable_keys`/
-/// `memory_ids` so both route through the same `PruneExecutor`. Returns
-/// `None` for any other kind, or when the selector doesn't carry the
+/// `memory_ids` so both route through the same `PruneExecutor`. `JobRetention`
+/// has no matching `PruneStep` field for its `job_ids` identity — carrying it
+/// would mean adding a field to the transport-neutral `PruneStep` DTO in
+/// `axon-api`, out of this crate's territory — so it only carries
+/// `estimated_deletes` here; the actual job ids are threaded separately via
+/// [`job_ids_for_debt`] into `super::LedgerPruneTarget`, which is
+/// (re)constructed per debt precisely so it can hold that per-debt value.
+/// Returns `None` for any other kind, or when the selector doesn't carry the
 /// identity the kind needs.
 pub(super) fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
     match debt.kind {
@@ -128,7 +128,34 @@ pub(super) fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
                 memory_ids: Some(ids.clone()),
             })
         }
+        CleanupDebtKind::JobRetention => {
+            let CleanupSelector::JobRows { job_ids } = &debt.selector else {
+                return None;
+            };
+            Some(PruneStep {
+                target: PruneTargetKind::JobRetention,
+                description: format!("delete retained job rows for debt {}", debt.debt_id.0),
+                estimated_deletes: job_ids.len() as u64,
+                vector_selector: None,
+                source_id: None,
+                generation: None,
+                graph_stable_keys: None,
+                graph_edge_ids: None,
+                memory_ids: None,
+            })
+        }
         _ => None,
+    }
+}
+
+/// Extract the job ids a `JobRetention` debt's `CleanupSelector::JobRows`
+/// names, for the caller to attach to the per-debt `PruneTarget` (see the
+/// `debt_to_step` doc comment for why this can't ride on `PruneStep` itself).
+/// Empty for every other kind/selector shape.
+pub(super) fn job_ids_for_debt(debt: &CleanupDebt) -> Vec<JobId> {
+    match &debt.selector {
+        CleanupSelector::JobRows { job_ids } => job_ids.clone(),
+        _ => Vec::new(),
     }
 }
 
