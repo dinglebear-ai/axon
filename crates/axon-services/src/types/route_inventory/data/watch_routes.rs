@@ -32,6 +32,14 @@ pub(crate) const WATCH_ROUTES: &[RestRouteInfo] = &[
         auth: RestRouteAuth::Write,
         openapi: true,
     },
+    // Canonical replacement for the removed legacy `POST
+    // /v1/watch/{id}/run` (rest-contract.md "Removed Route Behavior").
+    RestRouteInfo {
+        method: "POST",
+        path: "/v1/watches/{watch_id}/exec",
+        auth: RestRouteAuth::Write,
+        openapi: true,
+    },
     RestRouteInfo {
         method: "DELETE",
         path: "/v1/watches/{watch_id}",

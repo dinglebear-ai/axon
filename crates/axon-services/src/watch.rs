@@ -169,6 +169,23 @@ pub async fn get_watch_def_with_pool(
     watch::get_watch_def_with_pool(pool, watch_id).await
 }
 
+/// Look up a legacy `WatchDef` by its unique dual-write `name` (see
+/// `crate::watch::create_source_watch` and `axon_jobs::watch::
+/// get_watch_def_by_name`).
+pub async fn get_watch_def_by_name(
+    cfg: &Config,
+    name: &str,
+) -> Result<Option<WatchDef>, Box<dyn Error>> {
+    watch::get_watch_def_by_name(cfg, name).await
+}
+
+pub async fn get_watch_def_by_name_with_pool(
+    pool: &SqlitePool,
+    name: &str,
+) -> Result<Option<WatchDef>, Box<dyn Error>> {
+    watch::get_watch_def_by_name_with_pool(pool, name).await
+}
+
 pub async fn finish_watch_run(
     cfg: &Config,
     watch_id: Uuid,

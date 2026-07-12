@@ -9,11 +9,23 @@
 //! `axon_api::source::{WatchRequest, WatchResult}`. See
 //! `crates/axon-jobs/src/watch_store.rs` module docs for why the two models
 //! are not unified in this slice. `/v1/watches` covers
-//! create/list/get/update/pause/resume/delete.
-//! `POST /v1/watches/{id}/exec` remains a tracked follow-up.
+//! create/list/get/update/pause/resume/delete/exec.
+//!
+//! `POST /v1/watches/{watch_id}/exec` (issue #298 REST contract) is the
+//! canonical replacement for the legacy `POST /v1/watch/{id}/run` (removed —
+//! see `docs/pipeline-unification/surfaces/rest-contract.md` "Removed Route
+//! Behavior"). It delegates to
+//! [`axon_services::service_traits::WatchServiceImpl`], which resolves the
+//! canonical `watch_id` to its dual-written legacy `WatchDef` and runs it
+//! through the still-live scheduler bridge — see that module's doc comment
+//! for why the two watch stores need a name-based bridge instead of a shared
+//! primary key.
 
-use axon_api::source::{WatchId, WatchListRequest, WatchRequest, WatchUpdateRequest};
+use axon_api::source::{
+    WatchExecRequest, WatchId, WatchListRequest, WatchRequest, WatchUpdateRequest,
+};
 use axon_core::config::Config;
+use axon_services::service_traits::{WatchService, WatchServiceImpl};
 use axon_services::watch as watch_svc;
 use axum::{
     Json,
@@ -122,6 +134,48 @@ pub(crate) async fn get_watch(
             format!("watch {watch_id} not found"),
         )),
     }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/watches/{watch_id}/exec",
+    params(("watch_id" = String, Path, description = "Watch ID")),
+    request_body = WatchExecRequest,
+    responses(
+        (status = 200, description = "Watch execution job descriptor", body = serde_json::Value),
+        (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
+        (status = 502, description = "Watch execution failed", body = crate::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
+pub(crate) async fn exec_watch(
+    State((state, cfg)): State<WebState>,
+    Path(watch_id): Path<String>,
+    Json(request): Json<WatchExecRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let watch_id_typed = WatchId::new(watch_id.clone());
+    // 404 up front against the canonical store — a clearer signal than the
+    // legacy-bridge "not found" `WatchService::exec` would otherwise return
+    // for a watch_id that was never created through `/v1/watches` at all.
+    let store = open_store(&state, &cfg).await?;
+    if watch_svc::SourceWatchStoreTrait::get(&store, watch_id_typed.clone())
+        .await
+        .map_err(HttpError::from_api_error)?
+        .is_none()
+    {
+        return Err(HttpError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            format!("watch {watch_id} not found"),
+        ));
+    }
+
+    let service = WatchServiceImpl::new(std::sync::Arc::clone(&state.service_context));
+    let descriptor = service
+        .exec(watch_id_typed, request)
+        .await
+        .map_err(|err| HttpError::from_box_send_sync(err.into()))?;
+    Ok(Json(json!(descriptor)))
 }
 
 #[utoipa::path(
