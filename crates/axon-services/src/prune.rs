@@ -37,6 +37,7 @@
 //! caller-derived authz is threaded in by [`prune_execute`]'s caller.
 
 use std::error::Error;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_api::source::common::SourceWarning;
@@ -44,6 +45,7 @@ use axon_api::source::enums::Severity;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneEstimate, PrunePlan, PruneRequest, PruneResult, PruneSelector};
 use axon_api::source::vector::VectorDeleteSelector;
+use axon_ledger::store::LedgerStore;
 use axon_prune::plan::PruneScopeSource;
 use axon_prune::{PruneExecutor, PrunePlanner, PruneTarget, StepExecution};
 // Re-exported so transports (CLI/MCP/REST) can construct/consume prune authz
@@ -125,7 +127,7 @@ async fn estimate_collection_points(ctx: &ServiceContext, collection: &str) -> P
 /// Compute a real `PruneEstimate` for `selector` from ledger data. See
 /// [`prune_plan_estimated`] for what is and is not sizeable this way.
 async fn estimate_from_ledger(
-    ledger: &dyn axon_ledger::store::LedgerStore,
+    ledger: &dyn LedgerStore,
     selector: &PruneSelector,
 ) -> PruneEstimate {
     match selector {
@@ -150,7 +152,7 @@ async fn estimate_from_ledger(
 }
 
 async fn manifest_estimate(
-    ledger: &dyn axon_ledger::store::LedgerStore,
+    ledger: &dyn LedgerStore,
     source_id: SourceId,
     generation: SourceGenerationId,
 ) -> PruneEstimate {
@@ -242,9 +244,19 @@ pub async fn prune_execute(
     }
 
     let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    // Thread the target-local ledger (when this `ServiceContext` has one) so
+    // `current_generation()` can report the real committed generation and the
+    // executor's generation-fence actually fences. A `ServiceContext` with no
+    // ledger wired (e.g. a pure-vector context) leaves this `None`, matching
+    // `VectorOnlyPruneTarget::current_generation`'s documented "not fenced"
+    // degradation.
+    let ledger = ctx
+        .target_local_source_runtime()
+        .map(|runtime| Arc::clone(&runtime.ledger));
     let target = VectorOnlyPruneTarget {
         vector_store: &vector_store,
         collection: ctx.cfg().collection.clone(),
+        ledger,
     };
     let executor = PruneExecutor::new(target);
     executor.execute(plan, authz).await
@@ -289,6 +301,11 @@ impl PruneScopeSource for NullScopeSource {
 struct VectorOnlyPruneTarget<'a> {
     vector_store: &'a dyn VectorStore,
     collection: String,
+    /// The target-local ledger, when this target was built from a
+    /// `ServiceContext` that has one wired (see [`prune_execute`]). `None`
+    /// preserves the previous "not fenced" degradation for contexts with no
+    /// ledger (e.g. a pure-vector `ServiceContext::new`).
+    ledger: Option<Arc<dyn LedgerStore>>,
 }
 
 impl<'a> VectorOnlyPruneTarget<'a> {
@@ -297,18 +314,37 @@ impl<'a> VectorOnlyPruneTarget<'a> {
         Self {
             vector_store,
             collection: collection.into(),
+            ledger: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_ledger(
+        vector_store: &'a dyn VectorStore,
+        collection: impl Into<String>,
+        ledger: Arc<dyn LedgerStore>,
+    ) -> Self {
+        Self {
+            vector_store,
+            collection: collection.into(),
+            ledger: Some(ledger),
         }
     }
 }
 
 #[async_trait]
 impl PruneTarget for VectorOnlyPruneTarget<'_> {
-    async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
-        // No ledger wired here — nothing is known to be "current", so
-        // generation-fencing degrades to "not fenced" rather than fabricating
-        // a value. Real generation-fencing for user-requested prunes lands
-        // once this module reads the ledger's committed generation.
-        None
+    async fn current_generation(&self, source_id: Option<&str>) -> Option<SourceGenerationId> {
+        // No ledger wired (e.g. a pure-vector `ServiceContext`) — nothing is
+        // known to be "current", so generation-fencing degrades to "not
+        // fenced" rather than fabricating a value.
+        let ledger = self.ledger.as_ref()?;
+        let source_id = source_id?;
+        ledger
+            .committed_generation(SourceId::new(source_id))
+            .await
+            .ok()
+            .flatten()
     }
 
     async fn apply(
