@@ -9,12 +9,19 @@ license.workspace = true
 [dependencies]
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
+axon-core = { path = "../axon-core" }
+# TEMPORARY: axon-crawl is the single-page render transport (Spider HTTP/Chrome
+# scrape). Wave 2 of issue #298 relocates the crawl engine and drops this dep —
+# see crates/axon-adapters/src/providers/chrome_render.rs.
+axon-crawl = { path = "../axon-crawl" }
 axon-error = { path = "../axon-error" }
+axon-observe = { path = "../axon-observe" }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 feed-rs = "2"
 globset = "0.4"
 ignore = "0.4"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -23,4 +30,9 @@ url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
+# test-util exposes LoopbackGuard so tests can reach httpmock's 127.0.0.1
+# servers past the SSRF guard (see crates/axon-crawl/Cargo.toml for the same
+# pattern).
+axon-core = { path = "../axon-core", features = ["test-util"] }
+httpmock = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

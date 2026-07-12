@@ -20,6 +20,7 @@ mod local_select;
 pub mod manifest;
 pub mod mcp_tool;
 pub mod onboarding;
+pub mod providers;
 pub mod reddit;
 pub mod registry;
 pub mod registry_sources;
