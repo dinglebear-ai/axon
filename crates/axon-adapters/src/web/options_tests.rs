@@ -84,6 +84,47 @@ fn min_markdown_chars_reads_validated_option() {
 }
 
 #[test]
+fn warc_path_defaults_to_none() {
+    assert_eq!(warc_path(&MetadataMap::new()), None);
+}
+
+#[test]
+fn warc_path_reads_validated_option() {
+    let mut values = MetadataMap::new();
+    values.insert("warc_path".to_string(), json!("/tmp/out.warc"));
+    assert_eq!(warc_path(&values), Some(PathBuf::from("/tmp/out.warc")));
+}
+
+#[test]
+fn etag_conditional_defaults_to_false() {
+    assert!(!etag_conditional(&MetadataMap::new()));
+}
+
+#[test]
+fn etag_conditional_reads_validated_option() {
+    let mut values = MetadataMap::new();
+    values.insert("etag_conditional".to_string(), json!(true));
+    assert!(etag_conditional(&values));
+}
+
+#[test]
+fn automation_script_ref_defaults_to_none() {
+    assert!(automation_script_ref(&MetadataMap::new()).is_none());
+}
+
+#[test]
+fn automation_script_ref_wraps_validated_path() {
+    let mut values = MetadataMap::new();
+    values.insert(
+        "automation_script".to_string(),
+        json!("/tmp/automation.json"),
+    );
+    let artifact = automation_script_ref(&values).expect("automation_script must be present");
+    assert_eq!(artifact.uri, "/tmp/automation.json");
+    assert_eq!(artifact.artifact_kind, ArtifactKind::RawContent);
+}
+
+#[test]
 fn build_discovery_config_applies_defaults_when_no_options_set() {
     let plan = plan_with_options(MetadataMap::new());
     let cfg = build_discovery_config(&plan, std::env::temp_dir());
@@ -100,7 +141,10 @@ fn build_discovery_config_honors_crawl_options() {
     values.insert("max_depth".to_string(), json!(3));
     values.insert("include_subdomains".to_string(), json!(true));
     values.insert("discover_sitemaps".to_string(), json!(false));
-    values.insert("url_whitelist".to_string(), json!(["^https://example\\.com/docs"]));
+    values.insert(
+        "url_whitelist".to_string(),
+        json!(["^https://example\\.com/docs"]),
+    );
     values.insert("url_blacklist".to_string(), json!(["/blocked"]));
     let plan = plan_with_options(values);
 

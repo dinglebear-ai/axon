@@ -86,7 +86,10 @@ pub(super) fn web_source_document(
     );
     let structured_payload = metadata.remove("structured_payload");
     let title = structured_title(structured_payload.as_ref());
-    let content_kind = item.manifest_item.content_kind.unwrap_or(ContentKind::Markdown);
+    let content_kind = item
+        .manifest_item
+        .content_kind
+        .unwrap_or(ContentKind::Markdown);
     SourceDocument {
         document_id: web_document_id(&acquisition.source_id, &item.manifest_item.source_item_key),
         source_id: acquisition.source_id.clone(),
@@ -110,7 +113,7 @@ pub(super) fn web_source_document(
 /// only markdown — depending on the effective render mode, so the document's
 /// `mime_type` follows the actually-acquired `content_kind` instead of always
 /// stamping `text/markdown`.
-fn mime_type_for_content_kind(content_kind: ContentKind) -> &'static str {
+pub(super) fn mime_type_for_content_kind(content_kind: ContentKind) -> &'static str {
     match content_kind {
         ContentKind::Html => "text/html",
         ContentKind::Json | ContentKind::Structured => "application/json",

@@ -76,24 +76,59 @@ fn classify_render_error_defaults_unmatched_errors_to_fatal() {
     );
 }
 
-#[tokio::test]
-async fn render_rejects_automation_scripts_without_network() {
-    let provider = provider();
-    let mut req = request("https://example.test/".to_string(), RenderMode::Http);
-    req.automation_script = Some(ArtifactRef {
+fn automation_script_ref(uri: &str) -> ArtifactRef {
+    ArtifactRef {
         artifact_id: ArtifactId::new("art_1"),
-        artifact_kind: ArtifactKind::Manifest,
-        uri: "file:///tmp/script.json".to_string(),
+        artifact_kind: ArtifactKind::RawContent,
+        uri: uri.to_string(),
         size_bytes: None,
         content_hash: None,
         created_at: Timestamp::from(chrono::Utc::now()),
-    });
+    }
+}
 
-    let err = provider
+#[test]
+fn automation_script_path_strips_file_scheme() {
+    assert_eq!(
+        automation_script_path("file:///tmp/script.json"),
+        std::path::PathBuf::from("/tmp/script.json")
+    );
+    assert_eq!(
+        automation_script_path("/tmp/script.json"),
+        std::path::PathBuf::from("/tmp/script.json")
+    );
+}
+
+/// Regression 1 restoration (issue #298 Wave 2b): an automation script is no
+/// longer unconditionally rejected. On an `Http`-mode render (no Chrome
+/// involved), `web_engine::scrape::apply_automation_scripts` skips loading it
+/// entirely (with a warning) rather than erroring — proven here by pointing
+/// `automation_script` at a path that does not exist on disk: if the Http
+/// path attempted to load it, this render would fail with an I/O error
+/// instead of succeeding.
+#[tokio::test]
+async fn render_http_mode_skips_automation_script_with_warning() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/page");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("<html><body><p>hello</p></body></html>");
+        })
+        .await;
+
+    let provider = provider();
+    let url = format!("{}/page", server.base_url());
+    let mut req = request(url, RenderMode::Http);
+    req.automation_script = Some(automation_script_ref("/nonexistent/script.json"));
+
+    let rendered = provider
         .render(req)
         .await
-        .expect_err("automation scripts are unsupported in Wave 1a");
-    assert_eq!(err.code.to_string(), "render.automation_script_unsupported");
+        .expect("http-mode render must succeed even with automation_script set");
+    assert!(rendered.markdown.contains("hello"));
 }
 
 #[tokio::test]
@@ -103,9 +138,9 @@ async fn render_http_mode_returns_markdown_and_html() {
     server
         .mock_async(|when, then| {
             when.method(GET).path("/page");
-            then.status(200)
-                .header("content-type", "text/html")
-                .body("<html><head><title>Hi</title></head><body><p>hello render</p></body></html>");
+            then.status(200).header("content-type", "text/html").body(
+                "<html><head><title>Hi</title></head><body><p>hello render</p></body></html>",
+            );
         })
         .await;
 
@@ -197,5 +232,32 @@ async fn render_chrome_mode_against_a_live_browser() {
         ))
         .await
         .expect("render should succeed against a live Chrome instance");
+    assert!(!rendered.markdown.is_empty());
+}
+
+/// Same live-Chrome requirement as `render_chrome_mode_against_a_live_browser`,
+/// plus a real automation-script file on disk. Manual smoke test for
+/// regression 1 (issue #298 Wave 2b) end-to-end: `automation_script` should
+/// execute against the rendered page rather than being rejected or silently
+/// skipped.
+#[tokio::test]
+#[ignore = "requires a live Chrome/CDP endpoint, not available in this sandbox"]
+async fn render_chrome_mode_runs_automation_script_against_a_live_browser() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let script_path = dir.path().join("automation.json");
+    std::fs::write(&script_path, r#"{"/": [{"action": "wait", "ms": 100}]}"#)
+        .expect("write automation script");
+
+    let provider = ChromeRenderProvider::new(ChromeRenderConfig {
+        chrome_remote_url: std::env::var("AXON_CHROME_REMOTE_URL").ok(),
+        default_timeout_ms: Some(10_000),
+    });
+    let mut req = request("https://example.com/".to_string(), RenderMode::Chrome);
+    req.automation_script = Some(automation_script_ref(&script_path.to_string_lossy()));
+
+    let rendered = provider
+        .render(req)
+        .await
+        .expect("render with automation_script should succeed against a live Chrome instance");
     assert!(!rendered.markdown.is_empty());
 }

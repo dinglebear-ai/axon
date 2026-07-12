@@ -29,6 +29,46 @@ pub(super) fn min_markdown_chars(values: &MetadataMap) -> usize {
     usize_option(values, "min_markdown_chars").unwrap_or(DEFAULT_MIN_MARKDOWN_CHARS)
 }
 
+/// `--warc <PATH>` / `validated_options.warc_path` (issue #298 Wave 2b
+/// regression 2): the file the per-item acquire loop archives every
+/// fetched/rendered page into. See `web::warc`.
+pub(super) fn warc_path(values: &MetadataMap) -> Option<PathBuf> {
+    values
+        .get("warc_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+}
+
+/// `etag_conditional` (issue #298 Wave 2b regression 3): gates whether
+/// `web::acquire` attaches a prior `If-None-Match` value (when one is present
+/// on the incoming `ManifestItem.metadata["web_etag"]`) to its HTTP-mode
+/// fetch requests. See `web::acquire::acquire_via_fetch`.
+pub(super) fn etag_conditional(values: &MetadataMap) -> bool {
+    bool_option(values, "etag_conditional").unwrap_or(false)
+}
+
+/// `--automation-script <PATH>` / `validated_options.automation_script`
+/// (issue #298 Wave 2b regression 1): wraps the validated non-empty file-path
+/// string (see `axon-route::web_options::validate_option`) into an
+/// [`ArtifactRef`] so it can travel through the transport-neutral
+/// `RenderRequest` DTO. There is no dedicated `ArtifactKind` variant for "a
+/// locally-referenced script file" (see `ArtifactKind`'s variants in
+/// `axon-api::source::common`); `RawContent` is the closest fit and is not
+/// itself interpreted by the render provider, which resolves the script
+/// purely from `uri` as a filesystem path — see
+/// `providers::chrome_render::ChromeRenderProvider::build_config`.
+pub(super) fn automation_script_ref(values: &MetadataMap) -> Option<ArtifactRef> {
+    let path = values.get("automation_script")?.as_str()?.to_string();
+    Some(ArtifactRef {
+        artifact_id: ArtifactId::new(format!("automation_script:{path}")),
+        artifact_kind: ArtifactKind::RawContent,
+        uri: path,
+        size_bytes: None,
+        content_hash: None,
+        created_at: super::timestamp(),
+    })
+}
+
 fn bool_option(values: &MetadataMap, key: &str) -> Option<bool> {
     values.get(key).and_then(Value::as_bool)
 }
