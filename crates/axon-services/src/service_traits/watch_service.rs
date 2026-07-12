@@ -18,14 +18,15 @@
 //! `exec` and `history` are different: their return types (`JobDescriptor`,
 //! `WatchHistoryResult { jobs: Vec<JobDescriptor>, .. }`) never reference
 //! `canonical_uri`/`adapter`/`scope`, so they don't hit the blocker above and
-//! *are* wired as real thin wraps — `exec` loads the `WatchDef` by id
-//! (`watch::get_watch_def`) then runs it synchronously
-//! (`watch::run_watch_now`), and `history` lists runs
-//! (`watch::list_watch_runs`) — both mapping `WatchRun` into a synthesized
-//! `JobDescriptor`. `pause`/`resume`/`delete` still have no backing free
-//! function at all (CLAUDE.md documents them as "parse but are not yet
-//! implemented"). Only the `Fake` implements full in-memory semantics for
-//! every method.
+//! *are* wired as real thin wraps — both resolve the canonical `WatchId` to
+//! its bridged legacy `WatchDef` (`resolve_legacy_watch_def`, by dual-write
+//! name since the two stores don't share a primary key — see that fn's
+//! doc), then `exec` runs it synchronously (`watch::run_watch_now`) and
+//! `history` lists its runs (`watch::list_watch_runs`) — both mapping
+//! `WatchRun` into a synthesized `JobDescriptor`. `pause`/`resume`/`delete`
+//! still have no backing free function at all (CLAUDE.md documents them as
+//! "parse but are not yet implemented"). Only the `Fake` implements full
+//! in-memory semantics for every method.
 
 use std::sync::{Arc, Mutex};
 
@@ -98,11 +99,7 @@ impl WatchService for WatchServiceImpl {
         watch_id: WatchId,
         _request: WatchExecRequest,
     ) -> anyhow::Result<JobDescriptor> {
-        let uuid = parse_watch_uuid(&watch_id)?;
-        let def = watch::get_watch_def(&self.ctx.cfg, uuid)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?
-            .ok_or_else(|| anyhow::anyhow!("watch {} not found", watch_id.0))?;
+        let def = resolve_legacy_watch_def(&self.ctx.cfg, &watch_id).await?;
         let run = watch::run_watch_now(&self.ctx.cfg, &def)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -122,9 +119,9 @@ impl WatchService for WatchServiceImpl {
     }
 
     async fn history(&self, request: WatchHistoryRequest) -> anyhow::Result<WatchHistoryResult> {
-        let uuid = parse_watch_uuid(&request.watch_id)?;
+        let def = resolve_legacy_watch_def(&self.ctx.cfg, &request.watch_id).await?;
         let limit = i64::from(request.limit.unwrap_or(50));
-        let runs = watch::list_watch_runs(&self.ctx.cfg, uuid, limit)
+        let runs = watch::list_watch_runs(&self.ctx.cfg, def.id, limit)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(WatchHistoryResult {
@@ -135,11 +132,44 @@ impl WatchService for WatchServiceImpl {
     }
 }
 
-/// Parse a `WatchId` (string-wrapped UUID) into the `Uuid` the `watch.rs`
-/// free functions key rows by.
-fn parse_watch_uuid(watch_id: &WatchId) -> anyhow::Result<uuid::Uuid> {
-    uuid::Uuid::parse_str(&watch_id.0)
-        .map_err(|e| anyhow::anyhow!("invalid watch id {}: {e}", watch_id.0))
+/// Resolve the legacy scheduler-owned `WatchDef` backing a canonical
+/// `WatchId`.
+///
+/// The canonical source-request-backed watch store
+/// (`axon_jobs::watch_store::SqliteWatchStore`, `axon_source_watches`) and
+/// the legacy task_type/task_payload scheduler
+/// (`axon_jobs::watch`, `axon_watch_defs`) are deliberately separate tables
+/// with no shared primary key — see `crates/axon-jobs/src/migrations/
+/// 0023_create_source_watch_store.sql`. `crate::watch::create_source_watch`
+/// bridges them with a best-effort dual-write: creating a canonical watch
+/// also creates a legacy `WatchDef` named `format!("watch-{watch_id}")` so
+/// the still-live `workers/watch_scheduler.rs` actually ticks it. Resolve
+/// that link here by name. Falls back to treating `watch_id` as a bare
+/// legacy UUID first, for a caller that already holds a legacy `/v1/watch`
+/// id directly rather than a canonical `/v1/watches` one.
+async fn resolve_legacy_watch_def(
+    cfg: &axon_core::config::Config,
+    watch_id: &WatchId,
+) -> anyhow::Result<watch::WatchDef> {
+    if let Ok(uuid) = uuid::Uuid::parse_str(&watch_id.0)
+        && let Some(def) = watch::get_watch_def(cfg, uuid)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+    {
+        return Ok(def);
+    }
+    let legacy_name = format!("watch-{}", watch_id.0);
+    watch::get_watch_def_by_name(cfg, &legacy_name)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "watch {} not found (no bridged scheduler entry; the dual-write in \
+                 create_source_watch may have failed at creation time, or the watch id is \
+                 unknown)",
+                watch_id.0
+            )
+        })
 }
 
 /// Map a `WatchRun` scheduler row into a synthesized `JobDescriptor`. Neither
