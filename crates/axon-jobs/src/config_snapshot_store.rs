@@ -76,13 +76,11 @@ pub async fn get_config_snapshot(
     pool: &SqlitePool,
     config_snapshot_id: &str,
 ) -> Result<Option<String>> {
-    sqlx::query_scalar(
-        "SELECT config_json FROM config_snapshots WHERE config_snapshot_id = ?",
-    )
-    .bind(config_snapshot_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(sql_error)
+    sqlx::query_scalar("SELECT config_json FROM config_snapshots WHERE config_snapshot_id = ?")
+        .bind(config_snapshot_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(sql_error)
 }
 
 #[cfg(test)]

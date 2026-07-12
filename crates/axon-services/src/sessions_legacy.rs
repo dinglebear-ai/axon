@@ -311,7 +311,6 @@ pub(crate) fn prepared_session_doc_from_session_doc(
     })
 }
 
-
 pub async fn ingest_prepared_sessions(
     cfg: &Config,
     request: IngestSessionsPreparedRequest,

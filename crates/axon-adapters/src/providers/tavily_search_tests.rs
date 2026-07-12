@@ -95,9 +95,7 @@ async fn authentication_failure_marks_the_provider_unavailable() {
 #[tokio::test]
 async fn a_success_recovers_a_previously_cooling_provider() {
     let provider = TavilySearchProvider::new("test-key").expect("agent build should not fail");
-    provider
-        .record_search_error(&AgentError::RateLimited)
-        .await;
+    provider.record_search_error(&AgentError::RateLimited).await;
     assert_eq!(
         provider.capabilities().await.unwrap().health,
         HealthStatus::Cooling
