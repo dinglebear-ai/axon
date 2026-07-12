@@ -159,6 +159,7 @@ pub async fn compact(
     drop(conn);
     crate::observe::emit(
         store.sink(),
+        JobId::from(uuid::Uuid::new_v4()),
         MemoryPhase::Compacting,
         &compacted,
         Severity::Info,
@@ -250,6 +251,10 @@ pub async fn import(
         }
     }
 
+    // One `job_id` for the whole import call, shared by every imported
+    // record's emit below — they all belong to the same logical import
+    // request, not N unrelated single-event jobs.
+    let job_id = JobId::from(uuid::Uuid::new_v4());
     for incoming in request.records {
         let duplicate =
             request.mode == MemoryImportMode::Merge && content_duplicate_exists(&conn, &incoming)?;
@@ -330,6 +335,7 @@ pub async fn import(
 
         crate::observe::emit(
             store.sink(),
+            job_id,
             MemoryPhase::Reviewing,
             &record,
             Severity::Info,
