@@ -1,0 +1,19 @@
+# Illustrates the "service URLs stay in .env, not config.toml" contract rule
+# (docs/pipeline-unification/schemas/config-schema.md's Drift Checks:
+# "tuning-only key appears only in .env" / URL-in-TOML;
+# docs/pipeline-unification/configuration/env-contract.md's Design Rules).
+#
+# NOT WIRED to a test (2026-07-12 alignment audit, bead axon_rust-ldozg):
+# there is no dedicated semantic "this value looks like a URL" detector in
+# axon-core today. This fixture's `tei-url` key would be rejected only
+# because it isn't a recognized `[providers.embedding]` field (structural
+# `deny_unknown_fields`), the same generic mechanism
+# `unknown-key.invalid.toml` already exercises — not because axon-core
+# recognizes the value as a URL. (A URL string placed inside a real
+# `Option<String>` field, e.g. `providers.llm.synthesis-gemini-model`, would
+# in fact parse successfully today, which is the actual gap this fixture
+# documents.) Kept as illustrative content for when a real URL-shape drift
+# check is implemented.
+[providers.embedding]
+batch-size = 128
+tei-url = "http://127.0.0.1:52000"
