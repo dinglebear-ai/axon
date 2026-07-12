@@ -72,8 +72,9 @@ async fn web_map_scope_discovers_candidates_without_fetching_bodies() {
 }
 
 #[tokio::test]
-async fn web_page_scope_discover_is_trivial_and_acquire_fetches_via_http() {
-    let adapter = adapter(FakeAdapterProviders::new());
+async fn web_page_scope_discover_fetches_once_for_a_real_content_hash() {
+    let providers = FakeAdapterProviders::new();
+    let adapter = adapter(providers.clone());
     let mut plan = web_plan("https://example.com/docs/intro", SourceScope::Page);
     plan.route
         .validated_options
@@ -87,11 +88,19 @@ async fn web_page_scope_discover_is_trivial_and_acquire_fetches_via_http() {
         manifest.items[0].canonical_uri,
         "https://example.com/docs/intro"
     );
-    // Page scope's discover is trivial identity only — no fetch happened, so
-    // there is no content hash yet (see `manifest_items::page_manifest_item`
-    // doc comment for the ledger-diffing tradeoff this implies).
-    assert_eq!(manifest.items[0].content_hash, None);
+    // Page scope's discover now fetches the page once (issue #298 Wave 2b
+    // regression fix) so the manifest item carries a real content_hash —
+    // without it, `ledger.diff_manifest` could never tell "unchanged" apart
+    // from "never acquired" across successive Page-scope discover
+    // generations (see `manifest_items::page_manifest_item`).
+    let first_hash = manifest.items[0].content_hash.clone();
+    assert!(first_hash.is_some());
     assert_eq!(manifest.items[0].content_kind, None);
+    assert_eq!(providers.calls().await, vec!["fetch"]);
+
+    // Discovering again against unchanged (fake) content yields the same hash.
+    let manifest_again = adapter.discover(&plan).await.unwrap();
+    assert_eq!(manifest_again.items[0].content_hash, first_hash);
 
     let diff = manifest_diff(&plan, manifest.items.clone());
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
@@ -105,11 +114,47 @@ async fn web_page_scope_discover_is_trivial_and_acquire_fetches_via_http() {
         acquisition.fetched_items[0].metadata["web_fetch_method"],
         "http_fetch"
     );
+    // acquire re-fetches independently of discover's own fetch (a deliberate
+    // "correctness over one extra request" tradeoff — see `web/manifest_items.rs`).
+    assert_eq!(providers.calls().await, vec!["fetch", "fetch", "fetch"]);
 
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
     assert_eq!(normalized.data.len(), 1);
     assert_eq!(normalized.data[0].content_kind, ContentKind::Html);
     assert_eq!(normalized.data[0].mime_type.as_deref(), Some("text/html"));
+}
+
+/// Dedicated regression coverage for the content_hash correctness fix (issue
+/// #298 Wave 2b): a `ledger.diff_manifest`-style comparison of two Page-scope
+/// discover generations must see `modified` when the fetched body changed and
+/// `unchanged` when it didn't. Before this fix, `content_hash` was always
+/// `None` for Page scope, so `None == None` made every repeat discover look
+/// "unchanged" regardless of the real content.
+#[tokio::test]
+async fn web_page_scope_discover_content_hash_reflects_fetched_body_changes() {
+    let plan = web_plan("https://example.com/docs/intro", SourceScope::Page);
+
+    let same_body_a = adapter(FakeAdapterProviders::new().with_fetch_text("body-v1"))
+        .discover(&plan)
+        .await
+        .unwrap();
+    let same_body_b = adapter(FakeAdapterProviders::new().with_fetch_text("body-v1"))
+        .discover(&plan)
+        .await
+        .unwrap();
+    assert_eq!(
+        same_body_a.items[0].content_hash, same_body_b.items[0].content_hash,
+        "identical fetched bodies must hash identically (diff would see 'unchanged')"
+    );
+
+    let changed_body = adapter(FakeAdapterProviders::new().with_fetch_text("body-v2"))
+        .discover(&plan)
+        .await
+        .unwrap();
+    assert_ne!(
+        same_body_a.items[0].content_hash, changed_body.items[0].content_hash,
+        "a changed fetched body must hash differently (diff would see 'modified')"
+    );
 }
 
 #[tokio::test]

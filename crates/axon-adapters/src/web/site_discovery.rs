@@ -14,12 +14,13 @@
 //! would require threading a content cache between `discover` and `acquire`,
 //! reintroducing the very disk-handoff "second pipeline" this wave retires.
 //!
-//! This single crawl pass does not replicate `crawl_sync`'s full multi-stage
-//! Chrome-fallback machinery (WAF-blocked targeted refetch, HTML anchor
-//! backfill, thin-page targeted refetch) — see `crawl_sync::chrome_fallback`.
-//! It runs one pass at the resolved initial render mode. A follow-up (#298
-//! Wave 2) could port that fallback chain in if link-discovery fidelity on
-//! JS-heavy sites under `auto_switch` becomes a problem in practice.
+//! The initial HTTP-mode crawl pass runs through `super::chrome_fallback`'s
+//! `maybe_chrome_fallback`, which replicates `crawl_sync`'s multi-stage
+//! Chrome-fallback machinery (WAF-blocked targeted refetch, thin-page
+//! targeted refetch, HTML anchor backfill, and — if coverage is still low —
+//! a full Chrome re-crawl) — see `super::chrome_fallback` module docs and
+//! `crawl_sync::chrome_fallback` for the CLI-path twin this ports (issue #298
+//! Wave 2b).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -28,6 +29,7 @@ use axon_api::source::*;
 
 use crate::adapter::Result;
 
+use super::chrome_fallback::maybe_chrome_fallback;
 use super::manifest_items::web_manifest_item;
 use super::options::build_discovery_config;
 use super::url_parts::WebUrlParts;
@@ -49,24 +51,42 @@ pub(super) async fn crawl_manifest_items(plan: &SourcePlan) -> Result<Vec<Manife
         cfg.chrome_remote_url = Some(ws_url);
     }
 
+    let previous_manifest = Arc::new(HashMap::new());
+
     // `run_sitemap = false`: mirrors `axon-services::crawl_sync::run_crawl_phase`
     // — sitemap discovery runs as a separate, more controlled pass
     // (`backfill_sitemap_urls` below) after the main crawl rather than
     // Spider's inline `crawl_sitemap()` phase.
-    let (mut summary, seen_urls) = crate::web_engine::engine::run_crawl_once(
+    let (http_summary, http_seen_urls) = crate::web_engine::engine::run_crawl_once(
         &cfg,
         &start_url,
         initial_mode,
         &cfg.output_dir,
         None,
         false,
-        Arc::new(HashMap::new()),
+        Arc::clone(&previous_manifest),
         None,
     )
     .await
     .map_err(|err| {
         ApiError::new(
             "adapter.web.discover.crawl_failed",
+            axon_error::ErrorStage::Discovering,
+            err.to_string(),
+        )
+    })?;
+
+    let (mut summary, seen_urls) = maybe_chrome_fallback(
+        &cfg,
+        &start_url,
+        http_summary,
+        http_seen_urls,
+        previous_manifest,
+    )
+    .await
+    .map_err(|err| {
+        ApiError::new(
+            "adapter.web.discover.chrome_fallback_failed",
             axon_error::ErrorStage::Discovering,
             err.to_string(),
         )
