@@ -8,6 +8,30 @@
 //! or registry target), acquires it, embeds it, and publishes it through the
 //! unified pipeline. The transport-neutral [`axon_api::source::SourceResult`] is
 //! returned verbatim as the MCP result payload.
+//!
+//! ## Authorization
+//!
+//! The router-level gate (`crates/axon-mcp/src/server/authz.rs::MCP_ACTION_SPECS`)
+//! already requires the broad `axon:write` scope for the `source` action — the
+//! same broad gate REST's router applies to `POST /v1/sources` before running
+//! its own per-source boundary. On top of that broad gate,
+//! [`enforce_source_safety_scope`] runs the equivalent *per-target*
+//! authorization boundary REST runs
+//! (`crates/axon-web/src/server/handlers/sources.rs::authorize_source_request`):
+//! it classifies `source` into a `SafetyClass` via the shared
+//! [`axon_services::source::classify::safety_class_for`] and requires the
+//! matching fine-grained scope (`axon:local` for local filesystem sources,
+//! `axon:execute` for CLI/MCP tool sources) via
+//! `axon_authz::required_scope_for_safety_class`. Without this boundary, a
+//! caller holding only `axon:write` (explicitly NOT `axon:local` per the auth
+//! contract, `docs/pipeline-unification/runtime/auth-contract.md`) could index
+//! an arbitrary local filesystem path through MCP even though the identical
+//! request is refused over REST.
+//!
+//! `None` (`caller_auth_snapshot`) means `LoopbackDev` — there is no
+//! per-caller identity to check and the loopback bind is the trust boundary
+//! itself, matching REST's decision to skip its own boundary when there is no
+//! `AuthContext` extension.
 
 use super::AxonMcpServer;
 use super::common::{
@@ -15,7 +39,9 @@ use super::common::{
     logged_internal_error, respond_with_mode, validate_mcp_collection,
 };
 use crate::schema::{AxonToolResponse, SourceRequest};
-use axon_api::source::SourceRequest as ApiSourceRequest;
+use axon_api::source::{AuthScope, AuthSnapshot, SourceRequest as ApiSourceRequest};
+use axon_authz::required_scope_for_safety_class;
+use axon_services::source::classify::{classify_source_input, safety_class_for};
 use rmcp::ErrorData;
 
 impl AxonMcpServer {
@@ -43,14 +69,6 @@ impl AxonMcpServer {
         api_request.scope = req.scope;
         api_request.collection = collection;
 
-        // Source indexing needs the data plane (qdrant + tei) and in-process
-        // workers — use the fully-provisioned service context, like the other
-        // job-running handlers.
-        let service_context = self
-            .base_service_context()
-            .await
-            .map_err(|e| logged_internal_error("source.context", e.as_ref()))?;
-
         // Real caller-derived AuthSnapshot, resolved once in `call_tool`'s
         // scope gate and threaded through via task-local (see
         // `common.rs::CURRENT_CALLER_AUTH_SNAPSHOT`). `None` only in
@@ -60,6 +78,19 @@ impl AxonMcpServer {
         let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
             .try_with(Clone::clone)
             .unwrap_or_default();
+
+        // Per-source authorization boundary (see module docs above) — runs
+        // before any service-context/data-plane work so a denied request
+        // never reaches acquisition.
+        enforce_source_safety_scope(&source, caller_auth_snapshot.as_ref()).await?;
+
+        // Source indexing needs the data plane (qdrant + tei) and in-process
+        // workers — use the fully-provisioned service context, like the other
+        // job-running handlers.
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("source.context", e.as_ref()))?;
 
         if detached {
             let Some(job_store) = service_context.job_store() else {
@@ -130,6 +161,54 @@ impl AxonMcpServer {
         )
         .await
     }
+}
+
+/// Per-source authorization boundary — see the module docs above for why this
+/// exists and what it mirrors on the REST side.
+///
+/// `caller_auth_snapshot: None` means `LoopbackDev`; the check is skipped
+/// there, matching REST's decision to skip its own boundary when there is no
+/// `AuthContext` extension.
+async fn enforce_source_safety_scope(
+    source: &str,
+    caller_auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<(), ErrorData> {
+    let Some(snapshot) = caller_auth_snapshot else {
+        return Ok(());
+    };
+
+    let kind = classify_source_input(source).await;
+    let safety_class = safety_class_for(kind);
+    let required_scope = required_scope_for_safety_class(safety_class);
+    let Some(required) = AuthScope::from_scope_str(required_scope) else {
+        // Unreachable in practice: `required_scope_for_safety_class` only ever
+        // returns "axon:local" / "axon:execute" / "axon:write", all of which
+        // `AuthScope::from_scope_str` recognizes. Fail closed rather than
+        // silently letting an unrecognized requirement through.
+        tracing::error!(
+            required_scope,
+            "unrecognized safety-class scope requirement"
+        );
+        return Err(ErrorData::invalid_request(
+            format!("forbidden: source requires scope: {required_scope}"),
+            None,
+        ));
+    };
+
+    if snapshot.granted_scopes.contains(&required) {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        caller_id = ?snapshot.caller_id,
+        required_scope,
+        safety_class = ?safety_class,
+        "MCP source invocation denied: missing fine-grained scope"
+    );
+    Err(ErrorData::invalid_request(
+        format!("forbidden: source requires scope: {required_scope}"),
+        None,
+    ))
 }
 
 #[cfg(test)]
