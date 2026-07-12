@@ -280,24 +280,31 @@ the same error taxonomy without creating cycles.
 
 Purpose: transport-neutral contract types.
 
-Required public modules:
+**Required public modules below reflect the crate's actual shipped `pub mod`
+surface (synced 2026-07-12 from `crates/axon-api/src/lib.rs`), not this
+contract's minimal target list.** `axon-api` is one of five pre-existing
+crates (with `axon-cli`, `axon-mcp`, `axon-services`, `axon-web`) that keep
+their current-behavior module surface until the #298 cutover — see
+`xtask/src/checks/crate_contracts_spec.rs`'s module doc comment. This list is
+enforced by `cargo xtask check-crate-contracts`.
 
 ```text
 lib.rs
-envelope.rs
-error.rs
+contract.rs
+diff.rs
+explain.rs
+ingest.rs
+job_dto.rs
+job_progress.rs
+job_status.rs
+mcp_schema.rs
+migration.rs
+purge.rs
+reset.rs
+result.rs
+schema_registry.rs
+service_job.rs
 source.rs
-job.rs
-progress.rs
-capability.rs
-provider.rs
-document.rs
-graph.rs
-memory.rs
-retrieval.rs
-prune.rs
-artifact.rs
-config.rs
 ```
 
 Must expose:
@@ -940,23 +947,74 @@ back into `axon-jobs` except through job/progress traits explicitly passed in.
 
 Purpose: orchestration facade.
 
-Required public modules:
+**Required public modules below reflect the crate's actual shipped `pub mod`
+surface (synced 2026-07-12 from `crates/axon-services/src/lib.rs`), not this
+contract's minimal target list.** `axon-services` is one of five pre-existing
+crates (with `axon-api`, `axon-cli`, `axon-mcp`, `axon-web`) that keep their
+current-behavior module surface until the #298 cutover — see
+`xtask/src/checks/crate_contracts_spec.rs`'s module doc comment. `pub(crate)
+mod` internals (e.g. `web_source`, `git_source`, `feed_source`,
+`reddit_source`, `registry_source`, `sessions_source`, `local_source`,
+`contract_write`) are intentionally excluded — they aren't public API. This
+list is enforced by `cargo xtask check-crate-contracts`.
 
 ```text
 lib.rs
+action_api.rs
+artifacts.rs
+brand.rs
+client_contract.rs
+code_search_watch.rs
+config.rs
+config_snapshot_hash.rs
 context.rs
-source.rs
-query.rs
-retrieve.rs
-ask.rs
+crawl.rs
+crawl_sync.rs
+debug.rs
+diff.rs
+document.rs
+embed.rs
+endpoints.rs
+events.rs
 extract.rs
-memory.rs
+feed_acquire.rs
+feed_target.rs
+freshness.rs
+git_acquire.rs
+graph.rs
+ingest.rs
 jobs.rs
-watch.rs
+map.rs
+memory.rs
+migrate.rs
+mobile_sessions.rs
 prune.rs
-providers.rs
+query.rs
+reddit_acquire.rs
+reddit_target.rs
+refresh.rs
+registry_acquire.rs
+reset.rs
+runtime.rs
+scrape.rs
+screenshot.rs
+search.rs
+search_crawl.rs
+service_traits.rs
+sessions.rs
+sessions_legacy.rs
+sessions_target.rs
+setup.rs
+source.rs
+source_jobs.rs
+summarize.rs
+sync.rs
 system.rs
-testing.rs
+transport.rs
+types.rs
+watch.rs
+youtube_acquire.rs
+youtube_target.rs
 ```
 
 Must expose:
@@ -980,17 +1038,21 @@ Must not own:
 
 Purpose: MCP transport projection.
 
-Required public modules:
+**Required public modules below reflect the crate's actual shipped `pub mod`
+surface (synced 2026-07-12 from `crates/axon-mcp/src/lib.rs`), not this
+contract's minimal target list.** `axon-mcp` is one of five pre-existing
+crates (with `axon-api`, `axon-cli`, `axon-services`, `axon-web`) that keep
+their current-behavior module surface until the #298 cutover — see
+`xtask/src/checks/crate_contracts_spec.rs`'s module doc comment. The private
+`cors` module is intentionally excluded — it isn't public API. This list is
+enforced by `cargo xtask check-crate-contracts`.
 
 ```text
 lib.rs
-server.rs
-schema.rs
-request.rs
-response.rs
 auth.rs
-handlers.rs
-testing.rs
+schema.rs
+schema_registry.rs
+server.rs
 ```
 
 Must expose:
@@ -1012,18 +1074,25 @@ Must not import:
 
 Purpose: REST/OpenAPI/panel transport projection.
 
-Required public modules:
+**Required public modules below reflect the crate's actual shipped `pub mod`
+surface (synced 2026-07-12 from `crates/axon-web/src/lib.rs`), not this
+contract's minimal target list.** `axon-web` is one of five pre-existing
+crates (with `axon-api`, `axon-cli`, `axon-mcp`, `axon-services`) that keep
+their current-behavior module surface until the #298 cutover — see
+`xtask/src/checks/crate_contracts_spec.rs`'s module doc comment. This list is
+enforced by `cargo xtask check-crate-contracts`.
 
 ```text
 lib.rs
-router.rs
-openapi.rs
-handlers.rs
-sse.rs
 auth.rs
-response.rs
-panel.rs
-testing.rs
+health.rs
+metrics.rs
+panel_first_run.rs
+panel_stack.rs
+schema_registry.rs
+security.rs
+server.rs
+static_assets.rs
 ```
 
 Must expose:
@@ -1046,18 +1115,20 @@ Must not import:
 
 Purpose: CLI transport projection.
 
-Required public modules:
+**Required public modules below reflect the crate's actual shipped `pub mod`
+surface (synced 2026-07-12 from `crates/axon-cli/src/lib.rs`), not this
+contract's minimal target list.** `axon-cli` is one of five pre-existing
+crates (with `axon-api`, `axon-mcp`, `axon-services`, `axon-web`) that keep
+their current-behavior module surface until the #298 cutover — see
+`xtask/src/checks/crate_contracts_spec.rs`'s module doc comment. This list is
+enforced by `cargo xtask check-crate-contracts`.
 
 ```text
 lib.rs
-parser.rs
 commands.rs
-render.rs
 json.rs
-progress.rs
-help.rs
-completions.rs
-testing.rs
+schema_registry.rs
+ui.rs
 ```
 
 Must expose:

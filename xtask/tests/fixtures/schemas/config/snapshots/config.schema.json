@@ -11,7 +11,7 @@
       "owner_crate": "axon-web",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "server",
       "type": "string"
@@ -24,7 +24,7 @@
       "owner_crate": "axon-web",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "server",
       "type": "boolean"
@@ -37,7 +37,7 @@
       "owner_crate": "axon-services",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "pipeline",
       "type": "integer"
@@ -50,7 +50,7 @@
       "owner_crate": "axon-services",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "pipeline",
       "type": "integer"
@@ -63,7 +63,7 @@
       "owner_crate": "axon-jobs",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "jobs",
       "type": "integer"
@@ -76,7 +76,7 @@
       "owner_crate": "axon-jobs",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "jobs",
       "type": "integer"
@@ -89,7 +89,7 @@
       "owner_crate": "axon-services",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "sources",
       "type": "boolean"
@@ -102,7 +102,7 @@
       "owner_crate": "axon-services",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "sources",
       "type": "enum"
@@ -115,7 +115,7 @@
       "owner_crate": "axon-services",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "sources",
       "type": "enum"
@@ -128,7 +128,7 @@
       "owner_crate": "axon-jobs",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "watch",
       "type": "integer"
@@ -141,7 +141,7 @@
       "owner_crate": "axon-jobs",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "watch",
       "type": "integer"
@@ -149,7 +149,7 @@
     {
       "default": 128,
       "description": "Maximum chunks per embedding request.",
-      "env_key": null,
+      "env_key": "AXON_EMBEDDING_BATCH_SIZE",
       "key": "providers.embedding.batch_size",
       "owner_crate": "axon-embedding",
       "removed": false,
@@ -167,7 +167,7 @@
       "owner_crate": "axon-embedding",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "integer"
@@ -180,7 +180,7 @@
       "owner_crate": "axon-jobs",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "integer"
@@ -193,7 +193,7 @@
       "owner_crate": "axon-vectors",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "integer"
@@ -206,7 +206,7 @@
       "owner_crate": "axon-vectors",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "integer"
@@ -214,12 +214,12 @@
     {
       "default": 4,
       "description": "Global LLM completions.",
-      "env_key": null,
+      "env_key": "AXON_LLM_COMPLETION_CONCURRENCY",
       "key": "providers.llm.completion_concurrency",
       "owner_crate": "axon-llm",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "integer"
@@ -232,7 +232,7 @@
       "owner_crate": "axon-adapters",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "enum"
@@ -245,7 +245,7 @@
       "owner_crate": "axon-retrieval",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "retrieval",
       "type": "integer"
@@ -258,7 +258,7 @@
       "owner_crate": "axon-retrieval",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "retrieval",
       "type": "integer"
@@ -271,7 +271,7 @@
       "owner_crate": "axon-retrieval",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "retrieval",
       "type": "integer"
@@ -284,7 +284,7 @@
       "owner_crate": "axon-adapters",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "crawl",
       "type": "integer"
@@ -297,7 +297,7 @@
       "owner_crate": "axon-adapters",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "crawl",
       "type": "boolean"
@@ -310,7 +310,7 @@
       "owner_crate": "axon-memory",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "memory",
       "type": "boolean"
@@ -323,7 +323,7 @@
       "owner_crate": "axon-memory",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "memory",
       "type": "integer"
@@ -336,7 +336,7 @@
       "owner_crate": "axon-graph",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "graph",
       "type": "boolean"
@@ -349,7 +349,7 @@
       "owner_crate": "axon-prune",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "prune",
       "type": "integer"
@@ -362,7 +362,7 @@
       "owner_crate": "axon-observe",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "observability",
       "type": "enum"
@@ -375,7 +375,7 @@
       "owner_crate": "axon-authz",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "security",
       "type": "boolean"
@@ -440,7 +440,7 @@
         "path": "docs/pipeline-unification/schemas/config-schema.md"
       },
       {
-        "checksum": "sha256:db1e13e7a3d88268e9689776efce9f5b966739d80f90b16080087ff84a12534f",
+        "checksum": "sha256:81a44a53f2bd9f509d229e243e2026405e7fe93902adf2a3c49ed9a55a4d6b2b",
         "kind": "rust_module",
         "path": "xtask/src/schemas/config_schema_registry.rs"
       }

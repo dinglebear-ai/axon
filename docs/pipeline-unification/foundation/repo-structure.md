@@ -159,25 +159,31 @@ crates/axon-error/src/
 
 ### `axon-api`
 
+**Reflects the crate's actual shipped `pub mod` surface (synced 2026-07-12
+from `crates/axon-api/src/lib.rs`), not this contract's minimal target list —
+`axon-api` is one of five pre-existing crates that keep their
+current-behavior module surface until the #298 cutover. See
+`docs/pipeline-unification/foundation/crate-structure.md`'s `axon-api`
+section and `xtask/src/checks/crate_contracts_spec.rs`.**
+
 ```text
 crates/axon-api/src/
   lib.rs
-  envelope.rs
-  error.rs
+  contract.rs
+  diff.rs
+  explain.rs
+  ingest.rs
+  job_dto.rs
+  job_progress.rs
+  job_status.rs
+  mcp_schema.rs
+  migration.rs
+  purge.rs
+  reset.rs
+  result.rs
+  schema_registry.rs
+  service_job.rs
   source.rs
-  job.rs
-  progress.rs
-  capability.rs
-  provider.rs
-  document.rs
-  graph.rs
-  memory.rs
-  retrieval.rs
-  prune.rs
-  artifact.rs
-  config.rs
-  schema.rs
-  testing.rs
 ```
 
 ### `axon-core`
@@ -352,10 +358,26 @@ crates/axon-retrieval/src/{lib.rs,engine.rs,plan.rs,query.rs,filter.rs,rank.rs,c
 crates/axon-llm/src/{lib.rs,provider.rs,capability.rs,completion.rs,stream.rs,prompt.rs,openai_compat.rs,codex.rs,gemini.rs,fake.rs,testing.rs}
 crates/axon-prune/src/{lib.rs,plan.rs,executor.rs,debt.rs,generation.rs,orphan.rs,dedupe.rs,receipt.rs,safety.rs,testing.rs}
 crates/axon-jobs/src/{lib.rs,store.rs,sqlite.rs,migration.rs,runtime.rs,job.rs,attempt.rs,event.rs,heartbeat.rs,scheduler.rs,watch.rs,worker.rs,reservation.rs,recovery.rs,testing.rs}
-crates/axon-services/src/{lib.rs,context.rs,source.rs,map.rs,extract.rs,ask.rs,query.rs,retrieve.rs,search.rs,memory.rs,graph.rs,jobs.rs,providers.rs,config.rs,status.rs,prune.rs,testing.rs}
-crates/axon-mcp/src/{lib.rs,server.rs,tool_model.rs,schema.rs,handler.rs,auth.rs,progress.rs,error.rs,testing.rs}
-crates/axon-web/src/{lib.rs,router.rs,state.rs,routes.rs,openapi.rs,sse.rs,auth.rs,health.rs,assets.rs,error.rs,testing.rs}
-crates/axon-cli/src/{lib.rs,app.rs,args.rs,commands.rs,render.rs,progress.rs,json.rs,exit.rs,help.rs,config.rs,testing.rs}
+```
+
+The four transport-adjacent crates below (`axon-services`, `axon-mcp`,
+`axon-web`, `axon-cli`) are, along with `axon-api` above, the five
+pre-existing crates that keep their current-behavior module surface until
+the #298 cutover — these lines reflect their actual shipped `pub mod`
+surface (synced 2026-07-12 from each crate's `src/lib.rs`), not this
+contract's minimal target list. See
+`docs/pipeline-unification/foundation/crate-structure.md`'s per-crate
+sections and `xtask/src/checks/crate_contracts_spec.rs`. `pub(crate) mod`
+internals in `axon-services` (`web_source`, `git_source`, `feed_source`,
+`reddit_source`, `registry_source`, `sessions_source`, `local_source`,
+`contract_write`) and the private `cors` module in `axon-mcp` are
+intentionally excluded — they aren't public API.
+
+```text
+crates/axon-services/src/{lib.rs,action_api.rs,artifacts.rs,brand.rs,client_contract.rs,code_search_watch.rs,config.rs,config_snapshot_hash.rs,context.rs,crawl.rs,crawl_sync.rs,debug.rs,diff.rs,document.rs,embed.rs,endpoints.rs,events.rs,extract.rs,feed_acquire.rs,feed_target.rs,freshness.rs,git_acquire.rs,graph.rs,ingest.rs,jobs.rs,map.rs,memory.rs,migrate.rs,mobile_sessions.rs,prune.rs,query.rs,reddit_acquire.rs,reddit_target.rs,refresh.rs,registry_acquire.rs,reset.rs,runtime.rs,scrape.rs,screenshot.rs,search.rs,search_crawl.rs,service_traits.rs,sessions.rs,sessions_legacy.rs,sessions_target.rs,setup.rs,source.rs,source_jobs.rs,summarize.rs,sync.rs,system.rs,transport.rs,types.rs,watch.rs,youtube_acquire.rs,youtube_target.rs}
+crates/axon-mcp/src/{lib.rs,auth.rs,schema.rs,schema_registry.rs,server.rs}
+crates/axon-web/src/{lib.rs,auth.rs,health.rs,metrics.rs,panel_first_run.rs,panel_stack.rs,schema_registry.rs,security.rs,server.rs,static_assets.rs}
+crates/axon-cli/src/{lib.rs,commands.rs,json.rs,schema_registry.rs,ui.rs}
 ```
 
 ## Generated and Fixture Directories

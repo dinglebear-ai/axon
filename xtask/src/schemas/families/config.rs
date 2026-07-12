@@ -71,8 +71,8 @@ fn config_key_records() -> Vec<Value> {
                 "env_key": key.env_override,
                 "owner_crate": key.owner_crate,
                 "description": key.description,
-                "secret": false,
-                "restart_required": false,
+                "secret": key.secret,
+                "restart_required": key.restart_required,
                 "removed": false,
                 "replacement": Value::Null
             })

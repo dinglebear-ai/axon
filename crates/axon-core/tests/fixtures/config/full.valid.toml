@@ -1,0 +1,87 @@
+# Full valid config.toml fixture — touches all 15 required top-level
+# sections from docs/pipeline-unification/configuration/config-contract.md
+# and xtask/src/schemas/config_schema_registry.rs::REQUIRED_CONFIG_SECTIONS.
+#
+# Every key below is a real field on the current wire format
+# (crates/axon-core/src/config/parse/toml_config/raw.rs::RawTomlConfig and
+# its per-section Raw*Section structs), verified to parse via the real
+# loader (wired in
+# crates/axon-core/src/config/parse/toml_config_tests.rs). `memory`,
+# `graph`, `artifacts`, `prune`, `observability`, and `security` parse
+# (and reject unknown keys) but are not yet wired to a runtime knob — see
+# raw.rs's doc comment.
+#
+# NOTE (2026-07-12 alignment audit, bead axon_rust-ldozg): two keys named in
+# the contract's "Required Config Keys" table do not exist on the real
+# section structs and are intentionally NOT used here — `jobs` has no
+# `provider-reservation-timeout-secs` field, and `prune` has no
+# `retention-days.jobs` field. Using either would fail to parse. Flagged as
+# a genuine contract/implementation drift for follow-up, not fixed by this
+# fixture.
+
+[server]
+default-collection = "axon"
+json-pretty = false
+
+[sources]
+embed-by-default = true
+default-scope-web = "site"
+default-scope-local = "directory"
+
+[pipeline]
+max-active-source-jobs = 4
+max-active-interactive-jobs = 8
+
+[watch]
+tick-secs = 15
+lease-secs = 300
+
+[jobs]
+heartbeat-secs = 15
+
+[providers.embedding]
+batch-size = 128
+max-concurrent-requests = 4
+interactive-reserved-requests = 1
+
+[providers.vector]
+write-concurrency = 4
+read-concurrency = 16
+
+[providers.llm]
+completion-concurrency = 4
+
+[providers.search]
+default = "searxng-then-tavily"
+
+[retrieval]
+limit = 10
+hybrid-candidates = 100
+ask-hybrid-candidates = 150
+
+[ask]
+chunk-limit = 5
+candidate-limit = 50
+
+[crawl]
+max-pages = 2000
+respect-robots = false
+
+[memory]
+decay-enabled = true
+review-interval-days = 30
+
+[graph]
+enabled = true
+
+[artifacts]
+retention-days = 14
+
+[prune]
+dry-run-default = true
+
+[observability]
+log-level = "info"
+
+[security]
+allow-private-network-fetch = false
