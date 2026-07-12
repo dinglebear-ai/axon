@@ -70,13 +70,9 @@ pub async fn search(
         .iter()
         .any(|m| m.record.status == MemoryStatus::Contradicted)
     {
-        warnings.push(SourceWarning {
-            code: "memory.contradicted".to_string(),
-            severity: Severity::Warning,
-            message: "results include contradicted memories".to_string(),
-            source_item_key: None,
-            retryable: false,
-        });
+        warnings.push(contradiction_warning(
+            "results include contradicted memories",
+        ));
     }
 
     Ok(MemorySearchResult {
@@ -131,13 +127,43 @@ pub async fn context(
     }
 
     let context = fragments.join("\n");
+    // Contract "Recall rules": "contradicted memories return only with
+    // warning unless resolved" — this is a general recall rule, not specific
+    // to `search()`. `context_visible` deliberately does not filter
+    // `Contradicted` out (only forgotten/superseded/archived are in the
+    // contract's default context-exclusion list), so — matching `search()`
+    // above — flag it with the same `memory.contradicted` warning instead of
+    // silently including it.
+    let mut warnings = Vec::new();
+    if memories
+        .iter()
+        .any(|record| record.status == MemoryStatus::Contradicted)
+    {
+        warnings.push(contradiction_warning(
+            "context includes contradicted memories",
+        ));
+    }
+
     Ok(MemoryContextResult {
         token_estimate: estimate_tokens(&context),
         context,
         memories,
         exclusions,
-        warnings: Vec::new(),
+        warnings,
     })
+}
+
+/// Shared `memory.contradicted` warning for recall paths that include
+/// contradicted memories (contract "Recall rules": "contradicted memories
+/// return only with warning unless resolved").
+fn contradiction_warning(message: &str) -> SourceWarning {
+    SourceWarning {
+        code: "memory.contradicted".to_string(),
+        severity: Severity::Warning,
+        message: message.to_string(),
+        source_item_key: None,
+        retryable: false,
+    }
 }
 
 /// The current review queue (open reviews joined to their memory records).
