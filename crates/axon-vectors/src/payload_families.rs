@@ -79,7 +79,23 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
     ),
     (
         "web",
-        &["web_title", "web_domain", "web_status_code", "web_depth"],
+        &[
+            "web_title",
+            "web_domain",
+            "web_status_code",
+            "web_depth",
+            // Off-band structured-data extraction (JSON-LD / `__NEXT_DATA__` /
+            // SvelteKit island) captured on `SourceDocument::structured_payload`
+            // by the web source adapter and projected onto every chunk of the
+            // document by `axon_document::preparer::project_structured_payload_metadata`
+            // (markdown-routed web docs never otherwise touch that field --
+            // see that function's doc comment). `web_structured_kind` is the
+            // schema.org/JSON-LD type when known, else the coarser extraction
+            // mechanism (`jsonld`/`next_data`/`sveltekit`); `web_structured_blob`
+            // is the bounded (<=64 KiB) JSON-stringified payload.
+            "web_structured_kind",
+            "web_structured_blob",
+        ],
     ),
     (
         "package",
