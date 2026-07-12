@@ -14,6 +14,7 @@ pub mod router;
 pub mod scope;
 pub mod source_id;
 pub mod testing;
+mod web_options;
 
 pub use alias::AliasRecord;
 pub use authority::{AuthorityRecord, InMemoryAuthorityRegistry};
