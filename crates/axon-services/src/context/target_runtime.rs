@@ -66,8 +66,30 @@ fn build_tei_provider(cfg: &Config, identity: &EmbeddingIdentity) -> TeiEmbeddin
         max_batch_inputs: cfg.tei_max_client_batch_size as u32,
         max_input_tokens: MAX_INPUT_TOKENS,
         max_batch_tokens: MAX_BATCH_TOKENS,
-        instruction_support: InstructionSupport::QueryAndDocument,
+        instruction_support: query_instruction_support(cfg),
+        retry_backoff_ms: cfg.embed_tei_retry_backoff_ms,
+        max_attempts: tei_max_attempts(cfg),
     })
+}
+
+/// Total TEI embed attempts per request = `cfg.tei_max_retries + 1` (1
+/// initial attempt plus the configured retry count). Was previously a
+/// hardcoded `MAX_ATTEMPTS = 6` constant inside `axon-embedding::tei`,
+/// completely disconnected from `[providers.embedding].max-retries`/
+/// `TEI_MAX_RETRIES` — setting either did nothing to the real retry budget.
+fn tei_max_attempts(cfg: &Config) -> usize {
+    cfg.tei_max_retries.saturating_add(1).max(1)
+}
+
+/// `[providers.embedding].query-instruction-enabled` gate: `false` forces
+/// `InstructionSupport::None` at construction regardless of the model's real
+/// capability, disabling the query/document instruction prefix entirely.
+fn query_instruction_support(cfg: &Config) -> InstructionSupport {
+    if cfg.embed_tei_query_instruction_enabled {
+        InstructionSupport::QueryAndDocument
+    } else {
+        InstructionSupport::None
+    }
 }
 
 /// Resolved embedding model + dimensions used to size the collection, seed the
@@ -91,7 +113,9 @@ async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
         max_batch_inputs: cfg.tei_max_client_batch_size as u32,
         max_input_tokens: MAX_INPUT_TOKENS,
         max_batch_tokens: MAX_BATCH_TOKENS,
-        instruction_support: InstructionSupport::QueryAndDocument,
+        instruction_support: query_instruction_support(cfg),
+        retry_backoff_ms: cfg.embed_tei_retry_backoff_ms,
+        max_attempts: tei_max_attempts(cfg),
     });
     match probe.derive_embedding_identity().await {
         Ok(derived) => {
@@ -135,12 +159,16 @@ const MAX_INPUT_TOKENS: u32 = 8192;
 /// Max tokens pooled into one TEI embed batch.
 const MAX_BATCH_TOKENS: u32 = 65_536;
 
-/// Reservation capacities mirror the `#[cfg(test)]` `new()` constructor so the
-/// production runtime behaves identically to the fixtures exercised in tests.
-const RESERVATION_CAPACITY: u32 = 2;
-const RESERVATION_INTERACTIVE_RESERVE: u32 = 1;
-const RESERVATION_COOLDOWN_AFTER_FAILURES: u32 = 1;
-const RESERVATION_COOLDOWN_SECS: u64 = 30;
+/// Vector reservation capacities mirror the `#[cfg(test)]` `new()` constructor
+/// so the production vector-store gate behaves identically to the fixtures
+/// exercised in tests. `[providers.vector]` has no equivalent config-driven
+/// capacity/reserve knobs yet, so these stay hardcoded for the vector pool
+/// only — the embedding pool below is now driven entirely by
+/// `[providers.embedding]` config (see `embedding_reservation_config`).
+const VECTOR_RESERVATION_CAPACITY: u32 = 2;
+const VECTOR_RESERVATION_INTERACTIVE_RESERVE: u32 = 1;
+const VECTOR_RESERVATION_COOLDOWN_AFTER_FAILURES: u32 = 1;
+const VECTOR_RESERVATION_COOLDOWN_SECS: u64 = 30;
 
 impl TargetLocalSourceRuntime {
     /// Build the production target local-source runtime from [`Config`].
@@ -190,14 +218,19 @@ impl TargetLocalSourceRuntime {
             ledger: Arc::new(ledger),
             embedding_provider: Arc::new(embedding_provider),
             vector_store: Arc::new(vector_store),
-            embedding_reservations: Arc::new(ProviderReservationManager::new(reservation_config(
-                embedding_provider_id.clone(),
-                ProviderKind::Embedding,
-            ))),
-            vector_reservations: Arc::new(ProviderReservationManager::new(reservation_config(
-                vector_provider_id.clone(),
-                ProviderKind::Vector,
-            ))),
+            embedding_reservations: Arc::new(ProviderReservationManager::new(
+                embedding_reservation_config(cfg, embedding_provider_id.clone()),
+            )),
+            vector_reservations: Arc::new(ProviderReservationManager::new(
+                ProviderReservationConfig {
+                    provider_id: vector_provider_id.clone(),
+                    provider_kind: ProviderKind::Vector,
+                    capacity: VECTOR_RESERVATION_CAPACITY,
+                    interactive_reserve: VECTOR_RESERVATION_INTERACTIVE_RESERVE,
+                    cooldown_after_failures: VECTOR_RESERVATION_COOLDOWN_AFTER_FAILURES,
+                    cooldown_secs: VECTOR_RESERVATION_COOLDOWN_SECS,
+                },
+            )),
             embedding_provider_id,
             vector_provider_id,
             embedding_model: identity.model,
@@ -208,18 +241,31 @@ impl TargetLocalSourceRuntime {
     }
 }
 
-/// Reservation config mirroring the capacities of the `#[cfg(test)]` `new()`.
-fn reservation_config(
+/// Embedding reservation gate config, driven end-to-end by
+/// `[providers.embedding]`: `capacity` from `max-concurrent-requests`
+/// (`cfg.embed_tei_max_concurrent`) and `interactive_reserve` from
+/// `interactive-reserved-requests` (`cfg.embed_tei_interactive_reserved_requests`).
+/// Previously both were hardcoded constants (`capacity: 2, interactive_reserve:
+/// 1`) copied from the `#[cfg(test)]` fixture default and completely
+/// disconnected from config — see axon_rust-ldozg.
+///
+/// `background-max-concurrent-requests`/`maintenance-max-concurrent-requests`
+/// are NOT separately enforced here: `ProviderReservationManager` only
+/// implements a two-tier interactive/non-interactive gate (this `capacity`
+/// minus this `interactive_reserve`), so background and maintenance
+/// priorities currently share one combined non-interactive ceiling. See the
+/// doc comment on `Config::embed_tei_background_max_concurrent_requests`.
+fn embedding_reservation_config(
+    cfg: &Config,
     provider_id: ProviderId,
-    provider_kind: ProviderKind,
 ) -> ProviderReservationConfig {
     ProviderReservationConfig {
         provider_id,
-        provider_kind,
-        capacity: RESERVATION_CAPACITY,
-        interactive_reserve: RESERVATION_INTERACTIVE_RESERVE,
-        cooldown_after_failures: RESERVATION_COOLDOWN_AFTER_FAILURES,
-        cooldown_secs: RESERVATION_COOLDOWN_SECS,
+        provider_kind: ProviderKind::Embedding,
+        capacity: cfg.embed_tei_max_concurrent as u32,
+        interactive_reserve: cfg.embed_tei_interactive_reserved_requests as u32,
+        cooldown_after_failures: cfg.embed_tei_cooldown_after_failures as u32,
+        cooldown_secs: cfg.embed_tei_cooldown_secs,
     }
 }
 
