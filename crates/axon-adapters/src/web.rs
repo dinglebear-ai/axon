@@ -9,6 +9,7 @@
 //! on this path.
 
 mod acquire;
+mod chrome_fallback;
 mod manifest_items;
 mod metadata;
 mod options;
@@ -63,7 +64,7 @@ impl SourceAdapter for WebSourceAdapter {
         validate_adapter(plan)?;
         let items = match plan.route.scope {
             SourceScope::Map => map_manifest_items(plan)?,
-            SourceScope::Page => vec![page_manifest_item(plan)?],
+            SourceScope::Page => vec![page_manifest_item(plan, self.fetch.as_ref()).await?],
             _ => site_discovery::crawl_manifest_items(plan).await?,
         };
         Ok(SourceManifest {
