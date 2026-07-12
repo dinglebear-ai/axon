@@ -1,7 +1,7 @@
 use super::{CollectorConfig, PageOutcome, write_page_to_manifest};
-use crate::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
-use crate::engine::{CrawlDiagnostic, CrawlSummary};
-use crate::manifest::ManifestEntry;
+use crate::web_engine::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
+use crate::web_engine::engine::{CrawlDiagnostic, CrawlSummary};
+use crate::web_engine::manifest::ManifestEntry;
 use axon_core::content::url_to_stable_filename;
 use axon_core::logging::{log_info, log_warn};
 use spider_transformations::transformation::content::SelectorConfiguration;

@@ -90,12 +90,21 @@ async fn run_crawl_and_backfill(
     url: &str,
     job_id: uuid::Uuid,
     shutdown: &CancellationToken,
-) -> Result<(axon_crawl::engine::CrawlSummary, std::path::PathBuf), ApiError> {
-    let job_output_dir =
-        axon_crawl::predict_crawl_output_dir(&effective_cfg.output_dir, url, &job_id.to_string());
+) -> Result<
+    (
+        axon_adapters::web_engine::engine::CrawlSummary,
+        std::path::PathBuf,
+    ),
+    ApiError,
+> {
+    let job_output_dir = axon_adapters::web_engine::predict_crawl_output_dir(
+        &effective_cfg.output_dir,
+        url,
+        &job_id.to_string(),
+    );
     let id_str = job_id.to_string();
 
-    let (mut summary, seen_urls) = axon_crawl::engine::run_crawl_once(
+    let (mut summary, seen_urls) = axon_adapters::web_engine::engine::run_crawl_once(
         effective_cfg,
         url,
         effective_cfg.render_mode,
@@ -135,10 +144,10 @@ async fn run_backfill(
     url: &str,
     job_output_dir: &std::path::Path,
     seen_urls: &std::collections::HashSet<String>,
-    summary: &mut axon_crawl::engine::CrawlSummary,
+    summary: &mut axon_adapters::web_engine::engine::CrawlSummary,
 ) {
     let sitemap_urls = if effective_cfg.discover_sitemaps {
-        match axon_crawl::engine::discover_sitemap_urls(effective_cfg, url).await {
+        match axon_adapters::web_engine::engine::discover_sitemap_urls(effective_cfg, url).await {
             Ok(discovery) => discovery.urls,
             Err(error) => {
                 log_warn(&format!(
@@ -151,7 +160,7 @@ async fn run_backfill(
         Vec::new()
     };
     let llms_urls = if effective_cfg.discover_llms_txt {
-        match axon_crawl::engine::discover_llms_txt_urls(effective_cfg, url).await {
+        match axon_adapters::web_engine::engine::discover_llms_txt_urls(effective_cfg, url).await {
             Ok(urls) => urls,
             Err(error) => {
                 log_warn(&format!(
@@ -168,13 +177,15 @@ async fn run_backfill(
     let merged: Vec<String> = sitemap_urls
         .into_iter()
         .chain(llms_urls)
-        .filter_map(|candidate| axon_crawl::engine::canonicalize_url_for_dedupe(&candidate))
+        .filter_map(|candidate| {
+            axon_adapters::web_engine::engine::canonicalize_url_for_dedupe(&candidate)
+        })
         .filter(|candidate| seen.insert(candidate.clone()))
         .collect();
     if merged.is_empty() {
         return;
     }
-    if let Err(error) = axon_crawl::engine::append_candidate_backfill(
+    if let Err(error) = axon_adapters::web_engine::engine::append_candidate_backfill(
         effective_cfg,
         job_output_dir,
         seen_urls,
@@ -197,7 +208,7 @@ async fn enqueue_embed_handoff(
     store: &SqliteUnifiedJobStore,
     effective_cfg: &Config,
     job_output_dir: &std::path::Path,
-    summary: &axon_crawl::engine::CrawlSummary,
+    summary: &axon_adapters::web_engine::engine::CrawlSummary,
     claimed: &UnifiedClaimedJob,
 ) {
     if !effective_cfg.embed || summary.markdown_files == 0 {

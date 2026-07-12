@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 use tokio::io::AsyncWriteExt;
 
-use crate::manifest::ManifestEntry;
+use crate::web_engine::manifest::ManifestEntry;
 
 use super::page::PageOutcome;
 

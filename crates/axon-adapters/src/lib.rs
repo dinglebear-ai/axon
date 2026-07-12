@@ -29,6 +29,7 @@ pub mod spec;
 pub mod testing;
 pub mod upload;
 pub mod web;
+pub mod web_engine;
 pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};

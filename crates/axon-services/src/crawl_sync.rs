@@ -7,14 +7,16 @@
 pub mod chrome_fallback;
 
 use crate::types::CrawlSyncResult;
+use axon_adapters::web_engine::engine::{
+    CrawlSummary, build_waf_diagnostics, run_crawl_once, run_sitemap_only, update_latest_reflink,
+};
+use axon_adapters::web_engine::manifest::{
+    ManifestEntry, read_manifest_data, read_manifest_urls, write_audit_diff,
+};
 use axon_core::config::{Config, ScrapeFormat};
 use axon_core::content::url_to_domain;
 use axon_core::logging::{log_done, log_warn};
 use axon_core::ui::{Spinner, color_enabled_public};
-use axon_crawl::engine::{
-    CrawlSummary, build_waf_diagnostics, run_crawl_once, run_sitemap_only, update_latest_reflink,
-};
-use axon_crawl::manifest::{ManifestEntry, read_manifest_data, read_manifest_urls, write_audit_diff};
 use chrome_fallback::maybe_chrome_fallback;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -140,8 +142,9 @@ async fn run_crawl_phase(
     start_url: &str,
     previous_manifest: Arc<HashMap<String, ManifestEntry>>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
-    let initial_mode = axon_crawl::chrome_bootstrap::resolve_initial_mode(cfg);
-    let chrome_bootstrap = axon_crawl::chrome_bootstrap::bootstrap_chrome_runtime(cfg).await;
+    let initial_mode = axon_adapters::web_engine::chrome_bootstrap::resolve_initial_mode(cfg);
+    let chrome_bootstrap =
+        axon_adapters::web_engine::chrome_bootstrap::bootstrap_chrome_runtime(cfg).await;
     for warning in &chrome_bootstrap.warnings {
         log_warn(&format!("[Chrome Bootstrap] {warning}"));
     }
@@ -198,7 +201,7 @@ async fn run_sitemap_backfill(
             .collect::<HashSet<String>>()
     };
     let spinner = Spinner::new("running sitemap backfill");
-    let backfill_stats = axon_crawl::engine::append_sitemap_backfill(
+    let backfill_stats = axon_adapters::web_engine::engine::append_sitemap_backfill(
         cfg,
         start_url,
         &cfg.output_dir,

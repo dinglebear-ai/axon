@@ -1,4 +1,4 @@
-use crate::engine::resolve_cdp_ws_url;
+use crate::web_engine::engine::resolve_cdp_ws_url;
 use axon_core::config::Config;
 use axon_core::http::parse_custom_headers;
 use axon_core::http::{axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url};

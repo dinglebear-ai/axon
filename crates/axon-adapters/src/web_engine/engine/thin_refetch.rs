@@ -1,5 +1,5 @@
 use super::{CrawlDiagnostic, CrawlSummary, canonicalize_url_for_dedupe};
-use crate::manifest::ManifestEntry;
+use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
 use axon_core::content::{build_selector_config, bytes_to_markdown, url_to_stable_filename};
 use axon_core::http::axon_ua;

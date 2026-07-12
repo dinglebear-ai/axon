@@ -40,7 +40,6 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // owns document preparation DTO adapters, chunk routing profiles, fake
     // preparers, and sidecar tests.
     "crates/axon-document",
-    "crates/axon-crawl",
     // axon-vector was deleted outright (issue #298 finale, clean break, not a
     // staged cutover): its last real dependent, `ask --explain`'s legacy
     // reranker, was ported onto `axon-retrieval`'s hybrid RRF hits (see
@@ -53,7 +52,8 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // staged cutover) -- see
     // docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md.
     // Its two genuinely self-contained pieces (extract_sync, generic
-    // scrape's HTTP-fetch fallback) moved to axon-services/axon-crawl.
+    // scrape's HTTP-fetch fallback) moved to axon-services/axon-crawl (the
+    // latter itself since relocated -- see the axon-crawl note below).
     // axon-ingest was likewise deleted outright (issue #298 cleanup, not a
     // staged cutover): its still-live pieces (sessions machinery, ingest
     // orchestration/classification) moved to axon-services (sessions_legacy,
@@ -61,6 +61,12 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // provider-orchestration code it used to own for github/gitlab/gitea/
     // generic_git/reddit/youtube/rss was deleted outright in the earlier
     // Phase 12 clean break.
+    // axon-crawl was deleted outright (issue #298 Wave 2a, mechanical move not
+    // a rewrite): its Spider-based HTTP/Chrome crawl engine, manifest,
+    // sitemap, and screenshot modules relocated verbatim into
+    // `crates/axon-adapters/src/web_engine/` (re-exported at
+    // `axon_adapters::web_engine::*`), dropping the temporary
+    // axon-adapters -> axon-crawl dependency Wave 1a introduced.
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

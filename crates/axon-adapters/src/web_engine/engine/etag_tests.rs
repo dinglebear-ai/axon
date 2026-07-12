@@ -1,6 +1,6 @@
 use super::*;
-use crate::engine::canonicalize_url_for_dedupe;
-use crate::manifest::ManifestEntry;
+use crate::web_engine::engine::canonicalize_url_for_dedupe;
+use crate::web_engine::manifest::ManifestEntry;
 use axon_core::http::LoopbackGuard;
 use std::collections::{HashMap, HashSet};
 

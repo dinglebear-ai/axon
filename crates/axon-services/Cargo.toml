@@ -11,7 +11,6 @@ axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
-axon-crawl = { path = "../axon-crawl" }
 axon-memory = { path = "../axon-memory" }
 axon-jobs = { path = "../axon-jobs" }
 axon-observe = { path = "../axon-observe" }

@@ -18,7 +18,6 @@ members = [
     "crates/axon-retrieval",
     "crates/axon-llm",
     "crates/axon-prune",
-    "crates/axon-crawl",
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

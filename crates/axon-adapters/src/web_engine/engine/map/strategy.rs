@@ -211,7 +211,7 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
         async {
             if cfg.discover_llms_txt {
                 // warn-and-continue: never fail the map call on llms.txt errors.
-                match crate::engine::discover_llms_txt_urls(cfg, start_url).await {
+                match crate::web_engine::engine::discover_llms_txt_urls(cfg, start_url).await {
                     Ok(urls) => urls,
                     Err(e) => {
                         log_warn(&format!(
