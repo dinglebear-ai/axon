@@ -421,7 +421,17 @@ pub fn config_key_registry() -> Vec<ConfigKeySpec> {
     RAW_CONFIG_KEYS
         .iter()
         .map(
-            |&(key, section, kind, default_json, owner_crate, env_override, secret, restart_required, description)| {
+            |&(
+                key,
+                section,
+                kind,
+                default_json,
+                owner_crate,
+                env_override,
+                secret,
+                restart_required,
+                description,
+            )| {
                 debug_assert!(
                     REQUIRED_CONFIG_SECTIONS.contains(&section),
                     "config key {key} has section {section} outside the 20-section contract"

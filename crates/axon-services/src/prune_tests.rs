@@ -6,9 +6,9 @@ use axon_api::source::ids::{BatchId, JobId, SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneSelector, PruneStep, PruneTargetKind};
 use axon_api::source::{
     AdapterRef, ApiError, AuthorityLevel, CollectionSpec, ContentKind, ErrorStage, ItemKind,
-    LifecycleStatus, ManifestItem, MetadataMap, ProviderId, PublishGenerationRequest,
-    PublishState, SourceCounts, SourceItemKey, SourceKind, SourceManifest, SourceScope,
-    SourceSummary, Timestamp, VectorPointBatch, VectorStoreDeleteResult, VectorStoreWriteResult,
+    LifecycleStatus, ManifestItem, MetadataMap, ProviderId, PublishGenerationRequest, PublishState,
+    SourceCounts, SourceItemKey, SourceKind, SourceManifest, SourceScope, SourceSummary, Timestamp,
+    VectorPointBatch, VectorStoreDeleteResult, VectorStoreWriteResult,
 };
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::boundary::FakeJobWatchStore;
@@ -528,7 +528,9 @@ fn ledger_manifest(source_id: &str, generation: &SourceGenerationId) -> SourceMa
 /// Register `source_id` in a fresh `FakeLedgerStore` and commit its first
 /// generation end to end (create → manifest → complete → publish), returning
 /// the ledger plus the real, ledger-assigned committed generation id.
-async fn ledger_with_committed_generation(source_id: &str) -> (FakeLedgerStore, SourceGenerationId) {
+async fn ledger_with_committed_generation(
+    source_id: &str,
+) -> (FakeLedgerStore, SourceGenerationId) {
     let ledger = FakeLedgerStore::new();
     ledger
         .upsert_source(ledger_source_summary(source_id))

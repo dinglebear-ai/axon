@@ -42,7 +42,10 @@ impl core::fmt::Display for PruneDenied {
                 write!(f, "destructive prune requires explicit confirmation")
             }
             PruneDenied::Unsupported { selector, guidance } => {
-                write!(f, "prune selector {selector} is not supported yet: {guidance}")
+                write!(
+                    f,
+                    "prune selector {selector} is not supported yet: {guidance}"
+                )
             }
         }
     }

@@ -35,7 +35,10 @@ pub(super) async fn embed_session_docs(
 ) -> Result<usize, Box<dyn Error>> {
     let mut by_collection: HashMap<String, Vec<SessionDoc>> = HashMap::new();
     for sd in docs {
-        by_collection.entry(sd.collection.clone()).or_default().push(sd);
+        by_collection
+            .entry(sd.collection.clone())
+            .or_default()
+            .push(sd);
     }
 
     let mut total = 0;
@@ -45,12 +48,8 @@ pub(super) async fn embed_session_docs(
 
         match contract_write::embed_and_upsert_documents(cfg, &collection, prepared).await {
             Ok(summary) => {
-                let chunks_embedded = embedded_chunks_after_prep_failures(
-                    summary,
-                    prep_failed,
-                    strict,
-                    &collection,
-                )?;
+                let chunks_embedded =
+                    embedded_chunks_after_prep_failures(summary, prep_failed, strict, &collection)?;
                 total += chunks_embedded;
                 if strict && doc_count > 0 && chunks_embedded == 0 {
                     return Err(format!(

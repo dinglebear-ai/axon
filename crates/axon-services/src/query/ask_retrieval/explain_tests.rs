@@ -41,7 +41,10 @@ fn selected_candidates_are_kept_and_ranked() {
             AskExplainSelectionDecisionKind::SelectedTopChunk
         );
         assert_eq!(candidate.selected_context_rank, Some(idx + 1));
-        assert_eq!(candidate.insertion_mode, Some(AskExplainInsertionMode::TopChunk));
+        assert_eq!(
+            candidate.insertion_mode,
+            Some(AskExplainInsertionMode::TopChunk)
+        );
         assert_eq!(candidate.retrieval_score, candidate.rerank_score);
     }
 
@@ -67,7 +70,14 @@ fn selected_candidates_are_kept_and_ranked() {
 fn candidate_trace_truncates_at_limit() {
     let cfg = Config::test_default();
     let hits: Vec<_> = (0..(CANDIDATE_TRACE_LIMIT + 5))
-        .map(|i| hit(&format!("https://example.com/{i}"), &format!("c{i}"), 0.5, "body"))
+        .map(|i| {
+            hit(
+                &format!("https://example.com/{i}"),
+                &format!("c{i}"),
+                0.5,
+                "body",
+            )
+        })
         .collect();
     let trace = build_explain_trace(&cfg, "q", &hits, 3, "Sources:\n...");
 
@@ -86,10 +96,16 @@ fn context_final_source_order_matches_selected_prefix() {
     let trace = build_explain_trace(&cfg, "q", &hits, 1, "Sources:\nabc");
 
     assert_eq!(trace.context.final_source_order.len(), 1);
-    assert_eq!(trace.context.final_source_order[0].url, "https://example.com/a");
+    assert_eq!(
+        trace.context.final_source_order[0].url,
+        "https://example.com/a"
+    );
     assert_eq!(trace.context.final_source_order[0].source_id, "S1");
     assert!(trace.context.truncated_by_budget);
-    assert_eq!(trace.context.context_chars_used, "Sources:\nabc".chars().count());
+    assert_eq!(
+        trace.context.context_chars_used,
+        "Sources:\nabc".chars().count()
+    );
 }
 
 #[test]

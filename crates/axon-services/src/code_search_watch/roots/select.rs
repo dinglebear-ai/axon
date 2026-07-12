@@ -168,12 +168,10 @@ fn should_include_code_search_file(path: &Path, root: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(root) else {
         return false;
     };
-    if rel.components().any(|component| {
-        component
-            .as_os_str()
-            .to_str()
-            .is_some_and(is_pruned_dir)
-    }) {
+    if rel
+        .components()
+        .any(|component| component.as_os_str().to_str().is_some_and(is_pruned_dir))
+    {
         return false;
     }
     let rel = rel.to_string_lossy().replace('\\', "/");

@@ -146,9 +146,7 @@ pub enum VectorDeleteSelector {
     },
     /// Delete every point in `collection`, keeping the (now-empty) collection
     /// itself. Distinct from `axon reset`, which also wipes SQLite/job state.
-    Collection {
-        collection: String,
-    },
+    Collection { collection: String },
     Document {
         collection: String,
         document_id: DocumentId,

@@ -88,7 +88,11 @@ async fn a_sink_failure_does_not_change_the_validation_result() {
 async fn validate_source_url_the_public_entrypoint_still_enforces_policy() {
     // Exercises the real production entrypoint (fresh TracingObservabilitySink)
     // used by git_acquire/feed_acquire/youtube_acquire.
-    assert!(validate_source_url("https://example.com/repo.git").await.is_ok());
+    assert!(
+        validate_source_url("https://example.com/repo.git")
+            .await
+            .is_ok()
+    );
     assert!(validate_source_url("http://127.0.0.1/").await.is_err());
 }
 

@@ -126,10 +126,7 @@ async fn estimate_collection_points(ctx: &ServiceContext, collection: &str) -> P
 
 /// Compute a real `PruneEstimate` for `selector` from ledger data. See
 /// [`prune_plan_estimated`] for what is and is not sizeable this way.
-async fn estimate_from_ledger(
-    ledger: &dyn LedgerStore,
-    selector: &PruneSelector,
-) -> PruneEstimate {
+async fn estimate_from_ledger(ledger: &dyn LedgerStore, selector: &PruneSelector) -> PruneEstimate {
     match selector {
         PruneSelector::Source { source_id } => {
             match ledger.committed_generation(source_id.clone()).await {

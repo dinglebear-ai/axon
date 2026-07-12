@@ -184,8 +184,9 @@ impl PruneTarget for DedupeExecTarget<'_> {
     }
 
     async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
-        let (duplicate_groups, deleted) =
-            dedupe_collection(self.cfg).await.map_err(|e| e.to_string())?;
+        let (duplicate_groups, deleted) = dedupe_collection(self.cfg)
+            .await
+            .map_err(|e| e.to_string())?;
         *self.out.lock().expect("dedupe mutex poisoned") = Some((duplicate_groups, deleted));
         Ok(StepExecution::deleted(deleted as u64))
     }

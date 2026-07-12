@@ -87,9 +87,7 @@ impl TavilySearchProvider {
                 self.error("search.timeout", err.to_string())
             }
             AgentError::Http(_) | AgentError::Search(SearchError::RequestFailed(_)) => {
-                self.health
-                    .record_failure("provider.transport", true)
-                    .await;
+                self.health.record_failure("provider.transport", true).await;
                 self.error("search.transport", err.to_string())
             }
             _ => {

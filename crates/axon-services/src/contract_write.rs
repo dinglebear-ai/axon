@@ -211,7 +211,11 @@ async fn embed_documents(
         }
     }
     embedding_provider
-        .embed(builder.build().map_err(|err| anyhow::anyhow!(err.to_string()))?)
+        .embed(
+            builder
+                .build()
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?,
+        )
         .await
         .map_err(|err| anyhow::anyhow!(err.to_string()))
 }
