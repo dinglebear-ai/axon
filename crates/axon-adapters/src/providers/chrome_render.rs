@@ -15,6 +15,14 @@
 //! then carries the raw HTML while `ScrapeResult.markdown` (always populated
 //! independent of `format`) carries the markdown conversion, so one
 //! `scrape_to_result` call fills both `RenderedResource.html` and `.markdown`.
+//!
+//! `RenderRequest.automation_script` (issue #298 Wave 2b regression 1,
+//! restoring a Wave 1a stub that unconditionally rejected it): resolved here
+//! into `Config::automation_script` and executed by
+//! `web_engine::scrape::scrape_to_result` — see that module's
+//! `apply_automation_scripts` for the actual Chrome-only execution gate.
+
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -86,6 +94,10 @@ impl ChromeRenderProvider {
             render_mode: map_render_mode(request.mode),
             format: ScrapeFormat::Html,
             request_timeout_ms: request.timeout_ms.or(self.config.default_timeout_ms),
+            automation_script: request
+                .automation_script
+                .as_ref()
+                .map(|artifact| automation_script_path(&artifact.uri)),
             ..Config::default()
         };
         if let Some(remote_url) = &self.config.chrome_remote_url {
@@ -93,6 +105,15 @@ impl ChromeRenderProvider {
         }
         cfg
     }
+}
+
+/// `RenderRequest.automation_script.uri` carries a local filesystem path (see
+/// `web::options::automation_script_ref`, which is the only current
+/// constructor for this field). Support an optional `file://` prefix
+/// defensively since `ArtifactRef.uri` is documented as a URI, not
+/// specifically a bare path.
+fn automation_script_path(uri: &str) -> PathBuf {
+    PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri))
 }
 
 pub(crate) fn map_render_mode(mode: RenderMode) -> CoreRenderMode {
@@ -138,13 +159,6 @@ pub(crate) fn classify_render_error(message: &str) -> RenderFailureClass {
 #[async_trait]
 impl RenderProvider for ChromeRenderProvider {
     async fn render(&self, request: RenderRequest) -> Result<RenderedResource> {
-        if request.automation_script.is_some() {
-            return Err(self.error(
-                "render.automation_script_unsupported",
-                "automation scripts are not yet supported by the single-page render provider",
-            ));
-        }
-
         let mut cfg = self.build_config(&request);
         if crate::web_engine::chrome_bootstrap::chrome_runtime_requested(&cfg) {
             let bootstrap =
@@ -183,26 +197,24 @@ impl RenderProvider for ChromeRenderProvider {
                     metadata: request.metadata,
                 })
             }
-            Err(message) => {
-                match classify_render_error(&message) {
-                    RenderFailureClass::Timeout => {
-                        self.health.record_failure("render.timeout", true).await;
-                        Err(self.error("render.timeout", message))
-                    }
-                    RenderFailureClass::RateLimited => {
-                        for _ in 0..HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES {
-                            self.health
-                                .record_failure("render.rate_limited", true)
-                                .await;
-                        }
-                        Err(self.error("render.rate_limited", message))
-                    }
-                    RenderFailureClass::Fatal => {
-                        self.health.record_failure("render.fatal", false).await;
-                        Err(self.error("render.fatal", message))
-                    }
+            Err(message) => match classify_render_error(&message) {
+                RenderFailureClass::Timeout => {
+                    self.health.record_failure("render.timeout", true).await;
+                    Err(self.error("render.timeout", message))
                 }
-            }
+                RenderFailureClass::RateLimited => {
+                    for _ in 0..HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES {
+                        self.health
+                            .record_failure("render.rate_limited", true)
+                            .await;
+                    }
+                    Err(self.error("render.rate_limited", message))
+                }
+                RenderFailureClass::Fatal => {
+                    self.health.record_failure("render.fatal", false).await;
+                    Err(self.error("render.fatal", message))
+                }
+            },
         }
     }
 
@@ -227,7 +239,11 @@ impl RenderProvider for ChromeRenderProvider {
                 timeout_ms: self.config.default_timeout_ms,
                 ..ProviderLimits::default()
             },
-            features: vec!["html".to_string(), "markdown".to_string()],
+            features: vec![
+                "html".to_string(),
+                "markdown".to_string(),
+                "automation_script".to_string(),
+            ],
             cooldown_until,
             last_error,
             reservation_policy: ReservationPolicy {
@@ -253,7 +269,7 @@ impl RenderProvider for ChromeRenderProvider {
                     max_pages_per_browser: 1,
                     max_page_lifetime_ms: self.config.default_timeout_ms.unwrap_or(30_000),
                 },
-                script_support: false,
+                script_support: true,
             }),
             credential: None,
         })
