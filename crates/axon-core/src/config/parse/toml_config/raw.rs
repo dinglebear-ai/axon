@@ -229,19 +229,19 @@ pub(in crate::config) struct RawEmbeddingSection {
     pub max_in_flight_inputs: Option<usize>,
     pub request_timeout_ms: Option<u64>,
     pub max_retries: Option<usize>,
-    #[allow(dead_code)]
     pub retry_backoff_ms: Option<u64>,
-    #[allow(dead_code)]
     pub cooldown_after_failures: Option<usize>,
-    #[allow(dead_code)]
     pub cooldown_secs: Option<u64>,
-    #[allow(dead_code)]
     pub interactive_reserved_requests: Option<usize>,
-    #[allow(dead_code)]
+    /// Soft per-tier concurrency ceiling for background-priority embed
+    /// requests. Parsed and threaded onto `Config` but not yet independently
+    /// enforced — see the doc comment on
+    /// `Config::embed_tei_background_max_concurrent_requests`.
     pub background_max_concurrent_requests: Option<usize>,
-    #[allow(dead_code)]
+    /// Soft per-tier concurrency ceiling for maintenance-priority embed
+    /// requests (migrate/reindex-class jobs). Same caveat as
+    /// `background_max_concurrent_requests`.
     pub maintenance_max_concurrent_requests: Option<usize>,
-    #[allow(dead_code)]
     pub query_instruction_enabled: Option<bool>,
     pub pool_max_inputs: Option<usize>,
     pub prep_concurrency: Option<usize>,

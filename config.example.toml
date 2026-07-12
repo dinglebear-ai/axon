@@ -170,6 +170,27 @@
 # request-timeout-ms = 30000
 # Max retry attempts after the initial TEI request. Env: TEI_MAX_RETRIES
 # max-retries = 5
+# Base backoff (ms) before exponential growth + jitter between retried
+# `/embed` requests on 429/5xx. Env: AXON_TEI_RETRY_BACKOFF_MS
+# retry-backoff-ms = 500
+# Consecutive failures before the TEI provider self-reports a cooldown.
+# Env: AXON_TEI_COOLDOWN_AFTER_FAILURES
+# cooldown-after-failures = 3
+# Cooldown window length (seconds) once tripped. Env: AXON_TEI_COOLDOWN_SECS
+# cooldown-secs = 30
+# Embedding reservation slots reserved for interactive (ask/query) embeddings;
+# background/maintenance embed jobs cannot consume this headroom out of
+# max-concurrent-requests. Env: AXON_TEI_INTERACTIVE_RESERVED_REQUESTS
+# interactive-reserved-requests = 1
+# Soft per-tier concurrency ceilings for background/maintenance-priority embed
+# requests. Not yet independently enforced (both currently share one combined
+# non-interactive ceiling — see docs/pipeline-unification/configuration/config-contract.md).
+# Env: AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS, AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS
+# background-max-concurrent-requests = 3
+# maintenance-max-concurrent-requests = 1
+# Apply the query/document instruction prefix when the provider capability
+# supports it. Env: AXON_TEI_QUERY_INSTRUCTION_ENABLED
+# query-instruction-enabled = true
 # Max chunk inputs pooled into one native TEI embedding wave.
 # Env: AXON_EMBED_POOL_MAX_INPUTS
 # pool-max-inputs = 512

@@ -25,6 +25,11 @@ fn config(
         max_input_tokens: 8192,
         max_batch_tokens: 131_072,
         instruction_support: instruction,
+        retry_backoff_ms: 500,
+        // Matches the pre-config-wiring hardcoded default (5 retries + 1 =
+        // 6 attempts); tests needing a different budget use
+        // `.with_max_attempts(...)`.
+        max_attempts: 6,
     }
 }
 
@@ -404,4 +409,46 @@ async fn embed_retry_exhaustion_cools_the_provider_and_capabilities_report_it_li
     let recovered_caps = provider.capabilities().await.expect("capabilities");
     assert_eq!(recovered_caps.health, HealthStatus::Healthy);
     assert!(recovered_caps.cooldown_until.is_none());
+}
+
+/// `TeiEmbeddingConfig::max_attempts` (computed by the caller from
+/// `cfg.tei_max_retries + 1` — see `axon-services::context::target_runtime`)
+/// actually bounds the number of real HTTP attempts `TeiClient` issues, not
+/// just a test-only override. A persistently-failing endpoint with
+/// `max_attempts: 2` must stop at exactly 2 requests (1 initial + 1 retry),
+/// proving `[providers.embedding].max-retries`/`TEI_MAX_RETRIES` now actually
+/// controls the provider's retry budget — previously this field did not
+/// exist and every provider always retried the hardcoded default (6
+/// attempts) regardless of config.
+#[tokio::test]
+async fn max_attempts_from_config_bounds_real_retry_count_without_test_override() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(503);
+        })
+        .await;
+
+    let provider = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
+        endpoint: server.base_url(),
+        model: "qwen3-embedding".to_string(),
+        dimensions: 2,
+        timeout: Duration::from_secs(5),
+        max_batch_inputs: 64,
+        max_input_tokens: 8192,
+        max_batch_tokens: 131_072,
+        instruction_support: InstructionSupport::None,
+        // Tiny backoff base so the one retry sleep stays fast; the point of
+        // this test is the attempt COUNT, not backoff timing.
+        retry_backoff_ms: 1,
+        max_attempts: 2,
+    });
+
+    provider
+        .embed(batch(vec![input("chunk-a", "first")], None))
+        .await
+        .expect_err("persistent 503 must exhaust the configured retry budget");
+
+    mock.assert_calls_async(2).await;
 }
