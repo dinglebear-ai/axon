@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use axon_core::config::Config;
 use axon_services::context::ServiceContext;
+use axon_services::embed::embed_now;
 use axon_services::query::query;
 use axon_services::types::Pagination;
 
@@ -70,17 +71,29 @@ async fn embed_then_query_roundtrip_returns_embedded_content() {
     let tmp = std::env::temp_dir().join(format!("{collection}.md"));
     std::fs::write(&tmp, &doc).expect("write temp doc");
 
-    // Embed the doc into the throwaway collection (ensure_collection runs inside).
-    let embed_result = axon_vector::ops::embed_path_native(&cfg, tmp.to_str().unwrap()).await;
+    // Embed the doc into the throwaway collection through the ledger-tracked
+    // `local_source` pipeline (ensure_collection runs inside).
+    let embed_result = embed_now(&cfg, tmp.to_str().unwrap()).await;
 
     // Always attempt cleanup even if an assertion below fails.
     let outcome = async {
         let summary = embed_result.expect("live embed must succeed");
+        let docs_embedded = summary
+            .payload
+            .get("docs_embedded")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
         assert!(
-            summary.docs_embedded >= 1,
-            "expected at least one embedded doc, got {summary:?}"
+            docs_embedded >= 1,
+            "expected at least one embedded doc, got {:?}",
+            summary.payload
         );
-        assert_eq!(summary.docs_failed, 0, "no docs may fail in the roundtrip");
+        let docs_failed = summary
+            .payload
+            .get("docs_failed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        assert_eq!(docs_failed, 0, "no docs may fail in the roundtrip");
 
         // Query the real retrieval path for the unique marker.
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))

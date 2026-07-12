@@ -12,7 +12,6 @@ axon-error = { path = "../axon-error" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
 axon-crawl = { path = "../axon-crawl" }
-axon-vector = { path = "../axon-vector" }
 # Domain-store crates whose migration sets the composed cross-crate runner
 # applies against the one unified SQLite pool (see src/migrations.rs).
 axon-ledger = { path = "../axon-ledger" }

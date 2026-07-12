@@ -1,15 +1,21 @@
 //! Final [`AskResult`] assembly, ported from legacy
 //! `axon_vector::ops::commands::ask::assemble`.
 //!
-//! `build_explain_result` is intentionally NOT ported: it renders the legacy
-//! reranker's `AskExplainTrace`, which [`super::AskContext`] never carries
-//! (every value here is built via `AskContext::from_retrieval`, which has no
-//! `explain` field — see the module doc on `super::super::synthesis`).
+//! [`assemble_explain_result`] is the `ask --explain` counterpart to
+//! [`assemble_ask_result`]: issue #298's finale retires the legacy reranker
+//! (and the `axon-vector` crate), so `ask --explain` now runs the SAME
+//! retrieval-engine `AskContext` as a normal ask, skips the LLM call
+//! entirely, and attaches an `AskExplainTrace` built from the retrieval hits
+//! (`super::super::ask_retrieval::explain::build_explain_trace`) instead.
+//! This mirrors the legacy `build_explain_result`'s no-synthesis shape
+//! (empty `answer`, no `citation_validation`, `timing_ms.llm == 0`).
 
 use super::AskContext;
 use super::normalize::summarize_citation_validation;
 use super::timing::AskTiming;
-use axon_api::{AskCitationValidation, AskDiagnostics, AskResult, AskTiming as WireAskTiming};
+use axon_api::{
+    AskCitationValidation, AskDiagnostics, AskExplainTrace, AskResult, AskTiming as WireAskTiming,
+};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 
@@ -51,6 +57,53 @@ pub(crate) fn assemble_ask_result(
             total_elapsed_ms,
             timing,
         ),
+    }
+}
+
+/// Build the final typed result for an `ask --explain` request.
+///
+/// Never calls the LLM: `answer` is empty, `citation_validation` is omitted
+/// (there is no answer to validate citations against), diagnostics are always
+/// populated (explain mode implies `diagnostics_enabled = true`, matching
+/// `ask_result_from_context`'s `cfg.ask_diagnostics || cfg.ask_explain`
+/// gate), and `explain` carries the caller-built trace. `timing_ms.llm` is
+/// `0` and every LLM/streaming sub-stage field is `None`.
+pub(crate) fn assemble_explain_result(
+    cfg: &Config,
+    query: &str,
+    ctx: &AskContext,
+    trace: AskExplainTrace,
+    total_elapsed_ms: u128,
+) -> AskResult {
+    log_info(&format!(
+        "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
+        ctx.context.len()
+    ));
+    AskResult {
+        query: query.to_string(),
+        answer: String::new(),
+        citation_validation: None,
+        session: None,
+        warnings: ctx.warnings.clone(),
+        diagnostics: build_diagnostics(true, cfg, ctx),
+        explain: Some(trace),
+        timing_ms: WireAskTiming {
+            retrieval: ctx.retrieval_elapsed_ms,
+            context_build: ctx.context_elapsed_ms,
+            llm: 0,
+            total: total_elapsed_ms,
+            tei_embed_ms: None,
+            qdrant_primary_ms: None,
+            qdrant_secondary_ms: None,
+            rerank_ms: None,
+            top_select_ms: None,
+            full_doc_fetch_ms: None,
+            supplemental_ms: None,
+            llm_ttft_ms: None,
+            llm_total_ms: None,
+            streamed: None,
+            normalize_ms: None,
+        },
     }
 }
 

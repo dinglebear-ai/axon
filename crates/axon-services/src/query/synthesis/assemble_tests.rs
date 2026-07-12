@@ -51,6 +51,66 @@ fn assemble_ask_result_with_diagnostics_reports_context_stats() {
     assert_eq!(diagnostics.top_domains, ctx.top_domains);
 }
 
+fn sample_trace() -> AskExplainTrace {
+    use axon_core::ask_explain::{
+        AskExplainContext, AskExplainFullDocFetchMode, AskExplainFullDocFetchSkipReason,
+        AskExplainMode, AskExplainRetrieval,
+    };
+    AskExplainTrace {
+        mode: AskExplainMode::ExplainOnly,
+        retrieval: AskExplainRetrieval {
+            query: "how?".to_string(),
+            keyword_query: "how?".to_string(),
+            dual_search: false,
+            collection: "axon".to_string(),
+            candidate_limit: 1,
+            hybrid_search_enabled: true,
+            hybrid_candidate_limit: 150,
+            score_kind: axon_core::ask_explain::AskExplainScoreKind::Rrf,
+            vector_mode: "named_hybrid_rrf".to_string(),
+            sparse_query_status: None,
+        },
+        candidates: Vec::new(),
+        context: AskExplainContext {
+            planned_full_doc_urls: Vec::new(),
+            full_doc_fetch_errors: Vec::new(),
+            full_doc_fetch_skipped: true,
+            full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason::Disabled,
+            full_doc_fetch_mode: AskExplainFullDocFetchMode::Rrf,
+            final_source_order: Vec::new(),
+            context_char_budget: 1000,
+            context_chars_used: 10,
+            context_bytes_budget: 1000,
+            context_bytes_used: 10,
+            rendered_context: None,
+            truncated_by_budget: false,
+        },
+        candidate_trace_limit: 50,
+        candidate_trace_truncated: false,
+        llm_skipped: true,
+    }
+}
+
+#[test]
+fn assemble_explain_result_skips_llm_and_carries_trace() {
+    let cfg = Config::default();
+    let ctx = sample_ctx();
+    let trace = sample_trace();
+
+    let result = assemble_explain_result(&cfg, "how?", &ctx, trace.clone(), 42);
+
+    assert_eq!(result.query, "how?");
+    assert_eq!(result.answer, "");
+    assert!(result.citation_validation.is_none());
+    assert_eq!(result.explain, Some(trace));
+    assert_eq!(result.timing_ms.llm, 0);
+    assert_eq!(result.timing_ms.total, 42);
+    assert_eq!(result.timing_ms.retrieval, ctx.retrieval_elapsed_ms);
+    assert!(result.timing_ms.streamed.is_none());
+    // Explain mode always populates diagnostics, regardless of `cfg.ask_diagnostics`.
+    assert!(result.diagnostics.is_some());
+}
+
 #[test]
 fn build_timing_disabled_only_reports_streamed_and_ttft() {
     let mut timing = AskTiming::new(false, std::time::Instant::now());
