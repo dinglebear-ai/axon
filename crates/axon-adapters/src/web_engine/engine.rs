@@ -15,7 +15,7 @@ mod thin_refetch;
 mod url_utils;
 mod waf;
 
-use crate::manifest::ManifestEntry;
+use crate::web_engine::manifest::ManifestEntry;
 pub use adaptive::AdaptiveCrawlSnapshot;
 use axon_core::config::{Config, RenderMode};
 use axon_core::content::{LadderThresholds, build_selector_config};

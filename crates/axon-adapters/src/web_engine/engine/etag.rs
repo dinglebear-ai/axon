@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use spider::website::Website;
 use tokio::io::AsyncWriteExt;
 
-use crate::manifest::ManifestEntry;
+use crate::web_engine::manifest::ManifestEntry;
 
 fn is_zero(v: &u8) -> bool {
     *v == 0

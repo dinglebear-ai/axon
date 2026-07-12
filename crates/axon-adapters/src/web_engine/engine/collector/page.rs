@@ -11,7 +11,7 @@ use super::super::is_excluded_url_path;
 use super::super::{
     CrawlSummary, MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url,
 };
-use crate::manifest::ManifestEntry;
+use crate::web_engine::manifest::ManifestEntry;
 use axon_core::content::{
     LadderThresholds, LadderTier, extract_with_ladder, url_to_stable_filename,
 };

@@ -6,13 +6,13 @@ use crate::types::{
     ArtifactHandle, CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode,
     JobStartOutcome, StartDisposition,
 };
+use axon_adapters::web_engine::engine::{SitemapDiscovery, discover_sitemap_urls};
 use axon_api::source::{
     AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
     JobStagePlan, MetadataMap, PipelinePhase,
 };
 use axon_core::config::Config;
 use axon_core::http::validate_url;
-use axon_crawl::engine::{SitemapDiscovery, discover_sitemap_urls};
 use axon_jobs::backend::JobKind;
 use axon_jobs::config_snapshot::config_snapshot_json;
 use serde::{Deserialize, Serialize};
@@ -77,7 +77,7 @@ fn predict_audit_report_path(output_dir: &Path, url: &str) -> PathBuf {
         .join(format!("{slug}-diff-report.json"))
 }
 
-pub use axon_crawl::predict_crawl_output_dir;
+pub use axon_adapters::web_engine::predict_crawl_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SitemapDiscoveryStats {

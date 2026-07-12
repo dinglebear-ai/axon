@@ -1,6 +1,6 @@
 //! URL scope and content-type filtering shared by sitemap and llms.txt discovery.
 
-use crate::engine::{canonicalize_url_for_dedupe, is_excluded_url_path};
+use crate::web_engine::engine::{canonicalize_url_for_dedupe, is_excluded_url_path};
 use axon_core::config::Config;
 use spider::url::Url;
 

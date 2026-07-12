@@ -364,7 +364,8 @@ pub(super) async fn configure_website_with_crawl_id(
     if let Some(ref script_path) = cfg.automation_script {
         match mode {
             RenderMode::Chrome | RenderMode::AutoSwitch => {
-                let scripts = crate::automation::load_automation_scripts(script_path).await?;
+                let scripts =
+                    crate::web_engine::automation::load_automation_scripts(script_path).await?;
                 axon_core::logging::log_info(&format!(
                     "loaded {} automation-script prefix(es) from {}",
                     scripts.len(),

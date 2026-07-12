@@ -1,6 +1,6 @@
 use super::super::page::PageOutcome;
 use super::{previous_markdown_path, write_page_to_manifest};
-use crate::manifest::ManifestEntry;
+use crate::web_engine::manifest::ManifestEntry;
 use std::collections::HashMap;
 
 fn entry(relative_path: &str) -> ManifestEntry {

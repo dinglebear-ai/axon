@@ -1,8 +1,8 @@
 //! Parsing helpers for the web adapter's `validated_options` (see
 //! `crates/axon-route/src/web_options.rs` for the validation pass that runs
-//! before these values ever reach the adapter) and the `Config` this crate's
-//! (temporary, Wave 2 removes it) `axon-crawl` dependency needs for `Site`/
-//! `Docs` discovery.
+//! before these values ever reach the adapter) and the `Config` the in-crate
+//! `web_engine` module (relocated from the former `axon-crawl` crate in Wave
+//! 2a) needs for `Site`/`Docs` discovery.
 
 use std::path::PathBuf;
 
@@ -57,7 +57,7 @@ fn string_array_option(values: &MetadataMap, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Build the `axon-crawl` `Config` for one `Site`/`Docs` discovery crawl,
+/// Build the `web_engine` `Config` for one `Site`/`Docs` discovery crawl,
 /// driven by `plan.route.validated_options` (falling back to `Config::default()`
 /// for anything absent). `output_dir` is the caller's ephemeral scratch
 /// directory — see `web/site_discovery.rs`.

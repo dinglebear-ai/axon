@@ -2,10 +2,11 @@
 //!
 //! Transport-neutral data contract: describes whether a crawl hit a WAF,
 //! whether recovery was attempted, and which URLs remain blocked. Moved
-//! verbatim out of `axon-crawl` so it can outlive that crate's eventual
-//! deletion and surface through adapter capability/degraded-mode reporting
-//! (#298). The constructor (`build_waf_diagnostics`) stays in `axon-crawl`
-//! since it depends on crawl-engine types (`CrawlSummary`).
+//! verbatim out of the former `axon-crawl` crate so it can outlive that
+//! crate's deletion and surface through adapter capability/degraded-mode
+//! reporting (#298). The constructor (`build_waf_diagnostics`) stays in
+//! `axon-adapters::web_engine::engine` (relocated there in Wave 2a) since it
+//! depends on crawl-engine types (`CrawlSummary`).
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct WafDiagnostics {

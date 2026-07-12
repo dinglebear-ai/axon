@@ -1,5 +1,5 @@
 use super::CollectorConfig;
-use crate::engine::{CrawlDiagnostic, CrawlSummary};
+use crate::web_engine::engine::{CrawlDiagnostic, CrawlSummary};
 
 pub(super) fn track_waf_block(
     waf_check: bool,

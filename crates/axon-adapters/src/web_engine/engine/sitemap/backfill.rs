@@ -4,8 +4,8 @@
 use super::discover::discover_sitemap_urls;
 use super::filter::is_already_markdown;
 use super::{fetch_text_with_retry, request_timeout_secs};
-use crate::engine::CrawlSummary;
-use crate::manifest::ManifestEntry;
+use crate::web_engine::engine::CrawlSummary;
+use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
 use axon_core::content::{build_selector_config, to_markdown, url_to_stable_filename};
 use axon_core::http::build_client;
@@ -77,7 +77,7 @@ async fn filter_seen_candidates(
     seen_urls: &HashSet<String>,
     candidates: Vec<String>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let previous_manifest = crate::manifest::read_manifest_data(manifest_path).await?;
+    let previous_manifest = crate::web_engine::manifest::read_manifest_data(manifest_path).await?;
     let manifest_urls: HashSet<String> = previous_manifest.keys().cloned().collect();
     Ok(candidates
         .into_iter()

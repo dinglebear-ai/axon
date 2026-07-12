@@ -112,7 +112,7 @@ impl WatchFetcher for StubFetcher {
 
 /// Build a minimal `ScrapeResult` for a given URL and markdown body.
 fn make_scrape_result(url: &str, markdown: &str) -> ScrapeResult {
-    axon_crawl::scrape::map_scrape_payload(
+    axon_adapters::web_engine::scrape::map_scrape_payload(
         serde_json::json!({ "url": url, "markdown": markdown, "links": [] }),
     )
     .expect("map_scrape_payload should succeed for well-formed input")

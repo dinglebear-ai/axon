@@ -17,7 +17,7 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-pub use axon_crawl::scrape::map_scrape_payload;
+pub use axon_adapters::web_engine::scrape::map_scrape_payload;
 
 /// Scrape a single URL and return a typed [`ScrapeResult`].
 ///
@@ -36,7 +36,7 @@ pub async fn scrape(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = validate_and_normalize_scrape_url(url, &tx).await?;
-    let mut result = axon_crawl::scrape::scrape_to_result(cfg, &normalized).await?;
+    let mut result = axon_adapters::web_engine::scrape::scrape_to_result(cfg, &normalized).await?;
     emit(
         &tx,
         ServiceEvent::Log {

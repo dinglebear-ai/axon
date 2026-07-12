@@ -3,7 +3,7 @@
 //!
 //! Shared by both CLI sync-crawl and the services crawl_sync layer.
 
-use crate::engine::resolve_cdp_ws_url;
+use crate::web_engine::engine::resolve_cdp_ws_url;
 use axon_core::config::{Config, RenderMode};
 use std::time::Duration;
 

@@ -2,15 +2,16 @@
 //!
 //! Design choice (Wave 1a of issue #298): this fetches the *raw* response body
 //! (text or, for non-UTF-8 payloads, base64 bytes) rather than routing through
-//! `axon-crawl`'s Spider/markdown pipeline. [`FetchedResource`] carries a raw
-//! [`ContentRef`], not markdown — the DTO's shape is "relay whatever the origin
-//! sent", the same job a `curl`/reqwest transport does. Rendering HTML into
-//! markdown is [`crate::providers::chrome_render::ChromeRenderProvider`]'s job.
-//! Building on plain reqwest (already an axon-core transitive dependency, not
-//! a new one) is the smallest surface that produces a correct
-//! [`FetchedResource`] — pulling in axon-crawl's Spider `Website` machinery
-//! here would mean constructing a full `Config` and a single-page crawl just
-//! to issue one GET.
+//! the in-crate `web_engine`'s Spider/markdown pipeline. [`FetchedResource`]
+//! carries a raw [`ContentRef`], not markdown — the DTO's shape is "relay
+//! whatever the origin sent", the same job a `curl`/reqwest transport does.
+//! Rendering HTML into markdown is
+//! [`crate::providers::chrome_render::ChromeRenderProvider`]'s job. Building
+//! on plain reqwest (already an axon-core transitive dependency, not a new
+//! one) is the smallest surface that produces a correct [`FetchedResource`] —
+//! pulling in `web_engine`'s Spider `Website` machinery here would mean
+//! constructing a full `Config` and a single-page crawl just to issue one
+//! GET.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -40,7 +41,7 @@ const SENSITIVE_RESPONSE_HEADERS: &[&str] = &[
 ];
 
 /// Total redirect hops the provider will follow before giving up — matches
-/// `axon-crawl::scrape`'s `build_scrape_fallback_client` limit.
+/// `web_engine::scrape`'s `build_scrape_fallback_client` limit.
 const MAX_REDIRECTS: usize = 10;
 
 /// Self-tracked health/cooldown capacity — sized generously, purely to fold

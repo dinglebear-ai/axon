@@ -1,11 +1,11 @@
-use axon_core::config::{Config, RenderMode};
-use axon_core::logging::{log_info, log_warn};
-use axon_core::ui::Spinner;
-use axon_crawl::engine::{
+use axon_adapters::web_engine::engine::{
     CrawlSummary, append_html_anchor_backfill, build_waf_diagnostics, chrome_refetch_thin_pages,
     memory_guard, run_crawl_once, should_fallback_to_chrome,
 };
-use axon_crawl::manifest::ManifestEntry;
+use axon_adapters::web_engine::manifest::ManifestEntry;
+use axon_core::config::{Config, RenderMode};
+use axon_core::logging::{log_info, log_warn};
+use axon_core::ui::Spinner;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;

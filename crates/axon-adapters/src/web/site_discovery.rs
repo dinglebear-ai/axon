@@ -1,10 +1,11 @@
-//! `Site`/`Docs` scope discovery: enumerate a site's URLs by driving
-//! `axon-crawl`'s engine directly (issue #298 Wave 1b — the adapter owns
-//! discovery, there is no `axon-services` crawl pre-pass anymore).
+//! `Site`/`Docs` scope discovery: enumerate a site's URLs by driving the
+//! in-crate `web_engine`'s engine directly (issue #298 Wave 1b — the adapter
+//! owns discovery, there is no `axon-services` crawl pre-pass anymore; the
+//! engine itself relocated in-crate in Wave 2a).
 //!
 //! The crawl writes to a throwaway [`tempfile::TempDir`] that is never handed
 //! to `acquire` or any caller — it exists only so the existing
-//! `axon_crawl::engine`/`manifest` machinery (which is disk-oriented) has
+//! `crate::web_engine::engine`/`manifest` machinery (which is disk-oriented) has
 //! somewhere to write while this function reads back the resulting
 //! `manifest.jsonl` to build in-memory `ManifestItem`s. `acquire` independently
 //! re-fetches each changed item's content through the provider boundary, so
@@ -42,8 +43,8 @@ pub(super) async fn crawl_manifest_items(plan: &SourcePlan) -> Result<Vec<Manife
     })?;
     let mut cfg = build_discovery_config(plan, temp_dir.path().to_path_buf());
 
-    let initial_mode = axon_crawl::chrome_bootstrap::resolve_initial_mode(&cfg);
-    let bootstrap = axon_crawl::chrome_bootstrap::bootstrap_chrome_runtime(&cfg).await;
+    let initial_mode = crate::web_engine::chrome_bootstrap::resolve_initial_mode(&cfg);
+    let bootstrap = crate::web_engine::chrome_bootstrap::bootstrap_chrome_runtime(&cfg).await;
     if let Some(ws_url) = bootstrap.resolved_ws_url {
         cfg.chrome_remote_url = Some(ws_url);
     }
@@ -52,7 +53,7 @@ pub(super) async fn crawl_manifest_items(plan: &SourcePlan) -> Result<Vec<Manife
     // — sitemap discovery runs as a separate, more controlled pass
     // (`backfill_sitemap_urls` below) after the main crawl rather than
     // Spider's inline `crawl_sitemap()` phase.
-    let (mut summary, seen_urls) = axon_crawl::engine::run_crawl_once(
+    let (mut summary, seen_urls) = crate::web_engine::engine::run_crawl_once(
         &cfg,
         &start_url,
         initial_mode,
@@ -76,7 +77,7 @@ pub(super) async fn crawl_manifest_items(plan: &SourcePlan) -> Result<Vec<Manife
     }
 
     let manifest_path = cfg.output_dir.join("manifest.jsonl");
-    let entries = axon_crawl::manifest::read_manifest_data(&manifest_path)
+    let entries = crate::web_engine::manifest::read_manifest_data(&manifest_path)
         .await
         .map_err(|err| {
             ApiError::new(
@@ -109,14 +110,14 @@ async fn backfill_sitemap_urls(
     cfg: &axon_core::config::Config,
     start_url: &str,
     seen_urls: &HashSet<String>,
-    summary: &mut axon_crawl::engine::CrawlSummary,
+    summary: &mut crate::web_engine::engine::CrawlSummary,
 ) {
     let manifest_path = cfg.output_dir.join("manifest.jsonl");
-    let manifest_urls = axon_crawl::manifest::read_manifest_urls(&manifest_path)
+    let manifest_urls = crate::web_engine::manifest::read_manifest_urls(&manifest_path)
         .await
         .unwrap_or_default();
     let merged_seen: HashSet<String> = seen_urls.iter().cloned().chain(manifest_urls).collect();
-    let _ = axon_crawl::engine::append_sitemap_backfill(
+    let _ = crate::web_engine::engine::append_sitemap_backfill(
         cfg,
         start_url,
         &cfg.output_dir,

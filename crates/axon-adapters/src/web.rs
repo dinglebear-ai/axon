@@ -2,8 +2,8 @@
 //!
 //! Real acquisition (#298 Wave 1b): `discover` enumerates URLs itself (a
 //! trivial single item for `Page`, the caller-supplied `map_urls` for `Map`,
-//! or an adapter-owned ephemeral crawl via `axon-crawl`'s engine for
-//! `Site`/`Docs`) and `acquire` fetches/renders each changed item through the
+//! or an adapter-owned ephemeral crawl via the in-crate `web_engine`'s engine
+//! for `Site`/`Docs`) and `acquire` fetches/renders each changed item through the
 //! injected [`FetchProvider`]/[`RenderProvider`] boundary — no
 //! `manifest.jsonl`/`markdown_root` disk handoff from `axon-services` remains
 //! on this path.

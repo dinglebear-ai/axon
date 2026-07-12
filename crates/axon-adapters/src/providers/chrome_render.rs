@@ -1,15 +1,15 @@
-//! `ChromeRenderProvider` — a real [`RenderProvider`] wrapping axon-crawl's
-//! single-page Spider transport.
+//! `ChromeRenderProvider` — a real [`RenderProvider`] wrapping the in-crate
+//! `web_engine` single-page Spider transport.
 //!
 //! Design choice (Wave 1a of issue #298): rendering (turning a URI into
 //! markdown/HTML, optionally via a headless browser) is exactly what
-//! `axon_crawl::scrape::scrape_to_result` already does — HTTP-first with
-//! Chrome fallback, SSRF-guarded, thin-page detection included. Reimplementing
-//! that here would duplicate a large, already-hardened surface (Spider
-//! `Website` config, ETag caching, sitemap-aware retries). `axon-crawl` is a
-//! temporary dependency of this crate for exactly this wrapper — Wave 2 of
-//! #298 relocates the crawl engine itself and this dependency goes away (see
-//! the Cargo.toml comment beside it).
+//! `crate::web_engine::scrape::scrape_to_result` already does — HTTP-first
+//! with Chrome fallback, SSRF-guarded, thin-page detection included.
+//! Reimplementing that here would duplicate a large, already-hardened surface
+//! (Spider `Website` config, ETag caching, sitemap-aware retries). The former
+//! `axon-crawl` crate was a temporary dependency of this crate for exactly
+//! this wrapper — Wave 2a of #298 relocated the crawl engine into
+//! `crate::web_engine` and deleted that crate (see `crates/axon-adapters/src/web_engine.rs`).
 //!
 //! `cfg.format` is pinned to `Html` for every render: `ScrapeResult.output`
 //! then carries the raw HTML while `ScrapeResult.markdown` (always populated
@@ -146,8 +146,9 @@ impl RenderProvider for ChromeRenderProvider {
         }
 
         let mut cfg = self.build_config(&request);
-        if axon_crawl::chrome_bootstrap::chrome_runtime_requested(&cfg) {
-            let bootstrap = axon_crawl::chrome_bootstrap::bootstrap_chrome_runtime(&cfg).await;
+        if crate::web_engine::chrome_bootstrap::chrome_runtime_requested(&cfg) {
+            let bootstrap =
+                crate::web_engine::chrome_bootstrap::bootstrap_chrome_runtime(&cfg).await;
             for warning in &bootstrap.warnings {
                 log_warn(&format!("[chrome_render] {warning}"));
             }
@@ -157,10 +158,11 @@ impl RenderProvider for ChromeRenderProvider {
         }
         let render_mode = cfg.render_mode;
 
-        // `Box<dyn Error>` (axon-crawl's error type) is not `Send`, so it must
-        // not live across an `.await` — convert to an owned `String` (`Send`)
-        // immediately, synchronously, right after the outer await resolves.
-        let outcome = axon_crawl::scrape::scrape_to_result(&cfg, &request.uri)
+        // `Box<dyn Error>` (the web-engine's error type) is not `Send`, so it
+        // must not live across an `.await` — convert to an owned `String`
+        // (`Send`) immediately, synchronously, right after the outer await
+        // resolves.
+        let outcome = crate::web_engine::scrape::scrape_to_result(&cfg, &request.uri)
             .await
             .map_err(|err| err.to_string());
 

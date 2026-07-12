@@ -19,7 +19,7 @@ pub(super) async fn capture_requests_with_chrome(
         .map_err(|err| format!("capture target rejected: {err}"))?;
     let resolved_ws_url = tokio::time::timeout(
         Duration::from_secs(CAPTURE_CDP_TIMEOUT_SECS),
-        axon_crawl::engine::resolve_cdp_ws_url(remote_url),
+        axon_adapters::web_engine::engine::resolve_cdp_ws_url(remote_url),
     )
     .await
     .map_err(|_| "timeout resolving Chrome CDP WebSocket URL".to_string())?
