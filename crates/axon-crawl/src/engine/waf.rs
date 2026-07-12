@@ -2,16 +2,11 @@ use std::collections::HashSet;
 
 use super::CrawlSummary;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct WafDiagnostics {
-    pub status: String,
-    pub attempted_recovery: bool,
-    pub detected_pages: u32,
-    pub recovered_pages: u32,
-    pub remaining_pages: u32,
-    pub detected_urls: Vec<String>,
-    pub remaining_urls: Vec<String>,
-}
+// `WafDiagnostics` is a transport-neutral DTO and now lives in `axon-api` so
+// it can outlive this crate's eventual deletion (#298). Re-exported here so
+// all in-crate `axon_crawl::engine::WafDiagnostics` call sites keep working
+// unchanged.
+pub use axon_api::source::waf_diagnostics::WafDiagnostics;
 
 fn sorted_urls(values: &HashSet<String>) -> Vec<String> {
     let mut out: Vec<String> = values.iter().cloned().collect();
