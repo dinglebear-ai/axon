@@ -7,6 +7,7 @@
 //! acquire helpers and bridges are unchanged — this is the relocation of the
 //! per-family orchestration that previously lived in the CLI.
 
+mod index_inputs;
 mod web_options;
 
 use anyhow::Context as _;
@@ -19,13 +20,12 @@ use web_options::web_crawl_options;
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
 use crate::{
-    FeedSourceIndexInput, GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy,
-    RedditSourceIndexInput, RegistrySourceIndexInput, SessionSelector, SessionsSourceIndexInput,
-    WebSourceIndexInput, YoutubeSourceIndexInput, clone_git_repo, fetch_feed_to_file,
-    fetch_reddit_dump, fetch_registry_dump, fetch_youtube_dump, index_feed_source_with_job,
-    index_git_source_with_job, index_local_source_with_job, index_reddit_source_with_job,
-    index_registry_source_with_job, index_sessions_source_with_job, index_web_source_with_job,
-    index_youtube_source_with_job, parse_registry_target, parse_session_selector,
+    GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy, SessionSelector,
+    WebSourceIndexInput, clone_git_repo, fetch_feed_to_file, fetch_reddit_dump,
+    fetch_registry_dump, fetch_youtube_dump, index_feed_source_with_job, index_git_source_with_job,
+    index_local_source_with_job, index_reddit_source_with_job, index_registry_source_with_job,
+    index_sessions_source_with_job, index_web_source_with_job, index_youtube_source_with_job,
+    parse_registry_target, parse_session_selector,
 };
 
 /// Placeholder job id — every `index_*_source_with_job` bridge creates the real
@@ -145,33 +145,32 @@ pub async fn dispatch_git(
 
 /// Feed source: fetch the raw feed to a deterministic cache path then dispatch
 /// to the feed bridge.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_feed(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
-    log_info(&format!("command=source collection={collection} kind=feed"));
+    log_info(&format!(
+        "command=source collection={collection} kind=feed embed={embed} max_items={max_items:?}"
+    ));
     let feed_path = fetch_feed_to_file(input)
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))
         .context("feed fetch failed")?;
-    let index_input = FeedSourceIndexInput {
+    let index_input = index_inputs::feed_index_input(
+        runtime,
         feed_path,
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        embedding_reservations: Some(runtime.embedding_reservations.clone()),
-        vector_reservations: Some(runtime.vector_reservations.clone()),
-        auth_snapshot: auth_snapshot.cloned(),
-        embed: true,
-        max_items: None,
-    };
+        collection,
+        owner_id,
+        auth_snapshot,
+        embed,
+        max_items,
+    );
     let output = index_feed_source_with_job(
         index_input,
         runtime.jobs.as_ref(),
@@ -196,36 +195,33 @@ pub async fn dispatch_feed(
 
 /// Reddit source: OAuth + fetch to a prepared dump then dispatch to the reddit
 /// bridge. Missing credentials fail in `fetch_reddit_dump`, before any request.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_reddit(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=reddit"
+        "command=source collection={collection} kind=reddit embed={embed} max_items={max_items:?}"
     ));
     let dump_path = fetch_reddit_dump(input)
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))
         .context("reddit fetch failed")?;
-    let index_input = RedditSourceIndexInput {
-        target: input.to_string(),
+    let index_input = index_inputs::reddit_index_input(
+        runtime,
+        input,
         dump_path,
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        embedding_reservations: Some(runtime.embedding_reservations.clone()),
-        vector_reservations: Some(runtime.vector_reservations.clone()),
-        auth_snapshot: auth_snapshot.cloned(),
-        embed: true,
-        max_items: None,
-    };
+        collection,
+        owner_id,
+        auth_snapshot,
+        embed,
+        max_items,
+    );
     let output = index_reddit_source_with_job(
         index_input,
         runtime.jobs.as_ref(),
@@ -250,36 +246,33 @@ pub async fn dispatch_reddit(
 
 /// YouTube source: yt-dlp fetch to a prepared dump then dispatch to the youtube
 /// bridge. A missing yt-dlp binary fails in `fetch_youtube_dump`.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_youtube(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=youtube"
+        "command=source collection={collection} kind=youtube embed={embed} max_items={max_items:?}"
     ));
     let dump_path = fetch_youtube_dump(input)
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))
         .context("youtube fetch failed")?;
-    let index_input = YoutubeSourceIndexInput {
-        target: input.to_string(),
-        youtube_dump_path: dump_path,
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        embedding_reservations: Some(runtime.embedding_reservations.clone()),
-        vector_reservations: Some(runtime.vector_reservations.clone()),
-        auth_snapshot: auth_snapshot.cloned(),
-        embed: true,
-        max_items: None,
-    };
+    let index_input = index_inputs::youtube_index_input(
+        runtime,
+        input,
+        dump_path,
+        collection,
+        owner_id,
+        auth_snapshot,
+        embed,
+        max_items,
+    );
     let output = index_youtube_source_with_job(
         index_input,
         runtime.jobs.as_ref(),
@@ -304,15 +297,18 @@ pub async fn dispatch_youtube(
 
 /// Registry source: parse the `pkg:` selector, fetch package metadata to a
 /// prepared dump, then dispatch to the registry bridge.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_registry(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=registry"
+        "command=source collection={collection} kind=registry embed={embed} max_items={max_items:?}"
     ));
     let (registry, package) =
         parse_registry_target(input).map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -320,22 +316,15 @@ pub async fn dispatch_registry(
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))
         .context("registry fetch failed")?;
-    let index_input = RegistrySourceIndexInput {
-        registry_dump_path: dump_path,
-        include_all_versions: false,
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        embedding_reservations: Some(runtime.embedding_reservations.clone()),
-        vector_reservations: Some(runtime.vector_reservations.clone()),
-        auth_snapshot: auth_snapshot.cloned(),
-        embed: true,
-        max_items: None,
-    };
+    let index_input = index_inputs::registry_index_input(
+        runtime,
+        dump_path,
+        collection,
+        owner_id,
+        auth_snapshot,
+        embed,
+        max_items,
+    );
     let output = index_registry_source_with_job(
         index_input,
         runtime.jobs.as_ref(),
@@ -360,38 +349,35 @@ pub async fn dispatch_registry(
 
 /// Session source: parse the `session:` selector (no network acquisition) then
 /// dispatch to the sessions bridge.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_session(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=session"
+        "command=source collection={collection} kind=session embed={embed} max_items={max_items:?}"
     ));
     let SessionSelector {
         sessions_root,
         provider,
         session_id,
     } = parse_session_selector(input).map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let index_input = SessionsSourceIndexInput {
+    let index_input = index_inputs::session_index_input(
+        runtime,
         sessions_root,
         provider,
         session_id,
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        embedding_reservations: Some(runtime.embedding_reservations.clone()),
-        vector_reservations: Some(runtime.vector_reservations.clone()),
-        auth_snapshot: auth_snapshot.cloned(),
-        embed: true,
-        max_items: None,
-    };
+        collection,
+        owner_id,
+        auth_snapshot,
+        embed,
+        max_items,
+    );
     let output = index_sessions_source_with_job(
         index_input,
         runtime.jobs.as_ref(),
@@ -476,3 +462,7 @@ pub async fn dispatch_web(
         graph_candidates: output.graph_candidates,
     })
 }
+
+#[cfg(test)]
+#[path = "dispatch_tests.rs"]
+mod tests;

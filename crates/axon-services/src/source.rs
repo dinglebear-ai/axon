@@ -352,8 +352,11 @@ async fn open_cleanup_debt_stores(
 /// [`SourceRequest`] — see `docs/pipeline-unification/foundation/source-pipeline.md`
 /// (`SourceRequest` + Validation Checklist: "`embed=false` never writes
 /// vectors"). Every family bridge receives the real `request.embed` instead of
-/// an implicit `true`; `limits.max_pages` is honored by families whose
-/// acquisition path supports a page cap (currently `web`).
+/// an implicit `true`. `limits.max_pages` is honored by `web` (the only family
+/// whose acquisition path supports a page cap); `limits.max_items` is honored
+/// by `feed`/`youtube`/`reddit`/`session`/`registry`, which each cap their
+/// discovered-manifest item count before diffing. `local`/`git` do not take a
+/// `max_items` cap today, so it is not threaded to them.
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_kind(
     kind: SourceInputKind,
@@ -394,13 +397,40 @@ async fn dispatch_kind(
             .await
         }
         SourceInputKind::Feed => {
-            dispatch::dispatch_feed(runtime, input, collection, owner_id, auth_snapshot).await
+            dispatch::dispatch_feed(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                limits.max_items,
+            )
+            .await
         }
         SourceInputKind::Youtube => {
-            dispatch::dispatch_youtube(runtime, input, collection, owner_id, auth_snapshot).await
+            dispatch::dispatch_youtube(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                limits.max_items,
+            )
+            .await
         }
         SourceInputKind::Reddit => {
-            dispatch::dispatch_reddit(runtime, input, collection, owner_id, auth_snapshot).await
+            dispatch::dispatch_reddit(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                limits.max_items,
+            )
+            .await
         }
         SourceInputKind::Web => {
             dispatch::dispatch_web(
@@ -417,10 +447,28 @@ async fn dispatch_kind(
             .await
         }
         SourceInputKind::Session => {
-            dispatch::dispatch_session(runtime, input, collection, owner_id, auth_snapshot).await
+            dispatch::dispatch_session(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                limits.max_items,
+            )
+            .await
         }
         SourceInputKind::Registry => {
-            dispatch::dispatch_registry(runtime, input, collection, owner_id, auth_snapshot).await
+            dispatch::dispatch_registry(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                limits.max_items,
+            )
+            .await
         }
         // Unsupported is handled by the caller before dispatch.
         SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),
