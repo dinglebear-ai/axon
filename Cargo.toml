@@ -38,7 +38,11 @@ resolver = "2"
 version = "6.2.2"
 edition = "2024"
 rust-version = "1.94.0"
+keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
+repository = "https://github.com/jmagar/axon"
+homepage = "https://github.com/jmagar/axon#readme"
 authors = ["jmagar"]
+description = "Self-hosted RAG stack for crawl, scrape, search, ingest, query, and ask workflows with Qdrant, TEI, MCP, CLI, REST, and Gemini."
 license = "MIT"
 
 # Override lab-auth from the git source with a local vendored copy that uses
@@ -56,7 +60,11 @@ name = "axon"
 version = "6.2.2"
 edition = "2024"
 rust-version = "1.94.0"
-description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
+repository = "https://github.com/jmagar/axon"
+homepage = "https://github.com/jmagar/axon#readme"
+description = "Self-hosted RAG stack for crawl, scrape, search, ingest, query, and ask workflows with Qdrant, TEI, MCP, CLI, REST, and Gemini."
 authors = ["jmagar"]
 license = "MIT"
 build = "build.rs"
