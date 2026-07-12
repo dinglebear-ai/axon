@@ -625,7 +625,6 @@ edge.rs
 evidence.rs
 candidate.rs
 merge.rs
-query.rs
 testing.rs
 ```
 
@@ -636,7 +635,8 @@ Must expose:
 - node/edge/evidence models
 - candidate ingestion
 - merge/conflict rules
-- graph query APIs
+- graph query APIs (`GraphStore::query()`, `GraphQueryRequest`/`GraphQueryResult`
+  — not a standalone `query.rs` module)
 - in-memory fake
 
 Must not own:

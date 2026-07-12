@@ -270,7 +270,6 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "candidate",
             "authority",
             "merge",
-            "query",
             "testing",
         ],
         forbidden_axon_deps: &[

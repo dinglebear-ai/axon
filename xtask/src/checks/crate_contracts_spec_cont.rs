@@ -94,7 +94,6 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "testing",
         ],
         forbidden_axon_deps: &[
-            "axon-vectors",
             "axon-llm",
             "axon-cli",
             "axon-mcp",
