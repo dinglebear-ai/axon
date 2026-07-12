@@ -1,5 +1,6 @@
 //! Real (non-fake) [`crate::boundary::FetchProvider`] /
-//! [`crate::boundary::RenderProvider`] implementations.
+//! [`crate::boundary::RenderProvider`] / [`crate::boundary::SearchProvider`]
+//! implementations.
 //!
 //! These are the acquisition primitives issue #298's real `WebSourceAdapter`
 //! slice will call in the next wave. Wave 1a (this module) intentionally
@@ -8,14 +9,17 @@
 
 pub mod chrome_render;
 pub mod http_fetch;
+pub mod searxng_search;
+pub mod tavily_search;
 
 use axon_api::source::{HealthStatus, ReservationState, ReservationStateSnapshot};
 
-/// Shared reservation-state snapshot builder for [`http_fetch::HttpFetchProvider`]
-/// and [`chrome_render::ChromeRenderProvider`].
+/// Shared reservation-state snapshot builder for [`http_fetch::HttpFetchProvider`],
+/// [`chrome_render::ChromeRenderProvider`], [`searxng_search::SearxngSearchProvider`],
+/// and [`tavily_search::TavilySearchProvider`].
 ///
-/// Neither provider does internal batching/leasing (each `fetch`/`render` call
-/// is one request), so `available_units` is a simple 0/1 flag rather than a
+/// None of these providers does internal batching/leasing (each call is one
+/// request), so `available_units` is a simple 0/1 flag rather than a
 /// concurrency count: `0` while `health` is `Cooling`/`Unavailable`, `1`
 /// otherwise. Deliberately NOT derived from `ProviderReservationManager::snapshot()`
 /// — that reflects `reserve()`/`ProviderReservation` activity (which these

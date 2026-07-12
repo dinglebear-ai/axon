@@ -87,6 +87,7 @@ pub mod setup;
 pub mod source;
 pub use source::index_source;
 pub mod source_jobs;
+pub mod source_url_audit;
 pub mod summarize;
 pub mod sync;
 pub mod system;

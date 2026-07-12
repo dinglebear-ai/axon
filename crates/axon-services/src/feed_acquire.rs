@@ -18,11 +18,12 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use axon_core::content::redact_url;
-use axon_core::http::{build_client, validate_url};
+use axon_core::http::build_client;
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 
 use crate::feed_target::normalize_feed_target;
+use crate::source_url_audit::validate_source_url;
 
 /// Wall-clock cap for a single feed fetch before it is aborted.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(60);
@@ -48,7 +49,8 @@ const MAX_FEED_BYTES: usize = 16 * 1024 * 1024;
 /// Fetch/write errors are URL-redacted before being surfaced.
 pub async fn fetch_feed_to_file(feed_input: &str) -> Result<PathBuf> {
     let feed_url = normalize_feed_target(feed_input);
-    validate_url(&feed_url)
+    validate_source_url(&feed_url)
+        .await
         .map_err(|err| anyhow::anyhow!("refusing to fetch {}: {err}", redact_url(&feed_url)))?;
 
     let bytes = fetch_feed_bytes(&feed_url).await?;
