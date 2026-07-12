@@ -21,7 +21,6 @@ pub use self::retrieval::{query_via_retrieval, query_via_retrieval_with_cfg};
 pub use self::retrieve::retrieve;
 use self::suggest::discover_crawl_suggestions;
 
-mod ask_explain;
 mod ask_retrieval;
 mod code_search;
 mod evaluate;
@@ -131,9 +130,10 @@ pub async fn query(
 /// RAG ask: retrieve relevant context, then answer with LLM.
 ///
 /// Both the retrieval half (via [`ask_via_retrieval`] → `axon-retrieval`) and
-/// the LLM synthesis half (`query::synthesis`) are routed off the legacy
-/// `axon_vector` pipeline (issue #298 cutover) — see `ask_retrieval.rs`'s doc
-/// comment for the one remaining exception (`ask --explain`). `ctx` supplies
+/// the LLM synthesis half (`query::synthesis`) are routed through the
+/// `axon-retrieval` engine (issue #298 cutover, finale: the legacy
+/// `axon_vector` pipeline — including its `ask --explain` reranker — is
+/// retired entirely; see `ask_retrieval.rs`'s doc comment). `ctx` supplies
 /// the read-plane runtime (preferring an attached local-source runtime, else
 /// building read stores from `cfg`).
 ///
@@ -289,11 +289,10 @@ where
 /// (issue #298 cutover) via [`retrieval_ask_context`], mirroring the `ask`
 /// slice (PR #348); the baseline answer, the judge (LLM analysis + its own
 /// `retrieval_ask_context`-backed judge-reference retrieval), and all
-/// synthesis are ported off `axon_vector` onto `query::evaluate` /
-/// `query::synthesis` in this same cutover — see `evaluate.rs`'s doc comment
-/// (including the disclosed `--retrieval-ab` gap). `ctx` supplies the
-/// read-plane runtime (preferring an attached local-source runtime, else
-/// building read stores from `cfg`).
+/// synthesis run through `query::evaluate` / `query::synthesis` — see
+/// `evaluate.rs`'s doc comment (including the disclosed `--retrieval-ab`
+/// gap). `ctx` supplies the read-plane runtime (preferring an attached
+/// local-source runtime, else building read stores from `cfg`).
 ///
 /// Returns the full structured evaluate payload without printing to stdout.
 #[must_use = "evaluate returns a Result that should be handled"]

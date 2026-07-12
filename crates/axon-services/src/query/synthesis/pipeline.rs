@@ -5,10 +5,12 @@
 //! Ported from legacy `axon_vector::ops::commands::ask` (the top-level
 //! `ask_result_from_context(_with_deltas)` entry points and their private
 //! helpers). The full legacy pipeline's `ask_result`/`ask_result_with_deltas`
-//! (which build their own [`super::AskContext`]-equivalent via the legacy
-//! `build_ask_context` reranker) are NOT ported — they stay on `axon-vector`
-//! behind `ask --explain` (see `crate::query::ask_explain`). Two follow-on
-//! effects of that split:
+//! (which built their own [`super::AskContext`]-equivalent via the legacy
+//! `build_ask_context` reranker) are NOT ported here — `ask --explain` now
+//! runs an entirely different, LLM-free path (see
+//! `super::assemble::assemble_explain_result` and
+//! `super::super::ask_retrieval::explain`). Two follow-on effects of that
+//! split:
 //!
 //! - `can_answer_from_follow_up_history`/`history_only_ask_context` (legacy
 //!   error-message-sniffing fallback for pure follow-up-history answers) are
@@ -18,11 +20,12 @@
 //!   `retrieval_ask_context`'s errors never produce, so the branch was already
 //!   unreachable from the `axon-retrieval`-cutover `ask` path before this port.
 //! - The `cfg.ask_explain` branch inside the legacy
-//!   `synthesize_ask_from_context` (returning `build_explain_result`) is
-//!   dropped for the same reason: [`super::AskContext::from_retrieval`] is the
-//!   only constructor used here, and its caller
-//!   (`super::super::ask_retrieval::ask_via_retrieval`) already redirects
-//!   `cfg.ask_explain` requests to the legacy path before this pipeline runs.
+//!   `synthesize_ask_from_context` (returning `build_explain_result`) never
+//!   reaches this file at all: [`super::AskContext::from_retrieval`] is the
+//!   only constructor used here, and the caller
+//!   (`super::super::ask_retrieval::ask_via_retrieval`) short-circuits on
+//!   `cfg.ask_explain` before this pipeline runs, calling
+//!   `assemble_explain_result` directly instead.
 
 use axon_api::AskResult;
 use axon_core::config::Config;

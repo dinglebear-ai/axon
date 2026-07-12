@@ -12,7 +12,6 @@ axon-error = { path = "../axon-error" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
 axon-crawl = { path = "../axon-crawl" }
-axon-vector = { path = "../axon-vector" }
 axon-memory = { path = "../axon-memory" }
 axon-jobs = { path = "../axon-jobs" }
 axon-observe = { path = "../axon-observe" }
@@ -107,7 +106,6 @@ test-util = []
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
-axon-vector = { path = "../axon-vector", features = ["test-util"] }
 httpmock = "0.8"
 serial_test = "3"
 proptest = "1"

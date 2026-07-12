@@ -11,13 +11,14 @@
 //! home instead.
 //!
 //! `AskContext` here is a **new, narrower type** distinct from legacy
-//! `axon_vector::ops::commands::ask::AskContext`: the legacy type also carries
-//! an `explain: Option<AskExplainTrace>` field consumed only by the
-//! `ask --explain` reranker path, which stays on `axon-vector` (see
-//! `ask_explain.rs`) and is never constructed through
-//! [`AskContext::from_retrieval`]. Every value flowing through this module is
-//! built via `from_retrieval`, so the `explain` field is dropped entirely
-//! rather than always being `None`.
+//! `axon_vector::ops::commands::ask::AskContext`: the legacy type also carried
+//! an `explain: Option<AskExplainTrace>` field, populated only by the legacy
+//! reranker's own `build_ask_context` when `cfg.ask_explain` was set. This
+//! `AskContext` has no `explain` field at all — every value flowing through
+//! this module is built via `from_retrieval`. `ask --explain`'s trace is now
+//! built separately, straight from the retrieval hits, by
+//! `super::ask_retrieval::explain::build_explain_trace` and attached in
+//! [`assemble::assemble_explain_result`] instead of carried on `AskContext`.
 
 use axon_core::ask_explain::{
     AskExplainFullDocFetchError, CorpusHealthDiagnostic, CorpusHealthKind,

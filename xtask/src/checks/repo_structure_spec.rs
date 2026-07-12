@@ -41,7 +41,14 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // preparers, and sidecar tests.
     "crates/axon-document",
     "crates/axon-crawl",
-    "crates/axon-vector",
+    // axon-vector was deleted outright (issue #298 finale, clean break, not a
+    // staged cutover): its last real dependent, `ask --explain`'s legacy
+    // reranker, was ported onto `axon-retrieval`'s hybrid RRF hits (see
+    // `crates/axon-services/src/query/ask_retrieval/explain.rs`); everything
+    // else the crate owned (TEI/Qdrant embed pipeline, code/markdown/text
+    // chunkers, ask/evaluate/suggest synthesis) had already moved to
+    // `axon-vectors`/`axon-embedding`/`axon-document`/`axon-retrieval`/
+    // `axon-services` in earlier #298 slices.
     // axon-extract was deleted outright in Phase 12 (clean break, not a
     // staged cutover) -- see
     // docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md.
