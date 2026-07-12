@@ -190,6 +190,31 @@ impl fmt::Debug for Config {
                 "embed_tei_max_in_flight_inputs",
                 &self.embed_tei_max_in_flight_inputs,
             )
+            .field(
+                "embed_tei_retry_backoff_ms",
+                &self.embed_tei_retry_backoff_ms,
+            )
+            .field(
+                "embed_tei_cooldown_after_failures",
+                &self.embed_tei_cooldown_after_failures,
+            )
+            .field("embed_tei_cooldown_secs", &self.embed_tei_cooldown_secs)
+            .field(
+                "embed_tei_interactive_reserved_requests",
+                &self.embed_tei_interactive_reserved_requests,
+            )
+            .field(
+                "embed_tei_background_max_concurrent_requests",
+                &self.embed_tei_background_max_concurrent_requests,
+            )
+            .field(
+                "embed_tei_maintenance_max_concurrent_requests",
+                &self.embed_tei_maintenance_max_concurrent_requests,
+            )
+            .field(
+                "embed_tei_query_instruction_enabled",
+                &self.embed_tei_query_instruction_enabled,
+            )
             .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
             .field("embed_prep_concurrency", &self.embed_prep_concurrency)
             .field("embed_max_chunks_per_doc", &self.embed_max_chunks_per_doc)

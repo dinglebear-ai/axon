@@ -46,6 +46,9 @@ pub struct TeiClientParams {
     /// Total attempts = retries + 1; matches legacy `tei_max_retries + 1`.
     pub max_attempts: usize,
     pub request_timeout: Duration,
+    /// Base backoff (ms) before exponential growth + jitter, passed to
+    /// [`retry_delay`]. Config: `[providers.embedding].retry-backoff-ms`.
+    pub retry_backoff_base_ms: u64,
 }
 
 /// Wire shape for a TEI `/embed` request body: `{"inputs": [...], "truncate": true}`.
@@ -88,6 +91,7 @@ pub struct TeiClient {
     max_batch_inputs: usize,
     max_attempts: usize,
     request_timeout: Duration,
+    retry_backoff_base_ms: u64,
     requests: AtomicU64,
 }
 
@@ -117,6 +121,7 @@ impl TeiClient {
             max_batch_inputs,
             max_attempts: params.max_attempts.max(1),
             request_timeout: params.request_timeout,
+            retry_backoff_base_ms: params.retry_backoff_base_ms,
             requests: AtomicU64::new(0),
         })
     }
@@ -250,7 +255,12 @@ impl TeiClient {
                     last = Some(self.transport(error_category(&err)));
                     last_retryable = true;
                     if attempt < self.max_attempts {
-                        tokio::time::sleep(retry_delay(attempt, started)).await;
+                        tokio::time::sleep(retry_delay(
+                            attempt,
+                            started,
+                            self.retry_backoff_base_ms,
+                        ))
+                        .await;
                     }
                     continue;
                 }
@@ -273,7 +283,7 @@ impl TeiClient {
             last = Some(self.status_error(status));
             last_retryable = retryable;
             if retryable && attempt < self.max_attempts {
-                tokio::time::sleep(retry_delay(attempt, started)).await;
+                tokio::time::sleep(retry_delay(attempt, started, self.retry_backoff_base_ms)).await;
                 continue;
             }
             let err = last.unwrap();
@@ -380,13 +390,15 @@ fn transport_error(code: &str, message: &str, category: &str) -> ApiError {
     .with_context("endpoint", ENDPOINT_MARKER)
 }
 
-/// Exponential backoff (1s, 2s, 4s, …, capped at 60s) with lightweight jitter
-/// derived from the elapsed clock — no `rand` dependency, mirroring the qdrant
-/// store's `retry_delay`.
-pub fn retry_delay(attempt: usize, started: Instant) -> Duration {
+/// Exponential backoff (`base_ms`, `2*base_ms`, `4*base_ms`, …, capped at 60s)
+/// with lightweight jitter derived from the elapsed clock — no `rand`
+/// dependency, mirroring the qdrant store's `retry_delay`. `base_ms` is
+/// caller-configured (`[providers.embedding].retry-backoff-ms`, default
+/// 500ms) rather than a hardcoded literal.
+pub fn retry_delay(attempt: usize, started: Instant, base_ms: u64) -> Duration {
     let exponent = (attempt as u32).saturating_sub(1);
-    let base_ms = 1000_u64.saturating_mul(2u64.saturating_pow(exponent));
-    let capped_ms = base_ms.min(MAX_BACKOFF_MS);
+    let scaled_ms = base_ms.saturating_mul(2u64.saturating_pow(exponent));
+    let capped_ms = scaled_ms.min(MAX_BACKOFF_MS);
     let jitter_ms = (started.elapsed().subsec_nanos() as u64) % 500;
     Duration::from_millis(capped_ms + jitter_ms)
 }
