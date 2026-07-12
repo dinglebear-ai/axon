@@ -23,6 +23,8 @@
 
 use std::path::PathBuf;
 
+use axon_api::source::SafetyClass;
+
 /// Acquisition class the input routes to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceInputKind {
@@ -78,6 +80,30 @@ pub async fn classify_source_input(input: &str) -> SourceInputKind {
         return SourceInputKind::Web;
     }
     SourceInputKind::Unsupported
+}
+
+/// Map a classified source input to its [`SafetyClass`].
+///
+/// This is the single classifier shared by every transport (REST's
+/// `crates/axon-web/src/server/handlers/sources.rs` and MCP's
+/// `crates/axon-mcp/src/server/handlers_source.rs`): both authorize a source
+/// request by classifying it here, then resolving the fine-grained scope that
+/// class requires via `axon_authz::required_scope_for_safety_class`. Keeping
+/// the mapping in one place means a local-filesystem source is upgraded to
+/// `axon:local` identically on every transport — a transport that duplicated
+/// (or forgot to call) this mapping could let a caller holding only the
+/// broad `axon:write` scope index an arbitrary local path.
+///
+/// `Local` is the only input kind that currently maps to
+/// `SafetyClass::LocalFilesystem`. Every other classified kind acquires over
+/// the network and falls back to `PublicNetwork`. CLI/MCP tool-execution
+/// sources are not produced by [`classify_source_input`] today; when they
+/// are, they should map to `SafetyClass::ToolExecution`.
+pub fn safety_class_for(kind: SourceInputKind) -> SafetyClass {
+    match kind {
+        SourceInputKind::Local => SafetyClass::LocalFilesystem,
+        _ => SafetyClass::PublicNetwork,
+    }
 }
 
 /// True when `input` parses as an http/https URL.
