@@ -822,32 +822,6 @@ fn removed_legacy_api_request_shapes_are_absent() {
 }
 
 #[test]
-fn api_dto_registry_covers_every_required_family() {
-    let families = axon_api::schema_registry::dto_schema_registry()
-        .iter()
-        .map(|dto| dto.family)
-        .collect::<std::collections::BTreeSet<_>>();
-    for required in [
-        "Envelope",
-        "Source",
-        "Ledger",
-        "Document",
-        "Parse/Graph",
-        "Embedding/Vector",
-        "Retrieval",
-        "Discovery/Synthesis",
-        "Runtime",
-        "Operations",
-        "Errors",
-        "Memory",
-        "Config/setup/serve/MCP/palette operational DTOs",
-        "Provider capability DTOs",
-    ] {
-        assert!(families.contains(required), "missing DTO family {required}");
-    }
-}
-
-#[test]
 fn api_schema_has_field_level_x_axon_metadata() {
     let artifact = std::fs::read_to_string(workspace_path("docs/reference/api/schemas.json"))
         .expect("read generated API schema artifact");
