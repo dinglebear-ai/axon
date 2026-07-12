@@ -7,15 +7,17 @@
 //! acquire helpers and bridges are unchanged — this is the relocation of the
 //! per-family orchestration that previously lived in the CLI.
 
+mod web_options;
+
 use anyhow::Context as _;
 use axon_api::source::{AuthSnapshot, JobId, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
+use web_options::web_crawl_options;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-use crate::crawl_sync::{crawl_for_source, crawl_for_source_page};
 use crate::{
     FeedSourceIndexInput, GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy,
     RedditSourceIndexInput, RegistrySourceIndexInput, SessionSelector, SessionsSourceIndexInput,
@@ -412,9 +414,15 @@ pub async fn dispatch_session(
     })
 }
 
-/// Web source: crawl to completion (acquisition) then dispatch to the web
-/// bridge. The web bridge owns vectorization, so `crawl_for_source` disables the
-/// crawl's own embed pass.
+/// Web source: drive the `WebSourceAdapter`'s discover→acquire→normalize
+/// pipeline directly (issue #298 Wave 1b) — no `crawl_for_source`/
+/// `crawl_for_source_page` acquisition pre-pass and no
+/// `manifest.jsonl`/`markdown_root` disk handoff. `dispatch_web` translates
+/// the ambient CLI-resolved `cfg: &Config` into the web adapter's
+/// `validated_options` shape so existing `--render-mode`/`--max-depth`/
+/// `--url-whitelist`/etc. flags keep working; `max_pages` (already this
+/// function's own parameter) overrides `cfg.max_pages` when set, matching the
+/// pre-Wave-1b behavior.
 #[allow(clippy::too_many_arguments)]
 pub async fn dispatch_web(
     cfg: &Config,
@@ -430,32 +438,11 @@ pub async fn dispatch_web(
     log_info(&format!(
         "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?}"
     ));
-    // `scope = Page` must acquire exactly the one URL — no link following, no
-    // sitemap/llms.txt backfill. Every other web scope (`Site`, `Docs`, `Map`)
-    // keeps the existing full-crawl acquisition.
-    let crawl = if scope == SourceScope::Page {
-        crawl_for_source_page(cfg, input)
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
-            .context("web single-page acquisition failed")?
-    } else {
-        crawl_for_source(cfg, input, max_pages)
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
-            .context("web crawl acquisition failed")?
-    };
-    log_info(&format!(
-        "command=source kind=web crawl_pages={} crawl_markdown={} output_dir={}",
-        crawl.pages_seen,
-        crawl.markdown_files,
-        crawl.output_dir.display()
-    ));
     let index_input = WebSourceIndexInput {
         source: input.to_string(),
         scope,
-        manifest_path: Some(crawl.manifest_path.clone()),
-        markdown_root: Some(crawl.markdown_root.clone()),
         map_urls: Vec::new(),
+        crawl_options: web_crawl_options(cfg, max_pages),
         collection: collection.to_string(),
         owner_id: owner_id.to_string(),
         job_id: placeholder_job_id(),
@@ -465,6 +452,8 @@ pub async fn dispatch_web(
         embedding_dimensions: runtime.embedding_dimensions,
         auth_snapshot: auth_snapshot.cloned(),
         embed,
+        fetch_provider: runtime.fetch_provider.clone(),
+        render_provider: runtime.render_provider.clone(),
     };
     let output = index_web_source_with_job(
         index_input,

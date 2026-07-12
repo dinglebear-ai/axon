@@ -52,7 +52,7 @@ pub(super) async fn vectorize_changed_documents(
 ) -> anyhow::Result<VectorizeResult> {
     let mut result = VectorizeResult::default();
     for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
-        let source_documents = normalize_changed_documents(run, &batch_diff).await?;
+        let source_documents = normalize_changed_documents(input, run, &batch_diff).await?;
         let prepared = prepare_source_documents(source_documents, generation)?;
         for prepared_batch in prepared_document_batches(prepared, WEB_CHANGED_CHUNK_BATCH_SIZE) {
             let batch_result = vectorize_documents(
@@ -116,10 +116,14 @@ pub(super) fn published_status(status: &DocumentStatus) -> DocumentStatus {
 }
 
 async fn normalize_changed_documents(
+    input: &WebSourceIndexInput,
     run: &WebAdapterRun,
     diff: &SourceManifestDiff,
 ) -> anyhow::Result<Vec<SourceDocument>> {
-    let adapter = WebSourceAdapter::new();
+    let adapter = WebSourceAdapter::new(
+        std::sync::Arc::clone(&input.fetch_provider),
+        std::sync::Arc::clone(&input.render_provider),
+    );
     let acquisition = adapter.acquire(&run.plan, diff).await?;
     Ok(adapter.normalize(&run.plan, acquisition).await?.data)
 }
@@ -176,6 +180,13 @@ fn sanitize_metadata(metadata: &mut MetadataMap) {
         "web_normalized_url",
         "web_fetch_method",
         "structured_payload_omitted",
+        // Acquisition-provenance fields stamped by `axon-adapters::web::acquire`
+        // (issue #298 Wave 1b) — debugging/provenance only, not part of the
+        // "web" vector-payload source-family allowlist
+        // (`axon-vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`).
+        "web_render_mode",
+        "web_status",
+        "web_etag",
     ] {
         metadata.remove(field);
     }
