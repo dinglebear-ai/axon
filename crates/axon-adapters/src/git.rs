@@ -4,7 +4,10 @@
 //! filesystem tree — a `repo_root` option pointing at a checked-out clone,
 //! prepared by the caller (the services bridge performs the network clone).
 //! Keeping the network out of the adapter makes it unit-testable with fixture
-//! repositories and matches how the `web` adapter reads a prepared crawl.
+//! repositories. The `web` adapter no longer follows this same shape — since
+//! issue #298 Wave 2b it drives acquisition directly through injected
+//! `FetchProvider`/`RenderProvider` boundaries instead of reading a
+//! services-prepared crawl.
 
 mod metadata;
 mod target;
