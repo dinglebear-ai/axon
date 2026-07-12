@@ -5,8 +5,9 @@ mod web_source_job;
 
 pub use self::web_source_job::index_web_source_with_job;
 
-use std::path::PathBuf;
+use std::sync::Arc;
 
+use axon_adapters::boundary::{FetchProvider, RenderProvider};
 use axon_adapters::{SourceAdapter, web::WebSourceAdapter};
 use axon_api::source::*;
 use axon_embedding::provider::EmbeddingProvider;
@@ -26,13 +27,22 @@ use self::vectorize::{
 
 pub(super) const WEB_LEASE_TTL_SECONDS: u64 = 30 * 60;
 
-#[derive(Debug, Clone)]
+/// Real-acquisition (issue #298 Wave 1b) input for `WebSourceAdapter`: no more
+/// `manifest_path`/`markdown_root` disk handoff from a `crawl_for_source`
+/// pre-pass — `fetch_provider`/`render_provider` are threaded straight into
+/// the adapter, and `crawl_options` carries the (already-validated) web
+/// adapter option set (`render_mode`, `max_pages`, `max_depth`,
+/// `url_whitelist`, ...) that `resolve_web_run` folds into the routed
+/// `SourcePlan`.
+///
+/// Does not derive `Debug` — `Arc<dyn FetchProvider>`/`Arc<dyn RenderProvider>`
+/// are trait objects with no `Debug` bound.
+#[derive(Clone)]
 pub struct WebSourceIndexInput {
     pub source: String,
     pub scope: SourceScope,
-    pub manifest_path: Option<PathBuf>,
-    pub markdown_root: Option<PathBuf>,
     pub map_urls: Vec<String>,
+    pub crawl_options: MetadataMap,
     pub collection: String,
     pub owner_id: String,
     pub job_id: JobId,
@@ -46,6 +56,8 @@ pub struct WebSourceIndexInput {
     /// still runs but the generation is published the same way `scope = Map`
     /// is: no vectorize pass, no vector store writes.
     pub embed: bool,
+    pub fetch_provider: Arc<dyn FetchProvider>,
+    pub render_provider: Arc<dyn RenderProvider>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,7 +129,11 @@ async fn index_web_source_with_lease(
     run: WebAdapterRun,
     lease: &LeaseGuard,
 ) -> anyhow::Result<WebSourceIndexOutput> {
-    let mut manifest = WebSourceAdapter::new().discover(&run.plan).await?;
+    let adapter = WebSourceAdapter::new(
+        Arc::clone(&input.fetch_provider),
+        Arc::clone(&input.render_provider),
+    );
+    let mut manifest = adapter.discover(&run.plan).await?;
     let diff = ledger.diff_manifest(manifest.clone()).await?;
     if let Some(output) =
         unchanged_refresh_output(input, ledger, previous_source, &run, &manifest, &diff).await?

@@ -85,27 +85,41 @@ pub(super) fn web_source_document(
         json!(NORMALIZATION_VERSION),
     );
     let structured_payload = metadata.remove("structured_payload");
-    metadata.remove("crawl_relative_path");
     let title = structured_title(structured_payload.as_ref());
+    let content_kind = item.manifest_item.content_kind.unwrap_or(ContentKind::Markdown);
     SourceDocument {
         document_id: web_document_id(&acquisition.source_id, &item.manifest_item.source_item_key),
         source_id: acquisition.source_id.clone(),
         source_item_key: item.manifest_item.source_item_key.clone(),
         canonical_uri: item.manifest_item.canonical_uri.clone(),
-        content_kind: item
-            .manifest_item
-            .content_kind
-            .unwrap_or(ContentKind::Markdown),
+        content_kind,
         content: item.content_ref.clone(),
         metadata,
         title,
         language: None,
         path: item.manifest_item.display_path.clone(),
-        mime_type: Some("text/markdown".to_string()),
+        mime_type: Some(mime_type_for_content_kind(content_kind).to_string()),
         structured_payload,
         artifact_id: item.raw_artifact_id.clone(),
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
+    }
+}
+
+/// `acquire` (issue #298 Wave 1b) can now hand back raw HTML/JSON/etc. — not
+/// only markdown — depending on the effective render mode, so the document's
+/// `mime_type` follows the actually-acquired `content_kind` instead of always
+/// stamping `text/markdown`.
+fn mime_type_for_content_kind(content_kind: ContentKind) -> &'static str {
+    match content_kind {
+        ContentKind::Html => "text/html",
+        ContentKind::Json | ContentKind::Structured => "application/json",
+        ContentKind::Xml => "application/xml",
+        ContentKind::Yaml => "application/yaml",
+        ContentKind::Toml => "application/toml",
+        ContentKind::PlainText => "text/plain",
+        ContentKind::BinaryMetadata => "application/octet-stream",
+        ContentKind::Code | ContentKind::Transcript | ContentKind::Markdown => "text/markdown",
     }
 }
 

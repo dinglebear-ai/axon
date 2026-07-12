@@ -1,8 +1,28 @@
+//! `index_web_source` integration tests.
+//!
+//! Issue #298 Wave 1b retired the `manifest.jsonl`/`markdown_root` disk
+//! handoff — `WebSourceAdapter` now fetches through `FetchProvider`/
+//! `RenderProvider`. These tests use `axon_adapters::boundary::
+//! FakeAdapterProviders` and drive single-URL (`SourceScope::Page`) inputs,
+//! since only `Site`/`Docs` scope's `discover` enumerates *multiple* URLs —
+//! and it does so via a real `axon-crawl` engine crawl (issue #298 Wave 1b),
+//! which cannot be driven hermetically here (Spider's own SSRF blacklist
+//! unconditionally blocks loopback addresses, independent of the
+//! `LoopbackGuard` test-util bypass `validate_url` honors — see
+//! `axon_core::http::ssrf::ssrf_blacklist_compact_strings`). The multi-page
+//! fixture tests this file used to carry (mixed unchanged/changed diffing,
+//! >1-batch vectorization) were removed for this reason; see issue #298 Wave
+//! 2 follow-ups for restoring hermetic multi-page coverage (e.g. an
+//! injectable discovery function, or a test-only SSRF bypass for Spider's
+//! blacklist).
+
+use std::sync::Arc;
+
+use axon_adapters::boundary::FakeAdapterProviders;
 use axon_api::source::*;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::FakeVectorStore;
-use serde_json::json;
 
 use crate::test_support::committed_generation_payload;
 
@@ -12,13 +32,13 @@ fn job_id() -> JobId {
     JobId::new(uuid::Uuid::from_u128(0x29812))
 }
 
-fn input(root: &std::path::Path, manifest_path: std::path::PathBuf) -> WebSourceIndexInput {
+fn input() -> WebSourceIndexInput {
+    let providers = Arc::new(FakeAdapterProviders::new());
     WebSourceIndexInput {
         source: "https://example.com/docs?utm_source=noise".to_string(),
-        scope: SourceScope::Docs,
-        manifest_path: Some(manifest_path),
-        markdown_root: Some(root.to_path_buf()),
+        scope: SourceScope::Page,
         map_urls: Vec::new(),
+        crawl_options: MetadataMap::new(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -28,24 +48,20 @@ fn input(root: &std::path::Path, manifest_path: std::path::PathBuf) -> WebSource
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
         embed: true,
+        fetch_provider: providers.clone(),
+        render_provider: providers,
     }
 }
 
 #[tokio::test]
 async fn web_source_refresh_writes_vectors_then_commits_generation() {
-    let fixture = web_fixture("# Intro\n\nHello docs.");
     let ledger = FakeLedgerStore::new();
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
 
-    let output = index_web_source(
-        input(fixture.root.path(), fixture.manifest_path.clone()),
-        &ledger,
-        &embedder,
-        &vectors,
-    )
-    .await
-    .unwrap();
+    let output = index_web_source(input(), &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
 
     assert_eq!(
         ledger.committed_generation(&output.source_id).await,
@@ -65,7 +81,7 @@ async fn web_source_refresh_writes_vectors_then_commits_generation() {
     assert!(points.iter().all(|point| {
         point.payload["source_kind"].as_str() == Some("web")
             && point.payload["source_adapter"].as_str() == Some("web")
-            && point.payload["source_scope"].as_str() == Some("docs")
+            && point.payload["source_scope"].as_str() == Some("page")
             && point.payload["web_domain"].as_str() == Some("example.com")
             && point.payload["visibility"].as_str() == Some("internal")
             && point.payload["redaction_status"].as_str() == Some("clean")
@@ -81,12 +97,11 @@ async fn web_source_refresh_writes_vectors_then_commits_generation() {
 /// (a valid, non-error generation).
 #[tokio::test]
 async fn embed_false_writes_no_vectors_but_still_completes() {
-    let fixture = web_fixture("# Intro\n\nHello docs.");
     let ledger = FakeLedgerStore::new();
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
 
-    let mut no_embed_input = input(fixture.root.path(), fixture.manifest_path.clone());
+    let mut no_embed_input = input();
     no_embed_input.embed = false;
 
     let output = index_web_source(no_embed_input, &ledger, &embedder, &vectors)
@@ -110,32 +125,25 @@ async fn embed_false_writes_no_vectors_but_still_completes() {
     assert!(vectors.points("axon-web-test").await.is_empty());
 }
 
+/// Page scope's `discover` is trivial identity-only (no content hash until
+/// acquisition), so a second discover of the same URL always diffs as
+/// "unchanged" against the first committed generation — the ledger short
+/// circuits before `acquire` runs again.
 #[tokio::test]
 async fn unchanged_web_refresh_reuses_committed_generation_without_vector_work() {
-    let fixture = web_fixture("# Intro\n\nHello docs.");
     let ledger = FakeLedgerStore::new();
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
 
-    let first = index_web_source(
-        input(fixture.root.path(), fixture.manifest_path.clone()),
-        &ledger,
-        &embedder,
-        &vectors,
-    )
-    .await
-    .unwrap();
+    let first = index_web_source(input(), &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
     let embedding_calls = embedder.calls().await.len();
     let vector_calls = vectors.calls().await;
 
-    let second = index_web_source(
-        input(fixture.root.path(), fixture.manifest_path),
-        &ledger,
-        &embedder,
-        &vectors,
-    )
-    .await
-    .unwrap();
+    let second = index_web_source(input(), &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
 
     assert_eq!(second.generation, first.generation);
     assert_eq!(second.documents_prepared, 0);
@@ -150,15 +158,15 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
     let ledger = FakeLedgerStore::new();
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
-    let input = WebSourceIndexInput {
+    let providers = Arc::new(FakeAdapterProviders::new());
+    let map_input = WebSourceIndexInput {
         source: "https://example.com/docs".to_string(),
         scope: SourceScope::Map,
-        manifest_path: None,
-        markdown_root: None,
         map_urls: vec![
             "https://example.com/docs/intro".to_string(),
             "https://example.com/docs/api".to_string(),
         ],
+        crawl_options: MetadataMap::new(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -168,9 +176,11 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
         embed: true,
+        fetch_provider: providers.clone(),
+        render_provider: providers,
     };
 
-    let output = index_web_source(input, &ledger, &embedder, &vectors)
+    let output = index_web_source(map_input, &ledger, &embedder, &vectors)
         .await
         .unwrap();
 
@@ -194,91 +204,14 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
 }
 
 #[tokio::test]
-async fn mixed_web_refresh_carries_unchanged_vectors_into_new_generation() {
-    let fixture = web_fixture_pages(&[
-        (
-            "docs-intro.md",
-            "https://example.com/docs/intro",
-            "# Intro\n\nv1",
-        ),
-        ("docs-api.md", "https://example.com/docs/api", "# API\n\nv1"),
-    ]);
-    let ledger = FakeLedgerStore::new();
-    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
-    let vectors = FakeVectorStore::new("fake-vector");
-
-    let first = index_web_source(
-        input(fixture.root.path(), fixture.manifest_path.clone()),
-        &ledger,
-        &embedder,
-        &vectors,
-    )
-    .await
-    .unwrap();
-    write_web_fixture_pages(
-        &fixture,
-        &[
-            (
-                "docs-intro.md",
-                "https://example.com/docs/intro",
-                "# Intro\n\nversion two",
-            ),
-            ("docs-api.md", "https://example.com/docs/api", "# API\n\nv1"),
-        ],
-    );
-
-    let second = index_web_source(
-        input(fixture.root.path(), fixture.manifest_path.clone()),
-        &ledger,
-        &embedder,
-        &vectors,
-    )
-    .await
-    .unwrap();
-
-    assert_ne!(second.generation, first.generation);
-    assert_eq!(
-        ledger.committed_generation(&second.source_id).await,
-        Some(second.generation.clone())
-    );
-    assert!(
-        vectors
-            .calls()
-            .await
-            .contains(&"mark_unchanged_items_committed")
-    );
-    let api_points = vectors
-        .points("axon-web-test")
-        .await
-        .into_iter()
-        .filter(|point| {
-            point
-                .payload
-                .get("source_item_key")
-                .and_then(|value| value.as_str())
-                == Some("docs/api")
-        })
-        .collect::<Vec<_>>();
-    assert!(api_points.iter().any(|point| {
-        point.payload["committed_generation"] == committed_generation_payload(&second.generation)
-    }));
-}
-
-#[tokio::test]
 async fn publish_failure_rolls_back_web_vectors() {
-    let fixture = web_fixture("# Intro\n\nHello docs.");
     let ledger = FakeLedgerStore::new().with_publish_generation_failure();
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
 
-    let err = index_web_source(
-        input(fixture.root.path(), fixture.manifest_path),
-        &ledger,
-        &embedder,
-        &vectors,
-    )
-    .await
-    .unwrap_err();
+    let err = index_web_source(input(), &ledger, &embedder, &vectors)
+        .await
+        .unwrap_err();
 
     assert!(
         err.to_string().contains("publish_failed"),
@@ -286,58 +219,4 @@ async fn publish_failure_rolls_back_web_vectors() {
     );
     assert!(vectors.calls().await.contains(&"delete"));
     assert!(vectors.points("axon-web-test").await.is_empty());
-}
-
-struct WebFixture {
-    root: tempfile::TempDir,
-    manifest_path: std::path::PathBuf,
-}
-
-fn web_fixture(markdown: &str) -> WebFixture {
-    web_fixture_pages(&[(
-        "docs-intro.md",
-        "https://example.com/docs/intro?utm_source=noise&token=secret",
-        markdown,
-    )])
-}
-
-fn web_fixture_pages(pages: &[(&str, &str, &str)]) -> WebFixture {
-    let root = tempfile::tempdir().unwrap();
-    let markdown_dir = root.path().join("markdown");
-    std::fs::create_dir_all(&markdown_dir).unwrap();
-    let manifest_path = root.path().join("manifest.jsonl");
-    let fixture = WebFixture {
-        root,
-        manifest_path,
-    };
-    write_web_fixture_pages(&fixture, pages);
-    fixture
-}
-
-fn write_web_fixture_pages(fixture: &WebFixture, pages: &[(&str, &str, &str)]) {
-    let markdown_dir = fixture.root.path().join("markdown");
-    let lines = pages
-        .iter()
-        .map(|(file_name, url, markdown)| {
-            std::fs::write(markdown_dir.join(file_name), markdown).unwrap();
-            manifest_line(file_name, url, markdown)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
-    std::fs::write(&fixture.manifest_path, lines).unwrap();
-}
-
-fn manifest_line(file_name: &str, url: &str, markdown: &str) -> String {
-    serde_json::to_string(&json!({
-        "url": url,
-        "relative_path": format!("markdown/{file_name}"),
-        "markdown_chars": markdown.len() as u64,
-        "content_hash": format!("sha256:{}", markdown.len()),
-        "changed": true,
-        "structured": {
-            "title": "Intro"
-        }
-    }))
-    .unwrap()
 }

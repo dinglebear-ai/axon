@@ -9,6 +9,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
+use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
@@ -173,6 +175,16 @@ impl TargetLocalSourceRuntime {
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
 
+        let fetch_provider = HttpFetchProvider::new(HttpFetchConfig {
+            timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
+            max_bytes: cfg.max_page_bytes,
+            user_agent: cfg.chrome_user_agent.clone(),
+        });
+        let render_provider = ChromeRenderProvider::new(ChromeRenderConfig {
+            chrome_remote_url: cfg.chrome_remote_url.clone(),
+            default_timeout_ms: cfg.request_timeout_ms,
+        });
+
         Ok(Self {
             jobs,
             ledger: Arc::new(ledger),
@@ -190,6 +202,8 @@ impl TargetLocalSourceRuntime {
             vector_provider_id,
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
+            fetch_provider: Arc::new(fetch_provider),
+            render_provider: Arc::new(render_provider),
         })
     }
 }
