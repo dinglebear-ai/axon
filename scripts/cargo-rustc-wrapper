@@ -63,6 +63,10 @@ done
 if [ -n "${AXON_RUSTC_WRAPPER_DELEGATE:-}" ]; then
   delegate=("$AXON_RUSTC_WRAPPER_DELEGATE" "$rustc")
 elif [ "${AXON_RUSTC_WRAPPER_NO_SCCACHE:-0}" != "1" ] \
+  && command -v sccache-wrapper >/dev/null 2>&1 \
+  && sccache-wrapper "$rustc" -vV >/dev/null 2>&1; then
+  delegate=(sccache-wrapper "$rustc")
+elif [ "${AXON_RUSTC_WRAPPER_NO_SCCACHE:-0}" != "1" ] \
   && command -v sccache >/dev/null 2>&1 \
   && sccache --version >/dev/null 2>&1; then
   delegate=(sccache "$rustc")
