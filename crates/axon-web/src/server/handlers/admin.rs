@@ -6,14 +6,13 @@ use axon_services as services;
 use axon_services::prune::PruneAuthz;
 use axum::{
     Extension, Json,
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::{HeaderMap, StatusCode, header},
 };
 use lab_auth::AuthContext;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use super::super::error::HttpError;
 
@@ -334,63 +333,14 @@ pub(crate) async fn create_watch(
         .map_err(HttpError::from_box)
 }
 
-#[utoipa::path(
-    post,
-    path = "/v1/watch/{id}/run",
-    params(("id" = uuid::Uuid, Path, description = "Watch definition ID")),
-    responses(
-        (status = 200, description = "Watch run result", body = serde_json::Value),
-        (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
-        (status = 502, description = "Watch execution failed", body = crate::server::error::ErrorBody)
-    ),
-    tag = "watch"
-)]
-pub(crate) async fn run_watch(
-    State((_state, cfg)): State<WebState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<services::watch::WatchRun>, HttpError> {
-    let handle = tokio::runtime::Handle::current();
-    let result = tokio::task::spawn_blocking(move || {
-        handle.block_on(async move {
-            let Some(watch) = services::watch::get_watch_def(&cfg, id)
-                .await
-                .map_err(|err| RunWatchError::Service(err.to_string()))?
-            else {
-                return Err(RunWatchError::NotFound(id));
-            };
-            services::watch::run_watch_now(&cfg, &watch)
-                .await
-                .map_err(|err| RunWatchError::Service(err.to_string()))
-        })
-    })
-    .await
-    .map_err(|err| {
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            format!("watch task failed: {err}"),
-        )
-    })?;
-    result.map(Json).map_err(RunWatchError::into_http_error)
-}
-
-enum RunWatchError {
-    NotFound(Uuid),
-    Service(String),
-}
-
-impl RunWatchError {
-    fn into_http_error(self) -> HttpError {
-        match self {
-            Self::NotFound(id) => HttpError::new(
-                StatusCode::NOT_FOUND,
-                "not_found",
-                format!("watch not found: {id}"),
-            ),
-            Self::Service(message) => HttpError::from_error(&std::io::Error::other(message)),
-        }
-    }
-}
+// `POST /v1/watch/{id}/run` (formerly `run_watch` here) was removed per the
+// REST contract's clean-break rule (`docs/pipeline-unification/surfaces/
+// rest-contract.md` "Removed Route Behavior"). Its canonical replacement is
+// `POST /v1/watches/{watch_id}/exec`
+// (`crate::server::handlers::source_watch::exec_watch`), which resolves the
+// canonical watch id to its dual-written legacy `WatchDef` and runs it
+// through the same `services::watch::run_watch_now` bridge this handler used
+// directly.
 
 #[cfg(test)]
 #[path = "admin_tests.rs"]

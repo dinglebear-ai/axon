@@ -139,7 +139,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, source, extract, memory, query, retrieve, search, map, endpoints, evaluate, suggest, doctor, domains, sources, stats, research, ask, summarize, screenshot, elicit_demo, brand, diff. The single `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target (replaces the former embed/ingest/scrape/crawl/code_search/vertical_scrape actions). Destructive cleanup lives under action=prune.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, jobs, source, extract, memory, query, retrieve, resolve, capabilities, providers, search, map, endpoints, evaluate, suggest, doctor, research, ask, summarize, screenshot, brand, diff, prune, watch, graph. The single `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target (replaces the former embed/ingest/scrape/crawl/code_search/vertical_scrape actions). Destructive cleanup lives under action=prune. `domains`, `sources`, `stats`, and `elicit_demo` are not valid MCP actions (see `server_authz::MCP_ACTION_SPECS` for the authoritative list).",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]

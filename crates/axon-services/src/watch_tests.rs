@@ -88,6 +88,44 @@ async fn create_source_watch_writes_canonical_and_legacy_rows() {
     );
 }
 
+/// The exact lookup issue #298's REST `POST /v1/watches/{watch_id}/exec`
+/// route depends on (`WatchServiceImpl::exec`'s `resolve_legacy_watch_def`,
+/// `crates/axon-services/src/service_traits/watch_service.rs`): given only
+/// the canonical `WatchId` from `create_source_watch`, the dual-written
+/// legacy `WatchDef` must be resolvable by the deterministic
+/// `format!("watch-{watch_id}")` name — there is no shared primary key
+/// between the two stores (see `crates/axon-jobs/src/migrations/
+/// 0023_create_source_watch_store.sql`).
+#[tokio::test]
+async fn get_watch_def_by_name_resolves_the_dual_write_bridge() {
+    let (pool, _temp) = open_pool().await;
+    let cfg = Config::test_default();
+
+    let created = create_source_watch(
+        &cfg,
+        Some(&pool),
+        watch_request("https://example.com/bridge", 60),
+    )
+    .await
+    .expect("create_source_watch");
+
+    let legacy_name = format!("watch-{}", created.watch_id.0);
+    let resolved = get_watch_def_by_name_with_pool(&pool, &legacy_name)
+        .await
+        .expect("get_watch_def_by_name_with_pool")
+        .expect("dual-written legacy WatchDef must be findable by name");
+    assert_eq!(resolved.name, legacy_name);
+    assert_eq!(resolved.task_type, "watch");
+
+    // A name that was never dual-written resolves to `None`, not an error.
+    assert!(
+        get_watch_def_by_name_with_pool(&pool, "watch-does-not-exist")
+            .await
+            .expect("get_watch_def_by_name_with_pool")
+            .is_none()
+    );
+}
+
 /// `every_seconds` outside the legacy watch's bounds (`MIN`/`MAX_WATCH_INTERVAL_SECS`,
 /// see `axon-jobs::watch::validation`) must not fail the canonical create — the
 /// dual-write is best-effort and only logs a warning.
