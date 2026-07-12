@@ -107,6 +107,8 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("web", "web_domain"));
     assert!(source_family_allows_field("web", "web_status_code"));
     assert!(source_family_allows_field("web", "web_depth"));
+    assert!(source_family_allows_field("web", "web_structured_kind"));
+    assert!(source_family_allows_field("web", "web_structured_blob"));
     assert!(source_family_allows_field("package", "package_ecosystem"));
     assert!(source_family_allows_field("package", "package_name"));
     assert!(source_family_allows_field("package", "package_version"));
@@ -123,6 +125,12 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
 
     assert!(!source_family_allows_field("web", "web_canonical_url"));
     assert!(!source_family_allows_field("code", "web_title"));
+    // Structured-data projection fields (#298 dead-code recovery: the JSON-LD
+    // / `__NEXT_DATA__` / SvelteKit payload projected onto web chunks by
+    // `axon_document::preparer::project_structured_payload_metadata`) are
+    // scoped to the `web` family only.
+    assert!(!source_family_allows_field("code", "web_structured_kind"));
+    assert!(!source_family_allows_field("code", "web_structured_blob"));
 }
 
 #[test]

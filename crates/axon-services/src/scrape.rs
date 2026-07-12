@@ -232,8 +232,13 @@ pub async fn embed_scrape_results(
     Ok(())
 }
 
-/// Source-family-specific fields the vector payload contract allows for the
-/// `"web"` family (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`).
+/// Source-family-specific fields this function stamps directly into
+/// `metadata` before building the [`SourceDocument`] (kept via
+/// `retain_contract_fields`). Not exhaustive for the `"web"` family: the
+/// `web_structured_kind`/`web_structured_blob` fields
+/// (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`) are added
+/// later, downstream, by `axon_document::preparer::project_structured_payload_metadata`
+/// from `SourceDocument::structured_payload` rather than here.
 const WEB_PAYLOAD_ALLOWED_FIELDS: &[&str] = &["web_title", "web_domain"];
 
 /// Build a [`PreparedDocument`] from a scrape result: a `"web"`-family
@@ -242,12 +247,25 @@ const WEB_PAYLOAD_ALLOWED_FIELDS: &[&str] = &["web_title", "web_domain"];
 ///
 /// Behavior note: the legacy `axon_vector` path also attached vertical
 /// extractor structured-data payloads (`structured_kind`/`structured_type`/
-/// `structured_blob`) to every chunk. The current vector payload contract's
-/// fixed per-family field allowlist has no slot for those fields (see the
-/// `crate::contract_write` module doc comment), so structured-data attachment
-/// is dropped here rather than silently violating the contract; restoring it
-/// requires an allowlist extension to `axon-vectors::payload_families`, which
-/// is out of scope for this migration.
+/// `structured_blob`) to every chunk. `structured_payload` below now carries
+/// [`ScrapeResult::structured_for_embedding`] through to
+/// `axon_document::preparer::project_structured_payload_metadata`, which
+/// projects it to the `web_structured_kind`/`web_structured_blob` fields the
+/// vector payload contract's per-family allowlist declares for `"web"`
+/// (`axon-vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`) — so the
+/// wiring here is no longer a dead end. In practice `structured_for_embedding`
+/// is always `None` today: the generic single-page scrape path
+/// (`axon_crawl::scrape::scrape_to_result` / `map_scrape_payload`) does not
+/// run any JSON-LD/`__NEXT_DATA__`/SvelteKit extraction (that ran only
+/// through the vertical-extractor framework removed with `axon-extract`), so
+/// this is currently inert rather than a functional restoration. It is also
+/// not guaranteed to carry the same `{kind, blob, schema_type?, schema_id?}`
+/// envelope the crawl-manifest path uses (`axon-adapters::web::bounded_structured_payload`,
+/// `axon-crawl::engine::collector::page::extract_structured_blob`) if a
+/// future producer repopulates it under the old vertical-extractor shape —
+/// `project_structured_payload_metadata`'s `schema_type`/`kind` lookups
+/// degrade gracefully (no `web_structured_kind`) but `web_structured_blob`
+/// still gets the raw JSON-stringified value either way.
 pub async fn scrape_result_to_prepared_doc(
     cfg: &Config,
     result: &ScrapeResult,
@@ -289,7 +307,7 @@ pub async fn scrape_result_to_prepared_doc(
         language: None,
         path: None,
         mime_type: None,
-        structured_payload: None,
+        structured_payload: result.structured_for_embedding.clone(),
         artifact_id: None,
         chunk_hints: Vec::<ChunkHint>::new(),
         parser_hints: Vec::<ParserHint>::new(),
