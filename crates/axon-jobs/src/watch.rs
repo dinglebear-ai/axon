@@ -277,6 +277,36 @@ pub async fn get_watch_def_with_pool(
     Ok(row.map(parse_watch_def_row))
 }
 
+/// Look up a legacy `WatchDef` by its unique `name` rather than its `id`.
+///
+/// `axon_watch_defs.name` is `UNIQUE` (migration `0002`). This is the lookup
+/// `axon_services::watch::create_source_watch`'s dual-write relies on: it
+/// names the legacy row it creates `format!("watch-{watch_id}")` (the
+/// canonical source-request-backed `WatchId`) precisely so callers holding
+/// only the canonical id — never the independently-generated legacy `id` —
+/// can still resolve the bridged row (see issue #298 WS-B REST `exec` route).
+pub async fn get_watch_def_by_name(
+    cfg: &Config,
+    name: &str,
+) -> Result<Option<WatchDef>, Box<dyn Error>> {
+    let pool = open_config_pool(cfg).await?;
+    get_watch_def_by_name_with_pool(&pool, name).await
+}
+
+pub async fn get_watch_def_by_name_with_pool(
+    pool: &SqlitePool,
+    name: &str,
+) -> Result<Option<WatchDef>, Box<dyn Error>> {
+    let row = sqlx::query_as::<_, WatchDefRow>(
+        "SELECT id, name, task_type, task_payload, every_seconds, enabled, next_run_at, lease_expires_at, last_run_at, created_at, updated_at \
+         FROM axon_watch_defs WHERE name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(parse_watch_def_row))
+}
+
 pub async fn create_watch_run(
     cfg: &Config,
     watch_id: Uuid,

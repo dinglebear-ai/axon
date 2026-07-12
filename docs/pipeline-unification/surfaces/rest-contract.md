@@ -39,14 +39,28 @@ not exposed.
 
 Implemented today:
 
-- REST still exposes direct operation routes such as `/v1/scrape`, `/v1/crawl`,
-  `/v1/embed`, `/v1/extract`, `/v1/ingest`, `/v1/purge`, `/v1/dedupe`,
-  `/v1/search`, `/v1/research`, `/v1/query`, `/v1/retrieve`, `/v1/map`,
-  `/v1/ask`, `/v1/watch/{id}/run`, and `/api-docs/openapi.json`.
-- Job REST routes are family-scoped today: `/v1/crawl`, `/v1/embed`,
-  `/v1/extract`, and `/v1/ingest` expose list/status/cancel/errors/cleanup/
-  clear/recover/worker-style operations instead of a generic `/v1/jobs`
-  collection.
+- The direct-verb legacy routes this contract removes —
+  `/v1/scrape`, `/v1/crawl`, `/v1/embed`, `/v1/ingest`, `/v1/purge`, and
+  `/v1/dedupe` — are already gone from the router today, not merely planned
+  for removal. `POST /v1/embed`, `/v1/ingest`, `/v1/scrape`, and `/v1/crawl`
+  404 (verified by
+  `legacy_indexing_routes_are_absent_and_sources_present` in
+  `crates/axon-web/src/server/handlers/rest_tests.rs`); `/v1/purge` and
+  `/v1/dedupe` were relocated to the admin-scoped `/v1/prune/purge` and
+  `/v1/prune/dedupe` (U2-06/U2-09). `POST /v1/watch/{id}/run` was likewise
+  removed in favor of `POST /v1/watches/{watch_id}/exec`.
+  `/v1/extract`, by contrast, is **not** slated for removal — it stays the
+  canonical explicit-structured-extraction route in this contract's
+  end-state too (see "Extraction Routes" below) — and REST still exposes it
+  today alongside `/v1/search`, `/v1/research`, `/v1/query`, `/v1/retrieve`,
+  `/v1/map`, `/v1/ask`, and `/api-docs/openapi.json`.
+- Job REST routes are family-scoped today only for `/v1/extract`
+  (`/v1/extract`, `/v1/extract/{id}`, `/v1/extract/{id}/cancel`,
+  `/v1/extract/cleanup`, `/v1/extract/recover`, via the generic
+  `job_lifecycle_router`). Crawl/embed/ingest job management already goes
+  through the generic `/v1/jobs` collection with a `kind` filter, matching
+  this contract's end state for those three families ahead of `/v1/extract`
+  catching up.
 - `GET /v1/sources` is a discovery/listing route today; `POST /v1/sources` is
   not the canonical acquisition path yet.
 - Async job starts return `202` with a narrow job response such as `job_id`,

@@ -9,7 +9,7 @@
 //! (U2-06/U2-09) — destructive cleanup now lives exclusively under the prune
 //! surface alongside `/v1/prune/plan` and `/v1/prune/exec`.
 
-use super::{RestRouteSpec, accepted, job_admin, read, write};
+use super::{RestRouteSpec, job_admin, read, write};
 
 pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
     job_admin(
@@ -48,19 +48,15 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         Some("WatchRequest"),
         "WatchResponse",
     ),
-    accepted(
-        "POST",
-        "/v1/watch/{id}/run",
-        "watch_run",
-        None,
-        "WatchRunResponse",
-    ),
+    // `POST /v1/watch/{id}/run` was removed per the REST contract's
+    // clean-break rule (`docs/pipeline-unification/surfaces/rest-contract.md`
+    // "Removed Route Behavior") — its canonical replacement is
+    // `POST /v1/watches/{watch_id}/exec` below.
+    //
     // Canonical source-request-backed watch surface (issue #298 REST
     // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
     // Routes). Distinct from the legacy `/v1/watch` task_type/task_payload
     // routes above — see `crates/axon-jobs/src/watch_store.rs` module docs.
-    // `POST /v1/watches/{id}/exec` is not yet implemented on this surface and
-    // is intentionally not registered.
     write(
         "POST",
         "/v1/watches",
@@ -81,6 +77,13 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         "watches_update",
         Some("WatchUpdateRequest"),
         "WatchResult",
+    ),
+    write(
+        "POST",
+        "/v1/watches/{watch_id}/exec",
+        "watches_exec",
+        Some("WatchExecRequest"),
+        "JobDescriptor",
     ),
     write(
         "DELETE",

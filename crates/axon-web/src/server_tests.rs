@@ -350,7 +350,7 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/extract",
         "/v1/extract/{id}",
         "/v1/watch",
-        "/v1/watch/{id}/run",
+        "/v1/watches/{watch_id}/exec",
         "/v1/memory",
         "/v1/memories",
         "/v1/memories/{memory_id}",
@@ -500,7 +500,7 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
     let job_id = Uuid::nil();
-    let watch_run = format!("/v1/watch/{job_id}/run");
+    let watch_exec = format!("/v1/watches/{job_id}/exec");
     let extract_cancel = format!("/v1/extract/{job_id}/cancel");
     let mobile_session = "/v1/mobile/sessions/test_session";
     let memory_link = "/v1/memories/mem_test/link";
@@ -519,7 +519,7 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("POST", "/v1/sources"),
         ("POST", "/v1/watch"),
         ("POST", "/v1/watches"),
-        ("POST", watch_run.as_str()),
+        ("POST", watch_exec.as_str()),
         ("POST", "/v1/extract"),
         ("POST", extract_cancel.as_str()),
         ("POST", "/v1/extract/cleanup"),
