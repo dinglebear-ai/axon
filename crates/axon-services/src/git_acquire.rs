@@ -14,7 +14,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use axon_core::content::redact_url;
-use axon_core::http::validate_url;
+
+use crate::source_url_audit::validate_source_url;
 
 /// Wall-clock cap for a single clone before it is aborted.
 const CLONE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -49,7 +50,8 @@ fn clone_argv(clone_url: &str, dest: &str) -> Vec<String> {
 /// [`tempfile::TempDir`] owns the checkout; drop it to clean up. On failure the
 /// clone stderr is URL-redacted before being surfaced.
 pub async fn clone_git_repo(clone_url: &str) -> Result<tempfile::TempDir> {
-    validate_url(clone_url)
+    validate_source_url(clone_url)
+        .await
         .map_err(|err| anyhow::anyhow!("refusing to clone {}: {err}", redact_url(clone_url)))?;
 
     let tmp = tempfile::tempdir().context("failed to create temp dir for git clone")?;

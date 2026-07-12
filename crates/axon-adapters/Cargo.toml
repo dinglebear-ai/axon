@@ -51,6 +51,13 @@ spider = { version = "2", default-features = false, features = [
   "warc",
 ] }
 spider_transformations = "2"
+# Tavily AI Search client reused by `providers::tavily_search` — the same
+# crate/feature `axon-services` already depends on for its Tavily search path
+# (see `crates/axon-services/Cargo.toml`). Only the search client is needed
+# here, not `openai`.
+spider_agent = { version = "2.47.89", default-features = false, features = [
+  "search_tavily",
+] }
 tempfile = "3"
 tokio = { version = "1", features = [
   "rt",
