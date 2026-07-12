@@ -593,3 +593,71 @@ fn test_build_scrape_website_wires_proxy() {
     assert_eq!(proxies.len(), 1);
     assert_eq!(proxies[0].addr, "http://proxy.example.com:8080");
 }
+
+// apply_automation_scripts — issue #298 Wave 2b regression 1 restoration
+
+#[tokio::test]
+async fn test_apply_automation_scripts_noop_when_unset() {
+    let cfg = Config {
+        render_mode: RenderMode::Chrome,
+        ..Config::default()
+    };
+    let mut website = build_scrape_website(&cfg, "https://example.com")
+        .expect("build_scrape_website should succeed");
+    apply_automation_scripts(&cfg, &mut website)
+        .await
+        .expect("no automation_script configured must be a no-op");
+    assert!(website.configuration.automation_scripts.is_none());
+}
+
+#[tokio::test]
+async fn test_apply_automation_scripts_skips_on_http_mode_without_touching_disk() {
+    let cfg = Config {
+        render_mode: RenderMode::Http,
+        // A path that does not exist: if the Http-mode gate did not skip
+        // *before* attempting to load, this would fail with an I/O error.
+        automation_script: Some(std::path::PathBuf::from("/nonexistent/script.json")),
+        ..Config::default()
+    };
+    let mut website = build_scrape_website(&cfg, "https://example.com")
+        .expect("build_scrape_website should succeed");
+    apply_automation_scripts(&cfg, &mut website)
+        .await
+        .expect("http mode must skip automation_script rather than error");
+    assert!(website.configuration.automation_scripts.is_none());
+}
+
+#[tokio::test]
+async fn test_apply_automation_scripts_propagates_load_errors_on_chrome_mode() {
+    let cfg = Config {
+        render_mode: RenderMode::Chrome,
+        automation_script: Some(std::path::PathBuf::from("/nonexistent/script.json")),
+        ..Config::default()
+    };
+    let mut website = build_scrape_website(&cfg, "https://example.com")
+        .expect("build_scrape_website should succeed");
+    let err = apply_automation_scripts(&cfg, &mut website)
+        .await
+        .expect_err("chrome mode must attempt to load and surface a missing-file error");
+    assert!(err.to_string().contains("script.json"));
+}
+
+#[tokio::test]
+async fn test_apply_automation_scripts_applies_valid_script_on_chrome_mode() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let script_path = dir.path().join("automation.json");
+    std::fs::write(&script_path, r#"{"/": [{"action": "wait", "ms": 100}]}"#)
+        .expect("write automation script");
+
+    let cfg = Config {
+        render_mode: RenderMode::Chrome,
+        automation_script: Some(script_path),
+        ..Config::default()
+    };
+    let mut website = build_scrape_website(&cfg, "https://example.com")
+        .expect("build_scrape_website should succeed");
+    apply_automation_scripts(&cfg, &mut website)
+        .await
+        .expect("a valid automation script on chrome mode must apply cleanly");
+    assert!(website.configuration.automation_scripts.is_some());
+}
