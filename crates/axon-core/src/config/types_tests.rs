@@ -3,6 +3,18 @@ use super::*;
 use std::env;
 use std::io::Write as _;
 
+/// Reuse the crate-wide env-mutation lock instead of relying solely on
+/// `#[serial_test::serial]`. `std::env` is process-global — `serial_test`'s
+/// default key and axon-core's `ENV_LOCK` (in
+/// `config::parse::build_config::tests`) are two different locks that do not
+/// mutually exclude each other, so a `build_config` env test can still run
+/// concurrently with one of these tests and clobber shared keys like
+/// `AXON_CONFIG_PATH` / `TEI_MAX_RETRIES`. Every env-mutating test in this
+/// module acquires `env_guard()` in addition to `#[serial_test::serial]` so
+/// it is mutually exclusive with every other env-mutating config test in the
+/// crate. See that module's `ENV_LOCK` doc comment for the full explanation.
+use crate::config::parse::build_config::tests::env_guard;
+
 #[allow(unsafe_code)]
 fn with_env_saved<F: FnOnce()>(keys: &[&str], body: F) {
     let saved: Vec<(String, Option<String>)> = keys
@@ -113,6 +125,7 @@ fn config_default_worker_settings() {
 #[serial_test::serial]
 #[test]
 fn config_default_ignores_env_tuning_knobs() {
+    let _lock = env_guard();
     with_env_saved(
         &[
             "TEI_MAX_RETRIES",
@@ -139,6 +152,7 @@ fn config_default_ignores_env_tuning_knobs() {
 #[serial_test::serial]
 #[test]
 fn config_default_minimal_applies_toml_tuning_when_env_unset() {
+    let _lock = env_guard();
     with_env_saved(
         &[
             "AXON_CONFIG_PATH",

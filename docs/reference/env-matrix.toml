@@ -851,6 +851,90 @@ compatibility = "warn-env-override"
 reason = "TEI client timeout tuning."
 
 [[env]]
+key = "AXON_TEI_RETRY_BACKOFF_MS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.retry-backoff-ms"
+compatibility = "warn-env-override"
+reason = "Base backoff (ms) before exponential growth + jitter between retried TEI `/embed` requests on 429/5xx."
+
+[[env]]
+key = "AXON_TEI_COOLDOWN_AFTER_FAILURES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.cooldown-after-failures"
+compatibility = "warn-env-override"
+reason = "Consecutive TEI failures before the provider self-reports a cooldown."
+
+[[env]]
+key = "AXON_TEI_COOLDOWN_SECS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.cooldown-secs"
+compatibility = "warn-env-override"
+reason = "Cooldown window length (seconds) once the TEI failure threshold trips."
+
+[[env]]
+key = "AXON_TEI_INTERACTIVE_RESERVED_REQUESTS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.interactive-reserved-requests"
+compatibility = "warn-env-override"
+reason = "Embedding reservation slots reserved for interactive (ask/query) embeddings out of max-concurrent-requests."
+
+[[env]]
+key = "AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.background-max-concurrent-requests"
+compatibility = "warn-env-override"
+reason = "Soft per-tier concurrency ceiling for background-priority embed requests."
+
+[[env]]
+key = "AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.maintenance-max-concurrent-requests"
+compatibility = "warn-env-override"
+reason = "Soft per-tier concurrency ceiling for maintenance-priority embed requests (migrate/reindex-class jobs)."
+
+[[env]]
+key = "AXON_TEI_QUERY_INSTRUCTION_ENABLED"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.query-instruction-enabled"
+compatibility = "warn-env-override"
+reason = "Apply the query/document instruction prefix when the embedding provider capability supports it."
+
+[[env]]
 key = "AXON_SCRAPE_BATCH_TIMEOUT_SECS"
 classification = "move-toml"
 runtime_placement = "not-runtime"
