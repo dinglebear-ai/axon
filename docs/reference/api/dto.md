@@ -14,8 +14,8 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-api/src/schema_registry.rs` | `sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f` |
-| `crates/axon-api/src/source.rs` | `sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362` |
+| `crates/axon-api/src/schema_registry.rs` | `sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5` |
+| `crates/axon-api/src/source.rs` | `sha256:25dcb9da7171df751c6432f104ffacea01fb1e93ddb501678fb2ea789556f2bf` |
 | `crates/axon-api/src/source/boundary.rs` | `sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e` |
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
 | `crates/axon-api/src/source/common.rs` | `sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab` |
@@ -32,9 +32,9 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/stage.rs` | `sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8` |
 | `crates/axon-api/src/source/state.rs` | `sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb` |
 | `crates/axon-api/src/source/status.rs` | `sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea` |
-| `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
+| `crates/axon-api/src/source/vector.rs` | `sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336` |
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
-| `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:1b30e91ddefd5596315b1a6e90c7f216fc7debbe92b3fff48c39c6525d0f38c4` |
+| `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7` |
 | `xtask/src/schemas/api_defs.rs` | `sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a` |
 | `xtask/src/schemas/registry.rs` | `sha256:9019aca90671d373722f9c1692a68edd5198c2c7374e12aaaa6cb74af1964673` |
 

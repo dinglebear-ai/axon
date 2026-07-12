@@ -584,6 +584,21 @@
       },
       {
         "allowed_option_keys": [
+          "max_pages",
+          "max_depth",
+          "include_subdomains",
+          "render_mode",
+          "discover_sitemaps",
+          "max_sitemaps",
+          "sitemap_since_days",
+          "url_whitelist",
+          "url_blacklist",
+          "etag_conditional",
+          "min_markdown_chars",
+          "drop_thin_markdown",
+          "warc_path",
+          "automation_script",
+          "verticals_enabled",
           "manifest_path",
           "markdown_root",
           "map_urls"
@@ -1507,12 +1522,12 @@
         "path": "crates/axon-adapters/src/spec.rs"
       },
       {
-        "checksum": "sha256:594d57f321084553f23892265588f84713d43d8cb6ea1750a076797a924152da",
+        "checksum": "sha256:14272d360f1575b3cda6dacaf68125191b64f359152d0d06ce4ca1352bb0c595",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:7189b435f0277c9fffbcbd1390899b8723b28101f9efbd8157509b54299627e0",
+        "checksum": "sha256:fbade8b2d157f07ed8bc927e16e5dc7ff7a9e71fcd0f51f8e8621557a160632c",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

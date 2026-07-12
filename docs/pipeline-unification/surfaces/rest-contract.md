@@ -61,8 +61,10 @@ Implemented today:
   through the generic `/v1/jobs` collection with a `kind` filter, matching
   this contract's end state for those three families ahead of `/v1/extract`
   catching up.
-- `GET /v1/sources` is a discovery/listing route today; `POST /v1/sources` is
-  not the canonical acquisition path yet.
+- `GET /v1/sources` is a discovery/listing route (`handlers::discovery::sources`)
+  and `POST /v1/sources` is live as the unified source-acquisition/indexing path
+  (`handlers::sources::index_source`); it is synchronous today and does not yet
+  honor per-request scope/limit overrides.
 - Async job starts return `202` with a narrow job response such as `job_id`,
   `status`, and `status_url`.
 - Success responses are raw typed results or route-specific response objects,
