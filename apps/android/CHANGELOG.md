@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/jmagar/axon/compare/android-v1.5.1...android-v1.6.0) (2026-07-11)
+
+
+### Added
+
+* **#298:** post-smoke followups — scope=page, watch create, mutates_if, presentation tokens ([e01592f](https://github.com/jmagar/axon/commit/e01592ff278bcd5543924a9e87c2072d346d7878))
+* **android:** memories client methods + route-contract fixture fix ([#298](https://github.com/jmagar/axon/issues/298) WS-I) ([47b7ca8](https://github.com/jmagar/axon/commit/47b7ca8d7e54d4d6a8aca3c63a5fe704683d97af))
+* **apps:** web token hardening, palette unified job polling, android memory/session client ([a17dc86](https://github.com/jmagar/axon/commit/a17dc864dafb67064819ea12c2ccdc004d01eec4))
+* **mobile:** MobileSession status/source_refs/draft/sync_version + Android entity ([#298](https://github.com/jmagar/axon/issues/298) WS-I, bead .13) ([f3cbf9e](https://github.com/jmagar/axon/commit/f3cbf9eac6298df523da13142ad92102e47e920f))
+
+
+### Fixed
+
+* **android:** migrate legacy verb routes onto POST /v1/sources ([1d423c9](https://github.com/jmagar/axon/commit/1d423c95f4e0dd86983e2da7b743b89e3c96eb8f))
+* **web:** distinct operation_id for POST /v1/graph/query ([#298](https://github.com/jmagar/axon/issues/298)) ([a379a59](https://github.com/jmagar/axon/commit/a379a598ec75dc2f93de90db64ac586fc570fcdf))
+
+
+### Changed
+
+* **android:** core/feature module package split + monolith fixes ([#298](https://github.com/jmagar/axon/issues/298) WS-I, U3-06) ([c700ebc](https://github.com/jmagar/axon/commit/c700ebc4816ac81434e8fbf175b148cbd099409f))
+
 ## [1.5.1] - 2026-07-05
 
 ### Changed
