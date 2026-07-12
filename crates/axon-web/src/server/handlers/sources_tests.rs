@@ -1,4 +1,5 @@
 use super::*;
+use axon_services::source::classify::SourceInputKind;
 
 #[test]
 fn local_source_maps_to_local_filesystem_and_local_scope() {
