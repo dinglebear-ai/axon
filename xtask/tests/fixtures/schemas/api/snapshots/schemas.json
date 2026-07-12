@@ -14038,6 +14038,24 @@
         },
         {
           "additionalProperties": false,
+          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "collection": {
               "type": "string"
@@ -14684,6 +14702,24 @@
             "collection",
             "source_id",
             "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection"
           ],
           "type": "object"
         },
@@ -26601,6 +26637,24 @@
         },
         {
           "additionalProperties": false,
+          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "collection": {
               "type": "string"
@@ -28929,12 +28983,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f",
+        "checksum": "sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362",
+        "checksum": "sha256:25dcb9da7171df751c6432f104ffacea01fb1e93ddb501678fb2ea789556f2bf",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -29019,7 +29073,7 @@
         "path": "crates/axon-api/src/source/status.rs"
       },
       {
-        "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac",
+        "checksum": "sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/vector.rs"
       },
@@ -29029,7 +29083,7 @@
         "path": "crates/axon-error/src/api_error.rs"
       },
       {
-        "checksum": "sha256:1b30e91ddefd5596315b1a6e90c7f216fc7debbe92b3fff48c39c6525d0f38c4",
+        "checksum": "sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },

@@ -2121,12 +2121,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:ae232f6479f56b8051fce765d263de93a0787a469cc43531148960e8a9e9b06f",
+        "checksum": "sha256:4fee60c1f2f8b8cb8dc320c4b2777cb6b63f1c3b41d148bc4e66291ec36db695",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/boundary.rs"
       },
       {
-        "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f",
+        "checksum": "sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },

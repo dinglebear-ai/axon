@@ -14,14 +14,14 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
+| `crates/axon-api/src/source/vector.rs` | `sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:8bbaac4ddff2dc10413ce58a59a78756cac29fec8bc2e17da2c12acc3481a4bf` |
 | `crates/axon-vectors/src/point.rs` | `sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
-| `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604` |
+| `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:3929926228d3bd652c7a1648856ed55eec8c777e5cf986b08aeecad63bbd58bb` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
-| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae` |
+| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:a8d208da3cbafbe06b2c73653a415d24c73cb7949671b0b0b934ca69565c00fd` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede` |
 
 ## Root Shape
@@ -104,9 +104,9 @@ Payload validation rejects secret field fragments and secret value fragments bef
 | `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
-| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth` |
+| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth`, `web_structured_kind`, `web_structured_blob` |
 | `package` | `package_ecosystem`, `package_name`, `package_version` |
-| `session` | `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
+| `session` | `session_provider`, `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |
 | `memory` | `memory_id`, `memory_importance`, `memory_status`, `memory_recallable`, `memory_type`, `memory_scope_kind`, `memory_scope_value`, `memory_confidence`, `memory_salience`, `redaction_version`, `redacted_field_count`, `dropped_field_count`, `detector_names` |
 | `local` | `local_checkout`, `local_path_key`, `local_git_remote`, `local_git_commit` |
