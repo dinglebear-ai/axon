@@ -6,7 +6,7 @@ use axon_core::http::{
     axon_ua, build_ssrf_guarded_client_builder, normalize_url, ssrf_blacklist_compact_strings,
     validate_url,
 };
-use axon_core::logging::log_warn;
+use axon_core::logging::{log_info, log_warn};
 use spider::website::Website;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::error::Error;
@@ -81,6 +81,39 @@ pub fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn 
     }
 
     Ok(website)
+}
+
+/// Restore Chrome web-automation support for a single-page scrape/render
+/// (issue #298 Wave 2b regression 1). The crawl engine's
+/// `engine::runtime::configure_website_with_crawl_id` already wires
+/// `cfg.automation_script` onto a whole-crawl `Website`; the single-page
+/// scrape path never did, so `providers::chrome_render::ChromeRenderProvider`
+/// used to hard-reject any `RenderRequest.automation_script` rather than
+/// silently ignoring it. Mirrors `runtime.rs`'s gating exactly: automation
+/// only executes on an actual Chrome render; on `Http` it is skipped with a
+/// warning instead of attempting to load the file.
+async fn apply_automation_scripts(
+    cfg: &Config,
+    website: &mut Website,
+) -> Result<(), Box<dyn Error>> {
+    let Some(script_path) = cfg.automation_script.as_deref() else {
+        return Ok(());
+    };
+    if !matches!(cfg.render_mode, RenderMode::Chrome) {
+        log_warn(
+            "automation_script is set but the resolved render mode is not chrome; \
+             web automation requires Chrome and will be skipped",
+        );
+        return Ok(());
+    }
+    let scripts = crate::web_engine::automation::load_automation_scripts(script_path).await?;
+    log_info(&format!(
+        "loaded {} automation-script prefix(es) from {}",
+        scripts.len(),
+        script_path.display()
+    ));
+    website.with_automation_scripts(Some(scripts));
+    Ok(())
 }
 
 // ── Page fetching and matching ───────────────────────────────────────────────
@@ -432,6 +465,7 @@ pub async fn scrape_to_result(
 
     let mut website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
+    apply_automation_scripts(cfg, &mut website).await?;
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
         .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;

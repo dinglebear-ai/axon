@@ -6,7 +6,10 @@
 //! - `Http` — a single raw [`FetchProvider::fetch`] call. Content stays
 //!   whatever the origin sent (typically raw HTML); `content_kind` is decided
 //!   from the response `Content-Type` so downstream chunking picks the right
-//!   profile (`ContentKind::Html` -> `ChunkingProfile::HtmlArticle`).
+//!   profile (`ContentKind::Html` -> `ChunkingProfile::HtmlArticle`). When
+//!   `etag_conditional` is set and a prior `web_etag` is present on the
+//!   incoming item's metadata, the request carries `If-None-Match` and a 304
+//!   response is treated as unchanged (see [`acquire_via_fetch`]).
 //! - `Chrome` — a single [`RenderProvider::render`] call in Chrome mode.
 //! - `AutoSwitch` — render in `Http` mode first (this is the "fetch" step);
 //!   if the resulting markdown is thin (`< min_markdown_chars`), re-render in
@@ -14,51 +17,173 @@
 //!   to keeping the original HTTP render, mirroring the documented
 //!   auto-switch gotcha ("Chrome requires a running Chrome instance — if none
 //!   is available, the HTTP result is kept").
+//!
+//! `Chrome`/`AutoSwitch` render requests also carry `automation_script` (when
+//! configured) through to the [`RenderProvider`] — see
+//! `providers::chrome_render` and `web_engine::scrape::apply_automation_scripts`
+//! for how it actually executes.
+//!
+//! When `warc_path` is configured, every successfully acquired item (HTTP or
+//! Chrome) is archived as a WARC 1.1 `response` record — see [`super::warc`]
+//! for the writer and its documented `ArtifactStore` follow-up.
+
+use std::path::Path;
 
 use axon_api::source::*;
+use axon_core::logging::{log_info, log_warn};
+use serde_json::Value;
 
 use crate::adapter::Result;
 use crate::boundary::{FetchProvider, RenderProvider};
 
-use super::options::{effective_render_mode, min_markdown_chars};
+use super::options::{
+    automation_script_ref, effective_render_mode, etag_conditional, min_markdown_chars, warc_path,
+};
+
+/// Options resolved once per [`acquire_changed_items`] call from
+/// `plan.route.validated_options`, then threaded through every item so
+/// per-item helpers stay free of `MetadataMap` lookups.
+struct AcquireOptions {
+    mode: RenderMode,
+    min_markdown_chars: usize,
+    automation_script: Option<ArtifactRef>,
+    etag_conditional: bool,
+}
+
+/// Acquired items plus any side-effect artifacts produced by this run (today,
+/// at most one WARC archive — see [`super::warc`]).
+pub(super) struct AcquireOutcome {
+    pub(super) items: Vec<AcquiredSourceItem>,
+    pub(super) artifacts: Vec<ArtifactRef>,
+}
 
 pub(super) async fn acquire_changed_items(
     plan: &SourcePlan,
     manifest_items: &[ManifestItem],
     fetch: &dyn FetchProvider,
     render: &dyn RenderProvider,
-) -> Result<Vec<AcquiredSourceItem>> {
+) -> Result<AcquireOutcome> {
     let values = &plan.route.validated_options.values;
-    let mode = effective_render_mode(values);
-    let min_chars = min_markdown_chars(values);
-    let mut fetched_items = Vec::with_capacity(manifest_items.len());
+    let opts = AcquireOptions {
+        mode: effective_render_mode(values),
+        min_markdown_chars: min_markdown_chars(values),
+        automation_script: automation_script_ref(values),
+        etag_conditional: etag_conditional(values),
+    };
+    let warc_path = warc_path(values);
+    let mut warc_file = open_warc_archive(warc_path.as_deref()).await?;
+
+    let mut items = Vec::with_capacity(manifest_items.len());
     for item in manifest_items {
-        fetched_items.push(acquire_item(fetch, render, item, mode, min_chars).await?);
+        let Some(acquired) = acquire_item(fetch, render, item, &opts).await? else {
+            continue;
+        };
+        archive_to_warc(&mut warc_file, &acquired).await;
+        items.push(acquired);
     }
-    Ok(fetched_items)
+
+    let artifacts = match warc_path {
+        Some(path) => vec![super::warc::artifact_ref(&path).await],
+        None => Vec::new(),
+    };
+    Ok(AcquireOutcome { items, artifacts })
+}
+
+async fn open_warc_archive(warc_path: Option<&Path>) -> Result<Option<tokio::fs::File>> {
+    let Some(path) = warc_path else {
+        return Ok(None);
+    };
+    super::warc::open(path).await.map(Some).map_err(|err| {
+        ApiError::new(
+            "web.warc.open_failed",
+            axon_error::ErrorStage::Fetching,
+            format!("failed to open WARC archive at {}: {err}", path.display()),
+        )
+    })
+}
+
+/// Append `acquired` to the WARC archive when one is open. A write failure is
+/// logged, not propagated — archival is a best-effort side effect and must
+/// not fail the acquisition of otherwise-good content.
+async fn archive_to_warc(warc_file: &mut Option<tokio::fs::File>, acquired: &AcquiredSourceItem) {
+    let Some(file) = warc_file.as_mut() else {
+        return;
+    };
+    if let Err(err) = super::warc::append_item(file, acquired).await {
+        log_warn(&format!(
+            "warc: failed to append record for {}: {err}",
+            acquired.manifest_item.canonical_uri
+        ));
+    }
 }
 
 async fn acquire_item(
     fetch: &dyn FetchProvider,
     render: &dyn RenderProvider,
     item: &ManifestItem,
-    mode: RenderMode,
-    min_markdown_chars: usize,
-) -> Result<AcquiredSourceItem> {
-    match mode {
-        RenderMode::Http => acquire_via_fetch(fetch, item).await,
+    opts: &AcquireOptions,
+) -> Result<Option<AcquiredSourceItem>> {
+    match opts.mode {
+        RenderMode::Http => acquire_via_fetch(fetch, item, opts.etag_conditional).await,
         RenderMode::Chrome => {
             let rendered = render
-                .render(build_render_request(item, RenderMode::Chrome))
+                .render(build_render_request(
+                    item,
+                    RenderMode::Chrome,
+                    opts.automation_script.clone(),
+                ))
                 .await?;
-            Ok(acquired_from_rendered(item, rendered, "chrome_render"))
+            Ok(Some(acquired_from_rendered(
+                item,
+                rendered,
+                "chrome_render",
+            )))
         }
-        RenderMode::AutoSwitch => acquire_via_auto_switch(render, item, min_markdown_chars).await,
+        RenderMode::AutoSwitch => {
+            acquire_via_auto_switch(
+                render,
+                item,
+                opts.min_markdown_chars,
+                opts.automation_script.clone(),
+            )
+            .await
+        }
     }
 }
 
-async fn acquire_via_fetch(fetch: &dyn FetchProvider, item: &ManifestItem) -> Result<AcquiredSourceItem> {
-    let fetched = fetch.fetch(build_fetch_request(item)).await?;
+/// `Http`-mode acquisition. Returns `Ok(None)` when a conditional request
+/// comes back `304 Not Modified` — the item is skipped rather than re-embedded
+/// with empty content (issue #298 Wave 2b regression 3).
+///
+/// Reusing the *previous* content across generations (rather than simply
+/// skipping this generation's re-embed) needs the ledger to hand the prior
+/// `SourceDocument`/content back in — out of scope here; see [`super::warc`]'s
+/// sibling module doc pattern and this crate's `CLAUDE.md` for the general
+/// #298 follow-up shape. What this function does restore: a real conditional
+/// GET (`If-None-Match` from `item.metadata["web_etag"]`, gated by
+/// `etag_conditional`) and correct 304 recognition — `HttpFetchProvider`
+/// already forwards arbitrary request headers and passes any non-5xx/429
+/// status straight through, so no provider-side change was needed for either.
+async fn acquire_via_fetch(
+    fetch: &dyn FetchProvider,
+    item: &ManifestItem,
+    etag_conditional: bool,
+) -> Result<Option<AcquiredSourceItem>> {
+    let prior_etag = if etag_conditional {
+        item.metadata.get("web_etag").and_then(Value::as_str)
+    } else {
+        None
+    };
+    let fetched = fetch.fetch(build_fetch_request(item, prior_etag)).await?;
+    if fetched.status == 304 {
+        log_info(&format!(
+            "web_etag_conditional: 304 Not Modified for {} — skipping re-embed this generation \
+             (reusing prior content across generations needs ledger persistence; not yet wired)",
+            item.canonical_uri
+        ));
+        return Ok(None);
+    }
+
     let content_kind = content_kind_for_fetch(&fetched);
     let mut manifest_item = item.clone();
     manifest_item.content_kind = Some(content_kind);
@@ -70,11 +195,16 @@ async fn acquire_via_fetch(fetch: &dyn FetchProvider, item: &ManifestItem) -> Re
     );
     metadata.insert("web_render_mode".to_string(), serde_json::json!("http"));
     metadata.insert("web_status".to_string(), serde_json::json!(fetched.status));
-    if let Some(etag) = &fetched.etag {
+    // Carry the etag forward on the item-level metadata (already the value
+    // that flows into the persisted `SourceDocument.metadata` via
+    // `web::metadata::web_source_document`'s merge) so a future generation
+    // could attempt a conditional request — once the ledger/discover side
+    // copies this key onto the next generation's `ManifestItem.metadata`.
+    if let Some(etag) = fetched.etag.as_deref().or(prior_etag) {
         metadata.insert("web_etag".to_string(), serde_json::json!(etag));
     }
 
-    Ok(AcquiredSourceItem {
+    Ok(Some(AcquiredSourceItem {
         manifest_item,
         fetch_status: LifecycleStatus::Completed,
         content_ref: fetched.content,
@@ -82,7 +212,7 @@ async fn acquire_via_fetch(fetch: &dyn FetchProvider, item: &ManifestItem) -> Re
         headers: fetched.headers,
         fetched_at: fetched.fetched_at,
         metadata,
-    })
+    }))
 }
 
 /// `AutoSwitch`: render in `Http` mode (the "fetch" step), and if the
@@ -92,29 +222,59 @@ async fn acquire_via_auto_switch(
     render: &dyn RenderProvider,
     item: &ManifestItem,
     min_markdown_chars: usize,
-) -> Result<AcquiredSourceItem> {
+    automation_script: Option<ArtifactRef>,
+) -> Result<Option<AcquiredSourceItem>> {
     let first = render
-        .render(build_render_request(item, RenderMode::Http))
+        .render(build_render_request(
+            item,
+            RenderMode::Http,
+            automation_script.clone(),
+        ))
         .await?;
     if first.markdown.chars().count() >= min_markdown_chars {
-        return Ok(acquired_from_rendered(item, first, "auto_switch_http"));
+        return Ok(Some(acquired_from_rendered(
+            item,
+            first,
+            "auto_switch_http",
+        )));
     }
     match render
-        .render(build_render_request(item, RenderMode::Chrome))
+        .render(build_render_request(
+            item,
+            RenderMode::Chrome,
+            automation_script,
+        ))
         .await
     {
-        Ok(rendered) => Ok(acquired_from_rendered(item, rendered, "auto_switch_chrome")),
-        Err(_) => Ok(acquired_from_rendered(item, first, "auto_switch_http_fallback")),
+        Ok(rendered) => Ok(Some(acquired_from_rendered(
+            item,
+            rendered,
+            "auto_switch_chrome",
+        ))),
+        Err(_) => Ok(Some(acquired_from_rendered(
+            item,
+            first,
+            "auto_switch_http_fallback",
+        ))),
     }
 }
 
-fn build_fetch_request(item: &ManifestItem) -> FetchRequest {
+/// `prior_etag`, when present, is sent as `If-None-Match` — the caller
+/// decides whether one applies (gated by `etag_conditional` and whether the
+/// incoming item carries a `web_etag`; see [`acquire_via_fetch`]).
+fn build_fetch_request(item: &ManifestItem, prior_etag: Option<&str>) -> FetchRequest {
+    let mut headers = Vec::new();
+    if let Some(etag) = prior_etag {
+        headers.push(RedactedHeader {
+            name: "If-None-Match".to_string(),
+            value: etag.to_string(),
+            redacted: false,
+        });
+    }
     FetchRequest {
         uri: item.canonical_uri.clone(),
         method: "GET".to_string(),
-        headers: RedactedHeaders {
-            headers: Vec::new(),
-        },
+        headers: RedactedHeaders { headers },
         body: None,
         timeout_ms: None,
         max_bytes: None,
@@ -123,13 +283,17 @@ fn build_fetch_request(item: &ManifestItem) -> FetchRequest {
     }
 }
 
-fn build_render_request(item: &ManifestItem, mode: RenderMode) -> RenderRequest {
+fn build_render_request(
+    item: &ManifestItem,
+    mode: RenderMode,
+    automation_script: Option<ArtifactRef>,
+) -> RenderRequest {
     RenderRequest {
         uri: item.canonical_uri.clone(),
         mode,
         timeout_ms: None,
         wait_ms: None,
-        automation_script: None,
+        automation_script,
         credential_refs: Vec::new(),
         metadata: MetadataMap::new(),
     }

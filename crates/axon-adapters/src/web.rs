@@ -15,6 +15,7 @@ mod metadata;
 mod options;
 mod site_discovery;
 mod url_parts;
+mod warc;
 
 use std::sync::Arc;
 
@@ -103,7 +104,7 @@ impl SourceAdapter for WebSourceAdapter {
             .chain(diff.modified.iter())
             .cloned()
             .collect();
-        let fetched_items = acquire::acquire_changed_items(
+        let outcome = acquire::acquire_changed_items(
             plan,
             &manifest_items,
             self.fetch.as_ref(),
@@ -116,15 +117,15 @@ impl SourceAdapter for WebSourceAdapter {
                 plan.job_id,
                 "web_fetch",
                 PipelinePhase::Fetching,
-                fetched_items.len(),
+                outcome.items.len(),
             ),
             source_id: plan.route.source.source_id.clone(),
             generation: diff.next_generation.clone(),
             adapter: plan.route.adapter.clone(),
             scope: plan.route.scope,
             manifest: diff_manifest(plan, diff, manifest_items),
-            fetched_items,
-            artifacts: Vec::new(),
+            fetched_items: outcome.items,
+            artifacts: outcome.artifacts,
         })
     }
 
