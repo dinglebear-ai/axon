@@ -70,13 +70,13 @@ pub(super) async fn normalize_changed_documents(
 /// that mirror the legacy `axon-ingest::sessions` transcript payloads. Those
 /// verticals wrote payloads directly and were never bound by the shared vector
 /// payload contract in `axon-vectors::payload`, which for the `"session"`
-/// source family recognizes only `session_id` / `session_turn_index` /
-/// `session_tool_name` / `session_skill_name` as source-specific fields — any
-/// other field is rejected by `VectorPointBatchBuilder::build()` with
-/// `UnknownSourceSpecificField`. Worse, `session_workspace_path` carries an
-/// absolute filesystem path (e.g. `/home/user/project`), which the redaction
-/// guard in `axon-vectors::payload_redaction` rejects outright as a
-/// `ForbiddenValue`.
+/// source family recognizes only `session_provider` / `session_id` /
+/// `session_turn_index` / `session_tool_name` / `session_skill_name` as
+/// source-specific fields — any other field is rejected by
+/// `VectorPointBatchBuilder::build()` with `UnknownSourceSpecificField`.
+/// Worse, `session_workspace_path` carries an absolute filesystem path (e.g.
+/// `/home/user/project`), which the redaction guard in
+/// `axon-vectors::payload_redaction` rejects outright as a `ForbiddenValue`.
 ///
 /// Remap here, at the bridge boundary, rather than editing the already-merged
 /// adapter contract: this keeps the fix scoped to the one crate allowed to
@@ -84,7 +84,10 @@ pub(super) async fn normalize_changed_documents(
 /// unit tests (which assert the full pre-remap `session_*` shape) untouched.
 /// We drop every session-specific field the contract does not allow (including
 /// the forbidden `session_workspace_path`) while preserving the contract's
-/// shared fields and the allowlisted `session_id`.
+/// shared fields and the allowlisted `session_id` / `session_provider` —
+/// `session_provider` is `required:yes` per
+/// `docs/pipeline-unification/sources/metadata-payload.md` (Session Fields),
+/// so it must survive this remap, not just `session_id`.
 fn remap_to_vector_payload_contract(mut document: SourceDocument) -> SourceDocument {
     document.metadata.retain(|field, _| {
         VECTOR_SHARED_FIELDS.contains(&field.as_str())
@@ -98,6 +101,7 @@ fn remap_to_vector_payload_contract(mut document: SourceDocument) -> SourceDocum
 /// row). Kept in sync with that table; every other stamped `session_*` field
 /// is dropped by [`remap_to_vector_payload_contract`].
 const SESSION_PAYLOAD_ALLOWED_FIELDS: &[&str] = &[
+    "session_provider",
     "session_id",
     "session_turn_index",
     "session_tool_name",

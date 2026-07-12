@@ -104,6 +104,7 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
     (
         "session",
         &[
+            "session_provider",
             "session_id",
             "session_turn_index",
             "session_tool_name",

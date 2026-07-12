@@ -112,6 +112,7 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("package", "package_ecosystem"));
     assert!(source_family_allows_field("package", "package_name"));
     assert!(source_family_allows_field("package", "package_version"));
+    assert!(source_family_allows_field("session", "session_provider"));
     assert!(source_family_allows_field("session", "session_id"));
     assert!(source_family_allows_field("session", "session_turn_index"));
     assert!(source_family_allows_field("session", "session_tool_name"));
