@@ -1,5 +1,7 @@
 use super::*;
-use axon_api::source::{MemoryHistoryEvent, MemoryScope, MemoryStatus, MemoryType, Timestamp};
+use axon_api::source::{
+    JobId, MemoryHistoryEvent, MemoryScope, MemoryStatus, MemoryType, Timestamp,
+};
 use axon_observe::testing::InMemoryObservabilitySink;
 use std::sync::Arc;
 
@@ -37,6 +39,7 @@ async fn emits_remembering_event_with_required_fields() {
     let record = sample_record();
     emit(
         &sink,
+        JobId::from(uuid::Uuid::new_v4()),
         MemoryPhase::Remembering,
         &record,
         Severity::Info,
@@ -67,6 +70,7 @@ async fn emits_review_event_with_reason() {
 
     emit(
         &sink,
+        JobId::from(uuid::Uuid::new_v4()),
         MemoryPhase::Reviewing,
         &record,
         Severity::Warning,
@@ -84,4 +88,37 @@ async fn emits_review_event_with_reason() {
     assert!(event.message.contains("review_reason=contradiction"));
     assert!(event.message.contains("score_before=0.6"));
     assert!(event.message.contains("score_after=0.35"));
+}
+
+#[tokio::test]
+async fn caller_supplied_job_id_correlates_multiple_emits() {
+    // Regression test for the fixed bug: a single logical operation (e.g.
+    // `contradict()`, which emits once per affected memory) must share one
+    // `job_id` across all its emits so the observability sink's
+    // `(job_id, sequence)` correlation actually groups them together.
+    let concrete = InMemoryObservabilitySink::default();
+    let sink: Arc<dyn ObservabilitySink> = Arc::new(concrete.clone());
+    let record_a = sample_record();
+    let mut record_b = sample_record();
+    record_b.memory_id = axon_api::source::MemoryId::new("mem_other");
+
+    let job_id = JobId::from(uuid::Uuid::new_v4());
+    for record in [&record_a, &record_b] {
+        emit(
+            &sink,
+            job_id,
+            MemoryPhase::Reviewing,
+            record,
+            Severity::Warning,
+            None,
+            None,
+            Some("contradiction"),
+        )
+        .await;
+    }
+
+    let snapshot = concrete.snapshot();
+    assert_eq!(snapshot.events.len(), 2);
+    assert_eq!(snapshot.events[0].job_id, job_id);
+    assert_eq!(snapshot.events[1].job_id, job_id);
 }

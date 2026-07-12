@@ -71,9 +71,31 @@ impl MemoryPhase {
 /// operation it describes (observability is best-effort, not a durability
 /// boundary — the durable write already committed to SQLite by the time
 /// this is called).
+///
+/// `job_id` correlates every event emitted by one logical store-method
+/// invocation (contract: "`job_id` or `request_id`"). Callers must generate
+/// **one** id per invocation and pass the same value to every `emit()` call
+/// made while servicing it — `contradict()` and `import()` each emit more
+/// than once per call (once per affected memory), and a fresh random id per
+/// `emit()` call (the previous behavior here) silently defeated the
+/// observability sink's `(job_id, sequence)` correlation: every event looked
+/// like the start of an unrelated single-event job, so `events_for`/
+/// `heartbeat_for` lookups keyed by `job_id` could never find sibling events
+/// from the same operation.
+///
+/// No `axon-api::source` memory request DTO carries a caller-supplied
+/// request/job/session id today (`remember`/`search`/`context`/`link`/
+/// `update`/`reinforce`/`supersede`/`contradict`/`pin`/`archive`/`forget`/
+/// `review`/`compact` — none of the 14 contract DTOs have one), so there is
+/// no real external id to thread through yet; adding one is a DTO-shape
+/// change across the whole memory family (plus every CLI/MCP/REST caller),
+/// out of scope here. Callers therefore still synthesize a fresh
+/// [`uuid::Uuid::new_v4`]-backed id per invocation — genuinely synthetic,
+/// but now scoped to "one per operation" rather than "one per event".
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn emit(
     sink: &Arc<dyn ObservabilitySink>,
+    job_id: JobId,
     phase: MemoryPhase,
     record: &MemoryRecord,
     severity: Severity,
@@ -83,7 +105,7 @@ pub(crate) async fn emit(
 ) {
     let message = lifecycle_message(phase, record, score_before, score_after, review_reason);
     let mut evt: SourceProgressEvent = event::stage_completed(
-        JobId::from(uuid::Uuid::new_v4()),
+        job_id,
         None,
         phase.canonical(),
         StageCounts {
