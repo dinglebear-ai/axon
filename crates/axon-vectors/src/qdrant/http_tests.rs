@@ -44,3 +44,26 @@ fn collection_path_with_empty_suffix_targets_the_collection_root() {
         "http://host:6333/collections/axon"
     );
 }
+
+#[test]
+fn qdrant_http_new_reuses_the_shared_client_across_many_constructions() {
+    let before = shared_client_build_count();
+    for i in 0..5 {
+        QdrantHttp::new("http://localhost:6333", &format!("qdrant-{i}"))
+            .expect("client construction never fails");
+    }
+    let after = shared_client_build_count();
+    assert!(
+        after == before || after == before + 1,
+        "the shared client may initialize once, never once per QdrantHttp::new call"
+    );
+    for i in 5..10 {
+        QdrantHttp::new("http://localhost:6333", &format!("qdrant-{i}"))
+            .expect("client construction never fails");
+    }
+    assert_eq!(
+        shared_client_build_count(),
+        after,
+        "later QdrantHttp::new calls must keep reusing the same client"
+    );
+}
