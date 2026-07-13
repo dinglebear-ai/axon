@@ -31,6 +31,7 @@ use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
+use super::canonical_uri_from_payload;
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::DedupeResult;
 
@@ -61,11 +62,11 @@ struct DedupeRecord {
     scraped_at: String,
 }
 
-/// FNV-1a 64-bit hash of a URL string used as a compact map key.
-/// Avoids heap-allocating the full URL string per map entry. Fixed seed
+/// FNV-1a 64-bit hash of a canonical URI string used as a compact map key.
+/// Avoids heap-allocating the full URI string per map entry. Fixed seed
 /// ensures stability within a single dedupe run (keys are never persisted).
 #[inline]
-fn fnv64_url(s: &str) -> u64 {
+fn fnv64_uri(s: &str) -> u64 {
     const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
     const FNV_PRIME: u64 = 1_099_511_628_211;
     let mut hash = FNV_OFFSET;
@@ -195,10 +196,10 @@ impl PruneTarget for DedupeExecTarget<'_> {
     }
 }
 
-/// Remove duplicate points that share the same `(url, chunk_index)` key.
+/// Remove duplicate points that share the same `(canonical_uri, chunk_index)` key.
 ///
 /// **Memory**: Two-pass approach — pass 1 counts occurrences using a compact
-/// `(fnv64(url), chunk_index)` key with no per-point String allocations; pass 2
+/// `(fnv64(uri), chunk_index)` key with no per-point String allocations; pass 2
 /// scrolls again and allocates `DedupeRecord`s only for keys with count > 1.
 /// At 2.5M points with ~1% duplicates this saves roughly 10× peak RSS compared
 /// to a single-pass approach that stores records for every point.
@@ -220,10 +221,17 @@ async fn dedupe_collection(cfg: &Config) -> Result<(usize, usize), Box<dyn Error
     let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
     let collection = cfg.collection.clone();
 
-    // Selective payload: only fetch the fields needed for dedup (url,
+    // Selective payload: only fetch the fields needed for dedup (canonical URI,
     // chunk_index, scraped_at). Avoids transferring multi-KB chunk_text
     // per point — ~28x less data on a 7M-point collection.
-    let with_payload = serde_json::json!({"include": ["url", "chunk_index", "scraped_at"]});
+    let with_payload = serde_json::json!({"include": [
+        "item_canonical_uri",
+        "source_canonical_uri",
+        "source_item_key",
+        "chunk_locator",
+        "chunk_index",
+        "scraped_at"
+    ]});
 
     // Pass 1: count occurrences per compact key — no record storage.
     let mut counts: HashMap<(u64, i64), u32> = HashMap::new();
@@ -235,20 +243,15 @@ async fn dedupe_collection(cfg: &Config) -> Result<(usize, usize), Box<dyn Error
             SCROLL_PAGE_LIMIT,
             |points| {
                 for point in points {
-                    let url = point
-                        .payload
-                        .get("url")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or_default();
-                    if url.is_empty() {
+                    let Some(uri) = canonical_uri_from_payload(&point.payload) else {
                         continue;
-                    }
+                    };
                     let ci = point
                         .payload
                         .get("chunk_index")
                         .and_then(serde_json::Value::as_i64)
                         .unwrap_or(0);
-                    *counts.entry((fnv64_url(url), ci)).or_insert(0) += 1;
+                    *counts.entry((fnv64_uri(uri), ci)).or_insert(0) += 1;
                 }
                 true
             },
@@ -282,20 +285,15 @@ async fn dedupe_collection(cfg: &Config) -> Result<(usize, usize), Box<dyn Error
                     if id.is_empty() {
                         continue;
                     }
-                    let url = point
-                        .payload
-                        .get("url")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or_default();
-                    if url.is_empty() {
+                    let Some(uri) = canonical_uri_from_payload(&point.payload) else {
                         continue;
-                    }
+                    };
                     let ci = point
                         .payload
                         .get("chunk_index")
                         .and_then(serde_json::Value::as_i64)
                         .unwrap_or(0);
-                    let key = (fnv64_url(url), ci);
+                    let key = (fnv64_uri(uri), ci);
                     if !dup_keys.contains(&key) {
                         continue;
                     }
