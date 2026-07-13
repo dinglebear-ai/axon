@@ -406,7 +406,7 @@ jobs:
           install_args: cargo:taplo-cli
       - name: taplo fmt --check
         run: |
-          taplo fmt --check \
+          mise exec cargo:taplo-cli -- taplo fmt --check \
             .cargo/config.toml \
             .config/nextest.toml \
             .taplo.toml \
