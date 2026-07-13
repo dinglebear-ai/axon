@@ -16,14 +16,61 @@
 use clap::Command;
 use std::collections::HashSet;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReservedCommandError {
+    token: String,
+    replacement: &'static str,
+}
+
+impl ReservedCommandError {
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    pub fn replacement(&self) -> &'static str {
+        self.replacement
+    }
+}
+
+const RESERVED_COMMANDS: &[(&str, &str)] = &[
+    (
+        "crawl",
+        "Use `axon <url> --scope site` or `axon <url> --scope docs`.",
+    ),
+    ("embed", "Use `axon <path-or-source>` with source options."),
+    (
+        "ingest",
+        "Use `axon <source>` with the appropriate source URI.",
+    ),
+    ("code-search", "Use `axon <path> --scope directory`."),
+    ("code-search-watch", "Use `axon <path> --watch`."),
+];
+
 /// Rewrite `args` (a full argv, `args[0]` = program name) so a bare leading
 /// source token is routed through the `source` subcommand.
 ///
 /// Returns the (possibly unchanged) argv. Leaves help/version/empty invocations
 /// and explicit subcommands untouched.
 pub fn route_bare_source(args: Vec<String>, command: &Command) -> Vec<String> {
+    match route_bare_source_or_error(args.clone(), command) {
+        Ok(args) => args,
+        Err(_) => args,
+    }
+}
+
+pub fn route_bare_source_or_error(
+    args: Vec<String>,
+    command: &Command,
+) -> Result<Vec<String>, ReservedCommandError> {
+    route_bare_source_inner(args, command)
+}
+
+fn route_bare_source_inner(
+    args: Vec<String>,
+    command: &Command,
+) -> Result<Vec<String>, ReservedCommandError> {
     if args.len() < 2 {
-        return args;
+        return Ok(args);
     }
 
     let subcommands: HashSet<String> = collect_subcommand_names(command);
@@ -61,18 +108,27 @@ pub fn route_bare_source(args: Vec<String>, command: &Command) -> Vec<String> {
 
     if i >= args.len() {
         // Only flags — nothing to route (help/version/global-flag-only).
-        return args;
+        return Ok(args);
     }
 
     let candidate = &args[i];
     if subcommands.contains(candidate) || is_help_or_version(candidate) {
-        return args;
+        return Ok(args);
+    }
+    if let Some((_, replacement)) = RESERVED_COMMANDS
+        .iter()
+        .find(|(token, _)| token == candidate)
+    {
+        return Err(ReservedCommandError {
+            token: candidate.clone(),
+            replacement,
+        });
     }
 
     // Bare source token — inject `source` before it.
     let mut rewritten = args;
     rewritten.insert(i, "source".to_string());
-    rewritten
+    Ok(rewritten)
 }
 
 fn collect_subcommand_names(command: &Command) -> HashSet<String> {

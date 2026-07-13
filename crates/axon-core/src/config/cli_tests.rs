@@ -43,14 +43,27 @@ fn parse_retrieve_max_points_flag() {
     );
 }
 
-/// The `scrape`, `crawl`, `embed`, `ingest`, `code-search`, and `code-search-watch`
-/// commands were removed in the pipeline-unification clean break (issue #298 P10).
-/// `axon source` / `axon query` are the canonical replacements. Each removed name
-/// must now fail to parse as an unknown subcommand.
+#[test]
+fn retained_scrape_parses_scrape_specific_flags() {
+    let result = Cli::try_parse_from([
+        "axon",
+        "scrape",
+        "--inline",
+        "--no-embed",
+        "https://example.com",
+    ]);
+    assert!(
+        result.is_ok(),
+        "retained scrape flags should parse on the scrape surface: {result:?}"
+    );
+}
+
+/// `crawl`, `embed`, `ingest`, `code-search`, and `code-search-watch`
+/// remain removed/reserved after the pipeline-unification clean break
+/// (issue #298 P10). `scrape` is retained and must continue to parse.
 #[test]
 fn removed_commands_no_longer_parse() {
     for name in [
-        "scrape",
         "crawl",
         "embed",
         "ingest",

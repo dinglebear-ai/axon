@@ -38,16 +38,16 @@ fn parse_watch_create_with_every_and_type() {
     );
 }
 
-/// The removed source-family commands (`scrape`, `crawl`, `embed`, `ingest`,
+/// The removed source-family commands (`crawl`, `embed`, `ingest`,
 /// `code-search`, `code-search-watch`) must not appear anywhere in the rendered
-/// top-level help after the pipeline-unification clean break (#298 P10).
+/// top-level help after the pipeline-unification clean break (#298 P10), while
+/// the retained `scrape` surface remains visible as a real subcommand.
 #[test]
 fn help_omits_removed_source_commands() {
     let mut command = super::build_cli_command();
     let help = command.render_long_help().to_string();
 
     for removed in [
-        "  scrape",
         "  crawl",
         "  embed",
         "  ingest",
@@ -60,32 +60,21 @@ fn help_omits_removed_source_commands() {
             removed.trim()
         );
     }
+    assert!(help.contains("scrape"));
     // Canonical replacements remain.
     assert!(help.contains("source"));
     assert!(help.contains("query"));
 }
 
-/// Full pipeline (bare-source routing + clap parse + config build) for the
-/// removed source-family command names: `axon embed` must resolve to
-/// `CommandKind::Source` with the removed token itself treated as the
-/// (unsupported) source input, never dispatched to a dedicated `embed`
-/// command (which no longer exists as a clap subcommand), and never a parse
-/// error. `axon <source>` accepts exactly one positional, so this proves the
-/// single-token case; `source_routing_tests.rs` proves the routing rewrite
-/// itself for the multi-token argv shape.
+/// Removed source-family command names stay reserved/removed at the routing
+/// layer. `scrape` is intentionally excluded because it is retained as a real
+/// clap subcommand again, and `crawl` is reserved with dedicated guidance.
 #[allow(unsafe_code)]
 #[test]
-fn removed_command_names_dispatch_as_source() {
+fn removed_command_names_are_reserved_not_sources() {
     let _guard = env_guard();
 
-    for removed in [
-        "embed",
-        "ingest",
-        "scrape",
-        "crawl",
-        "code-search",
-        "code-search-watch",
-    ] {
+    for removed in ["embed", "ingest", "code-search", "code-search-watch"] {
         let raw = vec![
             "axon".to_string(),
             "--tei-url".to_string(),
@@ -95,6 +84,10 @@ fn removed_command_names_dispatch_as_source() {
             removed.to_string(),
         ];
         let command = super::build_cli_command();
+        let err = crate::config::source_routing::route_bare_source_or_error(raw.clone(), &command)
+            .expect_err("removed token should be reserved");
+        assert_eq!(err.token(), removed);
+
         let routed = crate::config::source_routing::route_bare_source(raw, &command);
         assert_eq!(
             routed,
@@ -104,27 +97,40 @@ fn removed_command_names_dispatch_as_source() {
                 "http://127.0.0.1:52000".to_string(),
                 "--qdrant-url".to_string(),
                 "http://127.0.0.1:53333".to_string(),
-                "source".to_string(),
                 removed.to_string(),
             ],
-            "removed token `{removed}` should be routed through `source`, after global flags"
+            "legacy infallible routing should leave reserved token `{removed}` unchanged"
         );
-        let cli = super::Cli::try_parse_from(&routed)
-            .unwrap_or_else(|e| panic!("`{removed}` should route to source and parse: {e}"));
-        let cfg = super::build_config::into_config(cli)
-            .unwrap_or_else(|e| panic!("`{removed}` routed config should build: {e}"));
-        assert_eq!(
-            cfg.command,
-            CommandKind::Source,
-            "removed command `{removed}` must dispatch as CommandKind::Source"
-        );
-        assert_eq!(
-            cfg.positional,
-            vec![removed.to_string()],
-            "removed token `{removed}` should be the source positional, got {:?}",
-            cfg.positional
+        assert!(
+            super::Cli::try_parse_from(&routed).is_err(),
+            "reserved token `{removed}` must not parse as a command or source"
         );
     }
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn scrape_projects_to_single_page_source_config() {
+    let _guard = env_guard();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "scrape",
+        "--inline",
+        "--no-embed",
+        "https://example.com",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("scrape config should parse");
+
+    assert_eq!(cfg.command, CommandKind::Scrape);
+    assert_eq!(cfg.positional, vec!["https://example.com".to_string()]);
+    assert_eq!(cfg.source_scope.as_deref(), Some("page"));
+    assert!(cfg.scrape_inline);
+    assert!(!cfg.embed);
 }
 
 /// `axon dedupe` and `axon purge` were removed clap subcommands

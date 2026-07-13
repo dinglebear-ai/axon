@@ -78,6 +78,7 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
     cfg.source_scope = inputs.dispatched.source_scope.clone();
+    cfg.scrape_inline = inputs.dispatched.scrape_inline;
     cfg.reset_stores = inputs.dispatched.reset_stores.clone();
     cfg.reset_dry_run = inputs.dispatched.reset_dry_run;
     cfg.prune_target = inputs.dispatched.prune_target.clone();
@@ -166,7 +167,7 @@ fn populate_perf_and_credentials(
 ) -> Result<(), String> {
     let g = inputs.global;
     cfg.collection = inputs.collection.clone();
-    cfg.embed = !g.skip_embed;
+    cfg.embed = !g.skip_embed && !inputs.dispatched.scrape_no_embed;
     cfg.mcp_embed_allowed_roots = env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
         .ok()
         .map(|raw| {
