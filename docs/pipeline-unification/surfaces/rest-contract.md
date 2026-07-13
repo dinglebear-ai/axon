@@ -48,11 +48,13 @@ Implemented today:
   `crates/axon-web/src/server/handlers/rest_tests.rs`); `/v1/purge` and
   `/v1/dedupe` were relocated to the admin-scoped `/v1/prune/purge` and
   `/v1/prune/dedupe` (U2-06/U2-09). `POST /v1/watch/{id}/run` was likewise
-  removed in favor of `POST /v1/watches/{watch_id}/exec`.
+  removed in favor of `POST /v1/watches/{watch_id}/exec`. The retained CLI
+  `axon scrape <url>` does not imply a retained `/v1/scrape` route; REST uses
+  `/v1/sources` with `scope=page`.
   `/v1/extract`, by contrast, is **not** slated for removal — it stays the
-  canonical explicit-structured-extraction route in this contract's
-  end-state too (see "Extraction Routes" below) — and REST still exposes it
-  today alongside `/v1/search`, `/v1/research`, `/v1/query`, `/v1/retrieve`,
+  canonical explicit-structured-extraction route in this contract's end-state
+  too (see "Extraction Routes" below) — and REST still exposes it today
+  alongside `/v1/search`, `/v1/research`, `/v1/query`, `/v1/retrieve`,
   `/v1/map`, `/v1/ask`, and `/api-docs/openapi.json`.
 - Job REST routes are family-scoped today only for `/v1/extract`
   (`/v1/extract`, `/v1/extract/{id}`, `/v1/extract/{id}/cancel`,

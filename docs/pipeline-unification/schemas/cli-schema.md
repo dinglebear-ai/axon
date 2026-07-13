@@ -191,6 +191,7 @@ output.
 | Command | DTO | Service | Notes |
 |---|---|---|---|
 | `axon <source>` | `SourceRequest` | `SourceService.submit` | default source acquisition/indexing |
+| `axon scrape <url>` | `SourceRequest` | `SourceService.submit` | `scope=page`, `embed=true`, exactly one page, clean content output |
 | `axon watch <sub>` | `Watch*Request` | `WatchService` | durable watches |
 | `axon map <source>` | `SourceRequest` | `SourceService.submit` | `intent=map`, `embed=false` |
 | `axon extract <source>` | `ExtractRequest` | `ExtractService.extract` | structured LLM extraction |
@@ -276,7 +277,6 @@ aliases:
 - `embed`
 - `ingest`
 - `crawl`
-- `scrape`
 - `code-search`
 - `code-search-watch`
 - old `purge` alias paths
