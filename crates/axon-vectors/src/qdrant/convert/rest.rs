@@ -188,7 +188,8 @@ pub fn canonical_uri_filter_json(canonical_uri: &str, prefix: bool) -> serde_jso
     // min_should, so a sibling form is rejected with HTTP 400.
     json!({
         "should": [
-            { "key": "url", "match": matcher.clone() },
+            { "key": "item_canonical_uri", "match": matcher.clone() },
+            { "key": "source_canonical_uri", "match": matcher.clone() },
             { "key": "source_item_key", "match": matcher.clone() },
             { "key": "chunk_locator.canonical_uri", "match": matcher },
         ],

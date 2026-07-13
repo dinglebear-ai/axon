@@ -864,6 +864,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -1302,6 +1342,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -1710,6 +1790,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -2109,6 +2229,46 @@
             {
               "required": [
                 "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
               ]
             },
             {
@@ -3029,6 +3189,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -3487,6 +3687,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -3931,6 +4171,46 @@
             {
               "required": [
                 "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
               ]
             },
             {
@@ -4393,6 +4673,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -4797,6 +5117,46 @@
             {
               "required": [
                 "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
               ]
             },
             {
@@ -5254,6 +5614,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -5703,6 +6103,46 @@
             {
               "required": [
                 "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
               ]
             },
             {
@@ -6160,6 +6600,46 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
                 "web_structured_kind"
               ]
             },
@@ -6443,9 +6923,17 @@
       "x-qdrant-index": "keyword"
     },
     "committed_generation": {
-      "minLength": 1,
-      "type": "string",
-      "x-qdrant-index": "keyword"
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer",
+          "x-qdrant-index": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "x-qdrant-index": "integer"
     },
     "content_hash": {
       "minLength": 1,
@@ -6623,6 +7111,9 @@
     "memory_type": {
       "type": "string"
     },
+    "normalization_version": {
+      "type": "string"
+    },
     "package_ecosystem": {
       "type": "string"
     },
@@ -6747,9 +7238,9 @@
       "x-qdrant-index": "keyword"
     },
     "source_generation": {
-      "minLength": 1,
-      "type": "string",
-      "x-qdrant-index": "keyword"
+      "minimum": 0,
+      "type": "integer",
+      "x-qdrant-index": "integer"
     },
     "source_id": {
       "minLength": 1,
@@ -6772,11 +7263,10 @@
       "minLength": 1,
       "type": "string"
     },
-    "source_type": {
-      "minLength": 1,
+    "structured_parse_error": {
       "type": "string"
     },
-    "structured_parse_error": {
+    "structured_payload_omitted": {
       "type": "string"
     },
     "structured_record_kind": {
@@ -6842,6 +7332,21 @@
     "web_domain": {
       "type": "string"
     },
+    "web_fetch_method": {
+      "type": "string"
+    },
+    "web_normalized_url": {
+      "type": "string"
+    },
+    "web_origin": {
+      "type": "string"
+    },
+    "web_path": {
+      "type": "string"
+    },
+    "web_seed_url": {
+      "type": "string"
+    },
     "web_status_code": {
       "type": "integer"
     },
@@ -6852,6 +7357,9 @@
       "type": "string"
     },
     "web_title": {
+      "type": "string"
+    },
+    "web_url": {
       "type": "string"
     },
     "yt_categories": {
@@ -7347,6 +7855,7 @@
         "embedding_provider": "tei",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-web",
+        "normalization_version": "normalization_version",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
@@ -7375,15 +7884,22 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "structured_payload_omitted": "structured_payload_omitted",
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal",
         "web_depth": 1,
         "web_domain": "example.com",
+        "web_fetch_method": "web_fetch_method",
+        "web_normalized_url": "web_normalized_url",
+        "web_origin": "web_origin",
+        "web_path": "web_path",
+        "web_seed_url": "web_seed_url",
         "web_status_code": 200,
         "web_structured_blob": "web_structured_blob",
         "web_structured_kind": "web_structured_kind",
-        "web_title": "Example Docs"
+        "web_title": "Example Docs",
+        "web_url": "web_url"
       },
       {
         "chunk_hash": "chunk_hash",
@@ -8083,7 +8599,7 @@
         },
         {
           "field_name": "committed_generation",
-          "field_schema": "keyword"
+          "field_schema": "integer"
         },
         {
           "field_name": "content_hash",
@@ -8135,7 +8651,7 @@
         },
         {
           "field_name": "source_generation",
-          "field_schema": "keyword"
+          "field_schema": "integer"
         },
         {
           "field_name": "source_id",
@@ -8235,12 +8751,12 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5",
+        "checksum": "sha256:f9ee03f30e3972cf07002859ad51ccee9c66b000f1b35f812f30c24fc3d185d9",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:8bbaac4ddff2dc10413ce58a59a78756cac29fec8bc2e17da2c12acc3481a4bf",
+        "checksum": "sha256:3a78461feb682823580324fc93aaafcc150944dc679ac11892e8922a4bd8d9a9",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -8270,7 +8786,7 @@
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
       {
-        "checksum": "sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede",
+        "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54",
         "kind": "rust_module",
         "path": "xtask/src/schemas/vector_payload_markdown.rs"
       }
@@ -8349,6 +8865,14 @@
           "web_domain",
           "web_status_code",
           "web_depth",
+          "normalization_version",
+          "web_url",
+          "web_seed_url",
+          "web_origin",
+          "web_path",
+          "web_normalized_url",
+          "web_fetch_method",
+          "structured_payload_omitted",
           "web_structured_kind",
           "web_structured_blob"
         ],

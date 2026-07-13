@@ -15,14 +15,14 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
-| `crates/axon-vectors/src/payload.rs` | `sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:8bbaac4ddff2dc10413ce58a59a78756cac29fec8bc2e17da2c12acc3481a4bf` |
+| `crates/axon-vectors/src/payload.rs` | `sha256:f9ee03f30e3972cf07002859ad51ccee9c66b000f1b35f812f30c24fc3d185d9` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:3a78461feb682823580324fc93aaafcc150944dc679ac11892e8922a4bd8d9a9` |
 | `crates/axon-vectors/src/point.rs` | `sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:3929926228d3bd652c7a1648856ed55eec8c777e5cf986b08aeecad63bbd58bb` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
 | `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:a8d208da3cbafbe06b2c73653a415d24c73cb7949671b0b0b934ca69565c00fd` |
-| `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede` |
+| `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54` |
 
 ## Root Shape
 
@@ -48,7 +48,7 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `source_canonical_uri` | `string; minLength=1` |
 | `source_item_key` | `string; minLength=1` |
 | `item_canonical_uri` | `string; minLength=1` |
-| `source_generation` | `string; minLength=1` |
+| `source_generation` | `integer; minimum=0` |
 | `document_id` | `string; minLength=1` |
 | `chunk_id` | `string; minLength=1` |
 | `chunk_index` | `integer; minimum=0` |
@@ -67,11 +67,11 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `embedding_provider` | `string; minLength=1` |
 | `embedding_profile` | `string; minLength=1` |
 | `embedded_at` | `string; format=date-time; minLength=1` |
-| `committed_generation` | `string; minLength=1` |
+| `committed_generation` | `unknown` |
 | `chunking_profile` | `string; minLength=1` |
 | `chunking_method` | `string; minLength=1` |
 
-Generation fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `uncommitted` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.
+Generation fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `null` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.
 
 ## Redaction Guardrails
 
@@ -104,7 +104,7 @@ Payload validation rejects secret field fragments and secret value fragments bef
 | `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
-| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth`, `web_structured_kind`, `web_structured_blob` |
+| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth`, `normalization_version`, `web_url`, `web_seed_url`, `web_origin`, `web_path`, `web_normalized_url`, `web_fetch_method`, `structured_payload_omitted`, `web_structured_kind`, `web_structured_blob` |
 | `package` | `package_ecosystem`, `package_name`, `package_version` |
 | `session` | `session_provider`, `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |
@@ -124,7 +124,7 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | `chunk_index` | `integer` |
 | `chunk_key` | `keyword` |
 | `collection` | `keyword` |
-| `committed_generation` | `keyword` |
+| `committed_generation` | `integer` |
 | `content_hash` | `keyword` |
 | `document_id` | `keyword` |
 | `document_status` | `keyword` |
@@ -137,7 +137,7 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | `payload_contract_version` | `keyword` |
 | `redaction_status` | `keyword` |
 | `source_family` | `keyword` |
-| `source_generation` | `keyword` |
+| `source_generation` | `integer` |
 | `source_id` | `keyword` |
 | `source_item_key` | `keyword` |
 | `vector_namespace` | `keyword` |

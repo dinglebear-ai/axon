@@ -84,6 +84,14 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
             "web_domain",
             "web_status_code",
             "web_depth",
+            "normalization_version",
+            "web_url",
+            "web_seed_url",
+            "web_origin",
+            "web_path",
+            "web_normalized_url",
+            "web_fetch_method",
+            "structured_payload_omitted",
             // Off-band structured-data extraction (JSON-LD / `__NEXT_DATA__` /
             // SvelteKit island) captured on `SourceDocument::structured_payload`
             // by the web source adapter and projected onto every chunk of the

@@ -90,14 +90,26 @@ pub fn check_collection_drift(existing: &CollectionSpec, incoming: &CollectionSp
 pub fn required_retrieval_payload_indexes() -> Vec<PayloadIndexSpec> {
     [
         ("source_id", PayloadFieldSchema::Keyword),
+        ("source_kind", PayloadFieldSchema::Keyword),
+        ("source_adapter", PayloadFieldSchema::Keyword),
+        ("source_scope", PayloadFieldSchema::Keyword),
+        ("source_canonical_uri", PayloadFieldSchema::Keyword),
+        ("source_item_key", PayloadFieldSchema::Keyword),
+        ("item_canonical_uri", PayloadFieldSchema::Keyword),
         ("source_generation", PayloadFieldSchema::Integer),
         ("committed_generation", PayloadFieldSchema::Integer),
         ("document_id", PayloadFieldSchema::Keyword),
         ("chunk_id", PayloadFieldSchema::Keyword),
+        ("job_id", PayloadFieldSchema::Keyword),
         ("vector_namespace", PayloadFieldSchema::Keyword),
         ("visibility", PayloadFieldSchema::Keyword),
         ("redaction_status", PayloadFieldSchema::Keyword),
+        ("document_status", PayloadFieldSchema::Keyword),
         ("content_kind", PayloadFieldSchema::Keyword),
+        ("embedding_provider", PayloadFieldSchema::Keyword),
+        ("embedding_model", PayloadFieldSchema::Keyword),
+        ("embedding_profile", PayloadFieldSchema::Keyword),
+        ("web_domain", PayloadFieldSchema::Keyword),
     ]
     .into_iter()
     .map(|(field_name, field_schema)| PayloadIndexSpec {

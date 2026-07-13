@@ -10,7 +10,7 @@
 //! - [`search`] — `/points/query` named-dense and dense+bm42 RRF hybrid.
 //! - [`commit`] — generation-aware publish (`mark_*_committed`).
 //! - [`read`] — raw-payload read/query primitives ported from legacy
-//!   `axon-vector` (facet, scroll, retrieve-by-url, url/prefix purge).
+//!   `axon-vector` (facet, scroll, retrieve-by-url, canonical/prefix purge).
 
 pub(crate) mod commit;
 pub mod convert;
