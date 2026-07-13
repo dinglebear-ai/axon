@@ -59,23 +59,41 @@ fn prefix_mode_with_trailing_slash_target_matches_starts_with() {
 }
 
 #[test]
-fn point_matches_via_url_or_seed_url() {
+fn point_matches_any_canonical_value() {
     assert!(point_matches_url_target(
-        Some("https://x/docs"),
-        None,
+        &["https://x/docs"],
         "https://x/docs",
         false
     ));
     assert!(point_matches_url_target(
-        None,
-        Some("https://x/docs"),
+        &["https://x/other", "https://x/docs"],
         "https://x/docs",
         false
     ));
     assert!(!point_matches_url_target(
-        Some("https://x/other"),
-        Some("https://x/other-seed"),
+        &["https://x/other", "https://x/other-seed"],
         "https://x/docs",
         false
     ));
+}
+
+#[test]
+fn canonical_values_uses_target_payload_fields() {
+    let payload = serde_json::json!({
+        "url": "https://legacy.example/docs",
+        "seed_url": "https://legacy.example",
+        "item_canonical_uri": "https://x/docs",
+        "source_canonical_uri": "https://x",
+        "source_item_key": "docs",
+        "chunk_locator": { "canonical_uri": "https://x/docs#chunk" }
+    });
+
+    let values = canonical_values(&payload);
+
+    assert!(values.contains(&"https://x/docs"));
+    assert!(values.contains(&"https://x"));
+    assert!(values.contains(&"docs"));
+    assert!(values.contains(&"https://x/docs#chunk"));
+    assert!(!values.contains(&"https://legacy.example/docs"));
+    assert!(!values.contains(&"https://legacy.example"));
 }

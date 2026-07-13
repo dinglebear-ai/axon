@@ -222,9 +222,16 @@ fn shared_field_schema(field: &str) -> Value {
                 "x-qdrant-index": "keyword"
             })
         }
-        "source_generation" | "committed_generation" => {
-            json!({ "type": "string", "minLength": 1, "x-qdrant-index": "keyword" })
+        "source_generation" => {
+            json!({ "type": "integer", "minimum": 0, "x-qdrant-index": "integer" })
         }
+        "committed_generation" => json!({
+            "anyOf": [
+                { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
+                { "type": "null" }
+            ],
+            "x-qdrant-index": "integer"
+        }),
         "embedding_dimensions" => {
             json!({ "type": "integer", "minimum": 1, "x-qdrant-index": "integer" })
         }

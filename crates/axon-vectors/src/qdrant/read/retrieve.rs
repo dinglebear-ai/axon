@@ -10,6 +10,7 @@
 use axon_api::source::ApiError;
 
 use crate::qdrant::QdrantVectorStore;
+use crate::qdrant::convert::canonical_uri_filter_json;
 use crate::store::Result;
 
 use super::QdrantScrolledPoint;
@@ -51,9 +52,8 @@ impl QdrantVectorStore {
     /// variant with any indexed content. Ports legacy `retrieve_result` +
     /// `qdrant_retrieve_by_url_details` as one call.
     ///
-    /// Points are excluded when `source_committed == false` (an uncommitted
-    /// source's chunks are not yet visible), matching legacy's
-    /// `retrieve_visibility_filter`.
+    /// Points are excluded when `committed_generation` is null (uncommitted),
+    /// when `visibility` is explicitly redacted, or when redaction failed.
     ///
     /// Returns `Err` only when every URL variant failed at the transport
     /// level; a URL that is simply not indexed comes back as `Ok` with empty
@@ -194,15 +194,16 @@ fn retrieve_max_points(max_points: Option<usize>) -> usize {
 }
 
 fn url_match_filter(url_match: &str) -> serde_json::Value {
-    serde_json::json!({ "must": [{ "key": "url", "match": { "value": url_match } }] })
+    canonical_uri_filter_json(url_match, false)
 }
 
-/// Layer legacy's uncommitted-source visibility exclusion onto a base
-/// filter: `must_not source_committed == false`. `base` is always the
-/// single-key object from [`url_match_filter`], so a direct `must_not`
-/// insert is safe (no need for a general multi-filter merge).
+/// Layer target visibility exclusions onto a base canonical-URI filter.
 fn retrieve_visibility_filter(mut base: serde_json::Value) -> serde_json::Value {
-    let must_not = serde_json::json!([{ "key": "source_committed", "match": { "value": false } }]);
+    let must_not = serde_json::json!([
+        { "is_null": { "key": "committed_generation" } },
+        { "key": "visibility", "match": { "value": "redacted" } },
+        { "key": "redaction_status", "match": { "value": "failed" } }
+    ]);
     if let Some(object) = base.as_object_mut() {
         object.insert("must_not".to_string(), must_not);
     }

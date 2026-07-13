@@ -2,6 +2,7 @@ use axon_api::source::*;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::collection::required_retrieval_payload_indexes;
 use crate::store::{FakeVectorMode, FakeVectorStore, VectorStore};
 
 fn collection() -> CollectionSpec {
@@ -387,10 +388,18 @@ async fn fake_vector_store_records_payload_indexes_from_collection_spec() {
     store.ensure_collection(collection()).await.unwrap();
     let spec = store.collection_spec("axon-test").await.unwrap();
 
-    assert_eq!(spec.payload_indexes.len(), 9);
+    assert_eq!(
+        spec.payload_indexes.len(),
+        required_retrieval_payload_indexes().len()
+    );
     assert!(spec.payload_indexes.iter().any(|index| {
         index.field_name == "source_generation"
             && index.field_schema == PayloadFieldSchema::Integer
+            && index.required_for_filters
+    }));
+    assert!(spec.payload_indexes.iter().any(|index| {
+        index.field_name == "item_canonical_uri"
+            && index.field_schema == PayloadFieldSchema::Keyword
             && index.required_for_filters
     }));
 }

@@ -21,7 +21,7 @@ pub(super) fn markdown(inputs: &[SourceInput], registry: &StaticVectorPayloadCon
             display_schema(&shared_field_schema(field))
         ));
     }
-    out.push_str("\nGeneration fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `uncommitted` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.\n");
+    out.push_str("\nGeneration fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `null` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.\n");
 
     out.push_str("\n## Redaction Guardrails\n\n");
     out.push_str("Payload validation applies metadata and locator guardrails before vector writes. `chunk_text` is treated as document body text and is not rejected merely for containing examples such as local paths or HTML snippets, but auth headers, cookies, dotenv-style assignments, bare secret tokens, and adapter response markers still fail closed.\n\n");

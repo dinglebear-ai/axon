@@ -79,7 +79,7 @@ async fn fake_vector_store_invalid_payload_errors_do_not_echo_raw_discriminators
 }
 
 #[tokio::test]
-async fn url_delete_selector_matches_canonical_payload_fields() {
+async fn canonical_uri_delete_selector_matches_target_payload_fields() {
     let store = FakeVectorStore::new("fake-vector");
     store
         .ensure_collection(test_collection_spec_hybrid(3))

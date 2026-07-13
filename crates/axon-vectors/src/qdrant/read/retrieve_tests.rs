@@ -45,21 +45,32 @@ fn retrieve_max_points_clamps_to_ceiling() {
 
 #[test]
 fn url_match_filter_shape() {
-    assert_eq!(
-        url_match_filter("https://x/y"),
-        json!({ "must": [{ "key": "url", "match": { "value": "https://x/y" } }] })
-    );
+    let filter = url_match_filter("https://x/y");
+    let should = filter["should"]
+        .as_array()
+        .expect("canonical should filter");
+    let keys = should
+        .iter()
+        .filter_map(|condition| condition["key"].as_str())
+        .collect::<Vec<_>>();
+    assert!(keys.contains(&"item_canonical_uri"));
+    assert!(keys.contains(&"source_canonical_uri"));
+    assert!(keys.contains(&"source_item_key"));
+    assert!(keys.contains(&"chunk_locator.canonical_uri"));
+    assert!(!keys.contains(&"url"));
 }
 
 #[test]
 fn retrieve_visibility_filter_adds_must_not() {
     let filter = retrieve_visibility_filter(url_match_filter("https://x/y"));
+    assert!(filter["should"].is_array());
     assert_eq!(
-        filter,
-        json!({
-            "must": [{ "key": "url", "match": { "value": "https://x/y" } }],
-            "must_not": [{ "key": "source_committed", "match": { "value": false } }]
-        })
+        filter["must_not"],
+        json!([
+            { "is_null": { "key": "committed_generation" } },
+            { "key": "visibility", "match": { "value": "redacted" } },
+            { "key": "redaction_status", "match": { "value": "failed" } }
+        ])
     );
 }
 
