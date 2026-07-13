@@ -37,9 +37,6 @@ mcp-smoke:
 test-all:
     {{rust_dev_env}}; cargo test --all-targets --all-features --locked
 
-nextest-install:
-    {{rust_dev_env}}; cargo install cargo-nextest --locked
-
 web-build:
     cd apps/web && npm run build
 
@@ -66,7 +63,7 @@ clippy:
 # Fail on unused crate dependencies (keeps per-crate manifests honest after the
 # workspace extraction). Graceful no-op when cargo-machete is not installed.
 machete:
-    @if command -v cargo-machete >/dev/null 2>&1; then cargo machete; else echo "skip: cargo-machete not installed (cargo install cargo-machete)"; fi
+    @if command -v cargo-machete >/dev/null 2>&1; then cargo machete; else echo "skip: cargo-machete not installed (run: mise install cargo:cargo-machete)"; fi
 
 build:
     {{rust_dev_env}}; cargo build --profile {{local_release_profile}} --locked
@@ -337,16 +334,13 @@ fix-all:
     just fix
 
 taplo-check:
-    if command -v taplo >/dev/null 2>&1; then taplo fmt --check; else echo "taplo not installed. Run: cargo install taplo-cli --locked"; exit 1; fi
+    if command -v taplo >/dev/null 2>&1; then taplo fmt --check; else echo "taplo not installed. Run: mise install cargo:taplo-cli"; exit 1; fi
 
 taplo-fmt:
-    if command -v taplo >/dev/null 2>&1; then taplo fmt; else echo "taplo not installed. Run: cargo install taplo-cli --locked"; exit 1; fi
-
-llvm-cov-install:
-    {{rust_dev_env}}; cargo install cargo-llvm-cov --locked
+    if command -v taplo >/dev/null 2>&1; then taplo fmt; else echo "taplo not installed. Run: mise install cargo:taplo-cli"; exit 1; fi
 
 coverage-branch:
-    if cargo llvm-cov --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo llvm-cov --locked --workspace --all-features --lcov --output-path .cache/coverage/lcov.info; else echo "cargo-llvm-cov not installed. Run: just llvm-cov-install"; exit 1; fi
+    if cargo llvm-cov --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo llvm-cov --locked --workspace --all-features --lcov --output-path .cache/coverage/lcov.info; else echo "cargo-llvm-cov not installed. Run: mise install cargo:cargo-llvm-cov"; exit 1; fi
 
 # ── Codegen ───────────────────────────────────────────────────
 

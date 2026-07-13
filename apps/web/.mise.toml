@@ -1,0 +1,3 @@
+[tools]
+# The web app has no exact Node runtime contract; use the current LTS line.
+node = "lts"

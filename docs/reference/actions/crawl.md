@@ -7,11 +7,11 @@ Last Modified: 2026-03-25
 | Surface | Entry point |
 |---|---|
 | CLI | `axon crawl ...` |
-| REST | `POST /v1/crawl`, `GET /v1/crawl`, `GET /v1/crawl/{id}`, `POST /v1/crawl/{id}/cancel`, `POST /v1/crawl/cleanup`, `DELETE /v1/crawl`, `POST /v1/crawl/recover` (Implemented) |
-| MCP | `{ "action": "crawl", "subaction": "..." }` (`crawl.start`, `crawl.status`, `crawl.cancel`, `crawl.list`, `crawl.cleanup`, `crawl.clear`, `crawl.recover`) |
-| Service | `services::crawl::{crawl_start_with_context,crawl_status,crawl_list,crawl_cancel,crawl_cleanup,crawl_clear,crawl_recover}` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: CLI-only `crawl worker`, `crawl errors`, `crawl audit`, and `crawl diff` are local process/reporting operations.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

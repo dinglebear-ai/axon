@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon sync ...` |
-| REST | Deferred |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `cli::commands::sync` |
+| Service | `Not inventoried` |
 
-Parity notes: Local container/binary sync helper; no remote API.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

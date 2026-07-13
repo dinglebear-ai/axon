@@ -7,11 +7,11 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon ask ...` |
-| REST | `POST /v1/ask`, `POST /v1/ask/stream` (Implemented) |
-| MCP | `{ "action": "ask" }` |
-| Service | `services::query::ask` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: `/v1/ask/stream` is advertised in `supported_routes()` and serves SSE; non-streaming `/v1/ask` remains for existing clients.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

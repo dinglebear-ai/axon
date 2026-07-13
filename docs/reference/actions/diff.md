@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon diff ...` |
-| REST | `POST /v1/diff` (Implemented) |
-| MCP | `{ "action": "diff" }` |
-| Service | `services::diff::diff` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Two-URL compare is available through CLI, MCP, and direct REST.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

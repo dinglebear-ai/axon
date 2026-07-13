@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon config ...` |
-| REST | Deferred |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `cli::commands::config` |
+| Service | `Not inventoried` |
 
-Parity notes: Reads/writes `~/.axon/.env` and `~/.axon/config.toml` on the host; local-only by design.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

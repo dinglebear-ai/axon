@@ -1,0 +1,5 @@
+[tools]
+# No packageManager pin exists in this app yet, so use the newest pnpm that mise
+# can install rather than freezing an arbitrary CI snapshot.
+pnpm = "latest"
+node = "lts"

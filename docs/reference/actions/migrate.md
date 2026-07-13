@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon migrate ...` |
-| REST | Deferred |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `services::migrate::migrate` |
+| Service | `Not inventoried` |
 
-Parity notes: One-time collection migration is intentionally not exposed remotely; `POST /v1/migrate` returns 404.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

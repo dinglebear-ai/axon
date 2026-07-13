@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon setup ...` |
-| REST | Deferred |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `services::setup::*` |
+| Service | `Not inventoried` |
 
-Parity notes: First-run/local/SSH setup mutates host config and should remain panel/local until an admin API is designed.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
