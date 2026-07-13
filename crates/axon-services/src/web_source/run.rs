@@ -23,21 +23,9 @@ pub(super) fn resolve_web_run(input: &WebSourceIndexInput) -> anyhow::Result<Web
             .options
             .values
             .insert("map_urls".to_string(), serde_json::json!(input.map_urls));
-    } else {
-        let manifest_path = input.manifest_path.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("web source indexing requires manifest_path for non-map scopes")
-        })?;
-        let markdown_root = input.markdown_root.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("web source indexing requires markdown_root for non-map scopes")
-        })?;
-        request.options.values.insert(
-            "manifest_path".to_string(),
-            manifest_path.display().to_string().into(),
-        );
-        request.options.values.insert(
-            "markdown_root".to_string(),
-            markdown_root.display().to_string().into(),
-        );
+    }
+    for (key, value) in input.crawl_options.iter() {
+        request.options.values.insert(key.clone(), value.clone());
     }
     let registry = AdapterRegistry::target_defaults();
     let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry.clone());
@@ -108,6 +96,7 @@ pub(super) async fn unchanged_refresh_output(
         vector_points_written: 0,
         removed_pages: 0,
         graph_candidates: Vec::new(),
+        warnings: Vec::new(),
     }))
 }
 

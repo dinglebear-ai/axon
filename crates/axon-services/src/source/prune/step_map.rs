@@ -50,7 +50,7 @@ pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
 /// (re)constructed per debt precisely so it can hold that per-debt value.
 /// Returns `None` for any other kind, or when the selector doesn't carry the
 /// identity the kind needs.
-pub(super) fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
+pub(super) fn debt_to_step(debt: &CleanupDebt, collection: &str) -> Option<PruneStep> {
     match debt.kind {
         CleanupDebtKind::VectorDelete => {
             let (source_id, generation) = debt_scope(debt)?;
@@ -62,7 +62,7 @@ pub(super) fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
                 ),
                 estimated_deletes: 1,
                 vector_selector: Some(VectorDeleteSelector::Generation {
-                    collection: "axon".to_string(),
+                    collection: collection.to_string(),
                     source_id: source_id.clone(),
                     generation: generation.clone(),
                 }),

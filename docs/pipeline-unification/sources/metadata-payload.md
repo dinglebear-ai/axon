@@ -1,5 +1,5 @@
 # Metadata and Payload Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-12
 
 ## Contract
 
@@ -29,29 +29,57 @@ have an owner, a stability rule, and a redaction rule.
 
 ## Current Implementation Snapshot
 
-Implemented today:
+Implemented today (pipeline-unification / #298 has shipped for the vector-payload
+write path — see `crates/axon-vectors/src/payload.rs`,
+`crates/axon-vectors/src/point/point_payload.rs`):
 
-- Ordinary vector payloads currently include core fields such as `url`,
-  `domain`, `source_type`, `content_type`, `chunk_index`, `chunk_text`,
-  `seed_url`, `scraped_at`, `payload_schema_version`, optional `title`,
-  optional `extractor_name`, structured data, and safe extra fields.
-- Local code payloads add fields such as `local_project_key`,
-  `local_project_display`, `local_file_hash`, `local_index_version`,
-  `local_generation`, `code_file_path`, and `code_path_prefixes`.
-- Prepared chunks can add fields such as `chunk_content_kind`, `chunk_locator`,
-  `source_range`, code language/type fields, and symbol extraction metadata.
+- Every vector point is built and validated through
+  `VectorPayload::try_from_metadata`, which enforces the full
+  `VECTOR_REQUIRED_FIELDS` set — `vector_namespace`, `source_family`,
+  `source_id`, `source_kind`, `source_adapter`, `source_scope`,
+  `source_canonical_uri`, `source_generation`, `document_id`, `chunk_id`,
+  `chunk_hash`, `chunk_text`, `visibility`, `redaction_status`, `job_id`,
+  `document_status`, `embedding_model`, `embedding_dimensions`,
+  `embedding_provider`, `embedding_profile`, `embedded_at`,
+  `chunking_profile`, `chunking_method`, and more (see "Required Vector Payload
+  Fields" below) — is emitted universally, not left as an adapter-specific
+  extra. This is a shipped guarantee, not a plan: a payload missing any
+  required field is rejected before it reaches Qdrant.
+- The old core fields `url`, `domain`, `source_type` (still accepted as a
+  legacy passthrough), `content_type`, `seed_url`, `scraped_at`,
+  `payload_schema_version`, `title`, and `extractor_name` belonged to the
+  pre-unification payload shape and are, with the exception of `source_type`,
+  no longer part of the current contract — see
+  `docs/reference/qdrant-payload-schema.md`'s legacy-schema section.
+- Local code payloads add fields such as `local_checkout`, `local_path_key`,
+  `local_git_remote`, and `local_git_commit` (the `local` source family; see
+  "Source Family Classification" below — these differ from the
+  `local_project_key`/`local_root_label`/`local_relative_path`-style names
+  documented later in this file's "Local File and Workspace Fields" section,
+  which have not shipped).
+- Prepared chunks can add fields such as `chunk_locator`, `source_range`, code
+  language/type fields (`code_language`, `code_symbol_name`,
+  `code_symbol_kind`, `code_file_type`, …), and symbol extraction metadata;
+  `chunk_content_kind` is declared but has no current writer.
 - Memory uses `memory://<uuid>` source URLs, embeds atomic memory chunks into
   the configured memory collection, and stores memory node metadata in SQLite.
 
-Planned by this contract:
+Still genuinely open (not shipped, not just under-documented):
 
-- Required target fields such as `vector_namespace`, `source_id`,
-  `source_kind`, `source_adapter`, `source_scope`, `source_generation`,
-  `document_id`, `chunk_id`, `chunk_hash`, `job_id`, `document_status`,
-  `embedding_model`, `embedding_dimensions`, `embedding_provider`,
-  `embedding_profile`, and `embedded_at` are not emitted universally today.
-- The implementation must promote these fields into shared payload construction
-  instead of leaving them as adapter-specific extras.
+- `graph`, `docker`, and `env` are validated source families with no adapter
+  that emits them yet (declared-only in `payload_families.rs`).
+- The `social` (Reddit) and `media` (YouTube) families ship with their
+  original `reddit_*`/`yt_*` field names rather than the promoted
+  `social_*`/`transcript_*` names this contract otherwise specifies — see the
+  promotion-rule notes under "Reddit, Feed, and Social Fields" and "YouTube
+  and Transcript Fields".
+- `UploadSourceAdapter` (`crates/axon-adapters/src/upload.rs`) stamps
+  `source_family = "upload"`, now the 14th `VECTOR_SOURCE_FAMILIES` entry (see
+  "Source Family Classification" below) — resolved as a genuine family rather
+  than a remap bridge, since uploaded content is provenance-tracked
+  separately from a caller-specified local path by design. The adapter is
+  still unwired into `index_source` dispatch (no `axon-services` caller
+  today), so this fix has not yet been exercised by a live payload write.
 
 ## Goals
 
@@ -88,10 +116,53 @@ Field names use snake_case. Shared fields use stable prefixes:
 | `package_*` | registry adapters | package registry and release metadata |
 | `session_*` | session adapter/parser | Claude/Codex/Gemini session metadata |
 | `tool_*` | cli/mcp adapters and session parser | CLI/MCP tool identity and execution metadata |
+| `docker_*` | Docker/Compose manifest parser (planned) | `docker_image`, `docker_service`, `docker_port`, `docker_volume` — declared in the `docker` payload source family (`payload_families.rs`) but not yet emitted by any adapter. |
+| `env_*` | env-file parser (planned) | `env_key`, `env_locator` only, never a raw value — declared in the `env` payload source family but not yet emitted by any adapter. |
 
 Adapters may add namespaced fields, but new shared fields must be promoted here
 before implementation. No transport-specific names such as `mcp_*` or `rest_*`
 belong in document payloads unless the source itself is an MCP object.
+
+### Source Family Classification
+
+`source_family` is a required vector payload field (`VECTOR_REQUIRED_FIELDS` in
+`crates/axon-vectors/src/payload.rs`) that classifies which source-specific
+metadata fields a chunk's payload may carry. It is a narrower,
+payload-validation-facing axis than `source_kind` — `source_family` exists
+purely to scope `axon-vectors`'s per-family field allowlist
+(`VECTOR_SOURCE_FAMILY_FIELDS` in `payload_families.rs`), not to describe the
+resolved adapter or ledger source type. The two enums are deliberately not
+1:1.
+
+Allowed values (`VECTOR_SOURCE_FAMILIES`, 14 total):
+
+| `source_family` | Typical `source_kind` | Notes |
+|---|---|---|
+| `code` | `git`, `local` (file chunks) | Git/local file chunks; carries `code_*` and `git_*` fields. |
+| `web` | `web` | Generic scrape/crawl chunks. |
+| `package` | `registry` | The `registry_sources` adapter itself stamps `source_family = "registry"`, which is **not** a valid family; `axon-services`'s bridge boundary (`registry_source_adapter::remap_to_vector_payload_contract`) remaps it to `package` (and `pkg_*` fields to `package_*`) before the vector payload contract sees it. |
+| `session` | `session` | Claude/Codex/Gemini transcripts. |
+| `graph` | — | Declared for graph-aware chunks; no adapter emits it yet. |
+| `memory` | `memory` | Persistent agent memory records. |
+| `feed` | `feed` | RSS/Atom/JSON feed entries. |
+| `social` | `reddit` | Field names are still `reddit_*`, not the promoted `social_*` names below — see the promotion-rule note in "Reddit, Feed, and Social Fields". |
+| `media` | `youtube` | Field names are still `yt_*`, not the promoted `transcript_*` names below — see the promotion-rule note in "YouTube and Transcript Fields". |
+| `local` | `local` | Local code-index checkouts; a distinct field set (`local_checkout`, `local_path_key`, `local_git_remote`, `local_git_commit`) from `code`. |
+| `tool` | `cli_tool`, `mcp_tool` | CLI/MCP tool execution records. |
+| `docker` | — | Declared for Docker/Compose manifest facts; no adapter emits it yet. |
+| `env` | — | Declared for `.env`-shaped key/locator facts; no adapter emits it yet. |
+| `upload` | `upload` | Staged/prepared uploads (`UploadSourceAdapter`); a distinct field set (`staged_upload`) from `local`/`code` because uploaded content is provenance-tracked separately from a caller-specified local path. |
+
+`source_kind` has no `code`, `package`, `graph`, `social`, `media`, or `tool`
+value of its own (see `SourceKind` in `crates/axon-api/src/source/enums.rs`);
+`docker`/`env` have no `source_kind` at all yet since no adapter emits them.
+`upload` is the one `source_family` that is also a literal `SourceKind`
+variant — `UploadSourceAdapter` (`crates/axon-adapters/src/upload.rs`) stamps
+`source_family = "upload"`, which is now a recognized `VECTOR_SOURCE_FAMILIES`
+entry (previously an unrecognized gap; see the "Current Implementation
+Snapshot" note above). That adapter still has no caller in any current
+service/CLI/MCP path, so this has not yet been exercised by a live payload
+write — wiring it into `index_source` dispatch is a separate follow-up.
 
 ## Visibility Classes
 
@@ -244,7 +315,7 @@ remain underneath it.
 | `source_item_key` | string | yes | public | all | Stable item key within source. |
 | `item_canonical_uri` | string | yes | public | all | Canonical item URI, not source root. |
 | `document_uri` | string | yes | public | all | URI that directly identifies this document/item. |
-| `document_status` | string | yes | public | status | `pending`, `prepared`, `embedded`, `published`, `failed`, `removed`, `pruned`. |
+| `document_status` | string | yes | public | status | Snake-case `DocumentLifecycleStatus` (`crates/axon-api/src/source/enums.rs`, 13 values): `discovered`, `fetched`, `normalized`, `enriched`, `parsed`, `prepared`, `embedded`, `vectorized`, `published`, `cleaned`, `degraded`, `failed`, `skipped`. On the vector payload specifically, the value is currently always either `vectorized` (write time, `point_payload.rs`) or `published` (after commit, `qdrant/commit.rs`); the ledger's `DocumentStatus.status` field uses the full range. |
 | `document_version` | string | no | public | ledger, payload | Source version, commit, package version, or item version. |
 | `content_kind` | string | yes | public | all | `code`, `markdown`, `html`, `plain_text`, `transcript`, `structured`, `binary_metadata`, etc. |
 | `content_title` | string | no | public | payload, citations | Title, heading, path, package name, or display label. |
@@ -319,16 +390,22 @@ generation, graph, and embedding metadata.
 
 ### Required Vector Payload Fields
 
+This table must match `VECTOR_REQUIRED_FIELDS`
+(`crates/axon-vectors/src/payload.rs`) field-for-field; `VectorPayload::try_from_metadata`
+rejects a payload missing any of them.
+
 | Field | Type | Required | Filter Index | Description |
 |---|---|---:|---:|---|
-| `payload_contract_version` | string | yes | no | Payload schema version. |
+| `payload_contract_version` | string | yes | no | Payload contract version (dated string, e.g. `2026-07-01`). |
 | `collection` | string | yes | no | Vector collection name. |
 | `vector_point_id` | string | yes | no | Store-level point id. |
 | `vector_namespace` | string | yes | yes | `documents`, `memory`, `graph`, `artifacts`, etc. |
+| `source_family` | string | yes | yes | Payload-field-allowlist classification axis (13 values). See "Source Family Classification" above; distinct from `source_kind`. |
 | `source_id` | string | yes | yes | Source filter. |
 | `source_kind` | string | yes | yes | Source kind filter. |
 | `source_adapter` | string | yes | yes | Adapter filter/debug. |
 | `source_scope` | string | yes | yes | Scope filter. |
+| `source_canonical_uri` | string | yes | yes | Canonical URI of the source identity (collapses onto `item_canonical_uri` for single-item sources). |
 | `source_generation` | integer | when mutable | yes | Generation filter. |
 | `committed_generation` | integer | when mutable | yes | Committed snapshot filter/correlation. |
 | `source_item_key` | string | yes | yes | Item filter and cleanup key. |
@@ -342,8 +419,11 @@ generation, graph, and embedding metadata.
 | `content_language` | string | no | yes | Language filter. |
 | `content_hash` | string | yes | no | Drift/dedupe evidence. |
 | `chunk_hash` | string | yes | no | Dedupe evidence. |
+| `chunk_text` | string | yes | no | The chunk's own text. Required and non-empty — a chunk without text is not valid; see `payload_shape.rs::validate_shapes` and the `missing_chunk_text.invalid.json` fixture. Not further length-bounded here beyond the active chunking policy. |
 | `chunk_locator` | string | yes | no | Citation locator. |
 | `source_range` | object | yes | no | Citation range. |
+| `visibility` | string | yes | yes | Shared `Visibility`: `public`, `internal`, `sensitive`, `redacted`, `derived`. |
+| `redaction_status` | string | yes | yes | Shared `RedactionStatus`: `clean`, `redacted`, `failed`. Stamped by the redactor immediately before validation. |
 | `job_id` | string | yes | yes | Correlation. |
 | `document_status` | string | yes | yes | Must be searchable only when publish-safe. |
 | `embedding_model` | string | yes | yes | Model/debug. |
@@ -351,6 +431,8 @@ generation, graph, and embedding metadata.
 | `embedding_provider` | string | yes | yes | TEI/OpenAI/etc provider. |
 | `embedding_profile` | string | yes | yes | Query/document instruction profile. |
 | `embedded_at` | timestamp | yes | no | Embed completion time. |
+| `chunking_profile` | string | yes | no | Tuned chunking profile the preparer selected (e.g. `code_symbol`, `markdown_sections`). |
+| `chunking_method` | string | yes | no | Concrete chunking method actually used. |
 
 ### Optional Vector Payload Fields
 
@@ -365,17 +447,22 @@ generation, graph, and embedding metadata.
 | `dedupe_key` | string | Cross-generation/content duplicate grouping. |
 | `artifact_id` | string | Link to raw/large source artifact. |
 | `redaction_profile` | string | Redaction policy applied before storage. |
-| `visibility` | string | Shared `Visibility`: `public`, `internal`, `sensitive`, `redacted`, `derived`. |
 | `tenant_id` | string | Future multi-tenant boundary; optional for local single-user runtime. |
+
+`visibility` and `redaction_status` moved to Required Vector Payload Fields
+above — both are in `VECTOR_REQUIRED_FIELDS` and rejected when missing or
+unrecognized (`validate_visibility`/`validate_redaction_status` in
+`payload.rs`).
 
 ### Vector Payload Example
 
 ```json
 {
-  "payload_contract_version": "2026-06-30",
+  "payload_contract_version": "2026-07-01",
   "collection": "axon",
   "vector_point_id": "vpt_01J...",
   "vector_namespace": "documents",
+  "source_family": "code",
   "source_id": "src_01J...",
   "source_kind": "git",
   "source_adapter": "github",
@@ -393,6 +480,7 @@ generation, graph, and embedding metadata.
   "content_language": "rust",
   "content_hash": "sha256:...",
   "chunk_hash": "sha256:...",
+  "chunk_text": "pub async fn run(...) -> Result<()> { ... }",
   "chunk_locator": "crates/axon-cli/src/main.rs:42-96",
   "source_range": { "line_start": 42, "line_end": 96, "byte_start": 1204, "byte_end": 3390 },
   "redaction_status": "clean",
@@ -404,12 +492,19 @@ generation, graph, and embedding metadata.
   "embedding_dimensions": 1024,
   "embedding_profile": "document_code",
   "embedded_at": "2026-06-30T20:20:00Z",
+  "chunking_profile": "code_symbol",
+  "chunking_method": "ast_symbol",
   "code_file_type": "source",
-  "symbol_name": "run",
-  "symbol_kind": "function",
+  "code_symbol_name": "run",
+  "code_symbol_kind": "function",
   "graph_node_ids": ["graph_node_01J..."]
 }
 ```
+
+Note: `code_symbol_name`/`code_symbol_kind` (not bare `symbol_name`/`symbol_kind`)
+are the only symbol-name fields allowlisted for the `code` family in
+`VECTOR_SOURCE_FAMILY_FIELDS`; a bare `symbol_name`/`symbol_kind` field would be
+rejected as an `UnknownSourceSpecificField`.
 
 ## Graph Metadata
 
@@ -621,6 +716,24 @@ similar manifests.
 | `feed_url` | string | no | Feed URL. |
 | `feed_entry_id` | string | no | Feed entry id/guid. |
 
+**Promotion-rule exception, shipped today.** The `social_*` names above are the
+target/promoted shape. The shipped `social` payload source family
+(`VECTOR_SOURCE_FAMILY_FIELDS` in `payload_families.rs`) instead allowlists the
+un-promoted `reddit_*` field names directly (`reddit_author`,
+`reddit_created_utc`, `reddit_score`, `reddit_num_comments`,
+`reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`,
+`reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`,
+`reddit_kind`) — `crates/axon-adapters/src/reddit/metadata.rs` stamps them and
+`axon-vectors` validates against them, not against `social_*`. Feed entries
+similarly ship as `feed_title`, `feed_link`, `feed_entry_id`,
+`feed_entry_link`, `feed_entry_published`, `feed_entry_author`, and
+`structured_parse_error` under the separate `feed` family, not folded into
+`social`. Renaming shipped, already-indexed payload fields is a breaking
+payload-schema change (would orphan every already-embedded Reddit/feed point),
+so this document intentionally keeps recording the real shipped names rather
+than silently aliasing them. **Whether/when to actually promote `reddit_*` to
+`social_*` is an open design decision, not resolved by this reconciliation.**
+
 ### YouTube and Transcript Fields
 
 | Field | Type | Required | Description |
@@ -634,6 +747,19 @@ similar manifests.
 | `transcript_segment_id` | string | no | Segment/turn id. |
 | `time_start_ms` | integer | no | Segment start timestamp. |
 | `time_end_ms` | integer | no | Segment end timestamp. |
+
+**Promotion-rule exception, shipped today.** The `transcript_*` names above are
+the target/promoted shape. The shipped `media` payload source family instead
+allowlists `video_id`, `title`, `url`, `channel`, `channel_url`,
+`yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`,
+`yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, and
+`segment_kind` (`crates/axon-adapters/src/youtube/metadata.rs` stamps them;
+`VECTOR_SOURCE_FAMILY_FIELDS` validates against them, not `transcript_*`). As
+with the Reddit/social case above, renaming shipped, already-indexed fields is
+a breaking payload-schema change, so this document records the real shipped
+names. **Whether/when to promote `yt_*` to `transcript_*` (and fold session
+transcripts into the same shape) is an open design decision, not resolved by
+this reconciliation.**
 
 ### Session Fields
 
@@ -857,3 +983,13 @@ Implementation may degrade, warn, and continue when:
 If two adapters emit the same concept under different names, promote the concept
 to this contract and update both adapters to the shared name. Do not preserve
 backwards-compatible aliases in the clean-break implementation.
+
+**Known, deliberately-deferred exception:** the shipped `social` and `media`
+payload source families (Reddit's `reddit_*` fields, YouTube's `yt_*` fields —
+see the notes under "Reddit, Feed, and Social Fields" and "YouTube and
+Transcript Fields") have not been promoted to this contract's `social_*`/
+`transcript_*` names, because those fields are already indexed and embedded in
+production Qdrant collections and renaming them is a breaking payload-schema
+change, not a clean-break-implementation rename. Promoting them requires a
+migration plan (see `axon migrate`), not just an adapter edit — track it as a
+follow-up decision rather than treating the current field names as a doc bug.

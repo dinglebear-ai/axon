@@ -26,10 +26,10 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use axon_adapters::youtube::{YoutubeTarget, parse_youtube_target};
 use axon_core::content::redact_url;
-use axon_core::http::validate_url;
 use sha2::{Digest, Sha256};
 
 use self::map::{parse_vtt_to_text, video_dump_json};
+use crate::source_url_audit::validate_source_url;
 
 /// Wall-clock cap for the yt-dlp subprocess before it is aborted. Generous for
 /// subtitle downloads / playlist enumeration, but bounds a hung process.
@@ -123,7 +123,8 @@ async fn fetch_videos(parsed: &YoutubeTarget, work_dir: &Path) -> Result<Vec<ser
     match &parsed.video_id {
         Some(video_id) => {
             let safe_url = format!("https://www.youtube.com/watch?v={video_id}");
-            validate_url(&safe_url)
+            validate_source_url(&safe_url)
+                .await
                 .map_err(|err| anyhow::anyhow!("youtube target failed SSRF validation: {err}"))?;
             Ok(fetch_single_video(&safe_url, work_dir)
                 .await?
@@ -137,7 +138,8 @@ async fn fetch_videos(parsed: &YoutubeTarget, work_dir: &Path) -> Result<Vec<ser
 /// Enumerate a playlist/channel's video URLs (bounded), then fetch each into a
 /// dump entry. Videos that yield no transcript are skipped, not fatal.
 async fn fetch_playlist(canonical_uri: &str, work_dir: &Path) -> Result<Vec<serde_json::Value>> {
-    validate_url(canonical_uri)
+    validate_source_url(canonical_uri)
+        .await
         .map_err(|err| anyhow::anyhow!("youtube target failed SSRF validation: {err}"))?;
     let urls = enumerate_playlist_videos(canonical_uri).await?;
     let mut videos = Vec::new();

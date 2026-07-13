@@ -8,11 +8,11 @@ Last Modified: 2026-05-21
 | Surface | Entry point |
 |---|---|
 | CLI | `axon endpoints ...` |
-| REST | `POST /v1/endpoints` (Implemented) |
-| MCP | `{ "action": "endpoints" }` |
-| Service | `services::endpoints::discover` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: API-endpoint discovery. `--probe-rpc`/`--probe-rpc-subdomains` remain CLI-only (no MCP/REST toggle); see `docs/reference/endpoints.md`.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

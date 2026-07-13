@@ -441,6 +441,124 @@ fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback()
 }
 
 #[test]
+fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
+    // Dead-code recovery (#298): a `"web"`-family document routed to
+    // `MarkdownSections` (the common web/crawl case) never passes
+    // `structured_payload` through `build_chunks`'s structured-parse branch --
+    // that only runs for `StructuredRecords`/`ApiSchema`. Confirm
+    // `project_structured_payload_metadata` still lands it on every chunk (and
+    // on the document itself, since `axon-vectors::point::point_payload`
+    // builds each point's payload from `document.metadata.clone()`).
+    let mut doc = source_doc(
+        ContentKind::Markdown,
+        "# Intro\nHello from docs.\n\n## More\nText.",
+    );
+    doc.metadata
+        .insert("source_family".to_string(), serde_json::json!("web"));
+    doc.structured_payload = Some(serde_json::json!({
+        "kind": "jsonld",
+        "schema_type": "Article",
+        "blob": {"@type": "Article", "headline": "Intro"},
+    }));
+
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-web-structured"),
+            profile: Some(ChunkingProfile::MarkdownSections),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_profile, "markdown_sections");
+    assert!(prepared.chunks.len() >= 2);
+    assert_eq!(prepared.metadata["web_structured_kind"], "Article");
+    assert!(
+        prepared.metadata["web_structured_blob"]
+            .as_str()
+            .unwrap()
+            .contains("headline")
+    );
+    for chunk in &prepared.chunks {
+        assert_eq!(chunk.metadata["web_structured_kind"], "Article");
+        assert!(
+            chunk.metadata["web_structured_blob"]
+                .as_str()
+                .unwrap()
+                .contains("headline")
+        );
+    }
+}
+
+#[test]
+fn structured_payload_kind_falls_back_when_schema_type_is_absent() {
+    // `next_data`/`sveltekit` extractions rarely carry a schema.org
+    // `schema_type`; the coarser `kind` field should still surface.
+    let mut doc = source_doc(ContentKind::Markdown, "# Intro\nHello.");
+    doc.metadata
+        .insert("source_family".to_string(), serde_json::json!("web"));
+    doc.structured_payload = Some(serde_json::json!({
+        "kind": "next_data",
+        "blob": {"props": {}},
+    }));
+
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-web-nextdata"),
+            profile: Some(ChunkingProfile::MarkdownSections),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.metadata["web_structured_kind"], "next_data");
+}
+
+#[test]
+fn structured_payload_is_not_projected_outside_the_web_family() {
+    // Every non-web adapter leaves `structured_payload` at `None` today, but
+    // the projection must still stay family-gated: `web_structured_kind`/
+    // `web_structured_blob` are only declared in the `"web"` family's vector
+    // payload allowlist, so leaking them onto another family would fail
+    // payload validation with `UnknownSourceSpecificField`.
+    let mut doc = source_doc(ContentKind::Markdown, "# Intro\nHello.");
+    doc.metadata
+        .insert("source_family".to_string(), serde_json::json!("code"));
+    doc.structured_payload = Some(serde_json::json!({
+        "kind": "jsonld",
+        "blob": {"@type": "Article"},
+    }));
+
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-nonweb"),
+            profile: Some(ChunkingProfile::MarkdownSections),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert!(!prepared.metadata.contains_key("web_structured_kind"));
+    assert!(!prepared.metadata.contains_key("web_structured_blob"));
+    for chunk in &prepared.chunks {
+        assert!(!chunk.metadata.contains_key("web_structured_kind"));
+        assert!(!chunk.metadata.contains_key("web_structured_blob"));
+    }
+}
+
+#[test]
 fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
     // StructuredRecords has no wired size fallback: even past the threshold,
     // both the reported method and the actual chunker stay on the profile's

@@ -87,15 +87,12 @@
 
 use std::time::Duration;
 
-use super::*;
 use axon_api::source::*;
 use axon_error::cooling::ProviderCooling;
 
 // This sidecar is declared at the crate root (`lib.rs`), not nested under a
-// single module file, so `use super::*` only brings top-level `pub mod`
-// names into scope (e.g. `boundary`, `store`) — it does not flatten their
-// contents. `JobStore`/`open_sqlite_pool`/etc. are re-imported explicitly
-// below because they live in those submodules.
+// single module file, so `JobStore`/`open_sqlite_pool`/etc. are imported
+// explicitly below from their owning submodules.
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
 use crate::unified::SqliteUnifiedJobStore;

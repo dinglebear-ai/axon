@@ -9,13 +9,11 @@
 //! [`super::resolve_runtime_with_workers`] hands the registry to
 //! `SqliteJobBackend::new_with_workers_and_registry` at composition time.
 //!
-//! Scope: this wave wires `ProviderProbe` (backed by the real
-//! `system::doctor::doctor` connectivity check) and `Memory` (backed by real
-//! `SqliteMemoryStore::compact`/`import` calls — see [`MemoryCompactionRunner`]).
-//! `GraphMutation`/`Prune`/`Watch` are intentionally left unregistered — they
-//! run as sub-steps of a parent operation or have their own scheduler, and
-//! forcing them through this seam here risks a rushed, wrong implementation
-//! of the trickiest cases.
+//! Registered here today: `ProviderProbe`, `Extract`, `Embed`, `Crawl`,
+//! `Ingest`, `Source`, and `Memory`. `GraphMutation`/`Prune`/`Watch` are
+//! intentionally left unregistered: they run as sub-steps of a parent operation
+//! or have their own scheduler, and forcing them through this seam here risks a
+//! rushed, wrong implementation of the trickiest cases.
 
 use std::sync::Arc;
 
@@ -24,6 +22,7 @@ use axon_api::source::{
     ApiError, ErrorStage, JobHeartbeat, JobKind, LifecycleStatus, PipelinePhase, Timestamp,
 };
 use axon_core::config::Config;
+use axon_core::logging::log_warn;
 use axon_jobs::boundary::JobStore;
 use axon_jobs::config_snapshot::apply_config_snapshot;
 use axon_jobs::unified::SqliteUnifiedJobStore;
@@ -111,7 +110,7 @@ pub(crate) async fn heartbeat_running(
     claimed: &UnifiedClaimedJob,
     phase: PipelinePhase,
 ) {
-    let _ = store
+    if let Err(error) = store
         .heartbeat(JobHeartbeat {
             job_id: claimed.job_id,
             attempt: claimed.attempt,
@@ -126,7 +125,15 @@ pub(crate) async fn heartbeat_running(
             counts: None,
             provider_reservations: Vec::new(),
         })
-        .await;
+        .await
+    {
+        // Swallowed by design (heartbeats are best-effort), but a silent
+        // failure here makes stale-job reclaim undebuggable — log it.
+        log_warn(&format!(
+            "heartbeat failed for job {} attempt {} phase {:?}: {error}",
+            claimed.job_id.0, claimed.attempt, phase
+        ));
+    }
 }
 
 /// Runs the real Qdrant/TEI/LLM connectivity check (`system::doctor::doctor`)
@@ -329,8 +336,9 @@ fn extract_error(message: impl Into<String>) -> ApiError {
     )
 }
 
-/// Runs a claimed `Embed` unified job via
-/// `axon_vector::ops::embed_path_native_with_progress`.
+/// Runs a claimed `Embed` unified job via `crate::embed::local_write::embed_local_path`
+/// (the ledger-tracked `local_source` pipeline — `axon-document` +
+/// `axon-embedding` + `axon-vectors`).
 ///
 /// `claimed.request_json` carries `{"input": "...", "config_json": "..."}`
 /// (see `embed_start_with_context` in `crates/axon-services/src/embed.rs`).
@@ -370,11 +378,10 @@ impl UnifiedJobRunner for EmbedRunner {
                 error.to_string(),
             )
         })?;
-        let embed_fut =
-            axon_vector::ops::embed_path_native_with_progress(&effective_cfg, &input, None, None);
+        let embed_fut = crate::embed::local_write::embed_local_path(&effective_cfg, &input, None);
         tokio::select! {
             _ = shutdown.cancelled() => Err(embed_error("embed canceled")),
-            result = embed_fut => result.map(|_summary| ()).map_err(|error| embed_error(error.to_string())),
+            result = embed_fut => result.map(|_output| ()).map_err(|error| embed_error(error.to_string())),
         }
     }
 }

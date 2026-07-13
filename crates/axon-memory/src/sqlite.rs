@@ -214,6 +214,7 @@ impl MemoryStore for SqliteMemoryStore {
         let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
         crate::observe::emit(
             &self.sink,
+            JobId::from(uuid::Uuid::new_v4()),
             crate::observe::MemoryPhase::Remembering,
             &record,
             Severity::Info,
@@ -264,6 +265,7 @@ impl MemoryStore for SqliteMemoryStore {
         let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
         crate::observe::emit(
             &self.sink,
+            JobId::from(uuid::Uuid::new_v4()),
             crate::observe::MemoryPhase::Linking,
             &record,
             Severity::Info,

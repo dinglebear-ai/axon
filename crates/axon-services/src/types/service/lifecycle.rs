@@ -35,9 +35,8 @@ pub struct CrawlSyncResult {
     pub thin_pages: u32,
     pub error_pages: u32,
     pub waf_blocked_pages: u32,
-    pub waf_diagnostics: Option<axon_crawl::engine::WafDiagnostics>,
+    pub waf_diagnostics: Option<axon_api::source::waf_diagnostics::WafDiagnostics>,
     pub elapsed_ms: u128,
-    pub cache_hit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

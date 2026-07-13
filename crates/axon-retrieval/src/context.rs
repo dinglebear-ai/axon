@@ -21,11 +21,7 @@ impl ContextBundle {
         byte_budget: u64,
         token_budget: u32,
     ) -> Self {
-        Self::from_items(
-            chunks.into_iter().map(|(chunk_id, text)| (chunk_id, text)),
-            byte_budget,
-            token_budget,
-        )
+        Self::from_items(chunks, byte_budget, token_budget)
     }
 
     pub(crate) fn from_matches(

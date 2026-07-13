@@ -14038,6 +14038,24 @@
         },
         {
           "additionalProperties": false,
+          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "collection": {
               "type": "string"
@@ -14684,6 +14702,24 @@
             "collection",
             "source_id",
             "generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection"
           ],
           "type": "object"
         },
@@ -16012,8 +16048,26 @@
           "additionalProperties": true,
           "type": "object"
         },
+        "offset": {
+          "default": 0,
+          "description": "Number of leading results to skip before `limit` is applied.\n`0` (the default) returns the first page.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "query": {
           "type": "string"
+        },
+        "time_range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SearchRequest_SearchTimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict results to a recency window (provider-dependent support)."
         }
       },
       "required": [
@@ -16023,6 +16077,16 @@
       ],
       "title": "SearchRequest",
       "type": "object"
+    },
+    "SearchRequest_SearchTimeRange": {
+      "description": "Result recency filter for [`SearchRequest`]. Mirrors `spider_agent::TimeRange`'s\nfour named variants (its `Custom { start, end }` range is not exposed here —\nno axon caller has ever constructed one; see `ServiceTimeRange` in\n`axon-services`, which has the same four-variant shape).",
+      "enum": [
+        "day",
+        "week",
+        "month",
+        "year"
+      ],
+      "type": "string"
     },
     "SearchResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -26601,6 +26665,24 @@
         },
         {
           "additionalProperties": false,
+          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+          "properties": {
+            "collection": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "collection",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "collection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "collection": {
               "type": "string"
@@ -28929,12 +29011,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:566d061865c4184df77bc825945494e970b238b83a4b0b80c1c0d1609f891e1f",
+        "checksum": "sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:c86b61105571bef9cd1c2a76d4a12174c7a2a80747024ddece1da5b50633e362",
+        "checksum": "sha256:25dcb9da7171df751c6432f104ffacea01fb1e93ddb501678fb2ea789556f2bf",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -28994,7 +29076,7 @@
         "path": "crates/axon-api/src/source/listing.rs"
       },
       {
-        "checksum": "sha256:a5728db42e846a995b35eb01a2d6e34751ba825e630b324852c16e36d4d2ec91",
+        "checksum": "sha256:85467dc859a815e2f56062c9e233d3dea7c532a4950d22f725f78a7a4079e5e3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
@@ -29019,7 +29101,7 @@
         "path": "crates/axon-api/src/source/status.rs"
       },
       {
-        "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac",
+        "checksum": "sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/vector.rs"
       },
@@ -29029,7 +29111,7 @@
         "path": "crates/axon-error/src/api_error.rs"
       },
       {
-        "checksum": "sha256:1b30e91ddefd5596315b1a6e90c7f216fc7debbe92b3fff48c39c6525d0f38c4",
+        "checksum": "sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },

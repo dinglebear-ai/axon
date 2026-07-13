@@ -11,10 +11,27 @@ fn required_retrieval_payload_indexes_include_generation_safe_filters() {
     let indexes = required_retrieval_payload_indexes();
     let required = [
         "source_id",
+        "source_family",
+        "source_kind",
+        "source_adapter",
+        "source_scope",
+        "source_canonical_uri",
+        "source_item_key",
+        "item_canonical_uri",
         "source_generation",
         "committed_generation",
+        "document_id",
+        "chunk_id",
+        "job_id",
+        "vector_namespace",
         "visibility",
         "redaction_status",
+        "document_status",
+        "content_kind",
+        "embedding_provider",
+        "embedding_model",
+        "embedding_profile",
+        "web_domain",
     ];
 
     for field_name in required {
@@ -30,6 +47,18 @@ fn required_retrieval_payload_indexes_include_generation_safe_filters() {
         assert!(
             index.required_for_filters,
             "{field_name} must be marked required for filters"
+        );
+    }
+    for legacy_field in [
+        "url",
+        "seed_url",
+        "domain",
+        "source_type",
+        "payload_schema_version",
+    ] {
+        assert!(
+            !indexes.iter().any(|index| index.field_name == legacy_field),
+            "legacy field {legacy_field} must not be in target retrieval index profile"
         );
     }
 }

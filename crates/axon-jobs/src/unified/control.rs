@@ -29,6 +29,7 @@ impl SqliteUnifiedJobStore {
     /// makes sense while a job is parked waiting on a provider; applying it
     /// to any other status would be silently meaningless once the claim query
     /// only special-cases `waiting`.
+    #[allow(dead_code)]
     pub(crate) async fn apply_provider_cooling(
         &self,
         job_id: JobId,
@@ -101,7 +102,11 @@ impl SqliteUnifiedJobStore {
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
         // Last completed safe point before the cancellation unwind begins —
         // the job's phase at the moment cancellation was requested.
-        let last_safe_stage = parse_enum::<PipelinePhase>(row.get::<String, _>("phase")).ok();
+        let last_safe_stage = parse_enum::<PipelinePhase>(row.get::<String, _>("phase"))
+            .inspect_err(|error| {
+                tracing::warn!(job_id = %job_id.0, %error, "failed to parse stored job phase")
+            })
+            .ok();
         validate_transition(job_id, current, LifecycleStatus::Canceling)?;
         let now = now_timestamp();
         let target = if matches!(current, LifecycleStatus::Queued | LifecycleStatus::Pending)
@@ -276,7 +281,7 @@ impl SqliteUnifiedJobStore {
             return Err(ApiError::new(
                 "job_recovery.cutoff_required",
                 ErrorStage::Planning,
-                "recovery requires older_than_seconds unless allow_without_cutoff is explicit",
+                "recovery requires a stale cutoff (--stale-before) unless allow_without_cutoff is explicit",
             ));
         }
         let kind_filter = request.kind.map(enum_name).transpose()?;

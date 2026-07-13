@@ -127,20 +127,18 @@ fn fence_aware_headings(text: &str, from: usize) -> Vec<Heading> {
         let stripped = trimmed.trim_start();
         if is_fence_delimiter(stripped) {
             in_fence = !in_fence;
-        } else if !in_fence {
-            if let Some(level) = atx_heading_level(stripped) {
-                let title = stripped
-                    .trim_start_matches('#')
-                    .trim()
-                    .trim_end_matches('#')
-                    .trim()
-                    .to_string();
-                headings.push(Heading {
-                    byte: offset,
-                    level,
-                    title,
-                });
-            }
+        } else if !in_fence && let Some(level) = atx_heading_level(stripped) {
+            let title = stripped
+                .trim_start_matches('#')
+                .trim()
+                .trim_end_matches('#')
+                .trim()
+                .to_string();
+            headings.push(Heading {
+                byte: offset,
+                level,
+                title,
+            });
         }
         offset += line.len();
     }

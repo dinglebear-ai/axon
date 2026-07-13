@@ -6,10 +6,6 @@
 # Format:
 #   path/to/file.rs  # expires: YYYY-MM-DD | owner: <name> | split: <plan>
 
-# Rust files still over 500 lines -- needs splitting
-crates/axon-services/src/query.rs  # expires: 2026-07-20 | owner: jmagar | split: query/{ask,retrieve,suggest}.rs
-crates/axon-jobs/src/workers/runners/ingest.rs  # expires: 2026-07-17 | owner: jmagar | split: ingest/{merge,progress}.rs (payload-merge helpers + progress persister)
-
 # Vendored lab-auth source (upstream pinned SHA 87cec324).
 # Cannot be split — upstream code vendored to resolve libsqlite3-sys link conflict.
 # Remove when lab upgrades to rusqlite 0.32+.

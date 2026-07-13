@@ -580,9 +580,12 @@ The compose file sets `context: .` — run `docker compose build` from this dire
 ### Spider feature flags with observable behavior
 - **`firewall`**: NOT enabled — `spider_firewall`'s build.rs fetches blocklists from `api.github.com` unauthenticated and panics when GitHub rate-limits the CI runner. It doesn't read `GITHUB_TOKEN`, so external auth isn't possible. `validate_url()` in `src/core/http/ssrf.rs` remains the primary SSRF guard; this was defense-in-depth on top. Re-enable when upstream supports an auth knob.
 - **`chrome_headless_new`**: Uses `--headless=new` instead of legacy headless. Better DOM fidelity but slightly different rendering behavior on some sites.
-- **`balance`**: NOT enabled — silently throttles concurrency with zero logging. We manage concurrency explicitly via performance profiles.
+- **`balance`**: Declared-excluded — it is not in `crates/axon-crawl/Cargo.toml`'s feature list — but as of spider 2.52.0 it is no longer actually absent from the compiled binary: `basic` now pulls in spider's internal `__basic` feature, and `__basic` force-enables `balance` transitively. We still don't opt into its throttling behavior and continue to manage concurrency explicitly via performance profiles, but the old "NOT enabled" claim is false at the compiled-artifact level — it IS compiled in, just unused.
 - **`glob`**: NOT enabled — glob URL patterns (`{a,b}`, `[0-9]`) change `crawl_establish` to use `is_allowed()` (budget-aware) instead of `is_allowed_default()`. With `with_limit(1)`, the budget check immediately returns `BudgetExceeded` for the FIRST URL, producing 0 pages from Chrome crawls. axon doesn't use URL glob patterns in its CLI, so this feature is excluded. Do NOT add it back.
 - **`adaptive_concurrency`**: Available through Spider's `basic` meta-feature but opt-in in Axon via `[workers.adaptive-concurrency]`. Do not add arbitrary Spider adaptive knobs until Spider actually honors them. Keep Axon controller logic in `src/crawl/engine/adaptive.rs`, not `runtime.rs`.
+- **`basic` → `__basic` now force-enables an undeclared set (spider 2.52.0)**: bumping spider to 2.52.0 changed what `basic` pulls in — its internal `__basic` feature now transitively compiles in `balance`, `cookies`, `real_browser`, `rate_limit`, `request_coalesce`, `sync`, `encoding`, `disk_native_tls` (→ `disk` → the optional `sqlx` dependency), `priority_frontier`, `dns_cache`, `string_interner_buffer_backend`, and `adaptive_concurrency` (already called out above) — none of these appear in `crates/axon-crawl/Cargo.toml`'s explicit feature list. `rate_limit` and `request_coalesce` compile (`src/utils/rate_limiter.rs`, `src/utils/coalesce.rs` upstream) but have no call sites anywhere else in spider 2.52.0 — dead weight today; re-check on future spider bumps in case upstream wires them in. Verify the full transitive set with `cargo tree -p axon-crawl -e features -i spider`.
+- **`cookies`**: now compiled in by default (via `__basic`, and independently via `chrome`) — spider attaches a persistent cookie jar per crawl. This is a real, previously-undocumented behavior change; revisit whether axon wants cross-request cookie persistence during a crawl or should explicitly clear/opt out.
+- **`real_browser`**: transitively enabled via `__basic`. Changes spider's local-Chrome `CHROME_ARGS` (drops `--no-sandbox`) on the path where spider launches its own Chrome process. Only matters when `AXON_CHROME_REMOTE_URL` is unset and spider falls back to launching Chrome locally — production always sets `AXON_CHROME_REMOTE_URL`, so this caveat doesn't apply there.
 - Full flag inventory: [`docs/reference/spider-feature-flags.md`](docs/reference/spider-feature-flags.md)
 
 ### Subprocess stdout vs stderr
@@ -1010,3 +1013,13 @@ The compatibility command `cargo xtask check-version-sync` still enforces
 `apps/web/package.json`, and `apps/web/openapi/axon.json`, and checks that
 `plugins/axon/.claude-plugin/plugin.json` has no `version` key. The full
 multi-component gate is `cargo xtask check-release-versions`.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->

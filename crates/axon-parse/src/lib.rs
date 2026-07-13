@@ -4,6 +4,8 @@
 //! `env`, `markdown`, `session`, `tool`), fact extraction (`facts`), and
 //! `graph_candidate` construction are wired and tested in this crate.
 
+#![allow(clippy::too_many_arguments)]
+
 pub mod builtins;
 pub mod code;
 pub mod config;

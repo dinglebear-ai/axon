@@ -44,8 +44,9 @@ const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 /// crates.io requires a descriptive User-Agent (it 403s the default reqwest UA).
 const REGISTRY_USER_AGENT: &str = "axon-source/1.0 (+https://github.com/jmagar/axon)";
 
-/// The `pkg:` prefix that marks a registry target.
+/// The legacy `pkg:` prefix that marks a registry target.
 const REGISTRY_PREFIX: &str = "pkg:";
+const REGISTRY_URI_PREFIX: &str = "pkg://";
 
 /// Registries whose package metadata this acquirer can fetch.
 const REGISTRIES: &[&str] = &["npm", "pypi", "crates"];
@@ -61,20 +62,32 @@ pub fn is_registry_target(input: &str) -> bool {
     parse_registry_target(input).is_ok()
 }
 
-/// Parse a `pkg:<registry>/<package>` target into `(registry, package)`.
+/// Parse a registry target into `(registry, package)`.
 ///
-/// Pure and I/O-free. Errors name the bad component without echoing anything
-/// sensitive. The `<package>` may itself contain `/` (npm scoped packages like
+/// Accepts the old CLI form (`pkg:<registry>/<package>`), the router
+/// canonical URI (`pkg://<registry>/<package>`), and resolver shorthands
+/// (`npm:<package>`, `pypi:<package>`, `crates:<package>`). Pure and I/O-free.
+/// Errors name the bad component without echoing anything sensitive. The
+/// `<package>` may itself contain `/` (npm scoped packages like
 /// `@scope/name`), so only the FIRST `/` (separating registry from package) is
 /// split.
 pub fn parse_registry_target(input: &str) -> Result<(String, String), String> {
     let trimmed = input.trim();
-    let rest = trimmed.strip_prefix(REGISTRY_PREFIX).ok_or_else(|| {
-        format!("not a registry target (expected `{REGISTRY_PREFIX}<registry>/<package>`)")
-    })?;
-    let (registry, package) = rest.split_once('/').ok_or_else(|| {
-        "registry target is missing a `/<package>` after the registry".to_string()
-    })?;
+    let (registry, package) = if let Some(rest) = trimmed.strip_prefix(REGISTRY_URI_PREFIX) {
+        rest.split_once('/').ok_or_else(|| {
+            "registry target is missing a `/<package>` after the registry".to_string()
+        })?
+    } else if let Some(rest) = trimmed.strip_prefix(REGISTRY_PREFIX) {
+        rest.split_once('/').ok_or_else(|| {
+            "registry target is missing a `/<package>` after the registry".to_string()
+        })?
+    } else if let Some((registry, package)) = trimmed.split_once(':') {
+        (registry, package)
+    } else {
+        return Err(format!(
+            "not a registry target (expected `{REGISTRY_PREFIX}<registry>/<package>`)"
+        ));
+    };
     let registry = registry.trim().to_ascii_lowercase();
     if !REGISTRIES.contains(&registry.as_str()) {
         return Err(format!(

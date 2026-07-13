@@ -237,6 +237,10 @@ purge
 dedupe
 ```
 
+The retained CLI `axon scrape <url>` is not an MCP action exception; MCP callers
+use `action=source` with `scope=page` for the same one-page acquisition
+semantics.
+
 Removed actions are not recognized as canonical actions and are not
 compatibility aliases.
 

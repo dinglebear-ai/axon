@@ -2,9 +2,9 @@
 //!
 //! This is the cutover seam for issue #298: plain `query` (semantic search, no
 //! LLM) now embeds + hybrid-searches through
-//! [`axon_retrieval::run_query`] instead of the legacy
-//! `axon_vector::ops::commands::query_hits`. `ask`/`evaluate`/`retrieve` stay on
-//! the legacy path (separate slices).
+//! [`axon_retrieval::run_query`] instead of legacy axon-vector's
+//! `query_hits`. `ask`/`evaluate`/`retrieve` also now route their SEARCH +
+//! CONTEXT half through this same engine — see `ask_retrieval.rs`.
 
 use std::error::Error;
 use std::sync::Arc;

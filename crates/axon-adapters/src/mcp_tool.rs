@@ -12,10 +12,27 @@
 //! [`McpToolCaller`] implementation; without one, `Execute` mode still
 //! enforces the allowlist but degrades to schema-only content (never
 //! silently "succeeds" with fabricated output).
+//!
+//! [`McpToolSourceAdapter`] wires the above contract into the real
+//! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. Like the
+//! `cli_tool` adapter, it always resolves through
+//! [`McpExecutionMode::MetadataOnly`] today: real (`Execute`-mode) tool calls
+//! additionally need the caller's granted scopes, a configured
+//! `(server, tool)` allowlist, and an injected [`McpToolCaller`], and none of
+//! those are threaded through `SourcePlan`/`RoutePlan` yet. Wiring real
+//! execution — including where an `McpToolCaller` implementation would
+//! attach to the adapter — is a follow-up once that threading is designed;
+//! until then, resolving metadata-only unconditionally is the fail-closed,
+//! never-fabricate-output choice consistent with this module's security
+//! contract.
 
+mod adapter;
+mod metadata;
 mod redact;
 
 use redact::redact_mcp_output;
+
+pub use adapter::McpToolSourceAdapter;
 
 pub const MODULE_NAME: &str = "mcp_tool";
 

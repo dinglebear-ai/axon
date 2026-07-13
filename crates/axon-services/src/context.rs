@@ -2,6 +2,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
+#[cfg(test)]
+use axon_adapters::NoopSourceEnricher;
+use axon_adapters::SourceEnricher;
+use axon_adapters::boundary::{FetchProvider, RenderProvider};
+#[cfg(test)]
+use axon_adapters::providers::{
+    chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
+    http_fetch::{HttpFetchConfig, HttpFetchProvider},
+};
 use axon_api::source::ProviderId;
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
@@ -36,6 +45,17 @@ pub struct TargetLocalSourceRuntime {
     pub embedding_dimensions: u32,
     pub embedding_reservations: Arc<ProviderReservationManager>,
     pub vector_reservations: Arc<ProviderReservationManager>,
+    /// Real acquisition boundary for `WebSourceAdapter` (issue #298 Wave 1b) —
+    /// `dispatch_web` threads these into `WebSourceIndexInput` instead of
+    /// running a `crawl_for_source` acquisition pre-pass.
+    pub fetch_provider: Arc<dyn FetchProvider>,
+    pub render_provider: Arc<dyn RenderProvider>,
+    /// Enrichment-stage boundary (source-pipeline.md: `enriching`, between
+    /// `fetching`/`acquire` and `normalizing`/`normalize`). Defaults to
+    /// [`NoopSourceEnricher`] — the stage is wired end-to-end (see the git
+    /// family's `prepare_changed_documents`) but every concrete enricher is a
+    /// no-op passthrough until per-source-kind enrichers land (bead pmj7w).
+    pub enricher: Arc<dyn SourceEnricher>,
 }
 
 impl TargetLocalSourceRuntime {
@@ -78,6 +98,9 @@ impl TargetLocalSourceRuntime {
             embedding_provider_id,
             embedding_model: embedding_model.into(),
             embedding_dimensions,
+            fetch_provider: Arc::new(HttpFetchProvider::new(HttpFetchConfig::default())),
+            render_provider: Arc::new(ChromeRenderProvider::new(ChromeRenderConfig::default())),
+            enricher: Arc::new(NoopSourceEnricher::new()),
         }
     }
 }

@@ -24,12 +24,20 @@ pub fn axon_data_base_dir() -> PathBuf {
     })
 }
 
-/// Returns `~/.axon/` when HOME is set to an absolute path, otherwise `None`.
+/// Returns Axon's config/data home: `AXON_DATA_DIR` when set, otherwise
+/// `~/.axon/` when HOME is set to an absolute path, otherwise `None`.
 ///
-/// Unlike `axon_data_base_dir()`, this returns `None` rather than falling
-/// back to `/tmp` — `/tmp` is world-readable/writable and must not be used
-/// as a config home (e.g. in systemd units, Docker containers, or CI runners
-/// where HOME is unset).
+/// `AXON_DATA_DIR` takes precedence and is used verbatim (it is already the full
+/// home path — no `.axon` is appended), mirroring [`axon_data_base_dir`]. This
+/// keeps `config.toml`/`.env` co-located with the rest of Axon's persistent data
+/// (`jobs.db`, `output/`, `logs/`, …) so an `AXON_DATA_DIR` override relocates
+/// the whole home, not just the data. Before this, `config path` and config
+/// loading ignored `AXON_DATA_DIR` and always resolved to `~/.axon`.
+///
+/// Unlike `axon_data_base_dir()`, the HOME fallback returns `None` rather than
+/// falling back to `/tmp` — `/tmp` is world-readable/writable and must not be
+/// used as a config home (e.g. in systemd units, Docker containers, or CI
+/// runners where HOME is unset).
 ///
 /// A non-absolute HOME (e.g. `../somewhere`) or an absolute HOME containing
 /// `..` components (e.g. `/tmp/../etc`) can enable path traversal. We reject
@@ -37,7 +45,7 @@ pub fn axon_data_base_dir() -> PathBuf {
 ///
 /// Callers should skip config loading silently when this returns `None`.
 pub fn axon_home_dir() -> Option<PathBuf> {
-    valid_home_path().map(|home| home.join(".axon"))
+    axon_data_dir().or_else(|| valid_home_path().map(|home| home.join(".axon")))
 }
 
 fn valid_home_path() -> Option<PathBuf> {

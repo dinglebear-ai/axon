@@ -619,13 +619,102 @@ pub struct Config {
     /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 96.
     pub tei_max_client_batch_size: usize,
 
-    /// Max concurrent client requests to native TEI `/embed`.
+    /// Max concurrent client requests to native TEI `/embed`. Feeds
+    /// `ProviderReservationConfig.capacity` for the target local-source
+    /// embedding reservation pool (`axon-services::context::target_runtime::
+    /// embedding_reservation_config`) — every `embed()` call reserves 1 flat
+    /// unit out of this pool regardless of batch size (see
+    /// `embed_tei_max_in_flight_inputs` below for the still-unwired weighted
+    /// variant).
     /// Env: `AXON_TEI_MAX_CONCURRENT`. TOML: `embed.tei-max-concurrent`. Clamped 1–64. Default: 8.
     pub embed_tei_max_concurrent: usize,
 
-    /// Weighted cap on input chunks in flight to native TEI `/embed`.
+    /// Weighted cap on input chunks in flight to native TEI `/embed`. Parsed,
+    /// defaulted, and exposed here, but **not yet consumed by any gate**: the
+    /// reservation pool that `embed_tei_max_concurrent` drives reserves a flat
+    /// 1 unit per `embed()` call (`units: 1` at every `reserve_embedding`-style
+    /// call site across the `*_source_vectorize.rs` family), not one weighted
+    /// by `batch.items.len()`, so this field currently has no effect on
+    /// runtime behavior. Wiring it for real means threading the batch's chunk
+    /// count as the reservation `units` at all ~14 call sites and sizing
+    /// `capacity` in chunks rather than call count — out of scope for a
+    /// config-wiring fix; tracked as a follow-up under the #298
+    /// pipeline-unification effort. The standalone `tuning::
+    /// embed_tei_max_in_flight_inputs()`/`embed_tei_max_concurrent()`
+    /// accessor functions that duplicated this resolution with zero callers
+    /// have been removed (axon_rust-ldozg) — this `Config` field is the only
+    /// place `[providers.embedding].max-in-flight-inputs` now resolves to.
     /// Env: `AXON_TEI_MAX_IN_FLIGHT_INPUTS`. TOML: `embed.tei-max-in-flight-inputs`. Clamped 1–4096. Default: 320.
     pub embed_tei_max_in_flight_inputs: usize,
+
+    /// Base backoff (before exponential growth + jitter) between retried TEI
+    /// embed requests on 429/5xx. Was previously a hardcoded 1000ms literal in
+    /// `axon-embedding`'s TEI client — see `[providers.embedding].retry-backoff-ms`
+    /// in `docs/pipeline-unification/configuration/config-contract.md`.
+    /// Env: `AXON_TEI_RETRY_BACKOFF_MS`. TOML: `embed.tei-retry-backoff-ms`. Clamped 50–60000. Default: 500.
+    pub embed_tei_retry_backoff_ms: u64,
+
+    /// Consecutive reservation failures before the target local-source
+    /// embedding reservation pool (`axon-services::context::target_runtime`'s
+    /// `embedding_reservation_config`) starts rejecting non-interactive
+    /// reservations. Was previously a hardcoded constant
+    /// (`RESERVATION_COOLDOWN_AFTER_FAILURES = 1`) in `axon-services`.
+    ///
+    /// Deliberately NOT wired into `TeiEmbeddingProvider`'s own self-tracked
+    /// health tracker (`axon-embedding`'s `HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES`),
+    /// which stays fixed at 1: that tracker reports cooling after a single
+    /// `embed()` call has already exhausted its full internal HTTP retry
+    /// budget, a distinct invariant validated by
+    /// `embed_retry_exhaustion_cools_the_provider_and_capabilities_report_it_live`
+    /// (provider-contract F5-10..13/V01/V03) — raising it there would make a
+    /// single genuinely-exhausted request stop reporting `Cooling`.
+    /// Env: `AXON_TEI_COOLDOWN_AFTER_FAILURES`. TOML: `embed.tei-cooldown-after-failures`. Clamped 1–20. Default: 3.
+    pub embed_tei_cooldown_after_failures: usize,
+
+    /// Cooldown window length once the embedding reservation pool trips
+    /// `embed_tei_cooldown_after_failures`, in seconds. Same scope caveat as
+    /// `embed_tei_cooldown_after_failures` — the TEI provider's own health
+    /// tracker keeps its fixed 30s window.
+    /// Env: `AXON_TEI_COOLDOWN_SECS`. TOML: `embed.tei-cooldown-secs`. Clamped 1–3600. Default: 30.
+    pub embed_tei_cooldown_secs: u64,
+
+    /// Embedding reservation slots reserved exclusively for interactive
+    /// (`ask`/`query`) embeddings; background/maintenance-priority embed jobs
+    /// cannot consume this headroom out of the pool sized by
+    /// `embed_tei_max_concurrent`. Feeds `ProviderReservationConfig.interactive_reserve`
+    /// for the target local-source embedding reservation pool in
+    /// `axon-services::context::target_runtime`. Was previously a hardcoded
+    /// constant (`RESERVATION_INTERACTIVE_RESERVE = 1`) disconnected from
+    /// config entirely.
+    /// Env: `AXON_TEI_INTERACTIVE_RESERVED_REQUESTS`. TOML: `embed.tei-interactive-reserved-requests`. Clamped 0–64. Default: 1.
+    pub embed_tei_interactive_reserved_requests: usize,
+
+    /// Documented soft ceiling on concurrent background-priority embed
+    /// reservations. Parsed, defaulted, and exposed here, but **not yet
+    /// independently enforced**: `ProviderReservationManager` (`axon-observe`)
+    /// only implements a two-tier interactive/non-interactive gate today
+    /// (`capacity` total pool minus `interactive_reserve`), so background and
+    /// maintenance priorities currently share one combined non-interactive
+    /// ceiling rather than each having its own. Building true per-priority-tier
+    /// caps means extending `ProviderReservationConfig` (used by ~10 provider
+    /// constructors across axon-embedding/axon-llm/axon-vectors/axon-adapters),
+    /// which is out of scope for this config-wiring fix — tracked as a
+    /// follow-up under the #298 pipeline-unification effort.
+    /// Env: `AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS`. TOML: `embed.tei-background-max-concurrent-requests`. Clamped 1–64. Default: 3.
+    pub embed_tei_background_max_concurrent_requests: usize,
+
+    /// Documented soft ceiling on concurrent maintenance-priority embed
+    /// reservations (migrate/reindex-class jobs). Same enforcement caveat as
+    /// `embed_tei_background_max_concurrent_requests`.
+    /// Env: `AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS`. TOML: `embed.tei-maintenance-max-concurrent-requests`. Clamped 1–64. Default: 1.
+    pub embed_tei_maintenance_max_concurrent_requests: usize,
+
+    /// Whether the TEI embedding provider applies the query/document
+    /// instruction prefix (when the provider capability advertises
+    /// instruction support). `false` forces `InstructionSupport::None` at
+    /// provider construction regardless of the model's real capability.
+    /// Env: `AXON_TEI_QUERY_INSTRUCTION_ENABLED`. TOML: `embed.tei-query-instruction-enabled`. Default: true.
+    pub embed_tei_query_instruction_enabled: bool,
 
     /// Max chunk inputs pooled into one native TEI embed wave.
     /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `embed.pool-max-inputs`. Clamped 64–65536. Default: 512.

@@ -10,6 +10,60 @@ fn axon_input_schema() -> serde_json::Value {
     axon.schema_as_json_value()
 }
 
+fn axon_tool_description() -> String {
+    let tools = AxonMcpServer::tool_router().list_all();
+    tools
+        .into_iter()
+        .find(|tool| tool.name.as_ref() == "axon")
+        .and_then(|tool| tool.description.map(|d| d.into_owned()))
+        .expect("axon tool publishes a description")
+}
+
+/// Extract the comma-separated action list out of the description's
+/// `"Actions: a, b, c."` sentence. Deliberately narrow (rather than a
+/// whole-description substring search) because the description's prose also
+/// legitimately *mentions* historical/removed action names when explaining
+/// what `source` replaces (e.g. "replaces the former embed/ingest/scrape/
+/// crawl/code_search/vertical_scrape actions") — a whole-string check would
+/// false-positive on that explanatory clause.
+fn axon_tool_actions_sentence(description: &str) -> std::collections::BTreeSet<&str> {
+    let after_prefix = description
+        .split_once("Actions: ")
+        .map(|(_, rest)| rest)
+        .expect("description should contain an `Actions: ...` sentence");
+    let list = after_prefix
+        .split_once('.')
+        .map(|(list, _)| list)
+        .unwrap_or(after_prefix);
+    list.split(',').map(str::trim).collect()
+}
+
+/// The `#[tool(description = ...)]` free-text string is the primary
+/// agent-facing summary from MCP tool discovery (`tools/list`), separate
+/// from the machine-checked `properties.action.enum` in the input schema
+/// (already covered by `axon_tool_input_schema_publishes_action_enum_from_tools_list`).
+/// Its `Actions:` sentence must list exactly the real dispatchable actions —
+/// no more, no less — or a caller reading only the description (not the
+/// schema) will try actions that 400/403, or miss real ones entirely. Guards
+/// against the drift found in the #298 alignment audit, where the
+/// description advertised `domains`/`sources`/`stats`/`elicit_demo` (all
+/// explicitly rejected by `server.rs`'s dispatch match) while omitting real
+/// actions like `jobs`, `resolve`, `capabilities`, `providers`, `prune`,
+/// `watch`, and `graph`.
+#[test]
+fn axon_tool_description_actions_sentence_matches_real_action_set() {
+    let description = axon_tool_description();
+    let listed = axon_tool_actions_sentence(&description);
+    let expected: std::collections::BTreeSet<&str> =
+        server_authz::mcp_action_names().into_iter().collect();
+
+    assert_eq!(
+        listed, expected,
+        "axon tool description's `Actions:` sentence should list exactly the real \
+         MCP_ACTION_SPECS action set (server_authz::mcp_action_names())"
+    );
+}
+
 #[test]
 fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
     let schema = axon_input_schema();

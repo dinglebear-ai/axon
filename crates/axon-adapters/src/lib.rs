@@ -6,6 +6,8 @@
 //! wired and exercised by tests in this crate and consumed by
 //! `axon-services`.
 
+#![allow(clippy::large_enum_variant, clippy::result_large_err)]
+
 pub mod acquisition;
 pub mod adapter;
 pub mod boundary;
@@ -20,6 +22,7 @@ mod local_select;
 pub mod manifest;
 pub mod mcp_tool;
 pub mod onboarding;
+pub mod providers;
 pub mod reddit;
 pub mod registry;
 pub mod registry_sources;
@@ -28,6 +31,7 @@ pub mod spec;
 pub mod testing;
 pub mod upload;
 pub mod web;
+pub mod web_engine;
 pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};

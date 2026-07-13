@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon retrieve ...` |
-| REST | `POST /v1/retrieve` (Implemented) |
-| MCP | `{ "action": "retrieve" }` |
-| Service | `services::query::retrieve` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Supports collection, max_points, cursor, and token_budget.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

@@ -2,6 +2,7 @@ use axon_api::source::*;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::collection::required_retrieval_payload_indexes;
 use crate::store::{FakeVectorMode, FakeVectorStore, VectorStore};
 
 fn collection() -> CollectionSpec {
@@ -387,10 +388,18 @@ async fn fake_vector_store_records_payload_indexes_from_collection_spec() {
     store.ensure_collection(collection()).await.unwrap();
     let spec = store.collection_spec("axon-test").await.unwrap();
 
-    assert_eq!(spec.payload_indexes.len(), 9);
+    assert_eq!(
+        spec.payload_indexes.len(),
+        required_retrieval_payload_indexes().len()
+    );
     assert!(spec.payload_indexes.iter().any(|index| {
         index.field_name == "source_generation"
             && index.field_schema == PayloadFieldSchema::Integer
+            && index.required_for_filters
+    }));
+    assert!(spec.payload_indexes.iter().any(|index| {
+        index.field_name == "item_canonical_uri"
+            && index.field_schema == PayloadFieldSchema::Keyword
             && index.required_for_filters
     }));
 }
@@ -729,6 +738,26 @@ async fn point_delete_selector_only_deletes_named_points() {
             .iter()
             .all(|result| result.point_id != VectorPointId::new("point-b"))
     );
+}
+
+#[tokio::test]
+async fn collection_delete_selector_removes_every_point_and_keeps_the_collection() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    let deleted = store
+        .delete(VectorDeleteSelector::Collection {
+            collection: "axon-test".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(deleted.points_deleted, 3);
+    assert!(store.points("axon-test").await.is_empty());
+    // Whole-collection prune keeps the (now-empty) collection — distinct from
+    // `axon reset`, which also wipes SQLite/job state.
+    assert!(store.collection_spec("axon-test").await.is_some());
 }
 
 #[tokio::test]

@@ -57,8 +57,12 @@ impl StepExecution {
 #[async_trait]
 pub trait PruneTarget: Send + Sync {
     /// The current committed generation for `source`, used to fence deletes.
-    /// `None` when the source is unknown (nothing current to protect).
-    async fn current_generation(&self, source_id: Option<&str>) -> Option<SourceGenerationId>;
+    /// `Ok(None)` when the source is unknown (nothing current to protect).
+    /// `Err` when the lookup itself failed; the executor fails closed.
+    async fn current_generation(
+        &self,
+        source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String>;
 
     /// Apply one plan step. Called in cleanup-debt execution order.
     async fn apply(&self, step: &PruneStep) -> Result<StepExecution, String>;
@@ -111,8 +115,10 @@ impl<T: PruneTarget> PruneExecutor<T> {
             // must never target the current committed generation.
             if let Some(target_gen) = &step.generation {
                 let source_id = step.source_id.as_ref().map(|s| s.0.as_str());
-                if let Some(current) = self.target.current_generation(source_id).await {
-                    fence_generation(target_gen, &current)?;
+                match self.target.current_generation(source_id).await {
+                    Ok(Some(current)) => fence_generation(target_gen, &current)?,
+                    Ok(None) => {}
+                    Err(reason) => return Err(PruneDenied::FenceCheckFailed { reason }),
                 }
             }
 

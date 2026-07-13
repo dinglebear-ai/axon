@@ -177,8 +177,19 @@ fn generated_vector_payload_schema_includes_registered_required_fields() {
         serde_json::json!(VECTOR_PAYLOAD_CONTRACT_VERSION)
     );
     assert_eq!(
+        value["properties"]["source_generation"]["type"],
+        serde_json::json!("integer")
+    );
+    assert_eq!(
         value["properties"]["source_generation"]["x-qdrant-index"],
-        serde_json::json!("keyword")
+        serde_json::json!("integer")
+    );
+    assert!(
+        value["properties"]["committed_generation"]["anyOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|schema| schema["type"] == "null")
     );
     assert_eq!(
         value["properties"]["embedding_batch_id"]["x-qdrant-index"],

@@ -292,3 +292,97 @@ fn build_extraction_truncates_unknown_small_context_models() {
 
     assert_eq!(extraction.extracted.len(), 2_000);
 }
+
+// ── gather_hits delegation ───────────────────────────────────────────────────
+//
+// `research_payload` (the sole caller of `gather_hits`) applies its own
+// `.skip(offset).take(limit)` over whatever `gather_hits` returns. These
+// tests lock in that `gather_hits` must keep returning `limit + offset`
+// UNwindowed hits post-delegation — passing the real `offset` through to
+// `provider::run_search_for_research` would have the provider window a
+// second time, then `research_payload` would window a THIRD time and starve
+// the result set to near-empty on any offset > 0.
+mod gather_hits_tests {
+    use super::*;
+    use axon_core::http::LoopbackGuard;
+    use httpmock::MockServer;
+
+    fn searx_json(results: &[(&str, &str, &str)]) -> serde_json::Value {
+        serde_json::json!({
+            "results": results
+                .iter()
+                .map(|(url, title, content)| {
+                    serde_json::json!({ "url": url, "title": title, "content": content })
+                })
+                .collect::<Vec<_>>()
+        })
+    }
+
+    #[tokio::test]
+    async fn gather_hits_returns_unwindowed_limit_plus_offset() {
+        let _loopback = LoopbackGuard::allow();
+        let server = MockServer::start_async().await;
+        let rows: Vec<(&str, &str, &str)> = vec![
+            ("https://a.test/0", "0", "c0"),
+            ("https://a.test/1", "1", "c1"),
+            ("https://a.test/2", "2", "c2"),
+            ("https://a.test/3", "3", "c3"),
+            ("https://a.test/4", "4", "c4"),
+            ("https://a.test/5", "5", "c5"),
+            ("https://a.test/6", "6", "c6"),
+            ("https://a.test/7", "7", "c7"),
+        ];
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search")
+                    .query_param("pageno", "1");
+                then.status(200).json_body(searx_json(&rows));
+            })
+            .await;
+        let mut cfg = Config::test_default();
+        cfg.searxng_url = server.base_url();
+
+        // limit=5, offset=3 => gather_hits must return count=8 raw hits, NOT
+        // 5 (which would starve research_payload's downstream .skip(3).take(5)).
+        let hits = gather_hits(&cfg, "q", 5, 3, None)
+            .await
+            .expect("gather_hits should succeed");
+        assert_eq!(
+            hits.len(),
+            8,
+            "gather_hits must return limit+offset unwindowed hits so the caller's own \
+             skip/take produces the correct final page"
+        );
+
+        // Simulate research_payload's own windowing over the returned page.
+        let windowed: Vec<_> = hits.into_iter().skip(3).take(5).collect();
+        assert_eq!(windowed.len(), 5);
+        assert_eq!(windowed[0].url, "https://a.test/3");
+        assert_eq!(windowed[4].url, "https://a.test/7");
+    }
+
+    #[tokio::test]
+    async fn gather_hits_offset_zero_still_returns_full_limit() {
+        let _loopback = LoopbackGuard::allow();
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search")
+                    .query_param("pageno", "1");
+                then.status(200).json_body(searx_json(&[
+                    ("https://a.test/1", "1", "c1"),
+                    ("https://a.test/2", "2", "c2"),
+                ]));
+            })
+            .await;
+        let mut cfg = Config::test_default();
+        cfg.searxng_url = server.base_url();
+
+        let hits = gather_hits(&cfg, "q", 2, 0, None)
+            .await
+            .expect("gather_hits should succeed");
+        assert_eq!(hits.len(), 2);
+    }
+}

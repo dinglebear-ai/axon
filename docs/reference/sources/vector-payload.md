@@ -14,15 +14,15 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-api/src/source/vector.rs` | `sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac` |
-| `crates/axon-vectors/src/payload.rs` | `sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1` |
-| `crates/axon-vectors/src/point.rs` | `sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2` |
+| `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
+| `crates/axon-vectors/src/payload.rs` | `sha256:16b14941e8d74d4475bd678248c9db1363ea6504252f8f58506eb4e83a4f543a` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:d245b4d5b15916f926d3cbbcef48cf7fb841541aecf99f923ec5aea8b32e6ac5` |
+| `crates/axon-vectors/src/point.rs` | `sha256:5888f298ef6deb59b3a932cca604ff0749147dee1f2486fe84bd44ba8ebc9cc7` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
-| `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604` |
+| `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:87b71c14b12694f5d440a5fdf5d9db185a50e55c61a61629bf3bed8a9cb07454` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
-| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae` |
-| `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede` |
+| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:5b4c02a619aec03ffc65990b37d64a3b65dc43feb8f5909df8ba2ba52908f0c8` |
+| `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54` |
 
 ## Root Shape
 
@@ -40,7 +40,7 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `collection` | `string; minLength=1` |
 | `vector_point_id` | `string; minLength=1` |
 | `vector_namespace` | `string; minLength=1` |
-| `source_family` | `string; enum=code|web|package|session|graph|memory|feed|social|media|local|tool|docker|env; minLength=1` |
+| `source_family` | `string; enum=code|web|package|session|graph|memory|feed|social|media|local|tool|docker|env|upload; minLength=1` |
 | `source_kind` | `string; minLength=1` |
 | `source_adapter` | `string; minLength=1` |
 | `source_scope` | `string; minLength=1` |
@@ -48,7 +48,7 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `source_canonical_uri` | `string; minLength=1` |
 | `source_item_key` | `string; minLength=1` |
 | `item_canonical_uri` | `string; minLength=1` |
-| `source_generation` | `string; minLength=1` |
+| `source_generation` | `integer; minimum=0` |
 | `document_id` | `string; minLength=1` |
 | `chunk_id` | `string; minLength=1` |
 | `chunk_index` | `integer; minimum=0` |
@@ -67,11 +67,11 @@ See `docs/reference/sources/vector-payload.schema.json`.
 | `embedding_provider` | `string; minLength=1` |
 | `embedding_profile` | `string; minLength=1` |
 | `embedded_at` | `string; format=date-time; minLength=1` |
-| `committed_generation` | `string; minLength=1` |
+| `committed_generation` | `unknown` |
 | `chunking_profile` | `string; minLength=1` |
 | `chunking_method` | `string; minLength=1` |
 
-Generation fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `uncommitted` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.
+Generation fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `null` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.
 
 ## Redaction Guardrails
 
@@ -104,15 +104,16 @@ Payload validation rejects secret field fragments and secret value fragments bef
 | `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
-| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth` |
+| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth`, `normalization_version`, `web_url`, `web_seed_url`, `web_origin`, `web_path`, `web_normalized_url`, `web_fetch_method`, `extractor_name`, `extractor_version`, `structured_payload_omitted`, `web_structured_kind`, `web_structured_blob` |
 | `package` | `package_ecosystem`, `package_name`, `package_version` |
-| `session` | `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
+| `session` | `session_provider`, `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |
 | `memory` | `memory_id`, `memory_importance`, `memory_status`, `memory_recallable`, `memory_type`, `memory_scope_kind`, `memory_scope_value`, `memory_confidence`, `memory_salience`, `redaction_version`, `redacted_field_count`, `dropped_field_count`, `detector_names` |
 | `local` | `local_checkout`, `local_path_key`, `local_git_remote`, `local_git_commit` |
 | `tool` | `tool_name`, `tool_action`, `tool_side_effect_class`, `tool_output_artifact_id` |
 | `docker` | `docker_image`, `docker_service`, `docker_port`, `docker_volume` |
 | `env` | `env_key`, `env_locator` |
+| `upload` | `staged_upload` |
 
 ## Indexable Payload Fields
 
@@ -124,7 +125,7 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | `chunk_index` | `integer` |
 | `chunk_key` | `keyword` |
 | `collection` | `keyword` |
-| `committed_generation` | `keyword` |
+| `committed_generation` | `integer` |
 | `content_hash` | `keyword` |
 | `document_id` | `keyword` |
 | `document_status` | `keyword` |
@@ -137,7 +138,7 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | `payload_contract_version` | `keyword` |
 | `redaction_status` | `keyword` |
 | `source_family` | `keyword` |
-| `source_generation` | `keyword` |
+| `source_generation` | `integer` |
 | `source_id` | `keyword` |
 | `source_item_key` | `keyword` |
 | `vector_namespace` | `keyword` |

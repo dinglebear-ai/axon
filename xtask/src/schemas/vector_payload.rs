@@ -222,9 +222,16 @@ fn shared_field_schema(field: &str) -> Value {
                 "x-qdrant-index": "keyword"
             })
         }
-        "source_generation" | "committed_generation" => {
-            json!({ "type": "string", "minLength": 1, "x-qdrant-index": "keyword" })
+        "source_generation" => {
+            json!({ "type": "integer", "minimum": 0, "x-qdrant-index": "integer" })
         }
+        "committed_generation" => json!({
+            "anyOf": [
+                { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
+                { "type": "null" }
+            ],
+            "x-qdrant-index": "integer"
+        }),
         "embedding_dimensions" => {
             json!({ "type": "integer", "minimum": 1, "x-qdrant-index": "integer" })
         }
@@ -425,6 +432,7 @@ fn source_specific_example_value(field: &str, family: &str) -> Value {
         "package_ecosystem" => json!("cargo"),
         "package_name" => json!("axon"),
         "package_version" => json!("6.2.1"),
+        "session_provider" => json!("codex"),
         "session_id" => json!(format!("session-{family}")),
         "session_turn_index" => json!(3),
         "session_tool_name" => json!("schemas"),

@@ -19,13 +19,17 @@ use std::error::Error;
 use uuid::Uuid;
 
 pub mod classify;
+mod classify_target;
+pub(crate) mod orchestrate;
 mod prepared_sessions;
+pub(crate) mod progress;
 pub mod request;
-pub use axon_ingest::orchestrate::{
+mod target_parse;
+pub use classify::classify_target;
+pub use orchestrate::{
     ingest_payload, ingest_sessions, ingest_sessions_prepared_with_progress,
     ingest_sessions_with_progress, map_ingest_result,
 };
-pub use classify::classify_target;
 pub use prepared_sessions::ingest_sessions_prepared_start_with_context;
 pub use request::{source_from_mcp_request, validate_ingest_source};
 

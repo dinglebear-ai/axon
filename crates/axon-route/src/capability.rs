@@ -80,6 +80,36 @@ impl AdapterDefinition {
     }
 }
 
+/// Web adapter option keys: the real (non-legacy) set documented in
+/// `docs/pipeline-unification/sources/adapter-scopes.md`'s "Web Adapter"
+/// table (lines 188-210), plus the legacy `manifest_path`/`markdown_root`/
+/// `map_urls` disk-handoff keys still used by the current
+/// `axon-services::web_source` bridge. Value parsing/validation for the real
+/// options lives in `web_options.rs`; the legacy trio is intentionally left
+/// unvalidated there (see that module's docs).
+const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
+    "max_pages",
+    "max_depth",
+    "include_subdomains",
+    "render_mode",
+    "discover_sitemaps",
+    "max_sitemaps",
+    "sitemap_since_days",
+    "url_whitelist",
+    "url_blacklist",
+    "etag_conditional",
+    "min_markdown_chars",
+    "drop_thin_markdown",
+    "warc_path",
+    "automation_script",
+    "verticals_enabled",
+    "auto_dispatch_skip",
+    "user_agent",
+    "manifest_path",
+    "markdown_root",
+    "map_urls",
+];
+
 fn safety_class(source_kind: SourceKind) -> SafetyClass {
     match source_kind {
         SourceKind::Local => SafetyClass::LocalFilesystem,
@@ -96,10 +126,10 @@ pub struct AdapterRegistry {
 impl AdapterRegistry {
     pub fn from_adapters(mut adapters: Vec<AdapterDefinition>) -> Self {
         for adapter in &mut adapters {
-            if let Some(minimum) = minimum_safety_class(adapter.source_kind) {
-                if safety_rank(adapter.safety_class) < safety_rank(minimum) {
-                    adapter.safety_class = minimum;
-                }
+            if let Some(minimum) = minimum_safety_class(adapter.source_kind)
+                && safety_rank(adapter.safety_class) < safety_rank(minimum)
+            {
+                adapter.safety_class = minimum;
             }
             if !adapter.supported_scopes.contains(&adapter.default_scope) {
                 adapter.supported_scopes.push(adapter.default_scope);
@@ -170,7 +200,7 @@ impl AdapterRegistry {
                 .with_scope(SourceScope::Page)
                 .with_scope(SourceScope::Docs)
                 .with_scope(SourceScope::Map)
-                .with_options(&["manifest_path", "markdown_root", "map_urls"]),
+                .with_options(WEB_ADAPTER_OPTION_KEYS),
             AdapterDefinition::new("youtube", "1", SourceKind::Youtube, SourceScope::Video)
                 .with_scope(SourceScope::Playlist)
                 .with_scope(SourceScope::Channel),

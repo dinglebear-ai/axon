@@ -1,0 +1,11 @@
+# Minimal valid config.toml fixture.
+#
+# See docs/pipeline-unification/schemas/config-schema.md's "Validation
+# Fixtures" list. Every section/field in the real wire format
+# (crates/axon-core/src/config/parse/toml_config/raw.rs::RawTomlConfig) is
+# optional, so an empty file already parses; this fixture sets one
+# representative real key to prove a minimal hand-written file round-trips
+# through the actual loader (wired in
+# crates/axon-core/src/config/parse/toml_config_tests.rs).
+[server]
+default-collection = "axon"

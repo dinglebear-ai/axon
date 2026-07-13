@@ -7,11 +7,11 @@ Last Modified: 2026-06-07
 | Surface | Entry point |
 |---|---|
 | CLI | `axon screenshot ...` |
-| REST | `POST /v1/screenshot` (Implemented) |
-| MCP | `{ "action": "screenshot" }` |
-| Service | `services::screenshot::screenshot_capture` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Captures screenshots through Chrome with the shared service path.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

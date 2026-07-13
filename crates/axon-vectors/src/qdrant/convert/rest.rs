@@ -165,8 +165,8 @@ pub fn eq2_filter_json(
     field_b: &str,
     value_b: impl Serialize,
 ) -> serde_json::Value {
-    let value_a = serde_json::to_value(value_a).unwrap_or_else(|_| serde_json::Value::Null);
-    let value_b = serde_json::to_value(value_b).unwrap_or_else(|_| serde_json::Value::Null);
+    let value_a = serde_json::to_value(value_a).unwrap_or(serde_json::Value::Null);
+    let value_b = serde_json::to_value(value_b).unwrap_or(serde_json::Value::Null);
     json!({
         "must": [
             match_json(field_a, &value_a),
@@ -188,7 +188,8 @@ pub fn canonical_uri_filter_json(canonical_uri: &str, prefix: bool) -> serde_jso
     // min_should, so a sibling form is rejected with HTTP 400.
     json!({
         "should": [
-            { "key": "url", "match": matcher.clone() },
+            { "key": "item_canonical_uri", "match": matcher.clone() },
+            { "key": "source_canonical_uri", "match": matcher.clone() },
             { "key": "source_item_key", "match": matcher.clone() },
             { "key": "chunk_locator.canonical_uri", "match": matcher },
         ],

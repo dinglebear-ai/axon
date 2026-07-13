@@ -70,8 +70,11 @@ Partially implemented:
 
 - Local code indexing shares `SourceDocument -> PreparedDoc -> embed_prepared_docs`,
   but its ledger/generation/cleanup model is not the general source pipeline yet.
-- Generic `embed`, `crawl`, `ingest`, `scrape`, sessions, search, and research
-  still enter through command/service-specific paths and job payloads.
+- Generic `embed`, `crawl`, `ingest`, sessions, search, and research still
+  enter through command/service-specific paths and job payloads.
+- The `scrape` command is intentionally retained, but its target shape is not a
+  separate legacy pipeline: `axon scrape <url>` is a thin SourceRequest
+  projection with `scope=page`, `embed=true`, and clean-content output.
 - Refresh currently facets Qdrant payloads by `source_type`/`seed_url` and
   re-enqueues crawl/ingest jobs from stored snapshots; it does not use a
   universal SourceLedger.
@@ -96,6 +99,8 @@ Planned by this contract:
   cleanup debt are the single path for every source family.
 - `axon <source>`, REST `/v1/sources`, and MCP `action=source` are projections
   over the same request shape.
+- `axon scrape <url>` is a CLI convenience projection over the same request
+  shape for exactly one web page; it embeds by default and must not crawl.
 - Graph extraction, source ledger rows, document status rows, progress events,
   and vector payloads all share the same `job_id`, source identifiers, and
   generation identifiers.

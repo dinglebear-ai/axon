@@ -93,3 +93,29 @@ async fn empty_source_input_does_not_enqueue_a_job() {
     assert!(result.job.is_none());
     assert_eq!(result.status, LifecycleStatus::Failed);
 }
+
+#[tokio::test]
+async fn enqueue_source_local_path_denied_without_local_scope() {
+    let store = FakeJobWatchStore::new();
+    let request = SourceRequest::local_path("/tmp/axon-local-source", false);
+    let mut auth = AuthSnapshot::default();
+    auth.granted_scopes = vec![
+        axon_api::source::AuthScope::Read,
+        axon_api::source::AuthScope::Write,
+    ];
+
+    let result = enqueue_source(request, &store, Some(auth))
+        .await
+        .expect("enqueue should return failed source result");
+
+    assert!(result.job.is_none());
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "auth.scope_required"),
+        "missing local-scope warning: {:?}",
+        result.warnings
+    );
+}

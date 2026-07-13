@@ -1,26 +1,36 @@
+use crate::contract_write::{
+    adhoc_generation, embed_and_upsert_documents, prepare_document, retain_contract_fields,
+    stable_token,
+};
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::ScrapeResult;
+use axon_api::result::DocumentBackend;
+use axon_api::source::{
+    ChunkHint, ContentKind, ContentRef, DocumentId, MetadataMap, ParserHint, PreparedDocument,
+    SourceDocument, SourceId, SourceItemKey, SourceScope,
+};
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
-use axon_vector::ops::{
-    SourceDocument, embed_prepared_docs, prepare_source_document,
-    structured_payload_from_vertical_summary,
-};
+use axon_extract::{VerticalContext, dispatch_by_url};
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-pub use axon_crawl::scrape::map_scrape_payload;
+pub use axon_adapters::web_engine::scrape::map_scrape_payload;
+
+pub const MAX_PUBLIC_STRUCTURED_BYTES: usize = 16 * 1024;
 
 /// Scrape a single URL and return a typed [`ScrapeResult`].
 ///
-/// Generic HTTP-fetch path only — vertical-extractor auto-routing was removed
-/// with `axon-extract` (see
-/// docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md);
-/// no per-site enrichment happens here today.
+/// Runs the restored vertical-extractor catalog first when
+/// `cfg.enable_verticals` is true, then falls back to the generic HTTP/Chrome
+/// scrape path when no extractor claims the URL or automatic extraction
+/// degrades. This keeps single-page `scrape` aligned with the unified web
+/// source adapter's vertical acquisition behavior.
 ///
 /// `tx` is an optional progress channel. Pass `None` when progress events are
 /// not needed (CLI) or `Some(sender)` when the caller wants to observe
@@ -32,7 +42,11 @@ pub async fn scrape(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = validate_and_normalize_scrape_url(url, &tx).await?;
-    let mut result = axon_crawl::scrape::scrape_to_result(cfg, &normalized).await?;
+    let mut result = if let Some(result) = try_vertical_scrape(cfg, &normalized, &tx).await? {
+        result
+    } else {
+        axon_adapters::web_engine::scrape::scrape_to_result(cfg, &normalized).await?
+    };
     emit(
         &tx,
         ServiceEvent::Log {
@@ -58,6 +72,159 @@ pub async fn scrape(
         );
     }
     Ok(result)
+}
+
+async fn try_vertical_scrape(
+    cfg: &Config,
+    normalized: &str,
+    tx: &Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<Option<ScrapeResult>, Box<dyn Error>> {
+    if !cfg.enable_verticals {
+        return Ok(None);
+    }
+    let ctx = VerticalContext::new(Arc::new(cfg.clone()));
+    match tokio::time::timeout(Duration::from_secs(120), dispatch_by_url(normalized, &ctx)).await {
+        Ok(Some(Ok(doc))) => {
+            let result = vertical_doc_to_scrape_result(doc)?;
+            emit(
+                tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Info,
+                    message: format!(
+                        "scrape vertical extractor complete: {}",
+                        result.extractor_name.as_deref().unwrap_or("unknown")
+                    ),
+                },
+            )
+            .await;
+            Ok(Some(result))
+        }
+        Ok(Some(Err(err))) => {
+            emit(
+                tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Warn,
+                    message: format!(
+                        "vertical extractor failed for {normalized}; falling back to generic scrape: {err}"
+                    ),
+                },
+            )
+            .await;
+            Ok(None)
+        }
+        Ok(None) => Ok(None),
+        Err(_) => {
+            emit(
+                tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Warn,
+                    message: format!(
+                        "vertical extractor timed out for {normalized}; falling back to generic scrape"
+                    ),
+                },
+            )
+            .await;
+            Ok(None)
+        }
+    }
+}
+
+pub fn vertical_doc_to_scrape_result(
+    doc: axon_extract::ScrapedDoc,
+) -> Result<ScrapeResult, Box<dyn Error>> {
+    let links = extract_markdown_links(&doc.markdown);
+    let payload = serde_json::json!({
+        "url": doc.url,
+        "markdown": doc.markdown,
+        "links": links
+    });
+    let mut scrape_result = map_scrape_payload(payload)?;
+    scrape_result.backend = Some(DocumentBackend::LiveScrape);
+    scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
+    let mut extra = doc.extra.unwrap_or_else(|| serde_json::json!({}));
+    if let serde_json::Value::Object(map) = &mut extra {
+        map.insert(
+            "extractor_version".to_string(),
+            doc.extractor_version.into(),
+        );
+    }
+    scrape_result.extra = Some(extra);
+    if let Some(structured) = doc.structured {
+        let redacted = redact_sensitive_structured_keys(structured);
+        scrape_result.structured_for_embedding = Some(redacted.clone());
+        scrape_result.structured = capped_public_structured_summary(redacted);
+    }
+    scrape_result.extractor_name = Some(doc.extractor_name.to_string());
+    scrape_result.title = doc.title;
+    Ok(scrape_result)
+}
+
+pub fn extract_markdown_links(markdown: &str) -> Vec<serde_json::Value> {
+    const LIMIT: usize = 512;
+    let mut links = Vec::new();
+    let bytes = markdown.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    while i + 3 < len && links.len() < LIMIT {
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            let href_start = i + 2;
+            if let Some(rel) = bytes[href_start..].iter().position(|&b| b == b')') {
+                let href = &markdown[href_start..href_start + rel];
+                if href.starts_with("http://") || href.starts_with("https://") {
+                    let text_end = i;
+                    let text_start = markdown[..text_end]
+                        .rfind('[')
+                        .map(|position| position + 1)
+                        .unwrap_or(text_end);
+                    let text = &markdown[text_start..text_end];
+                    links.push(serde_json::json!({ "href": href, "text": text }));
+                }
+                i = href_start + rel + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    links
+}
+
+fn capped_public_structured_summary(value: serde_json::Value) -> Option<serde_json::Value> {
+    let bytes = serde_json::to_vec(&value).ok()?;
+    if bytes.len() > MAX_PUBLIC_STRUCTURED_BYTES {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn redact_sensitive_structured_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .filter_map(|(key, value)| {
+                    let lowered = key.to_ascii_lowercase();
+                    let sensitive = [
+                        "token",
+                        "secret",
+                        "password",
+                        "authorization",
+                        "cookie",
+                        "api_key",
+                    ]
+                    .iter()
+                    .any(|needle| lowered.contains(needle));
+                    (!sensitive).then(|| (key, redact_sensitive_structured_keys(value)))
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => serde_json::Value::Array(
+            items
+                .into_iter()
+                .map(redact_sensitive_structured_keys)
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 pub async fn validate_and_normalize_scrape_url(
@@ -222,41 +389,78 @@ pub async fn embed_scrape_results(
     for result in results {
         docs.push(scrape_result_to_prepared_doc(cfg, result).await?);
     }
-    embed_prepared_docs(cfg, docs, None)
-        .await?
-        .require_success(label)
-        .map_err(|err| anyhow::anyhow!(err))?;
+    embed_and_upsert_documents(cfg, &cfg.collection, docs)
+        .await
+        .map_err(|err| -> Box<dyn Error> { format!("{label}: {err}").into() })?;
     Ok(())
 }
 
+/// Source-family-specific fields this function stamps directly into
+/// `metadata` before building the [`SourceDocument`] (kept via
+/// `retain_contract_fields`). Not exhaustive for the `"web"` family: the
+/// `web_structured_kind`/`web_structured_blob` fields
+/// (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`) are added
+/// later, downstream, by `axon_document::preparer::project_structured_payload_metadata`
+/// from `SourceDocument::structured_payload` rather than here.
+const WEB_PAYLOAD_ALLOWED_FIELDS: &[&str] = &["web_title", "web_domain"];
+
+/// Build a [`PreparedDocument`] from a scrape result: a `"web"`-family
+/// [`SourceDocument`] (markdown content, routed to `MarkdownSections`
+/// chunking) run through `DocumentPreparer`.
+///
+/// Behavior note: vertical scrapes can attach structured data via
+/// [`ScrapeResult::structured_for_embedding`]. `axon_document::preparer`
+/// projects that payload to `web_structured_kind`/`web_structured_blob`, the
+/// fields declared by the `"web"` vector payload family. Generic HTML scrapes
+/// usually leave it empty; vertical outputs preserve the richer structured
+/// payload through the same contract path.
 pub async fn scrape_result_to_prepared_doc(
     cfg: &Config,
     result: &ScrapeResult,
-) -> anyhow::Result<axon_vector::ops::PreparedDoc> {
-    let structured_source = result
-        .structured_for_embedding
-        .clone()
-        .or_else(|| result.structured.clone());
-    let structured = structured_source.and_then(|value| {
-        structured_payload_from_vertical_summary(
-            result.extractor_name.as_deref().unwrap_or("vertical"),
-            value,
-            cfg.structured_data_max_bytes,
-        )
-    });
-    let source = SourceDocument::try_new_web_markdown(
-        result.url.clone(),
-        result.markdown.clone(),
-        "scrape",
-        result.title.clone(),
-        result.extra.clone(),
-        result.extractor_name.clone(),
-        structured,
-    )
-    .map_err(|err| anyhow::anyhow!(err))?;
-    prepare_source_document(source)
-        .await
-        .map_err(|err| anyhow::anyhow!(err))
+) -> anyhow::Result<PreparedDocument> {
+    let _ = cfg; // kept for API stability; structured-data sizing no longer applies here
+    let token = stable_token(&format!("scrape:{}", result.url));
+    let mut metadata = MetadataMap::new();
+    metadata.insert("source_family".to_string(), serde_json::json!("web"));
+    metadata.insert("source_type".to_string(), serde_json::json!("scrape"));
+    metadata.insert("source_kind".to_string(), serde_json::json!("web"));
+    metadata.insert(
+        "source_adapter".to_string(),
+        serde_json::json!("web_scrape"),
+    );
+    metadata.insert(
+        "source_scope".to_string(),
+        serde_json::json!(SourceScope::Page),
+    );
+    if let Some(title) = &result.title {
+        metadata.insert("web_title".to_string(), serde_json::json!(title));
+    }
+    metadata.insert(
+        "web_domain".to_string(),
+        serde_json::json!(axon_core::content::url_to_domain(&result.url)),
+    );
+    retain_contract_fields(&mut metadata, WEB_PAYLOAD_ALLOWED_FIELDS);
+
+    let document = SourceDocument {
+        document_id: DocumentId::new(format!("doc_scrape_{token}")),
+        source_id: SourceId::new(format!("src_scrape_{token}")),
+        source_item_key: SourceItemKey::new(result.url.clone()),
+        canonical_uri: result.url.clone(),
+        content_kind: ContentKind::Markdown,
+        content: ContentRef::InlineText {
+            text: result.markdown.clone(),
+        },
+        metadata,
+        title: result.title.clone(),
+        language: None,
+        path: None,
+        mime_type: None,
+        structured_payload: result.structured_for_embedding.clone(),
+        artifact_id: None,
+        chunk_hints: Vec::<ChunkHint>::new(),
+        parser_hints: Vec::<ParserHint>::new(),
+    };
+    prepare_document(document, adhoc_generation()).map_err(|err| anyhow::anyhow!(err))
 }
 
 #[cfg(test)]

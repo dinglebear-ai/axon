@@ -1,13 +1,10 @@
 use crate::events::{LogLevel, ServiceEvent, emit, synthesis_delta_handler_infallible};
 use crate::types::{
-    AskResult, DocumentBackend, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveResult,
-    ServiceRetrieveVariantError, SuggestResult, Suggestion,
+    AskResult, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveResult, SuggestResult,
+    Suggestion,
 };
 use axon_core::config::Config;
 use axon_core::error::{ServiceError, diagnostics_from_error};
-use axon_vector::ops::commands::discover_crawl_suggestions;
-use axon_vector::ops::commands::evaluate_result_with_context;
-use axon_vector::ops::qdrant::DirectRetrieveResult;
 use std::error::Error;
 use tokio::sync::mpsc;
 
@@ -22,11 +19,15 @@ pub use self::code_search::{
 };
 pub use self::retrieval::{query_via_retrieval, query_via_retrieval_with_cfg};
 pub use self::retrieve::retrieve;
+use self::suggest::discover_crawl_suggestions;
 
 mod ask_retrieval;
 mod code_search;
+mod evaluate;
 mod retrieval;
 mod retrieve;
+mod suggest;
+pub(crate) mod synthesis;
 
 /// Wrap a service error message, preserving upstream diagnostics when present.
 /// Used by the code-search path to surface retrieval diagnostics.
@@ -76,34 +77,6 @@ pub fn map_retrieve_result(chunk_count: usize, content: String) -> RetrieveResul
     }
 }
 
-pub fn map_direct_retrieve_result(result: DirectRetrieveResult) -> RetrieveResult {
-    RetrieveResult {
-        chunk_count: result.chunk_count,
-        content: if result.chunk_count == 0 {
-            String::new()
-        } else {
-            result.content
-        },
-        requested_url: Some(result.requested_url),
-        matched_url: result.matched_url,
-        truncated: result.truncated,
-        warnings: result.warnings,
-        variant_errors: result
-            .variant_errors
-            .into_iter()
-            .map(|err| ServiceRetrieveVariantError {
-                url: err.url,
-                error: err.error,
-            })
-            .collect(),
-        token_estimate: None,
-        next_cursor: None,
-        remaining_tokens_estimate: None,
-        backend: Some(DocumentBackend::Qdrant),
-        refresh_status: None,
-    }
-}
-
 pub fn map_ask_payload(payload: serde_json::Value) -> Result<AskResult, Box<dyn Error>> {
     serde_json::from_value(payload).map_err(|e| format!("invalid ask payload: {e}").into())
 }
@@ -144,8 +117,7 @@ pub fn map_suggest_payload(payload: &serde_json::Value) -> Result<SuggestResult,
 /// Semantic vector search.
 ///
 /// Routed through the new `axon-retrieval` engine (issue #298 cutover). The
-/// legacy `axon_vector::ops::commands::query_hits` path is no longer used by
-/// `query`; `ask`/`evaluate`/`retrieve` remain on the legacy path.
+/// legacy axon-vector `query_hits` path is no longer used by `query`.
 #[must_use = "query returns a Result that should be handled"]
 pub async fn query(
     ctx: &ServiceContext,
@@ -157,11 +129,13 @@ pub async fn query(
 }
 /// RAG ask: retrieve relevant context, then answer with LLM.
 ///
-/// The retrieval half is routed through the new `axon-retrieval` engine (issue
-/// #298 cutover) via [`ask_via_retrieval`]; the LLM synthesis half stays on the
-/// existing `axon_vector` pipeline. `ctx` supplies the read-plane runtime
-/// (preferring an attached local-source runtime, else building read stores from
-/// `cfg`).
+/// Both the retrieval half (via [`ask_via_retrieval`] → `axon-retrieval`) and
+/// the LLM synthesis half (`query::synthesis`) are routed through the
+/// `axon-retrieval` engine (issue #298 cutover, finale: the legacy
+/// `axon_vector` pipeline — including its `ask --explain` reranker — is
+/// retired entirely; see `ask_retrieval.rs`'s doc comment). `ctx` supplies
+/// the read-plane runtime (preferring an attached local-source runtime, else
+/// building read stores from `cfg`).
 ///
 /// When `cfg.ask_stream` is true and `tx` is `Some`, synthesis tokens are
 /// forwarded as `ServiceEvent::SynthesisDelta` events as they arrive.
@@ -312,10 +286,12 @@ where
 /// RAG evaluate: run RAG and baseline answers, then judge with a second LLM call.
 ///
 /// The RAG-retrieval half is routed through the new `axon-retrieval` engine
-/// (issue #298 cutover) via [`retrieval_ask_context`], mirroring the `ask` slice
-/// (PR #348); the baseline answer, the judge (LLM analysis + its judge-reference
-/// retrieval), and all synthesis stay on the existing `axon_vector`/core-llm
-/// path. `ctx` supplies the read-plane runtime (preferring an attached
+/// (issue #298 cutover) via [`retrieval_ask_context`], mirroring the `ask`
+/// slice (PR #348); the baseline answer, the judge (LLM analysis + its own
+/// `retrieval_ask_context`-backed judge-reference retrieval), and all
+/// synthesis run through `query::evaluate` / `query::synthesis` — see
+/// `evaluate.rs`'s doc comment (including the disclosed `--retrieval-ab`
+/// gap). `ctx` supplies the read-plane runtime (preferring an attached
 /// local-source runtime, else building read stores from `cfg`).
 ///
 /// Returns the full structured evaluate payload without printing to stdout.
@@ -338,7 +314,7 @@ pub async fn evaluate(
             )))
         })?;
 
-    evaluate_result_with_context(&derived, question.to_string(), ask_ctx)
+    evaluate::evaluate_result_with_context(ctx, &derived, question.to_string(), ask_ctx)
         .await
         .map_err(|e| -> Box<dyn Error + Send + Sync> {
             let message = format!(

@@ -7,11 +7,11 @@ Last Modified: 2026-06-08
 | Surface | Entry point |
 |---|---|
 | CLI | `axon refresh ...` |
-| REST | Missing |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `services::refresh::{plan_refresh,execute_refresh}` |
+| Service | `Not inventoried` |
 
-Parity notes: Re-enqueues crawl/ingest jobs for indexed origins; CLI-only, gated behind an interactive confirmation.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

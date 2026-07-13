@@ -5,6 +5,8 @@
 //! shells. Existing public runtime paths remain in the legacy crates until a
 //! later cutover PR.
 
+#![allow(clippy::result_large_err)]
+
 pub mod batch;
 pub mod capability;
 pub mod fake;

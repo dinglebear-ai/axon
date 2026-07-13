@@ -60,6 +60,26 @@ async fn classify_source_input_prefers_existing_local_path() {
 }
 
 #[tokio::test]
+async fn classify_source_input_detects_lexical_local_path_before_it_exists() {
+    assert_eq!(
+        classify_source_input("/tmp/axon-missing-local-source").await,
+        SourceInputKind::Local
+    );
+    assert_eq!(
+        classify_source_input("./missing-local-source").await,
+        SourceInputKind::Local
+    );
+    assert_eq!(
+        classify_source_input("../missing-local-source").await,
+        SourceInputKind::Local
+    );
+    assert_eq!(
+        classify_source_input("~/missing-local-source").await,
+        SourceInputKind::Local
+    );
+}
+
+#[tokio::test]
 async fn classify_source_input_detects_git_url() {
     assert_eq!(
         classify_source_input("https://github.com/jmagar/axon.git").await,

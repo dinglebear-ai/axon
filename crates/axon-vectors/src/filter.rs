@@ -81,12 +81,17 @@ pub fn matches_delete_selector(point: &VectorPoint, selector: &VectorDeleteSelec
             ..
         } => payload_url_matches(&point.payload, canonical_uri, *match_prefix),
         VectorDeleteSelector::Filter { filter, .. } => matches_json_filter(&point.payload, filter),
+        // Whole-collection delete: collection scoping already happened via
+        // `selector_collection` (the fake store only walks that collection's
+        // point map), so every point reachable here matches.
+        VectorDeleteSelector::Collection { .. } => true,
     }
 }
 
 fn payload_url_matches(payload: &MetadataMap, expected: &str, prefix: bool) -> bool {
     [
-        payload.get("url").and_then(Value::as_str),
+        payload.get("item_canonical_uri").and_then(Value::as_str),
+        payload.get("source_canonical_uri").and_then(Value::as_str),
         payload.get("source_item_key").and_then(Value::as_str),
         payload
             .get("chunk_locator")
@@ -109,6 +114,7 @@ pub fn selector_collection(selector: &VectorDeleteSelector) -> &str {
     match selector {
         VectorDeleteSelector::Source { collection, .. }
         | VectorDeleteSelector::Generation { collection, .. }
+        | VectorDeleteSelector::Collection { collection, .. }
         | VectorDeleteSelector::Document { collection, .. }
         | VectorDeleteSelector::Chunks { collection, .. }
         | VectorDeleteSelector::Points { collection, .. }

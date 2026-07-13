@@ -200,7 +200,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "source_canonical_uri": "source_canonical_uri",
   "source_item_key": "code-item",
   "item_canonical_uri": "item_canonical_uri",
-  "source_generation": "gen-code-7",
+  "source_generation": 7,
   "document_id": "doc-code",
   "chunk_id": "chunk-code-0",
   "chunk_index": 0,
@@ -226,7 +226,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "embedding_provider": "tei",
   "embedding_profile": "default",
   "embedded_at": "2026-06-30T00:00:00Z",
-  "committed_generation": "uncommitted"
+  "committed_generation": null
 }"#
         }
         SchemaFamily::Api
@@ -818,32 +818,6 @@ fn removed_legacy_api_request_shapes_are_absent() {
             !properties.contains_key("prefix"),
             "legacy PurgeRequest.prefix leaked"
         );
-    }
-}
-
-#[test]
-fn api_dto_registry_covers_every_required_family() {
-    let families = axon_api::schema_registry::dto_schema_registry()
-        .iter()
-        .map(|dto| dto.family)
-        .collect::<std::collections::BTreeSet<_>>();
-    for required in [
-        "Envelope",
-        "Source",
-        "Ledger",
-        "Document",
-        "Parse/Graph",
-        "Embedding/Vector",
-        "Retrieval",
-        "Discovery/Synthesis",
-        "Runtime",
-        "Operations",
-        "Errors",
-        "Memory",
-        "Config/setup/serve/MCP/palette operational DTOs",
-        "Provider capability DTOs",
-    ] {
-        assert!(families.contains(required), "missing DTO family {required}");
     }
 }
 

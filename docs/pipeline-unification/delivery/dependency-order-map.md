@@ -50,9 +50,12 @@ Contract packet
 - Source-family ports must not bypass
   `axon-services::source::routing::resolve_source_route`; acquisition receives
   an already validated route plan or a source-family bridge derived from it.
-- Do not delete `embed`, `ingest`, `scrape`, `crawl`, or
-  `code-search-watch` public surfaces until source routing, source jobs,
-  generated schemas, and removal checks exist.
+- Do not delete `embed`, `ingest`, `crawl`, or `code-search-watch` public
+  surfaces until source routing, source jobs, generated schemas, and removal
+  checks exist.
+- Do not restore or keep `axon scrape <url>` unless it is implemented as the
+  canonical one-page web SourceRequest projection (`scope=page`, `embed=true`)
+  with clean-content output and no crawl fanout.
 - Do not port GitHub/GitLab/Gitea ingestion until the local-source spike proves
   `SourceRequest -> adapter -> ledger draft -> SourceDocument -> prepare`.
 - Do not port web crawl until URL normalization, authority mapping, and

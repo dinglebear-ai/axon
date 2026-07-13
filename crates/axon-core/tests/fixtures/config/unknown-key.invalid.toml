@@ -1,0 +1,10 @@
+# Invalid config.toml fixture: an unrecognized key under a known section.
+#
+# `totally-unknown-key` is not a field on `RawServerSection`
+# (crates/axon-core/src/config/parse/toml_config/raw.rs), so
+# `#[serde(deny_unknown_fields)]` rejects this file with a parse error
+# instead of silently ignoring the typo. Wired in
+# crates/axon-core/src/config/parse/toml_config_tests.rs.
+[server]
+default-collection = "axon"
+totally-unknown-key = "should fail to parse"

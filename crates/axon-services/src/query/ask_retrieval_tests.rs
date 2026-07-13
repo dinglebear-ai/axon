@@ -17,7 +17,7 @@ fn context_has_sources_prefix_and_numbered_entries() {
         hit("https://example.com/a", "alpha body"),
         hit("https://example.org/b", "beta body"),
     ];
-    let ctx = build_ask_context_from_hits(&cfg, hits, 5);
+    let ctx = build_ask_context_from_hits(&cfg, &hits, 5);
 
     assert!(ctx.context.starts_with(CONTEXT_PREFIX));
     assert!(ctx.context.contains("## Top Chunk [S1]: example.com"));
@@ -33,7 +33,7 @@ fn context_has_sources_prefix_and_numbered_entries() {
 #[test]
 fn entries_are_wrapped_in_evidence_boundary() {
     let cfg = Config::test_default();
-    let ctx = build_ask_context_from_hits(&cfg, vec![hit("https://x.test/p", "body")], 0);
+    let ctx = build_ask_context_from_hits(&cfg, &[hit("https://x.test/p", "body")], 0);
     assert!(
         ctx.context
             .contains("<retrieved_content trust=\"evidence_only\">")
@@ -64,7 +64,7 @@ fn context_respects_max_chars_budget() {
         ),
         hit("https://example.org/b", "second"),
     ];
-    let ctx = build_ask_context_from_hits(&cfg, hits, 0);
+    let ctx = build_ask_context_from_hits(&cfg, &hits, 0);
     // Nothing beyond the prefix should have been admitted.
     assert_eq!(ctx.context, CONTEXT_PREFIX);
     assert_eq!(ctx.chunks_selected, 0);
@@ -78,7 +78,7 @@ fn chunk_limit_caps_entries() {
         hit("https://example.com/a", "first"),
         hit("https://example.org/b", "second"),
     ];
-    let ctx = build_ask_context_from_hits(&cfg, hits, 0);
+    let ctx = build_ask_context_from_hits(&cfg, &hits, 0);
     assert_eq!(ctx.chunks_selected, 1);
     assert!(ctx.context.contains("first"));
     assert!(!ctx.context.contains("second"));

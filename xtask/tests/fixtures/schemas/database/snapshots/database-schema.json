@@ -1670,6 +1670,13 @@
       ]
     },
     {
+      "file": "crates/axon-jobs/src/migrations/0025_config_snapshots.sql",
+      "owner_crate": "axon-jobs",
+      "tables_touched": [
+        "config_snapshots"
+      ]
+    },
+    {
       "file": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
       "owner_crate": "axon-graph",
       "tables_touched": [
@@ -3296,6 +3303,35 @@
       "owner_crate": "axon-ledger",
       "primary_key": [
         "debt_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "config_snapshot_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "config_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-jobs/src/migrations/0025_config_snapshots.sql",
+      "name": "config_snapshots",
+      "owner_crate": "axon-jobs",
+      "primary_key": [
+        "config_snapshot_id"
       ]
     },
     {
@@ -5061,7 +5097,7 @@
         "path": "crates/axon-graph/src/migrations"
       },
       {
-        "checksum": "sha256:8fd206e8313f599006b520d1504f2cb65cfe140650a8ab975722ab784f86b6f7",
+        "checksum": "sha256:63877d59acbd8e4682be0903d09bd2fe3001d6c18c95e44d00afffa82e10c1d6",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },

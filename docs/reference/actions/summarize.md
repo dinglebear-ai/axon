@@ -7,11 +7,11 @@ Last Modified: 2026-05-19
 | Surface | Entry point |
 |---|---|
 | CLI | `axon summarize ...` |
-| REST | `POST /v1/summarize` (Implemented) |
-| MCP | `{ "action": "summarize" }` |
-| Service | `services::summarize::summarize` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Supports render mode, selectors, and headers for the underlying scrape step.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

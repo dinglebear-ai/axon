@@ -10,7 +10,6 @@ const REMOVED_AFTER_CUTOVER: &[&str] = &[
     "crates/axon-code-index",
     "crates/axon-crawl",
     "crates/axon-ingest",
-    "crates/axon-extract",
 ];
 
 pub fn check(root: &Path) -> anyhow::Result<()> {

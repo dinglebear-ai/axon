@@ -175,8 +175,8 @@ impl VectorPointBatchBuilder {
 
         validate_embedding_provenance(&self.document, &self.embeddings)?;
         let chunks = chunks_by_id(&self.document)?;
-        let batch_id = self.embeddings.batch_id.clone();
-        let job_id = self.embeddings.job_id.clone();
+        let batch_id = self.embeddings.batch_id;
+        let job_id = self.embeddings.job_id;
         let provider_id = self.embeddings.provider_id.clone();
         let model = self.embeddings.model.clone();
         let mut vectors =
@@ -216,12 +216,10 @@ impl VectorPointBatchBuilder {
                 // dotenv-style lines or token-shaped strings; one such chunk
                 // must not fail the entire index. Every other payload validation
                 // error is a real defect and still propagates.
-                Err(VectorPointBatchBuildError::Payload { chunk_id, source })
-                    if matches!(
-                        source,
-                        crate::payload::VectorPayloadValidationError::ForbiddenValue { .. }
-                    ) =>
-                {
+                Err(VectorPointBatchBuildError::Payload {
+                    chunk_id,
+                    source: crate::payload::VectorPayloadValidationError::ForbiddenValue { .. },
+                }) => {
                     tracing::warn!(
                         chunk_id = %chunk_id.0,
                         "skipping chunk with secret-redaction-forbidden payload value (not indexed)"
@@ -271,7 +269,7 @@ fn validate_embedding_provenance(
     {
         return Err(VectorPointBatchBuildError::EmbeddingBatchMismatch {
             expected: batch_id,
-            actual: embeddings.batch_id.clone(),
+            actual: embeddings.batch_id,
         });
     }
     if let Some(provider_id) = document

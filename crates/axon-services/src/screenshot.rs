@@ -1,8 +1,10 @@
 use crate::artifacts::write_configured_output;
 use crate::types::{ArtifactHandle, ScreenshotResult};
+use axon_adapters::web_engine::screenshot::{
+    spider_screenshot_with_options, url_to_screenshot_filename,
+};
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url};
-use axon_crawl::screenshot::{spider_screenshot_with_options, url_to_screenshot_filename};
 use std::error::Error;
 
 // --- Pure mapping helper (no I/O, testable without live services) ---
