@@ -8230,7 +8230,7 @@
     },
     "source_inputs": [
       {
-        "checksum": "sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336",
+        "checksum": "sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/vector.rs"
       },
