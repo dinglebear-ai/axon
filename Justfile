@@ -69,7 +69,7 @@ machete:
     @if command -v cargo-machete >/dev/null 2>&1; then cargo machete; else echo "skip: cargo-machete not installed (cargo install cargo-machete)"; fi
 
 build:
-    {{rust_dev_env}}; CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile {{local_release_profile}} --locked
+    {{rust_dev_env}}; cargo build --profile {{local_release_profile}} --locked
     just link-bin {{local_release_profile}}
 
 release-build:
@@ -112,7 +112,7 @@ link-bin profile=local_release_profile:
     echo "artifact → bin/axon-$variant"
 
 install:
-    {{rust_dev_env}}; CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile {{local_release_profile}} --locked
+    {{rust_dev_env}}; cargo build --profile {{local_release_profile}} --locked
     just link-bin {{local_release_profile}}
 
 install-release:
@@ -182,7 +182,7 @@ sync-container:
       done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo build.rs src crates config.example.toml config migrations apps/web/out assets)
     fi
     if [ "$release_stale" -eq 1 ]; then
-      CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-16}" cargo build --profile "$profile" --locked --bin axon
+      cargo build --profile "$profile" --locked --bin axon
     else
       echo "release binary is current: $AXON_BIN"
     fi
