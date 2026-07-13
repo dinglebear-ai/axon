@@ -36,6 +36,7 @@ pub struct FakeAdapterProviders {
     health: HealthStatus,
     mode: FakeAdapterMode,
     calls: Arc<Mutex<Vec<&'static str>>>,
+    fetch_text: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +53,7 @@ impl FakeAdapterProviders {
             health: HealthStatus::Healthy,
             mode: FakeAdapterMode::Success,
             calls: Arc::new(Mutex::new(Vec::new())),
+            fetch_text: "fake fetch".to_string(),
         }
     }
 
@@ -62,6 +64,15 @@ impl FakeAdapterProviders {
 
     pub fn with_mode(mut self, mode: FakeAdapterMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Override the body `fetch()` returns (default: `"fake fetch"`). Lets
+    /// tests simulate two distinct fetched page bodies — e.g. to prove a
+    /// content_hash derived from the fetch result actually varies with the
+    /// content, rather than being a hardcoded constant.
+    pub fn with_fetch_text(mut self, text: impl Into<String>) -> Self {
+        self.fetch_text = text.into();
         self
     }
 
@@ -197,7 +208,7 @@ impl FetchProvider for FakeAdapterProviders {
             final_uri: request.uri,
             status: 200,
             content: ContentRef::InlineText {
-                text: "fake fetch".to_string(),
+                text: self.fetch_text.clone(),
             },
             headers: RedactedHeaders {
                 headers: Vec::new(),

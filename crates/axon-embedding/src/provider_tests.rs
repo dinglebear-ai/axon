@@ -256,6 +256,8 @@ async fn tei_adapter_config_is_reflected_in_capabilities_without_network_calls()
         max_input_tokens: 8192,
         max_batch_tokens: 131_072,
         instruction_support: InstructionSupport::QueryAndDocument,
+        retry_backoff_ms: 500,
+        max_attempts: 6,
     });
 
     assert_eq!(provider.config().endpoint, "http://tei.local:8080");

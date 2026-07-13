@@ -1,11 +1,15 @@
+use crate::contract_write::{
+    adhoc_generation, embed_and_upsert_documents, prepare_document, retain_contract_fields,
+    stable_token,
+};
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::ScrapeResult;
+use axon_api::source::{
+    ChunkHint, ContentKind, ContentRef, DocumentId, MetadataMap, ParserHint, PreparedDocument,
+    SourceDocument, SourceId, SourceItemKey, SourceScope,
+};
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
-use axon_vector::ops::{
-    SourceDocument, embed_prepared_docs, prepare_source_document,
-    structured_payload_from_vertical_summary,
-};
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::fmt;
@@ -13,7 +17,7 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-pub use axon_crawl::scrape::map_scrape_payload;
+pub use axon_adapters::web_engine::scrape::map_scrape_payload;
 
 /// Scrape a single URL and return a typed [`ScrapeResult`].
 ///
@@ -32,7 +36,7 @@ pub async fn scrape(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = validate_and_normalize_scrape_url(url, &tx).await?;
-    let mut result = axon_crawl::scrape::scrape_to_result(cfg, &normalized).await?;
+    let mut result = axon_adapters::web_engine::scrape::scrape_to_result(cfg, &normalized).await?;
     emit(
         &tx,
         ServiceEvent::Log {
@@ -222,41 +226,93 @@ pub async fn embed_scrape_results(
     for result in results {
         docs.push(scrape_result_to_prepared_doc(cfg, result).await?);
     }
-    embed_prepared_docs(cfg, docs, None)
-        .await?
-        .require_success(label)
-        .map_err(|err| anyhow::anyhow!(err))?;
+    embed_and_upsert_documents(cfg, &cfg.collection, docs)
+        .await
+        .map_err(|err| -> Box<dyn Error> { format!("{label}: {err}").into() })?;
     Ok(())
 }
 
+/// Source-family-specific fields this function stamps directly into
+/// `metadata` before building the [`SourceDocument`] (kept via
+/// `retain_contract_fields`). Not exhaustive for the `"web"` family: the
+/// `web_structured_kind`/`web_structured_blob` fields
+/// (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`) are added
+/// later, downstream, by `axon_document::preparer::project_structured_payload_metadata`
+/// from `SourceDocument::structured_payload` rather than here.
+const WEB_PAYLOAD_ALLOWED_FIELDS: &[&str] = &["web_title", "web_domain"];
+
+/// Build a [`PreparedDocument`] from a scrape result: a `"web"`-family
+/// [`SourceDocument`] (markdown content, routed to `MarkdownSections`
+/// chunking) run through `DocumentPreparer`.
+///
+/// Behavior note: the legacy `axon_vector` path also attached vertical
+/// extractor structured-data payloads (`structured_kind`/`structured_type`/
+/// `structured_blob`) to every chunk. `structured_payload` below now carries
+/// [`ScrapeResult::structured_for_embedding`] through to
+/// `axon_document::preparer::project_structured_payload_metadata`, which
+/// projects it to the `web_structured_kind`/`web_structured_blob` fields the
+/// vector payload contract's per-family allowlist declares for `"web"`
+/// (`axon-vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`) — so the
+/// wiring here is no longer a dead end. In practice `structured_for_embedding`
+/// is always `None` today: the generic single-page scrape path
+/// (`axon_crawl::scrape::scrape_to_result` / `map_scrape_payload`) does not
+/// run any JSON-LD/`__NEXT_DATA__`/SvelteKit extraction (that ran only
+/// through the vertical-extractor framework removed with `axon-extract`), so
+/// this is currently inert rather than a functional restoration. It is also
+/// not guaranteed to carry the same `{kind, blob, schema_type?, schema_id?}`
+/// envelope the crawl-manifest path uses (`axon-adapters::web::bounded_structured_payload`,
+/// `axon-crawl::engine::collector::page::extract_structured_blob`) if a
+/// future producer repopulates it under the old vertical-extractor shape —
+/// `project_structured_payload_metadata`'s `schema_type`/`kind` lookups
+/// degrade gracefully (no `web_structured_kind`) but `web_structured_blob`
+/// still gets the raw JSON-stringified value either way.
 pub async fn scrape_result_to_prepared_doc(
     cfg: &Config,
     result: &ScrapeResult,
-) -> anyhow::Result<axon_vector::ops::PreparedDoc> {
-    let structured_source = result
-        .structured_for_embedding
-        .clone()
-        .or_else(|| result.structured.clone());
-    let structured = structured_source.and_then(|value| {
-        structured_payload_from_vertical_summary(
-            result.extractor_name.as_deref().unwrap_or("vertical"),
-            value,
-            cfg.structured_data_max_bytes,
-        )
-    });
-    let source = SourceDocument::try_new_web_markdown(
-        result.url.clone(),
-        result.markdown.clone(),
-        "scrape",
-        result.title.clone(),
-        result.extra.clone(),
-        result.extractor_name.clone(),
-        structured,
-    )
-    .map_err(|err| anyhow::anyhow!(err))?;
-    prepare_source_document(source)
-        .await
-        .map_err(|err| anyhow::anyhow!(err))
+) -> anyhow::Result<PreparedDocument> {
+    let _ = cfg; // kept for API stability; structured-data sizing no longer applies here
+    let token = stable_token(&format!("scrape:{}", result.url));
+    let mut metadata = MetadataMap::new();
+    metadata.insert("source_family".to_string(), serde_json::json!("web"));
+    metadata.insert("source_type".to_string(), serde_json::json!("scrape"));
+    metadata.insert("source_kind".to_string(), serde_json::json!("web"));
+    metadata.insert(
+        "source_adapter".to_string(),
+        serde_json::json!("web_scrape"),
+    );
+    metadata.insert(
+        "source_scope".to_string(),
+        serde_json::json!(SourceScope::Page),
+    );
+    if let Some(title) = &result.title {
+        metadata.insert("web_title".to_string(), serde_json::json!(title));
+    }
+    metadata.insert(
+        "web_domain".to_string(),
+        serde_json::json!(axon_core::content::url_to_domain(&result.url)),
+    );
+    retain_contract_fields(&mut metadata, WEB_PAYLOAD_ALLOWED_FIELDS);
+
+    let document = SourceDocument {
+        document_id: DocumentId::new(format!("doc_scrape_{token}")),
+        source_id: SourceId::new(format!("src_scrape_{token}")),
+        source_item_key: SourceItemKey::new(result.url.clone()),
+        canonical_uri: result.url.clone(),
+        content_kind: ContentKind::Markdown,
+        content: ContentRef::InlineText {
+            text: result.markdown.clone(),
+        },
+        metadata,
+        title: result.title.clone(),
+        language: None,
+        path: None,
+        mime_type: None,
+        structured_payload: result.structured_for_embedding.clone(),
+        artifact_id: None,
+        chunk_hints: Vec::<ChunkHint>::new(),
+        parser_hints: Vec::<ParserHint>::new(),
+    };
+    prepare_document(document, adhoc_generation()).map_err(|err| anyhow::anyhow!(err))
 }
 
 #[cfg(test)]

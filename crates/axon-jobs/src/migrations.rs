@@ -156,6 +156,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0024_job_intent_widen_and_deadline",
         sql: include_str!("migrations/0024_job_intent_widen_and_deadline.sql"),
     },
+    SqlMigration {
+        version: 25,
+        name: "0025_config_snapshots",
+        sql: include_str!("migrations/0025_config_snapshots.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and

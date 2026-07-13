@@ -2,7 +2,7 @@
 
 use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
-    SourceItemKey, SourceWarning,
+    SourceDocument, SourceItemKey, SourceWarning,
 };
 
 use crate::chunk::DocumentChunk;
@@ -31,6 +31,12 @@ impl DocumentPreparer {
         &self,
         mut request: PrepareSourceDocumentRequest,
     ) -> Result<PrepareSourceDocumentResult, String> {
+        // Dead-code recovery (#298 alignment): mirror any off-band
+        // structured-data extraction into ordinary metadata *before* routing/
+        // chunking, so it survives into the vector payload instead of being
+        // silently dropped for markdown-routed web documents. See the
+        // function doc comment for the full rationale.
+        project_structured_payload_metadata(&mut request.document);
         // Activate axon-parse on the acquisition path: when the caller did not
         // pre-supply parse facts, parse the document here so parser-driven chunk
         // routing and graph candidates actually flow. Callers that already carry
@@ -124,6 +130,90 @@ impl DocumentPreparer {
         validate_prepared_document_with_bounds(&document, &bounds, &content.text)?;
         Ok(PrepareSourceDocumentResult { document })
     }
+}
+
+/// Bound the size of a structured-data blob attached to document/chunk
+/// metadata. Mirrors the web source adapter's own
+/// `bounded_structured_payload` cap (`crates/axon-adapters/src/web.rs`, 64
+/// KiB) as a consumer-side safety net: `SourceDocument::structured_payload`
+/// can in principle be populated by any caller (see
+/// `axon-services::scrape::scrape_result_to_prepared_doc`), not only the
+/// crawl-manifest path that already enforces the cap.
+const MAX_STRUCTURED_METADATA_BYTES: usize = 64 * 1024;
+
+/// Project a web document's off-band structured-data extraction (JSON-LD /
+/// `__NEXT_DATA__` / SvelteKit island, captured on
+/// `SourceDocument::structured_payload` -- see
+/// `axon-adapters::web::bounded_structured_payload` and
+/// `axon-crawl::engine::collector::page::extract_structured_blob` for how it
+/// is populated) into ordinary document metadata, so it survives into the
+/// vector payload instead of being silently dropped.
+///
+/// `structured_payload` is a dedicated `SourceDocument` field, not a
+/// `MetadataMap` entry. Profile-specific chunk builders only ever see it via
+/// `build_chunks`'s explicit `structured_payload` parameter
+/// (`preparer::chunk_build`), which is consumed solely by the
+/// `StructuredRecords`/`ApiSchema` profiles (`metadata::structured_records`,
+/// `schema::api_schema`). Every other profile -- including
+/// `MarkdownSections`, the profile virtually every web/crawl document routes
+/// to (`ContentKind::Markdown`) -- never touches it, so without this
+/// projection the value never reaches a chunk or a Qdrant payload at all.
+///
+/// Instead of threading a new parameter through every chunk builder, this
+/// mirrors the payload into `document.metadata` *before* chunking, reusing
+/// two mechanisms that already exist:
+/// - `build_prepared_chunk`'s `merge_metadata` call below copies any
+///   document-level metadata key down onto every chunk's own metadata (this
+///   is how `web_title`/`web_domain` already reach every chunk).
+/// - `axon-vectors::point::point_payload::build_payload` starts each vector
+///   point's payload from `document.metadata.clone()` before layering
+///   per-chunk metadata on top, so the projected fields land in the Qdrant
+///   payload for every chunk of the document regardless of profile.
+///
+/// Gated to the `web` source family: `web_structured_kind`/
+/// `web_structured_blob` are declared only in that family's vector-payload
+/// allowlist (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`),
+/// so projecting them for any other family would fail payload validation
+/// with `UnknownSourceSpecificField`.
+fn project_structured_payload_metadata(document: &mut SourceDocument) {
+    let is_web = document
+        .metadata
+        .get("source_family")
+        .and_then(serde_json::Value::as_str)
+        == Some("web");
+    if !is_web {
+        return;
+    }
+    let Some(payload) = document.structured_payload.as_ref() else {
+        return;
+    };
+    let Ok(blob) = serde_json::to_string(payload) else {
+        return;
+    };
+    if blob.len() > MAX_STRUCTURED_METADATA_BYTES {
+        return;
+    }
+    if let Some(kind) = structured_kind_label(payload) {
+        document
+            .metadata
+            .insert("web_structured_kind".to_string(), kind.into());
+    }
+    document
+        .metadata
+        .insert("web_structured_blob".to_string(), blob.into());
+}
+
+/// Best available short label for the structured payload's schema identity:
+/// the schema.org/JSON-LD type (the crawl-manifest envelope's `schema_type`
+/// field, resolved by `axon_core::structured::schema_type_of`) when present,
+/// falling back to the coarser extraction mechanism recorded under `kind`
+/// (`jsonld`, `next_data`, or `sveltekit`, per `StructuredDataPass::dominant`).
+fn structured_kind_label(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("schema_type")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| payload.get("kind").and_then(serde_json::Value::as_str))
+        .map(str::to_string)
 }
 
 /// Fold parser-produced facts/candidates/diagnostics into the request so they

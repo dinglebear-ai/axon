@@ -120,7 +120,7 @@ async fn execute_ingest_source(source: IngestSource, cfg: &Config) -> Result<(),
             sessions_cfg.sessions_codex = sessions_codex;
             sessions_cfg.sessions_gemini = sessions_gemini;
             sessions_cfg.sessions_project = sessions_project;
-            axon_ingest::orchestrate::ingest_sessions_with_progress(&sessions_cfg, None, None)
+            crate::ingest::orchestrate::ingest_sessions_with_progress(&sessions_cfg, None, None)
                 .await
                 .map(|_result| ())
                 .map_err(|error| ingest_error(error.to_string()))

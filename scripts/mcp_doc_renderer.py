@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from mcp_schema_models import (
     CRAWL_FIELD_DESCRIPTIONS,
     MCP_AUTH_ENV_VARS,
+    MCP_DENIED_ACTIONS,
     MCP_TRANSPORT_ENV_VARS,
     RUNTIME_ENV_VARS,
     RUNTIME_ENV_VARS_DEPRECATED,
@@ -462,6 +463,10 @@ def _classify_actions(
     lifecycle_actions: list[str] = []
     direct_actions: list[str] = []
     for struct_name, action in sorted(STRUCT_TO_ACTION.items(), key=lambda x: x[1]):
+        # Skip actions denied on the MCP surface; they exist on the shared
+        # AxonRequest enum only for REST/CLI and are rejected before dispatch.
+        if action in MCP_DENIED_ACTIONS:
+            continue
         sdef = structs.get(struct_name)
         if sdef and sdef.subaction_enum_name:
             lifecycle_actions.append(action)

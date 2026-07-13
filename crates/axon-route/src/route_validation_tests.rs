@@ -1,4 +1,5 @@
 use axon_api::{SafetyClass, SourceKind, SourceRequest, SourceScope};
+use serde_json::json;
 
 use crate::{
     AdapterRegistry, InMemoryAuthorityRegistry, RouteSecurityPolicy, SourceResolver, SourceRouter,
@@ -188,4 +189,140 @@ fn resolver_requires_canonical_adapter_hint_to_match_registry() {
 
     assert_eq!(err.code.0, "source.resolve.no_adapter");
     assert_eq!(err.stage, axon_error::ErrorStage::Resolving);
+}
+
+/// End-to-end: a web `SourceRequest` carrying the full documented web option
+/// set (adapter-scopes.md "Web Adapter" table) routes successfully and the
+/// values land unchanged in `RoutePlan.validated_options`
+/// (`SourcePlan.route.validated_options` per the target DTO contract).
+#[test]
+fn router_carries_full_web_option_set_into_validated_options() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("example.com");
+    request
+        .options
+        .values
+        .insert("max_pages".to_string(), json!(2000));
+    request
+        .options
+        .values
+        .insert("max_depth".to_string(), json!(10));
+    request
+        .options
+        .values
+        .insert("include_subdomains".to_string(), json!(false));
+    request
+        .options
+        .values
+        .insert("render_mode".to_string(), json!("auto_switch"));
+    request
+        .options
+        .values
+        .insert("discover_sitemaps".to_string(), json!(true));
+    request
+        .options
+        .values
+        .insert("max_sitemaps".to_string(), json!(512));
+    request
+        .options
+        .values
+        .insert("sitemap_since_days".to_string(), json!(0));
+    request
+        .options
+        .values
+        .insert("url_whitelist".to_string(), json!(["/docs"]));
+    request
+        .options
+        .values
+        .insert("url_blacklist".to_string(), json!(["/private"]));
+    request
+        .options
+        .values
+        .insert("etag_conditional".to_string(), json!(true));
+    request
+        .options
+        .values
+        .insert("min_markdown_chars".to_string(), json!(200));
+    request
+        .options
+        .values
+        .insert("drop_thin_markdown".to_string(), json!(true));
+    request
+        .options
+        .values
+        .insert("warc_path".to_string(), json!("artifact://warc/site.warc"));
+    request.options.values.insert(
+        "automation_script".to_string(),
+        json!("artifact://automation/steps.json"),
+    );
+    request
+        .options
+        .values
+        .insert("verticals_enabled".to_string(), json!(true));
+    let resolved = resolver.resolve(&request).expect("web source resolves");
+
+    let route = router
+        .route(&request, resolved)
+        .expect("full web option set routes");
+
+    assert_eq!(route.adapter.name, "web");
+    assert_eq!(route.validated_options.values, request.options.values);
+}
+
+#[test]
+fn router_rejects_invalid_web_render_mode_value() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("example.com");
+    request
+        .options
+        .values
+        .insert("render_mode".to_string(), json!("carrier_pigeon"));
+    let resolved = resolver.resolve(&request).expect("web source resolves");
+
+    let err = router
+        .route(&request, resolved)
+        .expect_err("invalid render_mode must fail before acquisition");
+
+    assert_eq!(err.code.0, "route.options.invalid");
+    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+}
+
+#[test]
+fn router_rejects_negative_web_max_pages_value() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("example.com");
+    request
+        .options
+        .values
+        .insert("max_pages".to_string(), json!(-5));
+    let resolved = resolver.resolve(&request).expect("web source resolves");
+
+    let err = router
+        .route(&request, resolved)
+        .expect_err("negative max_pages must fail before acquisition");
+
+    assert_eq!(err.code.0, "route.options.invalid");
+    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+}
+
+#[test]
+fn router_rejects_non_array_web_url_whitelist_value() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("example.com");
+    request
+        .options
+        .values
+        .insert("url_whitelist".to_string(), json!("/docs"));
+    let resolved = resolver.resolve(&request).expect("web source resolves");
+
+    let err = router
+        .route(&request, resolved)
+        .expect_err("non-array url_whitelist must fail before acquisition");
+
+    assert_eq!(err.code.0, "route.options.invalid");
+    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
 }

@@ -16,8 +16,9 @@ use axon_vectors::store::VectorStore;
 use super::{WebSourceIndexInput, WebSourceIndexOutput, index_web_source};
 
 /// Create a source job row, index the web source under it, and record terminal
-/// job status. The crawl that produced `input.manifest_path`/`markdown_root`
-/// must have already run to completion.
+/// job status. `input.fetch_provider`/`render_provider` are the real
+/// acquisition boundary `WebSourceAdapter` calls during discover/acquire
+/// (issue #298 Wave 1b) — no crawl needs to have run beforehand.
 pub async fn index_web_source_with_job(
     mut input: WebSourceIndexInput,
     jobs: &dyn JobStore,

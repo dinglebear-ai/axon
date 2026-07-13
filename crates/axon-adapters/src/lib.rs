@@ -20,6 +20,7 @@ mod local_select;
 pub mod manifest;
 pub mod mcp_tool;
 pub mod onboarding;
+pub mod providers;
 pub mod reddit;
 pub mod registry;
 pub mod registry_sources;
@@ -28,6 +29,7 @@ pub mod spec;
 pub mod testing;
 pub mod upload;
 pub mod web;
+pub mod web_engine;
 pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};

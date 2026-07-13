@@ -183,6 +183,13 @@ impl Default for Config {
             tei_max_client_batch_size: 96,
             embed_tei_max_concurrent: 8,
             embed_tei_max_in_flight_inputs: 320,
+            embed_tei_retry_backoff_ms: 500,
+            embed_tei_cooldown_after_failures: 3,
+            embed_tei_cooldown_secs: 30,
+            embed_tei_interactive_reserved_requests: 1,
+            embed_tei_background_max_concurrent_requests: 3,
+            embed_tei_maintenance_max_concurrent_requests: 1,
+            embed_tei_query_instruction_enabled: true,
             embed_pool_max_inputs: 512,
             embed_prep_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())

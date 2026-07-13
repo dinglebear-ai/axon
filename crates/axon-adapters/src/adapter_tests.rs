@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axon_api::source::*;
 use uuid::Uuid;
 
+use crate::boundary::FakeAdapterProviders;
 use crate::feed::FeedSourceAdapter;
 use crate::git::GitSourceAdapter;
 use crate::local::LocalSourceAdapter;
@@ -15,6 +16,11 @@ use crate::{
     AdapterCapability, FakeSourceAdapter, FakeSourceAdapterMode, SourceAdapter,
     SourceAdapterRegistry,
 };
+
+fn web_adapter() -> WebSourceAdapter {
+    let providers = Arc::new(FakeAdapterProviders::new());
+    WebSourceAdapter::new(providers.clone(), providers)
+}
 
 #[tokio::test]
 async fn fake_source_adapter_acquires_manifest_items_and_documents_without_preparing() {
@@ -200,7 +206,7 @@ fn adapter_capability_rejects_unsupported_scope_before_acquisition() {
 #[test]
 fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
     let adapters: Vec<Arc<dyn SourceAdapter>> = vec![
-        Arc::new(WebSourceAdapter::new()),
+        Arc::new(web_adapter()),
         Arc::new(GitSourceAdapter::new()),
         Arc::new(FeedSourceAdapter::new()),
         Arc::new(SessionSourceAdapter::new()),
@@ -229,7 +235,7 @@ fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
 #[tokio::test]
 async fn every_production_adapter_reports_capabilities_via_source_adapter_capability() {
     let adapters: Vec<Arc<dyn SourceAdapter>> = vec![
-        Arc::new(WebSourceAdapter::new()),
+        Arc::new(web_adapter()),
         Arc::new(GitSourceAdapter::new()),
         Arc::new(FeedSourceAdapter::new()),
         Arc::new(SessionSourceAdapter::new()),

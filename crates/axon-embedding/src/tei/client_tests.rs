@@ -23,17 +23,27 @@ fn is_batch_too_large_is_413_only() {
 #[test]
 fn retry_delay_grows_exponentially_and_caps() {
     let now = Instant::now();
-    assert!(retry_delay(1, now).as_millis() >= 1000);
-    assert!(retry_delay(2, now).as_millis() >= 2000);
-    assert!(retry_delay(3, now).as_millis() >= 4000);
+    assert!(retry_delay(1, now, 1000).as_millis() >= 1000);
+    assert!(retry_delay(2, now, 1000).as_millis() >= 2000);
+    assert!(retry_delay(3, now, 1000).as_millis() >= 4000);
     // Capped at 60_000 + <500ms jitter.
-    assert!(retry_delay(100, now).as_millis() <= 60_500);
+    assert!(retry_delay(100, now, 1000).as_millis() <= 60_500);
 }
 
 #[test]
 fn retry_delay_attempt_zero_does_not_panic() {
-    // saturating_sub(1) clamps to 0 → base 1000ms, no u32 underflow.
-    assert!(retry_delay(0, Instant::now()).as_millis() >= 1000);
+    // saturating_sub(1) clamps to 0 → base_ms unchanged, no u32 underflow.
+    assert!(retry_delay(0, Instant::now(), 1000).as_millis() >= 1000);
+}
+
+#[test]
+fn retry_delay_scales_with_configured_base_ms() {
+    // Proves `base_ms` (config-driven, was a hardcoded 1000 literal) actually
+    // controls the backoff rather than being ignored.
+    let now = Instant::now();
+    assert!(retry_delay(1, now, 500).as_millis() >= 500);
+    assert!(retry_delay(1, now, 500).as_millis() < 1000);
+    assert!(retry_delay(2, now, 500).as_millis() >= 1000);
 }
 
 #[test]
@@ -52,6 +62,7 @@ fn exhausted_cooling_attaches_provider_cooling_metadata_and_marks_retryable() {
         max_batch_inputs: 8,
         max_attempts: 1,
         request_timeout: Duration::from_millis(10),
+        retry_backoff_base_ms: 500,
     })
     .expect("client construction performs no I/O");
 

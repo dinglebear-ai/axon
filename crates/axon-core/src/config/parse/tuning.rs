@@ -136,6 +136,51 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         1,
         4096,
     );
+    cfg.embed_tei_retry_backoff_ms = resolve_clamped_u64(
+        "AXON_TEI_RETRY_BACKOFF_MS",
+        toml.embed.tei_retry_backoff_ms,
+        500,
+        50,
+        60_000,
+    );
+    cfg.embed_tei_cooldown_after_failures = resolve_clamped_usize(
+        "AXON_TEI_COOLDOWN_AFTER_FAILURES",
+        toml.embed.tei_cooldown_after_failures,
+        3,
+        1,
+        20,
+    );
+    cfg.embed_tei_cooldown_secs = resolve_clamped_u64(
+        "AXON_TEI_COOLDOWN_SECS",
+        toml.embed.tei_cooldown_secs,
+        30,
+        1,
+        3600,
+    );
+    cfg.embed_tei_interactive_reserved_requests = resolve_clamped_usize(
+        "AXON_TEI_INTERACTIVE_RESERVED_REQUESTS",
+        toml.embed.tei_interactive_reserved_requests,
+        1,
+        0,
+        64,
+    );
+    cfg.embed_tei_background_max_concurrent_requests = resolve_clamped_usize(
+        "AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS",
+        toml.embed.tei_background_max_concurrent_requests,
+        3,
+        1,
+        64,
+    );
+    cfg.embed_tei_maintenance_max_concurrent_requests = resolve_clamped_usize(
+        "AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS",
+        toml.embed.tei_maintenance_max_concurrent_requests,
+        1,
+        1,
+        64,
+    );
+    cfg.embed_tei_query_instruction_enabled = env_bool_opt("AXON_TEI_QUERY_INSTRUCTION_ENABLED")
+        .or(toml.embed.tei_query_instruction_enabled)
+        .unwrap_or(true);
     cfg.embed_pool_max_inputs = resolve_clamped_usize(
         "AXON_EMBED_POOL_MAX_INPUTS",
         toml.embed.pool_max_inputs,
@@ -353,28 +398,6 @@ fn load_toml_or_default() -> TomlConfig {
             TomlConfig::default()
         }
     }
-}
-
-pub fn embed_tei_max_concurrent() -> usize {
-    let toml = load_toml_or_default();
-    resolve_clamped_usize(
-        "AXON_TEI_MAX_CONCURRENT",
-        toml.embed.tei_max_concurrent,
-        8,
-        1,
-        64,
-    )
-}
-
-pub fn embed_tei_max_in_flight_inputs() -> usize {
-    let toml = load_toml_or_default();
-    resolve_clamped_usize(
-        "AXON_TEI_MAX_IN_FLIGHT_INPUTS",
-        toml.embed.tei_max_in_flight_inputs,
-        320,
-        1,
-        4096,
-    )
 }
 
 pub fn embed_openai_max_client_batch_size() -> usize {

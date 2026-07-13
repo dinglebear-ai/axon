@@ -5,39 +5,37 @@
 //! All business logic lives here; the CLI command is a thin formatting wrapper.
 
 pub mod chrome_fallback;
-mod for_source;
-mod for_source_page;
-
-pub use for_source::{
-    CrawlForSourceResult, crawl_for_source, crawl_output_manifest_and_markdown,
-    crawl_sync_output_dir,
-};
-pub use for_source_page::crawl_for_source_page;
 
 use crate::types::CrawlSyncResult;
+use axon_adapters::web_engine::engine::{
+    CrawlSummary, build_waf_diagnostics, run_crawl_once, run_sitemap_only, update_latest_reflink,
+};
+use axon_adapters::web_engine::manifest::{
+    ManifestEntry, read_manifest_data, read_manifest_urls, write_audit_diff,
+};
 use axon_core::config::{Config, ScrapeFormat};
 use axon_core::content::url_to_domain;
 use axon_core::logging::{log_done, log_warn};
 use axon_core::ui::{Spinner, color_enabled_public};
-use axon_crawl::engine::{
-    CrawlSummary, build_waf_diagnostics, run_crawl_once, run_sitemap_only, update_latest_reflink,
-};
-use axon_crawl::manifest::{
-    ManifestEntry, manifest_cache_is_stale, read_manifest_data, read_manifest_urls,
-    write_audit_diff,
-};
 use chrome_fallback::maybe_chrome_fallback;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
 
-const DEFAULT_CACHE_TTL_SECS: u64 = 60 * 60;
-
-/// Run a synchronous crawl for a single URL: cache check → HTTP crawl →
-/// optional Chrome fallback → sitemap backfill → embed → audit diff.
+/// Run a synchronous crawl for a single URL: HTTP crawl → optional Chrome
+/// fallback → sitemap backfill → embed → audit diff.
 ///
 /// Returns a typed result with aggregate stats. Intermediate progress is
 /// emitted via Spinners (stderr) and structured logging.
+///
+/// The whole-crawl disk-TTL cache shortcut this function used to offer (skip
+/// crawling entirely and reuse whatever was already on disk when the manifest
+/// was "fresh") was removed with the `axon-services::crawl_sync::for_source`/
+/// `for_source_page` web-source bridge (issue #298 Wave 1b) — it was the only
+/// caller that relied on it, and it competed with `LedgerStore::diff_manifest`,
+/// which is now the sole staleness authority for source indexing.
+/// `cfg.cache` still controls the finer-grained `previous_manifest` reuse
+/// `run_crawl_once` does per page.
 pub async fn crawl_sync(cfg: &Config, start_url: &str) -> Result<CrawlSyncResult, Box<dyn Error>> {
     let mut sync_cfg = crawl_sync_effective_config(cfg, start_url);
     if cfg.sitemap_only {
@@ -54,19 +52,6 @@ pub async fn crawl_sync(cfg: &Config, start_url: &str) -> Result<CrawlSyncResult
         HashMap::new()
     });
     let previous_urls: HashSet<String> = previous_manifest.keys().cloned().collect();
-
-    if maybe_return_cached_result(cfg, start_url, &manifest_path, &previous_urls).await? {
-        return Ok(CrawlSyncResult {
-            pages_seen: previous_urls.len() as u32,
-            markdown_files: 0,
-            thin_pages: 0,
-            error_pages: 0,
-            waf_blocked_pages: 0,
-            waf_diagnostics: None,
-            elapsed_ms: 0,
-            cache_hit: true,
-        });
-    }
 
     let (mut final_summary, seen_urls) = run_crawl_phase(cfg, start_url, previous_manifest).await?;
 
@@ -103,7 +88,6 @@ pub async fn crawl_sync(cfg: &Config, start_url: &str) -> Result<CrawlSyncResult
         waf_blocked_pages: final_summary.waf_blocked_pages,
         waf_diagnostics: build_waf_diagnostics(&final_summary, &final_summary, false, None),
         elapsed_ms: final_summary.elapsed_ms,
-        cache_hit: false,
     })
 }
 
@@ -118,36 +102,6 @@ fn crawl_sync_effective_config(cfg: &Config, start_url: &str) -> Config {
     sync_cfg.max_pages =
         crate::crawl::resolve_crawl_max_pages(cfg.max_pages, cfg.allow_unbounded_broad_crawl);
     sync_cfg
-}
-
-// ─── cache ─────────────────────────────────────────────────────────────────
-
-async fn maybe_return_cached_result(
-    cfg: &Config,
-    start_url: &str,
-    manifest_path: &std::path::Path,
-    previous_urls: &HashSet<String>,
-) -> Result<bool, Box<dyn Error>> {
-    let cache_stale = manifest_cache_is_stale(manifest_path, DEFAULT_CACHE_TTL_SECS).await;
-    if !cfg.cache || previous_urls.is_empty() || cache_stale {
-        return Ok(false);
-    }
-    let (report_path, _) = write_audit_diff(
-        &cfg.output_dir,
-        start_url,
-        previous_urls,
-        previous_urls,
-        true,
-        Some(manifest_path.to_string_lossy().to_string()),
-    )
-    .await?;
-    log_done(&format!(
-        "command=crawl cache_hit=true cached_urls={} output_dir={} audit_report={}",
-        previous_urls.len(),
-        cfg.output_dir.to_string_lossy(),
-        report_path.to_string_lossy()
-    ));
-    Ok(true)
 }
 
 // ─── sitemap-only mode ────────────────────────────────────────────────────
@@ -178,7 +132,6 @@ async fn run_sitemap_only_crawl(
         waf_blocked_pages: summary.waf_blocked_pages,
         waf_diagnostics: build_waf_diagnostics(&summary, &summary, false, None),
         elapsed_ms: summary.elapsed_ms,
-        cache_hit: false,
     })
 }
 
@@ -189,8 +142,9 @@ async fn run_crawl_phase(
     start_url: &str,
     previous_manifest: Arc<HashMap<String, ManifestEntry>>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
-    let initial_mode = axon_crawl::chrome_bootstrap::resolve_initial_mode(cfg);
-    let chrome_bootstrap = axon_crawl::chrome_bootstrap::bootstrap_chrome_runtime(cfg).await;
+    let initial_mode = axon_adapters::web_engine::chrome_bootstrap::resolve_initial_mode(cfg);
+    let chrome_bootstrap =
+        axon_adapters::web_engine::chrome_bootstrap::bootstrap_chrome_runtime(cfg).await;
     for warning in &chrome_bootstrap.warnings {
         log_warn(&format!("[Chrome Bootstrap] {warning}"));
     }
@@ -247,7 +201,7 @@ async fn run_sitemap_backfill(
             .collect::<HashSet<String>>()
     };
     let spinner = Spinner::new("running sitemap backfill");
-    let backfill_stats = axon_crawl::engine::append_sitemap_backfill(
+    let backfill_stats = axon_adapters::web_engine::engine::append_sitemap_backfill(
         cfg,
         start_url,
         &cfg.output_dir,

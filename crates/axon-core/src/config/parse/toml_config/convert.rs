@@ -143,6 +143,16 @@ fn apply_providers(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     legacy.tei.max_client_batch_size = e.batch_size;
     legacy.embed.tei_max_concurrent = e.max_concurrent_requests;
     legacy.embed.tei_max_in_flight_inputs = e.max_in_flight_inputs;
+    // Previously parsed (round-tripped) but never copied onto the legacy
+    // shape, so nothing downstream ever read them — see config-contract.md's
+    // "Providers: Embedding" section and axon_rust-ldozg.
+    legacy.embed.tei_retry_backoff_ms = e.retry_backoff_ms;
+    legacy.embed.tei_cooldown_after_failures = e.cooldown_after_failures;
+    legacy.embed.tei_cooldown_secs = e.cooldown_secs;
+    legacy.embed.tei_interactive_reserved_requests = e.interactive_reserved_requests;
+    legacy.embed.tei_background_max_concurrent_requests = e.background_max_concurrent_requests;
+    legacy.embed.tei_maintenance_max_concurrent_requests = e.maintenance_max_concurrent_requests;
+    legacy.embed.tei_query_instruction_enabled = e.query_instruction_enabled;
     legacy.embed.pool_max_inputs = e.pool_max_inputs;
     legacy.embed.prep_concurrency = e.prep_concurrency;
     legacy.embed.max_chunks_per_doc = e.max_chunks_per_doc;

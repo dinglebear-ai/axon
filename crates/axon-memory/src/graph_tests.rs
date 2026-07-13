@@ -103,6 +103,48 @@ async fn supersedes_writes_memory_supersedes_edge() {
 }
 
 #[tokio::test]
+async fn link_writes_edge_with_both_endpoint_nodes() {
+    // Regression: link() used to emit only the source node while pointing the
+    // edge's to_stable_key at the raw target id, so graph candidate validation
+    // rejected it ("edge memory_relates_to references unknown to stable_key").
+    let graph = store().await;
+    let mirror = GraphBackedMemoryMirror::new(graph.clone());
+    let source = record("mem_src", MemoryStatus::Active);
+    let target = record("mem_tgt", MemoryStatus::Active);
+    let link = MemoryLink {
+        link_type: "relates_to".to_string(),
+        target: "mem_tgt".to_string(),
+        confidence: 1.0,
+        evidence: Vec::new(),
+    };
+
+    mirror.link(&source, &target, &link).await.unwrap();
+
+    graph
+        .get_node(memory_node_id("mem_src"))
+        .await
+        .unwrap()
+        .expect("source node exists");
+    graph
+        .get_node(memory_node_id("mem_tgt"))
+        .await
+        .unwrap()
+        .expect("target node exists");
+
+    let edge_id = edge_id_for(
+        "memory_relates_to",
+        &memory_node_id("mem_src"),
+        &memory_node_id("mem_tgt"),
+    );
+    let edge = graph
+        .get_edge(edge_id)
+        .await
+        .unwrap()
+        .expect("relates_to edge exists");
+    assert_eq!(edge.kind, "memory_relates_to");
+}
+
+#[tokio::test]
 async fn contradicts_writes_memory_contradicts_edge() {
     let graph = store().await;
     let mirror = GraphBackedMemoryMirror::new(graph.clone());

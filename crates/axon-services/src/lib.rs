@@ -12,6 +12,7 @@ pub mod code_search_watch;
 pub mod config;
 pub mod config_snapshot_hash;
 pub mod context;
+pub(crate) mod contract_write;
 pub mod crawl;
 pub mod crawl_sync;
 pub mod debug;
@@ -74,6 +75,7 @@ pub mod search;
 pub mod search_crawl;
 pub mod service_traits;
 pub mod sessions;
+pub mod sessions_legacy;
 #[allow(dead_code)]
 pub(crate) mod sessions_source;
 pub use sessions_source::{
@@ -85,6 +87,7 @@ pub mod setup;
 pub mod source;
 pub use source::index_source;
 pub mod source_jobs;
+pub mod source_url_audit;
 pub mod summarize;
 pub mod sync;
 pub mod system;

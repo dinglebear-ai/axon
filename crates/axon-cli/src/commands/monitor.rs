@@ -71,7 +71,10 @@ pub async fn run_monitor(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let options = MonitorOptions::from_positional(&cfg.positional)?;
+    let mut options = MonitorOptions::from_positional(&cfg.positional)?;
+    // `--watch` is a `global = true` clap flag, so `monitor jobs --watch` sets
+    // `cfg.watch_mode` rather than the (shadowed) local monitor flag. Honor it.
+    options.watch = options.watch || cfg.watch_mode;
     let mut state = read_state(&options.state_file);
     state.mark_monitor_started_at(chrono::Utc::now());
 

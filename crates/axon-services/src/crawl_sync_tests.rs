@@ -1,6 +1,6 @@
 use crate::crawl_sync::{chrome_fallback::plan_chrome_fallback, crawl_sync_effective_config};
+use axon_adapters::web_engine::engine::CrawlSummary;
 use axon_core::config::{Config, ScrapeFormat};
-use axon_crawl::engine::CrawlSummary;
 
 // ─── LLM format guard ────────────────────────────────────────────────────────
 
