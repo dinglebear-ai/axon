@@ -207,7 +207,11 @@ impl TargetLocalSourceRuntime {
         let fetch_provider = HttpFetchProvider::new(HttpFetchConfig {
             timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
             max_bytes: cfg.max_page_bytes,
-            user_agent: cfg.chrome_user_agent.clone(),
+            // General-purpose HTTP fetch boundary — use the general `user_agent`,
+            // not the Chrome-specific `chrome_user_agent` (which itself falls
+            // back to `user_agent`, not the other way around; see doc comments
+            // on both fields in `axon-core/src/config/types/config.rs`).
+            user_agent: cfg.user_agent.clone(),
         });
         let render_provider = ChromeRenderProvider::new(ChromeRenderConfig {
             chrome_remote_url: cfg.chrome_remote_url.clone(),
