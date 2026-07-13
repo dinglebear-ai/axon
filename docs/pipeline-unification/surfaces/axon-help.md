@@ -9,9 +9,11 @@ implementation.
 Implemented today:
 
 - The current CLI is still subcommand-first and requires a command.
-- Current help still includes implemented commands such as `scrape`, `crawl`,
-  `embed`, `ingest`, `code-search`, `code-search-watch`, `purge`, `dedupe`,
-  `fresh`, and `refresh`.
+- Current help still includes old command families such as `crawl`, `embed`,
+  `ingest`, `code-search`, `code-search-watch`, `purge`, `dedupe`, `fresh`,
+  and `refresh`. `scrape` is no longer considered a legacy command to remove;
+  the target keeps it as a SourceRequest-backed one-page web acquisition
+  command.
 - The target `axon <source>` default path, grouped `jobs`, grouped `artifacts`,
   grouped `uploads`, grouped `prune`, grouped `graph`, and grouped `providers`
   surfaces are not the current parser contract.
@@ -28,6 +30,7 @@ Acquire, normalize, embed, refresh, and search source knowledge.
 
 Usage:
   axon <source> [options]
+  axon scrape <url> [options]
   axon map <source> [options]
   axon watch <source> [options]
   axon extract <source> --schema <schema> [options]
@@ -83,6 +86,7 @@ Source options:
   --adapter <name>      Force a source adapter when supported
 
 Discovery:
+  axon scrape <url>    Fetch, normalize, embed, and output exactly one page
   axon map <source>     Discover source items/URLs without embedding
 
 Common scopes:
