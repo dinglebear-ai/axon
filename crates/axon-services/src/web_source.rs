@@ -1,7 +1,9 @@
 mod job_execution;
 mod publish;
+mod reuse;
 mod run;
 mod vectorize;
+mod vectorize_helpers;
 mod web_source_job;
 
 pub(crate) use self::job_execution::WebSourceJobExecution;
@@ -24,13 +26,21 @@ use self::publish::{
     mark_vectors_for_completed_generation, publish_generation_and_rollback_vectors,
     publish_generation_without_vectors,
 };
-use self::run::{WebAdapterRun, resolve_web_run, source_summary, unchanged_refresh_output};
+use self::run::apply_reused_item_keys;
+use self::run::{
+    WebAdapterRun, overlay_previous_web_etags, resolve_web_run, source_summary,
+    unchanged_refresh_output,
+};
 use self::vectorize::{
     VectorizeResult, collection_spec, prepare_changed_documents_without_vectors, published_status,
     vectorize_changed_documents,
 };
 
 pub(super) const WEB_LEASE_TTL_SECONDS: u64 = 30 * 60;
+
+#[cfg(test)]
+#[path = "source_web_304_reuse_tests.rs"]
+mod source_web_304_reuse_tests;
 
 /// Real-acquisition (issue #298 Wave 1b) input for `WebSourceAdapter`: no more
 /// `manifest_path`/`markdown_root` disk handoff from a `crawl_for_source`
@@ -147,6 +157,7 @@ async fn index_web_source_with_lease(
     {
         return Ok(output);
     }
+    let diff = overlay_previous_web_etags(ledger, &diff).await?;
 
     let generation = ledger.create_generation(run.source_id.clone()).await?;
     manifest.generation = generation.generation.clone();
@@ -260,13 +271,14 @@ async fn publish_prepared_generation_without_vectors(
         Ok(prepared) => prepared,
         Err(err) => return Err(fail_generation(ledger, generation, err).await),
     };
+    let effective_diff = apply_reused_item_keys(&diff, &prepared.reused_item_keys);
     if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
         return Err(fail_generation(ledger, generation, err).await);
     }
     let completed = match complete_generation(
         ledger,
         generation.clone(),
-        &diff,
+        &effective_diff,
         GenerationDocumentCounts {
             discovered: manifest.items.len() as u64,
             prepared: prepared.documents_prepared,
@@ -291,7 +303,7 @@ async fn publish_prepared_generation_without_vectors(
             input,
             &run,
             manifest.items.len() as u64,
-            &diff,
+            &effective_diff,
             0,
         ))
         .await?;
@@ -302,7 +314,7 @@ async fn publish_prepared_generation_without_vectors(
         documents_prepared: prepared.documents_prepared,
         chunks_prepared: prepared.chunks_prepared,
         vector_points_written: 0,
-        removed_pages: diff.counts.removed,
+        removed_pages: effective_diff.counts.removed,
         graph_candidates: prepared.graph_candidates,
         warnings: prepared.warnings,
     })
@@ -363,6 +375,7 @@ async fn publish_vector_generation(
             .await);
         }
     };
+    let effective_diff = apply_reused_item_keys(&diff, &vectorized.reused_item_keys);
     if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
         return Err(fail_generation_and_rollback_vectors(
             ledger,
@@ -376,7 +389,7 @@ async fn publish_vector_generation(
     let completed = match complete_generation(
         ledger,
         generation.clone(),
-        &diff,
+        &effective_diff,
         GenerationDocumentCounts {
             discovered: manifest.items.len() as u64,
             prepared: vectorized.documents_prepared,
@@ -404,7 +417,7 @@ async fn publish_vector_generation(
         &collection,
         &run.source_id,
         &completed,
-        &diff,
+        &effective_diff,
         vectorized.chunks_prepared,
     )
     .await
@@ -429,7 +442,7 @@ async fn publish_vector_generation(
         ledger,
         run: &run,
         manifest: &manifest,
-        diff: &diff,
+        diff: &effective_diff,
         vectorized,
         published,
         points_written: publish_stats.total_points_written(),

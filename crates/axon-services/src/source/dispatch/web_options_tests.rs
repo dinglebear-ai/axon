@@ -36,6 +36,19 @@ fn render_mode_round_trips_to_the_api_snake_case_form() {
 }
 
 #[test]
+fn etag_conditional_threads_into_validated_options() {
+    let cfg = Config {
+        etag_conditional: true,
+        ..Config::default()
+    };
+    let options = web_crawl_options(&cfg, None);
+    assert_eq!(
+        options.get("etag_conditional").unwrap(),
+        &serde_json::json!(true)
+    );
+}
+
+#[test]
 fn url_whitelist_and_blacklist_only_set_when_nonempty() {
     let cfg = Config::default();
     let options = web_crawl_options(&cfg, None);

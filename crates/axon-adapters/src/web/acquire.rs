@@ -7,9 +7,12 @@
 //!   whatever the origin sent (typically raw HTML); `content_kind` is decided
 //!   from the response `Content-Type` so downstream chunking picks the right
 //!   profile (`ContentKind::Html` -> `ChunkingProfile::HtmlArticle`). When
-//!   `etag_conditional` is set and a prior `web_etag` is present on the
+//!   `etag_conditional` is set and a prior `web_prior_etag` is present on the
 //!   incoming item's metadata, the request carries `If-None-Match` and a 304
-//!   response is treated as unchanged (see [`acquire_via_fetch`]).
+//!   response is treated as unchanged (see [`acquire_via_fetch`]). The
+//!   services layer overlays that prior validator from the previous committed
+//!   manifest so current discovery metadata never masquerades as the prior
+//!   representation's validator.
 //! - `Chrome` — a single [`RenderProvider::render`] call in Chrome mode.
 //! - `AutoSwitch` — render in `Http` mode first (this is the "fetch" step);
 //!   if the resulting markdown is thin (`< min_markdown_chars`), re-render in
@@ -321,37 +324,73 @@ async fn acquire_item(
     }
 }
 
-/// `Http`-mode acquisition. Returns `Ok(None)` when a conditional request
-/// comes back `304 Not Modified` — the item is skipped rather than re-embedded
-/// with empty content (issue #298 Wave 2b regression 3).
-///
-/// Reusing the *previous* content across generations (rather than simply
-/// skipping this generation's re-embed) needs the ledger to hand the prior
-/// `SourceDocument`/content back in — out of scope here; see [`super::warc`]'s
-/// sibling module doc pattern and this crate's `CLAUDE.md` for the general
-/// #298 follow-up shape. What this function does restore: a real conditional
-/// GET (`If-None-Match` from `item.metadata["web_etag"]`, gated by
-/// `etag_conditional`) and correct 304 recognition — `HttpFetchProvider`
-/// already forwards arbitrary request headers and passes any non-5xx/429
-/// status straight through, so no provider-side change was needed for either.
-async fn acquire_via_fetch(
+/// `Http`-mode acquisition. A conditional `304 Not Modified` returns a
+/// sentinel acquired item so the services layer can reuse the previous
+/// committed representation or refetch before publish.
+pub(crate) async fn acquire_via_fetch(
     fetch: &dyn FetchProvider,
     item: &ManifestItem,
     etag_conditional: bool,
 ) -> Result<Option<AcquiredSourceItem>> {
     let prior_etag = if etag_conditional {
-        item.metadata.get("web_etag").and_then(Value::as_str)
+        item.metadata.get("web_prior_etag").and_then(Value::as_str)
     } else {
         None
     };
+    let sent_prior_validator = prior_etag.is_some();
     let fetched = fetch.fetch(build_fetch_request(item, prior_etag)).await?;
     if fetched.status == 304 {
+        if !sent_prior_validator {
+            return Err(ApiError::new(
+                "web.fetch.invalid_304_without_validator",
+                axon_error::ErrorStage::Fetching,
+                format!(
+                    "received 304 Not Modified for {} without sending a prior validator",
+                    item.canonical_uri
+                ),
+            )
+            .with_source_id(item.source_id.0.clone())
+            .with_context("uri", item.canonical_uri.clone())
+            .with_context(
+                "etag_conditional",
+                if etag_conditional { "true" } else { "false" },
+            )
+            .with_context(
+                "has_web_prior_etag",
+                if item.metadata.contains_key("web_prior_etag") {
+                    "true"
+                } else {
+                    "false"
+                },
+            ));
+        }
+        let mut metadata = MetadataMap::new();
+        metadata.insert(
+            "web_fetch_method".to_string(),
+            serde_json::json!("http_fetch_reuse"),
+        );
+        metadata.insert("web_render_mode".to_string(), serde_json::json!("http"));
+        metadata.insert("web_status".to_string(), serde_json::json!(304));
+        metadata.insert("web_reuse_required".to_string(), serde_json::json!(true));
+        if let Some(etag) = prior_etag {
+            metadata.insert("web_etag".to_string(), serde_json::json!(etag));
+        }
         log_info(&format!(
-            "web_etag_conditional: 304 Not Modified for {} — skipping re-embed this generation \
-             (reusing prior content across generations needs ledger persistence; not yet wired)",
-            item.canonical_uri
+            "web_etag_conditional: 304 Not Modified for {} — reusing prior committed content if available",
+            item.canonical_uri,
         ));
-        return Ok(None);
+        return Ok(Some(AcquiredSourceItem {
+            manifest_item: item.clone(),
+            fetch_status: LifecycleStatus::Completed,
+            content_ref: ContentRef::External {
+                uri: format!("reuse://{}", item.source_item_key.0),
+                integrity: item.content_hash.clone(),
+            },
+            raw_artifact_id: None,
+            headers: fetched.headers,
+            fetched_at: fetched.fetched_at,
+            metadata,
+        }));
     }
 
     let content_kind = content_kind_for_fetch(&fetched);
@@ -451,7 +490,7 @@ async fn acquire_via_auto_switch(
 
 /// `prior_etag`, when present, is sent as `If-None-Match` — the caller
 /// decides whether one applies (gated by `etag_conditional` and whether the
-/// incoming item carries a `web_etag`; see [`acquire_via_fetch`]).
+/// incoming item carries a `web_prior_etag`; see [`acquire_via_fetch`]).
 fn build_fetch_request(item: &ManifestItem, prior_etag: Option<&str>) -> FetchRequest {
     let mut headers = Vec::new();
     if let Some(etag) = prior_etag {
