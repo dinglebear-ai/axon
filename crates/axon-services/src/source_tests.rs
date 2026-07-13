@@ -2,7 +2,7 @@ use super::*;
 use crate::runtime::ServiceJobRuntime;
 use crate::source::classify::SourceInputKind;
 use crate::types::ServiceJob;
-use axon_api::source::{LifecycleStatus, SourceKind};
+use axon_api::source::{AuthScope, AuthSnapshot, LifecycleStatus, SourceKind};
 use axon_core::config::Config;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
 use std::error::Error as StdError;
@@ -118,7 +118,7 @@ async fn source_routing_rejects_unsupported_scope_before_data_plane() {
         .expect_err("registry source must reject reddit scope before acquisition");
 
     assert_eq!(err.code.0, "source.scope.unsupported");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.stage, ErrorStage::Routing);
 }
 
 #[tokio::test]
@@ -328,6 +328,53 @@ async fn index_source_local_without_data_plane_is_degraded() {
             .iter()
             .any(|w| w.code == "data_plane_unconfigured"),
         "expected data_plane_unconfigured warning, got: {:?}",
+        result.warnings
+    );
+}
+
+#[tokio::test]
+async fn index_source_rechecks_local_scope_before_data_plane() {
+    let ctx = context_without_data_plane();
+    let mut request = SourceRequest::local_path("/tmp/axon-missing-local-auth-test", true);
+    request.embed = false;
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write];
+
+    let result = index_source_with_auth(request, &ctx, Some(snapshot))
+        .await
+        .expect("auth failures are returned as failed SourceResult values");
+
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "auth.scope_required"
+                && warning.message.contains("axon:local")),
+        "expected local scope warning before data-plane failure, got: {:?}",
+        result.warnings
+    );
+}
+
+#[tokio::test]
+async fn index_source_denies_secret_like_local_path_before_data_plane() {
+    let ctx = context_without_data_plane();
+    let mut request = SourceRequest::local_path("./.env", false);
+    request.embed = false;
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+
+    let result = index_source_with_auth(request, &ctx, Some(snapshot))
+        .await
+        .expect("security failures are returned as failed SourceResult values");
+
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "security.local_secret_denied"),
+        "expected secret-path denial before data-plane failure, got: {:?}",
         result.warnings
     );
 }

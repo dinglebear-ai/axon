@@ -15,7 +15,8 @@
 //! credentials"). A [`CredentialRequirement`] with an explicit `secret_ref`
 //! is assumed pre-resolved by the caller and is not re-checked here.
 
-use axon_api::source::{CredentialKind, RoutePlan};
+use axon_api::source::{AuthMode, AuthScope, AuthSnapshot, CredentialKind, RoutePlan, SafetyClass};
+use axon_authz::required_scope_for_safety_class;
 use axon_error::{ApiError, ErrorStage};
 
 /// Authorize a routed source against its adapter's declared credential
@@ -67,6 +68,46 @@ fn credential_present_in_env(adapter_name: &str, kind: CredentialKind) -> bool {
 
 fn env_present(name: &str) -> bool {
     std::env::var(name).is_ok_and(|value| !value.trim().is_empty())
+}
+
+/// Re-authorize the routed source kind against the caller snapshot at the
+/// actual execution boundary. `None` represents trusted local/loopback/CLI
+/// execution and mirrors the transport-level convention.
+pub fn authorize_safety_class(
+    safety_class: SafetyClass,
+    auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<(), ApiError> {
+    let Some(snapshot) = auth_snapshot else {
+        return Ok(());
+    };
+
+    let required_scope = required_scope_for_safety_class(safety_class);
+    let Some(required) = AuthScope::from_scope_str(required_scope) else {
+        return Err(ApiError::new(
+            "auth.scope_unrecognized",
+            ErrorStage::Authorizing,
+            format!("unrecognized safety-class scope requirement: {required_scope}"),
+        ));
+    };
+
+    if snapshot_allows_scope(snapshot, required) {
+        return Ok(());
+    }
+
+    Err(ApiError::new(
+        "auth.scope_required",
+        ErrorStage::Authorizing,
+        format!("source requires scope: {required_scope}"),
+    )
+    .with_context("required_scope", required_scope)
+    .with_context("safety_class", format!("{safety_class:?}")))
+}
+
+/// Whether a persisted caller snapshot is trusted for a concrete scope at the
+/// source execution boundary.
+pub(crate) fn snapshot_allows_scope(snapshot: &AuthSnapshot, required: AuthScope) -> bool {
+    matches!(snapshot.auth_mode, AuthMode::TrustedLocal)
+        || snapshot.granted_scopes.contains(&required)
 }
 
 #[cfg(test)]
