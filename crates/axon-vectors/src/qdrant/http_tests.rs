@@ -44,3 +44,20 @@ fn collection_path_with_empty_suffix_targets_the_collection_root() {
         "http://host:6333/collections/axon"
     );
 }
+
+#[test]
+fn qdrant_http_new_reuses_the_shared_client_across_many_constructions() {
+    // Regression test for the P1 perf bug: `QdrantHttp::new` used to build a
+    // fresh `reqwest::Client` (its own connection pool + DNS resolver) on
+    // every call, which upsert/search/delete each did once per operation.
+    // Constructing many `QdrantHttp`s must never re-build the shared client.
+    for i in 0..5 {
+        QdrantHttp::new("http://localhost:6333", &format!("qdrant-{i}"))
+            .expect("client construction never fails");
+    }
+    assert_eq!(
+        shared_client_build_count(),
+        1,
+        "SHARED_CLIENT must be built exactly once, however many QdrantHttp instances are created"
+    );
+}

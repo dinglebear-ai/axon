@@ -8,6 +8,7 @@
 //! `"configured"` is attached to error context, mirroring the qdrant store's
 //! redaction pattern.
 
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -35,6 +36,35 @@ const MAX_CLIENT_BATCH_SIZE: usize = 256;
 
 /// Environment knob mirroring the legacy client's `TEI_MAX_CLIENT_BATCH_SIZE`.
 const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
+
+/// Process-wide reqwest client shared by every [`TeiClient`].
+///
+/// `TeiClient::new` used to build a fresh `reqwest::Client` (its own
+/// connection pool + DNS resolver) on every call — and
+/// `TeiEmbeddingProvider::build_client()` calls it once per `embed()`/
+/// `derive_embedding_identity()` invocation, so a busy embed pipeline
+/// discarded and rebuilt the pool on every batch. No default timeout is
+/// baked in here because every request already applies `request_timeout`
+/// per-call (see `fetch_info`/`send_chunk_with_retries`), so a client with
+/// no fixed default timeout is safe to share across differently-configured
+/// `TeiClient`s.
+static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    #[cfg(test)]
+    CLIENT_BUILDS.fetch_add(1, Ordering::SeqCst);
+    Client::builder()
+        .build()
+        .expect("failed to build shared TEI reqwest client")
+});
+
+/// Test-only counter proving [`SHARED_CLIENT`] is built at most once no
+/// matter how many [`TeiClient::new`] calls observe it.
+#[cfg(test)]
+static CLIENT_BUILDS: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+pub(crate) fn shared_client_build_count() -> u64 {
+    CLIENT_BUILDS.load(Ordering::SeqCst)
+}
 
 /// Tunables for a single `embed_all` invocation.
 #[derive(Debug, Clone)]
