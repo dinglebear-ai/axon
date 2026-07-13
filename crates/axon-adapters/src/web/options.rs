@@ -47,6 +47,22 @@ pub(super) fn etag_conditional(values: &MetadataMap) -> bool {
     bool_option(values, "etag_conditional").unwrap_or(false)
 }
 
+pub(super) fn verticals_enabled(values: &MetadataMap) -> bool {
+    bool_option(values, "verticals_enabled").unwrap_or(true)
+}
+
+pub(super) fn auto_dispatch_skip(values: &MetadataMap) -> Vec<String> {
+    string_array_option(values, "auto_dispatch_skip")
+}
+
+pub(super) fn user_agent(values: &MetadataMap) -> Option<String> {
+    values
+        .get("user_agent")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+}
+
 /// `--automation-script <PATH>` / `validated_options.automation_script`
 /// (issue #298 Wave 2b regression 1): wraps the validated non-empty file-path
 /// string (see `axon-route::web_options::validate_option`) into an
@@ -144,6 +160,9 @@ pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> 
     if let Some(value) = bool_option(values, "drop_thin_markdown") {
         cfg.drop_thin_markdown = value;
     }
+    cfg.enable_verticals = verticals_enabled(values);
+    cfg.auto_dispatch_skip = auto_dispatch_skip(values);
+    cfg.user_agent = user_agent(values);
     let whitelist = string_array_option(values, "url_whitelist");
     if !whitelist.is_empty() {
         cfg.url_whitelist = whitelist;

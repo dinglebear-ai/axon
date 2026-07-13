@@ -48,12 +48,11 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // chunkers, ask/evaluate/suggest synthesis) had already moved to
     // `axon-vectors`/`axon-embedding`/`axon-document`/`axon-retrieval`/
     // `axon-services` in earlier #298 slices.
-    // axon-extract was deleted outright in Phase 12 (clean break, not a
-    // staged cutover) -- see
-    // docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md.
-    // Its two genuinely self-contained pieces (extract_sync, generic
-    // scrape's HTTP-fetch fallback) moved to axon-services/axon-crawl (the
-    // latter itself since relocated -- see the axon-crawl note below).
+    // axon-extract is restored as the transitional vertical-extractor catalog:
+    // removing it before re-homing the catalog behind adapter/parser ownership
+    // would drop source coverage for GitHub, registries, social/docs/product
+    // verticals, and package metadata enrichment.
+    "crates/axon-extract",
     // axon-ingest was likewise deleted outright (issue #298 cleanup, not a
     // staged cutover): its still-live pieces (sessions machinery, ingest
     // orchestration/classification) moved to axon-services (sessions_legacy,

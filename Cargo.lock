@@ -422,6 +422,7 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-error",
+ "axon-extract",
  "axon-observe",
  "base64",
  "chrono",
@@ -607,6 +608,31 @@ dependencies = [
  "thiserror 2.0.18",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "axon-extract"
+version = "6.2.2"
+dependencies = [
+ "axon-api",
+ "axon-core",
+ "axon-graph",
+ "axon-llm",
+ "base64",
+ "chrono",
+ "flate2",
+ "futures-util",
+ "httpmock",
+ "proptest",
+ "regex",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -837,6 +863,7 @@ dependencies = [
  "axon-document",
  "axon-embedding",
  "axon-error",
+ "axon-extract",
  "axon-graph",
  "axon-jobs",
  "axon-ledger",

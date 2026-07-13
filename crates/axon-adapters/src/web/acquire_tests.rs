@@ -34,15 +34,21 @@ fn item_with_etag(uri: &str, etag: &str) -> ManifestItem {
 
 fn opts(mode: RenderMode, min_markdown_chars: usize) -> AcquireOptions {
     AcquireOptions {
+        job_id: JobId::new(uuid::Uuid::nil()),
         mode,
         min_markdown_chars,
         automation_script: None,
         etag_conditional: false,
+        vertical: VerticalOptions {
+            enabled: false,
+            auto_dispatch_skip: Vec::new(),
+            user_agent: None,
+        },
     }
 }
 
 fn require_item(outcome: AcquiredItem, message: &str) -> AcquiredSourceItem {
-    assert!(outcome.warning.is_none(), "unexpected warning");
+    assert!(outcome.warnings.is_empty(), "unexpected warning");
     outcome.item.expect(message)
 }
 

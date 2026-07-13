@@ -96,6 +96,7 @@ pub(super) async fn unchanged_refresh_output(
         vector_points_written: 0,
         removed_pages: 0,
         graph_candidates: Vec::new(),
+        warnings: Vec::new(),
     }))
 }
 

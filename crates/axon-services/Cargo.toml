@@ -19,6 +19,7 @@ axon-adapters = { path = "../axon-adapters" }
 axon-route = { path = "../axon-route" }
 axon-document = { path = "../axon-document" }
 axon-embedding = { path = "../axon-embedding" }
+axon-extract = { path = "../axon-extract" }
 axon-ledger = { path = "../axon-ledger" }
 axon-graph = { path = "../axon-graph" }
 axon-vectors = { path = "../axon-vectors" }

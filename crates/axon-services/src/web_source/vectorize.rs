@@ -13,6 +13,8 @@ use super::run::{WebAdapterRun, timestamp};
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
 const WEB_CHANGED_CHUNK_BATCH_SIZE: usize = 512;
+const VERTICAL_PARSE_FACTS_KEY: &str = "_axon_vertical_parse_facts";
+const VERTICAL_GRAPH_CANDIDATES_KEY: &str = "_axon_vertical_graph_candidates";
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct VectorizeResult {
@@ -25,6 +27,7 @@ pub(super) struct VectorizeResult {
     /// (`source::graph::write_baseline_graph`) can write them instead of
     /// silently dropping them after vectorization.
     pub(super) graph_candidates: Vec<GraphCandidate>,
+    pub(super) warnings: Vec<SourceWarning>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -38,6 +41,12 @@ struct VectorizeResultWithStats {
     stats: VectorizeStats,
     document_statuses: Vec<DocumentStatus>,
     graph_candidates: Vec<GraphCandidate>,
+    warnings: Vec<SourceWarning>,
+}
+
+struct NormalizedWebDocuments {
+    documents: Vec<SourceDocument>,
+    warnings: Vec<SourceWarning>,
 }
 
 pub(super) async fn vectorize_changed_documents(
@@ -52,8 +61,9 @@ pub(super) async fn vectorize_changed_documents(
 ) -> anyhow::Result<VectorizeResult> {
     let mut result = VectorizeResult::default();
     for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
-        let source_documents = normalize_changed_documents(input, run, &batch_diff).await?;
-        let prepared = prepare_source_documents(source_documents, generation)?;
+        let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
+        result.warnings.extend(normalized.warnings);
+        let prepared = prepare_source_documents(normalized.documents, generation)?;
         for prepared_batch in prepared_document_batches(prepared, WEB_CHANGED_CHUNK_BATCH_SIZE) {
             let batch_result = vectorize_documents(
                 input,
@@ -72,6 +82,33 @@ pub(super) async fn vectorize_changed_documents(
             result
                 .graph_candidates
                 .extend(batch_result.graph_candidates);
+            result.warnings.extend(batch_result.warnings);
+        }
+    }
+    Ok(result)
+}
+
+pub(super) async fn prepare_changed_documents_without_vectors(
+    input: &WebSourceIndexInput,
+    run: &WebAdapterRun,
+    diff: &SourceManifestDiff,
+    generation: &SourceGenerationId,
+    ledger: &dyn LedgerStore,
+) -> anyhow::Result<VectorizeResult> {
+    let mut result = VectorizeResult::default();
+    for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
+        let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
+        result.warnings.extend(normalized.warnings);
+        let prepared = prepare_source_documents(normalized.documents, generation)?;
+        for document in prepared {
+            result.documents_prepared += 1;
+            result.chunks_prepared += document.chunks.len() as u64;
+            result
+                .graph_candidates
+                .extend(document.graph_candidates.clone());
+            let status = document_status(&document, 0, DocumentLifecycleStatus::Prepared);
+            ledger.update_document_status(status.clone()).await?;
+            result.document_statuses.push(status);
         }
     }
     Ok(result)
@@ -119,13 +156,18 @@ async fn normalize_changed_documents(
     input: &WebSourceIndexInput,
     run: &WebAdapterRun,
     diff: &SourceManifestDiff,
-) -> anyhow::Result<Vec<SourceDocument>> {
+) -> anyhow::Result<NormalizedWebDocuments> {
     let adapter = WebSourceAdapter::new(
         std::sync::Arc::clone(&input.fetch_provider),
         std::sync::Arc::clone(&input.render_provider),
     );
     let acquisition = adapter.acquire(&run.plan, diff).await?;
-    Ok(adapter.normalize(&run.plan, acquisition).await?.data)
+    let warnings = acquisition.header.warnings.clone();
+    let documents = adapter.normalize(&run.plan, acquisition).await?.data;
+    Ok(NormalizedWebDocuments {
+        documents,
+        warnings,
+    })
 }
 
 fn prepare_source_documents(
@@ -134,15 +176,16 @@ fn prepare_source_documents(
 ) -> anyhow::Result<Vec<PreparedDocument>> {
     let preparer = DocumentPreparer::default();
     let mut documents = Vec::with_capacity(source_documents.len());
-    for document in source_documents {
+    for mut document in source_documents {
         let item_key = document.source_item_key.0.clone();
+        let (parse_facts, graph_candidates) = take_vertical_parse_artifacts(&mut document);
         let mut prepared = preparer
             .prepare(PrepareSourceDocumentRequest {
                 document,
                 generation: generation.clone(),
                 profile: None,
-                parse_facts: Vec::new(),
-                graph_candidates: Vec::new(),
+                parse_facts,
+                graph_candidates,
                 warnings: Vec::new(),
                 errors: Vec::new(),
             })
@@ -152,6 +195,22 @@ fn prepare_source_documents(
         documents.push(prepared);
     }
     Ok(documents)
+}
+
+fn take_vertical_parse_artifacts(
+    document: &mut SourceDocument,
+) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
+    let facts = document
+        .metadata
+        .remove(VERTICAL_PARSE_FACTS_KEY)
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+    let candidates = document
+        .metadata
+        .remove(VERTICAL_GRAPH_CANDIDATES_KEY)
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+    (facts, candidates)
 }
 
 fn sanitize_web_payload_metadata(document: &mut PreparedDocument) {
@@ -296,6 +355,7 @@ async fn vectorize_documents(
         result
             .graph_candidates
             .extend(document.graph_candidates.clone());
+        result.warnings.extend(document.warnings.clone());
         let status = document_status(
             &document,
             document.chunks.len() as u64,

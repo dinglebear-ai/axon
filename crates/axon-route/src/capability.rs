@@ -103,6 +103,8 @@ const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
     "warc_path",
     "automation_script",
     "verticals_enabled",
+    "auto_dispatch_skip",
+    "user_agent",
     "manifest_path",
     "markdown_root",
     "map_urls",

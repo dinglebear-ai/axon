@@ -9,12 +9,11 @@ caller via `axon-authz`, and maps every call into `axon-services`. Full contract
 [../../../docs/pipeline-unification/surfaces/tool-contract.md](../../../docs/pipeline-unification/surfaces/tool-contract.md).
 
 ## Status — live crate, cutover at Phase 10
-Today the single `axon` tool still advertises the older action set (`crawl`,
-`embed`, `ingest`, …) with the narrow `ok`/`action`/`subaction`/`warnings`/`data`
-envelope, and works. At the **Phase 10 surface cutover** it becomes the strict
-target model: source acquisition moves under `action=source`; removed actions are
-deleted from the schema and cannot dispatch; responses carry the full shared
-envelope (request/job/progress/warnings metadata). No compat action aliases.
+The single `axon` tool is the live MCP surface. Source acquisition is under
+`action=source`; removed indexing actions are omitted from the live action enum
+and rejected at dispatch. Job-kind DTOs may still mention crawl/embed/ingest for
+status/backcompat metadata, but they are not callable MCP actions. Responses are
+still being tightened toward the full shared envelope.
 
 ## Module map
 Current groups from `crates/axon-mcp/src/`:

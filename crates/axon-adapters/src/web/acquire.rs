@@ -57,8 +57,10 @@ use crate::adapter::Result;
 use crate::boundary::{FetchProvider, RenderProvider};
 
 use super::options::{
-    automation_script_ref, effective_render_mode, etag_conditional, min_markdown_chars, warc_path,
+    auto_dispatch_skip, automation_script_ref, effective_render_mode, etag_conditional,
+    min_markdown_chars, user_agent, verticals_enabled, warc_path,
 };
+use super::vertical::{VerticalAcquire, VerticalOptions};
 
 /// Upper bound on in-flight `acquire_item` calls for [`acquire_concurrent`].
 /// Chosen as a sane fixed default (matching `extract::sync`'s per-URL
@@ -71,10 +73,12 @@ const ACQUIRE_CONCURRENCY: usize = 16;
 /// `plan.route.validated_options`, then threaded through every item so
 /// per-item helpers stay free of `MetadataMap` lookups.
 struct AcquireOptions {
+    job_id: JobId,
     mode: RenderMode,
     min_markdown_chars: usize,
     automation_script: Option<ArtifactRef>,
     etag_conditional: bool,
+    vertical: VerticalOptions,
 }
 
 /// Acquired items plus any side-effect artifacts produced by this run (today,
@@ -93,7 +97,7 @@ pub(super) struct AcquireOutcome {
 #[derive(Debug)]
 struct AcquiredItem {
     item: Option<AcquiredSourceItem>,
-    warning: Option<SourceWarning>,
+    warnings: Vec<SourceWarning>,
 }
 
 pub(super) async fn acquire_changed_items(
@@ -104,10 +108,16 @@ pub(super) async fn acquire_changed_items(
 ) -> Result<AcquireOutcome> {
     let values = &plan.route.validated_options.values;
     let opts = AcquireOptions {
+        job_id: plan.job_id,
         mode: effective_render_mode(values),
         min_markdown_chars: min_markdown_chars(values),
         automation_script: automation_script_ref(values),
         etag_conditional: etag_conditional(values),
+        vertical: VerticalOptions {
+            enabled: verticals_enabled(values),
+            auto_dispatch_skip: auto_dispatch_skip(values),
+            user_agent: user_agent(values),
+        },
     };
     let warc_path = warc_path(values);
 
@@ -208,10 +218,11 @@ fn resolve_item_outcome(
     warnings: &mut Vec<SourceWarning>,
 ) -> Option<AcquiredSourceItem> {
     match outcome {
-        Ok(AcquiredItem { item, warning }) => {
-            if let Some(warning) = warning {
-                warnings.push(warning);
-            }
+        Ok(AcquiredItem {
+            item,
+            warnings: item_warnings,
+        }) => {
+            warnings.extend(item_warnings);
             item
         }
         Err(err) => {
@@ -264,12 +275,24 @@ async fn acquire_item(
     item: &ManifestItem,
     opts: &AcquireOptions,
 ) -> Result<AcquiredItem> {
+    let mut warnings = Vec::new();
+    match super::vertical::try_acquire(item, &opts.vertical, opts.job_id).await {
+        VerticalAcquire::Handled(item) => {
+            return Ok(AcquiredItem {
+                item: Some(item),
+                warnings,
+            });
+        }
+        VerticalAcquire::Degraded(warning) => warnings.push(warning),
+        VerticalAcquire::Unsupported => {}
+    }
+
     match opts.mode {
         RenderMode::Http => {
             let fetched = acquire_via_fetch(fetch, item, opts.etag_conditional).await?;
             Ok(AcquiredItem {
                 item: fetched,
-                warning: None,
+                warnings,
             })
         }
         RenderMode::Chrome => {
@@ -282,7 +305,7 @@ async fn acquire_item(
                 .await?;
             Ok(AcquiredItem {
                 item: Some(acquired_from_rendered(item, rendered, "chrome_render")),
-                warning: None,
+                warnings,
             })
         }
         RenderMode::AutoSwitch => {
@@ -291,6 +314,7 @@ async fn acquire_item(
                 item,
                 opts.min_markdown_chars,
                 opts.automation_script.clone(),
+                warnings,
             )
             .await
         }
@@ -371,6 +395,7 @@ async fn acquire_via_auto_switch(
     item: &ManifestItem,
     min_markdown_chars: usize,
     automation_script: Option<ArtifactRef>,
+    mut warnings: Vec<SourceWarning>,
 ) -> Result<AcquiredItem> {
     let first = render
         .render(build_render_request(
@@ -382,7 +407,7 @@ async fn acquire_via_auto_switch(
     if first.markdown.chars().count() >= min_markdown_chars {
         return Ok(AcquiredItem {
             item: Some(acquired_from_rendered(item, first, "auto_switch_http")),
-            warning: None,
+            warnings,
         });
     }
     match render
@@ -395,29 +420,30 @@ async fn acquire_via_auto_switch(
     {
         Ok(rendered) => Ok(AcquiredItem {
             item: Some(acquired_from_rendered(item, rendered, "auto_switch_chrome")),
-            warning: None,
+            warnings,
         }),
         Err(err) => {
             log_warn(&format!(
                 "auto_switch: chrome re-render failed for {} — keeping HTTP result: {err}",
                 item.canonical_uri
             ));
+            warnings.push(SourceWarning {
+                code: "web.auto_switch.chrome_fallback_failed".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "chrome re-render failed for {} — kept HTTP result: {err}",
+                    item.canonical_uri
+                ),
+                source_item_key: Some(item.source_item_key.clone()),
+                retryable: err.retryable,
+            });
             Ok(AcquiredItem {
                 item: Some(acquired_from_rendered(
                     item,
                     first,
                     "auto_switch_http_fallback",
                 )),
-                warning: Some(SourceWarning {
-                    code: "web.auto_switch.chrome_fallback_failed".to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "chrome re-render failed for {} — kept HTTP result: {err}",
-                        item.canonical_uri
-                    ),
-                    source_item_key: Some(item.source_item_key.clone()),
-                    retryable: err.retryable,
-                }),
+                warnings,
             })
         }
     }
