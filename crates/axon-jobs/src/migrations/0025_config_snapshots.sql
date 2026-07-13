@@ -15,7 +15,7 @@
 -- Content-addressed: `config_snapshot_id` is a hash of `config_json`, so the
 -- same snapshot content from different jobs collapses to one row
 -- (`INSERT OR IGNORE`, no dedup logic needed at the call site).
-CREATE TABLE config_snapshots (
+CREATE TABLE IF NOT EXISTS config_snapshots (
     config_snapshot_id TEXT PRIMARY KEY NOT NULL,
     config_json TEXT NOT NULL CHECK (json_valid(config_json)),
     created_at TEXT NOT NULL
