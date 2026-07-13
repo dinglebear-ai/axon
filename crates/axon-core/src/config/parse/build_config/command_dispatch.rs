@@ -7,7 +7,7 @@
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
     FreshSubcommand, JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs,
-    PruneCliSubcommand, PruneTargetArgs, ResetArgs, ServeArgs, ServeSubcommand,
+    PruneCliSubcommand, PruneTargetArgs, ResetArgs, ScrapeSourceArgs, ServeArgs, ServeSubcommand,
     SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode,
     SetupConfigSubcommand, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
@@ -84,6 +84,10 @@ pub(super) struct DispatchOutput {
     pub setup_method: Option<String>,
     /// `--scope` override for `axon <source>` / `axon source <input>`.
     pub source_scope: Option<String>,
+    /// Retained `axon scrape --inline` request bit.
+    pub scrape_inline: bool,
+    /// Retained `axon scrape --no-embed` request bit.
+    pub scrape_no_embed: bool,
     /// `--stores` selection for `axon reset` (empty = all stores).
     pub reset_stores: Vec<String>,
     /// `--dry-run` pin for `axon reset`.
@@ -155,6 +159,8 @@ impl DispatchOutput {
             domains_domain: None,
             setup_method: None,
             source_scope: None,
+            scrape_inline: false,
+            scrape_no_embed: false,
             reset_stores: Vec::new(),
             reset_dry_run: false,
             prune_target: None,
@@ -211,6 +217,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Search(args) => set_simple(&mut out, CommandKind::Search, args.value),
         CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
+        CliCommand::Scrape(args) => apply_scrape(&mut out, args),
         CliCommand::Brand(args) => {
             out.command = CommandKind::Brand;
             out.positional = args.positional_urls;
@@ -578,6 +585,14 @@ fn apply_source(out: &mut DispatchOutput, args: SourceArgs) {
     out.command = CommandKind::Source;
     out.positional = args.path.into_iter().collect();
     out.source_scope = args.scope;
+}
+
+fn apply_scrape(out: &mut DispatchOutput, args: ScrapeSourceArgs) {
+    out.command = CommandKind::Scrape;
+    out.positional = vec![args.url];
+    out.source_scope = Some("page".to_string());
+    out.scrape_inline = args.inline;
+    out.scrape_no_embed = args.no_embed;
 }
 
 fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {
