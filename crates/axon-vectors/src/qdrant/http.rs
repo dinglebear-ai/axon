@@ -5,6 +5,7 @@
 //! extracted API key (from userinfo or the `api_key` query parameter). Only the
 //! opaque marker `"configured"` is ever attached to error context.
 
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
@@ -19,6 +20,37 @@ pub const ENDPOINT_MARKER: &str = "configured";
 
 const MAX_ATTEMPTS: usize = 4;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Process-wide reqwest client shared by every [`QdrantHttp`] instance.
+///
+/// A `reqwest::Client` owns its own connection pool (and, per platform, its
+/// own DNS resolver); building a fresh one per call — as `QdrantHttp::new`
+/// used to, once per upsert/search/delete — throws that pool away
+/// immediately after a single request, so a busy crawl/embed workload that
+/// hits Qdrant many times a second exhausts sockets/file descriptors instead
+/// of reusing keep-alive connections. Built exactly once and cloned (a cheap
+/// `Arc` bump) into every [`QdrantHttp`], mirroring the legacy `axon-vector`
+/// `static HTTP_CLIENT: LazyLock<reqwest::Client>` pattern documented in the
+/// (now-deleted) `crates/axon-vector/src/CLAUDE.md` ("LazyLock HTTP Client").
+static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    #[cfg(test)]
+    CLIENT_BUILDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .expect("failed to build shared qdrant reqwest client")
+});
+
+/// Test-only counter proving [`SHARED_CLIENT`] is built at most once no
+/// matter how many [`QdrantHttp::new`] calls observe it — see
+/// `qdrant_http_new_reuses_the_shared_client_across_many_constructions`.
+#[cfg(test)]
+static CLIENT_BUILDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn shared_client_build_count() -> usize {
+    CLIENT_BUILDS.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 /// A Qdrant REST endpoint with credentials split away from the base URL.
 #[derive(Debug, Clone)]
@@ -98,16 +130,13 @@ pub struct QdrantHttp {
 impl QdrantHttp {
     /// Construct a transport for the configured Qdrant URL, attributing every
     /// surfaced error to `provider_id`.
+    ///
+    /// The underlying `reqwest::Client` is never built here — it clones the
+    /// process-wide [`SHARED_CLIENT`], so this is cheap enough to call once
+    /// per operation without reintroducing per-call socket/FD churn.
     pub fn new(url: &str, provider_id: &str) -> Result<Self, ApiError> {
-        let client = Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|err| {
-                transport_error("vector.qdrant.client_init", &err.to_string())
-                    .with_provider_id(provider_id)
-            })?;
         Ok(Self {
-            client,
+            client: SHARED_CLIENT.clone(),
             endpoint: QdrantEndpoint::parse(url),
             provider_id: provider_id.to_string(),
         })
