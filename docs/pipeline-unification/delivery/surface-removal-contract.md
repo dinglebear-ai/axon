@@ -10,6 +10,12 @@ There are no compatibility aliases and no public deprecation/tombstone window.
 This is a one-consumer app; correctness and simplicity matter more than
 preserving old user-facing surfaces.
 
+Exception: `axon scrape <url>` is retained as a canonical CLI convenience for
+one-page web acquisition. It is not a compatibility alias: it must construct a
+`SourceRequest` with `scope=page` and `embed=true`, then run through the same
+web adapter, ledger, document preparation, embedding, vector publish, and
+cleanup path as `axon <url> --scope page`.
+
 ## Design Rules
 
 - Delete removed parser variants.
@@ -23,6 +29,8 @@ preserving old user-facing surfaces.
 - Do not keep aliases.
 - Do not keep hidden shims.
 - Do not execute legacy behavior through remap code.
+- Retained convenience commands must be projections over canonical DTOs and
+  services, not alternate data paths.
 
 ## Removed CLI Commands
 
@@ -30,7 +38,6 @@ preserving old user-facing surfaces.
 |---|---|
 | `axon embed <source>` | `axon <source>` |
 | `axon ingest <source>` | `axon <source>` |
-| `axon scrape <url>` | `axon <url> --scope page` |
 | `axon crawl <url>` | `axon <url> --scope site` |
 | `axon code-search <query>` | `axon query <query> --content-kind code --freshness committed` |
 | `axon code-search-watch` | `axon watch <path>` |
@@ -40,6 +47,29 @@ preserving old user-facing surfaces.
 | `axon fresh ...` | `axon watch ...` or source freshness config |
 
 The replacements are documentation guidance, not runtime aliases.
+
+## Retained Scrape Command
+
+`axon scrape <url>` remains public with these semantics:
+
+- exactly one web page is fetched/rendered/normalized
+- no sibling-link crawl, sitemap expansion, or discovered-link fanout occurs
+- vectors are published by default (`embed=true`)
+- `--no-embed` may opt out of vector publication
+- clean normalized content is returned inline, written to an explicit path, or
+  stored as an artifact according to `OutputPolicy`
+- implementation goes through `SourceRequest`, not old scrape-specific request
+  DTOs or handlers
+
+Equivalent source-pipeline request:
+
+```json
+{
+  "source": "https://example.com/page",
+  "scope": "page",
+  "embed": true
+}
+```
 
 ## Removed MCP Actions
 
@@ -56,6 +86,10 @@ The replacements are documentation guidance, not runtime aliases.
 
 Removed actions must not appear in the MCP schema.
 
+The retained CLI `scrape` command does not require a retained MCP `scrape`
+action. MCP callers use `action=source` with `scope=page` unless a future MCP
+projection is explicitly added over the same `SourceRequest` contract.
+
 ## Removed REST Routes
 
 | Removed | Canonical Replacement |
@@ -69,6 +103,9 @@ Removed actions must not appear in the MCP schema.
 | `POST /v1/watch/{id}/run` | `POST /v1/watches/{watch_id}/exec` |
 
 Removed routes must not appear in OpenAPI.
+
+The retained CLI `scrape` command does not require a retained `/v1/scrape`
+route. REST callers use `POST /v1/sources` with `scope=page`.
 
 ## Local Code Search Replacement
 
@@ -155,6 +192,8 @@ Tests must prove:
 
 - removed CLI commands are absent from help
 - removed CLI commands do not dispatch
+- `axon scrape <url>` is present in help and dispatches only through
+  `SourceRequest { scope=page, embed=true }`
 - removed MCP actions are absent from schema
 - removed REST routes are absent from OpenAPI
 - generated clients do not expose removed operations

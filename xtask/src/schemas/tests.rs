@@ -200,7 +200,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "source_canonical_uri": "source_canonical_uri",
   "source_item_key": "code-item",
   "item_canonical_uri": "item_canonical_uri",
-  "source_generation": "gen-code-7",
+  "source_generation": 7,
   "document_id": "doc-code",
   "chunk_id": "chunk-code-0",
   "chunk_index": 0,
@@ -226,7 +226,7 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "embedding_provider": "tei",
   "embedding_profile": "default",
   "embedded_at": "2026-06-30T00:00:00Z",
-  "committed_generation": "uncommitted"
+  "committed_generation": null
 }"#
         }
         SchemaFamily::Api

@@ -33,6 +33,9 @@ pub struct IndexCounts {
     /// output), forwarded to the `graphing` stage instead of being dropped
     /// after vectorization.
     pub graph_candidates: Vec<GraphCandidate>,
+    /// Non-fatal adapter/service degradations collected during acquisition or
+    /// preparation and surfaced on the transport-neutral result.
+    pub warnings: Vec<SourceWarning>,
 }
 
 /// Build a [`SourceResult`] from a family's normalized index output.
@@ -78,7 +81,7 @@ pub fn to_source_result(
         ledger,
         graph,
         counts: source_counts,
-        warnings: Vec::new(),
+        warnings: counts.warnings,
         inline: None,
         job: None,
         watch: None,

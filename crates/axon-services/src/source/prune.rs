@@ -193,7 +193,7 @@ pub async fn drain_cleanup_debt_full_with_jobs(
             job_ids: job_ids_for_debt(&debt),
         };
         let executor = PruneExecutor::new(target);
-        drain_one_debt(ledger, &executor, &authz, &debt, &mut summary).await;
+        drain_one_debt(ledger, &executor, &authz, &debt, collection, &mut summary).await;
     }
 
     tracing::debug!(
@@ -214,6 +214,7 @@ async fn drain_one_debt(
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
     authz: &PruneAuthz,
     debt: &CleanupDebt,
+    collection: &str,
     summary: &mut DebtDrainSummary,
 ) {
     match debt.kind {
@@ -222,7 +223,7 @@ async fn drain_one_debt(
         | CleanupDebtKind::GraphPrune
         | CleanupDebtKind::MemoryPrune
         | CleanupDebtKind::JobRetention => {
-            drain_via_executor(ledger, executor, authz, debt, summary).await;
+            drain_via_executor(ledger, executor, authz, debt, collection, summary).await;
         }
         CleanupDebtKind::ArtifactDelete | CleanupDebtKind::CachePrune => {
             // No real drain available for this kind yet. This is not a
@@ -252,9 +253,10 @@ async fn drain_via_executor(
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
     authz: &PruneAuthz,
     debt: &CleanupDebt,
+    collection: &str,
     summary: &mut DebtDrainSummary,
 ) {
-    let Some(step) = debt_to_step(debt) else {
+    let Some(step) = debt_to_step(debt, collection) else {
         tracing::debug!(
             debt_id = %debt.debt_id.0,
             kind = ?debt.kind,
@@ -329,11 +331,14 @@ struct LedgerPruneTarget<'a> {
 
 #[async_trait]
 impl PruneTarget for LedgerPruneTarget<'_> {
-    async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
+    async fn current_generation(
+        &self,
+        _source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
         // The committed generation is the fence for every generation-scoped
         // step in this drain — all steps belong to the one source just
         // published.
-        Some(self.committed_generation.clone())
+        Ok(Some(self.committed_generation.clone()))
     }
 
     async fn apply(&self, step: &PruneStep) -> Result<StepExecution, String> {

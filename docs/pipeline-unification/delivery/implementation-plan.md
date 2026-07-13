@@ -279,12 +279,14 @@ Goal: hard-break public surfaces after internals are ready.
 
 Tasks:
 
-- Implement `axon <source>`, `axon watch <source>`, and `axon watch exec
-  <source>`.
+- Implement `axon <source>`, `axon scrape <url>`, `axon watch <source>`, and
+  `axon watch exec <source>`.
+- Implement `axon scrape <url>` only as a one-page SourceRequest projection
+  (`scope=page`, `embed=true`) with clean-content output and no crawl fanout.
 - Keep `extract` as structured LLM extraction.
 - Keep `map` as a first-class command/action/endpoint.
-- Remove old `embed`, `ingest`, `scrape`, `crawl`, `code-search-watch`,
-  `purge`, and legacy MCP action families from normal public surfaces.
+- Remove old `embed`, `ingest`, `crawl`, `code-search-watch`, `purge`, and
+  legacy MCP action families from normal public surfaces.
 - Update CLI help, MCP tool schema, REST OpenAPI, web, Palette, Android, and
   Chrome extension contracts.
 

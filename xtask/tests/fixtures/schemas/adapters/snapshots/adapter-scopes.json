@@ -599,6 +599,8 @@
           "warc_path",
           "automation_script",
           "verticals_enabled",
+          "auto_dispatch_skip",
+          "user_agent",
           "manifest_path",
           "markdown_root",
           "map_urls"
@@ -1337,7 +1339,6 @@
         "watch_supported": true
       },
       {
-        "adapter": "cli_tool",
         "credential_requirements": [],
         "default_scope": "tool",
         "degraded_modes": [
@@ -1346,7 +1347,8 @@
           "output-capped"
         ],
         "family": "cli_tool",
-        "is_source_adapter": true,
+        "integration": "cli_tool",
+        "is_source_adapter": false,
         "may_access_local_paths": true,
         "may_call_render_provider": false,
         "may_execute_tools": true,
@@ -1399,7 +1401,6 @@
         "watch_supported": false
       },
       {
-        "adapter": "mcp_tool",
         "credential_requirements": [],
         "default_scope": "tool",
         "degraded_modes": [
@@ -1408,7 +1409,8 @@
           "output-capped"
         ],
         "family": "mcp_tool",
-        "is_source_adapter": true,
+        "integration": "mcp_tool",
+        "is_source_adapter": false,
         "may_access_local_paths": false,
         "may_call_render_provider": false,
         "may_execute_tools": true,
@@ -1522,12 +1524,12 @@
         "path": "crates/axon-adapters/src/spec.rs"
       },
       {
-        "checksum": "sha256:14272d360f1575b3cda6dacaf68125191b64f359152d0d06ce4ca1352bb0c595",
+        "checksum": "sha256:af654a2454ae5bb1d8d7e8ce31f43314250f5a0057f4a77ba102e45aecf01d8e",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:fbade8b2d157f07ed8bc927e16e5dc7ff7a9e71fcd0f51f8e8621557a160632c",
+        "checksum": "sha256:df5b17cf8d5583dd604d4f16d6de1491038a99fca9dcf4243b0e2d4a66d22917",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

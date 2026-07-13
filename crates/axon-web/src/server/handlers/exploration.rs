@@ -286,7 +286,7 @@ pub(crate) async fn search(
         search_options(&cfg, req.limit, req.offset, req.time_range.as_deref())?,
     )
     .await
-    .map_err(HttpError::from_box)?;
+    .map_err(HttpError::from_box_send_sync)?;
     Ok(Json(json!({
         "results": result.results,
         "crawl_jobs": result.crawl_jobs,
@@ -323,7 +323,7 @@ pub(crate) async fn research(
     .await
     .map_err(|_| HttpError::new(StatusCode::GATEWAY_TIMEOUT, "timeout", "research timed out"))?
     .map(Json)
-    .map_err(HttpError::from_box)
+    .map_err(HttpError::from_box_send_sync)
 }
 
 pub(super) fn summarize_request_urls(req: &SummarizeRequest) -> Result<Vec<String>, HttpError> {

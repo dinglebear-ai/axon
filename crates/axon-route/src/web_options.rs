@@ -6,7 +6,7 @@
 //! `discover_sitemaps`, `max_sitemaps`, `sitemap_since_days`,
 //! `url_whitelist`, `url_blacklist`, `etag_conditional`,
 //! `min_markdown_chars`, `drop_thin_markdown`, `warc_path`,
-//! `automation_script`, `verticals_enabled`.
+//! `automation_script`, `verticals_enabled`, `auto_dispatch_skip`, `user_agent`.
 //!
 //! This is a **parsing/validation** pass only (#298 Wave 0 prerequisite): it
 //! rejects malformed option values before a `RoutePlan` is constructed, so a
@@ -48,8 +48,8 @@ fn validate_option(key: &str, value: &Value) -> Result<(), ApiError> {
         "include_subdomains" | "discover_sitemaps" | "etag_conditional" | "drop_thin_markdown"
         | "verticals_enabled" => expect_bool(key, value),
         "render_mode" => expect_render_mode(value),
-        "url_whitelist" | "url_blacklist" => expect_string_array(key, value),
-        "warc_path" | "automation_script" => expect_nonempty_string(key, value),
+        "url_whitelist" | "url_blacklist" | "auto_dispatch_skip" => expect_string_array(key, value),
+        "warc_path" | "automation_script" | "user_agent" => expect_nonempty_string(key, value),
         // Legacy disk-handoff keys (`manifest_path`, `markdown_root`,
         // `map_urls`) and anything else the router already allowed: nothing
         // further to validate here.

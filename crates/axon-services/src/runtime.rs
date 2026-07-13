@@ -44,17 +44,13 @@ pub async fn resolve_runtime_with_workers(
     spawn_workers: bool,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
     let backend = if spawn_workers {
-        let registry: Arc<JobRunnerRegistry> = match job_runners::build_registry(&cfg) {
-            Ok(registry) => Arc::new(registry),
-            Err(error) => {
-                tracing::warn!(
-                    error = %error.message,
-                    "failed to build unified job runner registry; unified worker will fall back to \
-                     job_runner.unsupported_stage for every kind"
-                );
-                Arc::new(JobRunnerRegistry::new())
-            }
-        };
+        let registry: Arc<JobRunnerRegistry> =
+            Arc::new(job_runners::build_registry(&cfg).map_err(|error| {
+                format!(
+                    "failed to build unified job runner registry; refusing to start workers: {}",
+                    error.message
+                )
+            })?);
         SqliteJobBackend::new_with_workers_and_registry(Arc::clone(&cfg), Some(registry)).await
     } else {
         SqliteJobBackend::new(Arc::clone(&cfg)).await

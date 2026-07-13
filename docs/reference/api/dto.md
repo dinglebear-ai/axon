@@ -27,12 +27,12 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/job_listing.rs` | `sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271` |
 | `crates/axon-api/src/source/lifecycle.rs` | `sha256:04755fecf0a574f9d07bbe72c6053592703a07ab14de3d4c28dd5083f7219828` |
 | `crates/axon-api/src/source/listing.rs` | `sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb` |
-| `crates/axon-api/src/source/provider_io.rs` | `sha256:a5728db42e846a995b35eb01a2d6e34751ba825e630b324852c16e36d4d2ec91` |
+| `crates/axon-api/src/source/provider_io.rs` | `sha256:85467dc859a815e2f56062c9e233d3dea7c532a4950d22f725f78a7a4079e5e3` |
 | `crates/axon-api/src/source/prune.rs` | `sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7` |
 | `crates/axon-api/src/source/stage.rs` | `sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8` |
 | `crates/axon-api/src/source/state.rs` | `sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb` |
 | `crates/axon-api/src/source/status.rs` | `sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea` |
-| `crates/axon-api/src/source/vector.rs` | `sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336` |
+| `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
 | `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7` |
 | `xtask/src/schemas/api_defs.rs` | `sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a` |

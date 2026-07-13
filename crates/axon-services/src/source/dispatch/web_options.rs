@@ -48,6 +48,19 @@ pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -
         "render_mode".to_string(),
         serde_json::json!(api_render_mode(cfg.render_mode)),
     );
+    options.insert(
+        "verticals_enabled".to_string(),
+        serde_json::json!(cfg.enable_verticals),
+    );
+    if !cfg.auto_dispatch_skip.is_empty() {
+        options.insert(
+            "auto_dispatch_skip".to_string(),
+            serde_json::json!(cfg.auto_dispatch_skip),
+        );
+    }
+    if let Some(user_agent) = cfg.user_agent.as_deref().filter(|value| !value.is_empty()) {
+        options.insert("user_agent".to_string(), serde_json::json!(user_agent));
+    }
     if !cfg.url_whitelist.is_empty() {
         options.insert(
             "url_whitelist".to_string(),

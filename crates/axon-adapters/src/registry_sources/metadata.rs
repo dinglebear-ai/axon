@@ -47,7 +47,6 @@ pub(super) fn package_metadata(
 ) -> MetadataMap {
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("registry"));
-    metadata.insert("source_type".to_string(), json!("registry"));
     metadata.insert("source_kind".to_string(), json!("registry"));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));

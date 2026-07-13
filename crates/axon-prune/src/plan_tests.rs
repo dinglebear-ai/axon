@@ -109,6 +109,80 @@ fn collection_selector_produces_vector_step_with_collection_delete_selector() {
 }
 
 #[test]
+fn planner_uses_configured_collection_in_source_vector_selectors() {
+    let est = PruneEstimate {
+        vector_points: 7,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est)).with_collection("axon_gate1_test");
+    let plan = planner.resolve(&source_sel());
+
+    let vector_step = plan
+        .steps
+        .iter()
+        .find(|step| step.target == PruneTargetKind::Vector)
+        .expect("vector step present");
+
+    assert_eq!(
+        vector_step.vector_selector,
+        Some(VectorDeleteSelector::Source {
+            collection: "axon_gate1_test".to_string(),
+            source_id: SourceId::new("owner/repo"),
+            generation: None,
+        })
+    );
+}
+
+#[test]
+fn planner_uses_configured_collection_in_generation_vector_selectors() {
+    let sel = PruneSelector::Generation {
+        source_id: SourceId::new("owner/repo"),
+        generation: SourceGenerationId::new("gen-2"),
+    };
+    let est = PruneEstimate {
+        vector_points: 5,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est)).with_collection("axon_gate1_test");
+    let plan = planner.resolve(&sel);
+
+    let vector_step = plan
+        .steps
+        .iter()
+        .find(|step| step.target == PruneTargetKind::Vector)
+        .expect("vector step present");
+
+    assert_eq!(
+        vector_step.vector_selector,
+        Some(VectorDeleteSelector::Generation {
+            collection: "axon_gate1_test".to_string(),
+            source_id: SourceId::new("owner/repo"),
+            generation: SourceGenerationId::new("gen-2"),
+        })
+    );
+}
+
+#[test]
+fn collection_selector_keeps_explicit_collection_with_configured_active_collection() {
+    let sel = PruneSelector::Collection {
+        collection: "stale_collection".to_string(),
+    };
+    let est = PruneEstimate {
+        vector_points: 3,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est)).with_collection("active_collection");
+    let plan = planner.resolve(&sel);
+
+    assert_eq!(
+        plan.steps[0].vector_selector,
+        Some(VectorDeleteSelector::Collection {
+            collection: "stale_collection".to_string(),
+        })
+    );
+}
+
+#[test]
 fn empty_estimate_yields_empty_plan() {
     let planner = PrunePlanner::new(FakeScopeSource::new(PruneEstimate::default()));
     let plan = planner.resolve(&source_sel());

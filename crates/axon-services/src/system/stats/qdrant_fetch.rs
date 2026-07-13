@@ -23,6 +23,8 @@ use axon_vectors::qdrant::QdrantVectorStore;
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::system::canonical_uri_from_payload;
+
 const TOKEN_STATS_SAMPLE_POINTS: usize = 5_000;
 const CHARS_PER_TOKEN_ESTIMATE: f64 = 4.0;
 /// Payload page size for the docs-count and token-stats scrolls — matches
@@ -107,14 +109,21 @@ pub(super) async fn sample_indexed_token_stats(
         .scroll_pages(
             &cfg.collection,
             None,
-            serde_json::json!({"include": ["url", "chunk_text", "text"]}),
+            serde_json::json!({"include": [
+                "item_canonical_uri",
+                "source_canonical_uri",
+                "source_item_key",
+                "chunk_locator",
+                "chunk_text",
+                "text"
+            ]}),
             SCROLL_PAGE_LIMIT,
             |points| {
                 for point in points {
                     if sampled_points >= TOKEN_STATS_SAMPLE_POINTS {
                         return false;
                     }
-                    let Some(url) = point.payload.get("url").and_then(|v| v.as_str()) else {
+                    let Some(uri) = canonical_uri_from_payload(&point.payload) else {
                         continue;
                     };
                     let text = point
@@ -130,7 +139,7 @@ pub(super) async fn sample_indexed_token_stats(
                     let chars = text.chars().count();
                     sampled_points += 1;
                     total_chunk_chars += chars;
-                    *doc_chars.entry(url.to_string()).or_default() += chars;
+                    *doc_chars.entry(uri.to_string()).or_default() += chars;
                 }
                 sampled_points < TOKEN_STATS_SAMPLE_POINTS
             },

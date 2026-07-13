@@ -5097,7 +5097,7 @@
         "path": "crates/axon-graph/src/migrations"
       },
       {
-        "checksum": "sha256:a83358cf2d67b228a47e53306ed44201a58e2b472cfb00ee918a5e2ae2835509",
+        "checksum": "sha256:63877d59acbd8e4682be0903d09bd2fe3001d6c18c95e44d00afffa82e10c1d6",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },

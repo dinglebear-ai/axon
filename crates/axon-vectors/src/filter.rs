@@ -90,7 +90,8 @@ pub fn matches_delete_selector(point: &VectorPoint, selector: &VectorDeleteSelec
 
 fn payload_url_matches(payload: &MetadataMap, expected: &str, prefix: bool) -> bool {
     [
-        payload.get("url").and_then(Value::as_str),
+        payload.get("item_canonical_uri").and_then(Value::as_str),
+        payload.get("source_canonical_uri").and_then(Value::as_str),
         payload.get("source_item_key").and_then(Value::as_str),
         payload
             .get("chunk_locator")

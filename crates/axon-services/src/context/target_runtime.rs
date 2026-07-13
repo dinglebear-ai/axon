@@ -9,6 +9,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axon_adapters::NoopSourceEnricher;
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
 use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
@@ -206,7 +207,11 @@ impl TargetLocalSourceRuntime {
         let fetch_provider = HttpFetchProvider::new(HttpFetchConfig {
             timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
             max_bytes: cfg.max_page_bytes,
-            user_agent: cfg.chrome_user_agent.clone(),
+            // General-purpose HTTP fetch boundary — use the general `user_agent`,
+            // not the Chrome-specific `chrome_user_agent` (which itself falls
+            // back to `user_agent`, not the other way around; see doc comments
+            // on both fields in `axon-core/src/config/types/config.rs`).
+            user_agent: cfg.user_agent.clone(),
         });
         let render_provider = ChromeRenderProvider::new(ChromeRenderConfig {
             chrome_remote_url: cfg.chrome_remote_url.clone(),
@@ -237,6 +242,7 @@ impl TargetLocalSourceRuntime {
             embedding_dimensions: identity.dimensions,
             fetch_provider: Arc::new(fetch_provider),
             render_provider: Arc::new(render_provider),
+            enricher: Arc::new(NoopSourceEnricher::new()),
         })
     }
 }

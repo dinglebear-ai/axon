@@ -289,7 +289,6 @@ pub const VECTOR_SHARED_FIELDS: &[&str] = &[
     "collection",
     "vector_point_id",
     "source_family",
-    "source_type",
     "source_kind",
     "source_adapter",
     "source_scope",

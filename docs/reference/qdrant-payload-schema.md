@@ -51,7 +51,7 @@ fields are validated/required but have no dedicated Qdrant field index today.
 | `collection` | keyword | no | Qdrant collection name the point was written to. |
 | `vector_point_id` | keyword | no | Store-level point id. |
 | `vector_namespace` | keyword | yes | Dense vector name/namespace (e.g. `documents`). |
-| `source_family` | keyword (enum) | no | Payload-field-allowlist classification axis — 13 values, `VECTOR_SOURCE_FAMILIES`. See "Source Family Classification" in `metadata-payload.md`; distinct from `source_kind`. |
+| `source_family` | keyword (enum) | no | Payload-field-allowlist classification axis — 14 values, `VECTOR_SOURCE_FAMILIES`. See "Source Family Classification" in `metadata-payload.md`; distinct from `source_kind`. |
 | `source_kind` | keyword | no | Canonical `SourceKind` (`web`, `git`, `local`, `registry`, `feed`, `reddit`, `youtube`, `session`, `cli_tool`, `mcp_tool`, `memory`, `upload`). |
 | `source_adapter` | keyword | no | Adapter name that acquired the source item. |
 | `source_scope` | keyword | no | Resolved `SourceScope`. |

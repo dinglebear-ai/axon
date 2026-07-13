@@ -22,7 +22,8 @@ use self::publish::{
 };
 use self::run::{WebAdapterRun, resolve_web_run, source_summary, unchanged_refresh_output};
 use self::vectorize::{
-    VectorizeResult, collection_spec, published_status, vectorize_changed_documents,
+    VectorizeResult, collection_spec, prepare_changed_documents_without_vectors, published_status,
+    vectorize_changed_documents,
 };
 
 pub(super) const WEB_LEASE_TTL_SECONDS: u64 = 30 * 60;
@@ -52,9 +53,10 @@ pub struct WebSourceIndexInput {
     pub embedding_dimensions: u32,
     pub auth_snapshot: Option<AuthSnapshot>,
     /// `SourceRequest.embed` (source-pipeline.md, Validation Checklist:
-    /// "`embed=false` never writes vectors"). When `false`, discovery/normalize
-    /// still runs but the generation is published the same way `scope = Map`
-    /// is: no vectorize pass, no vector store writes.
+    /// "`embed=false` never writes vectors"). When `false`, discovery,
+    /// acquire, normalize, prepare, ledger publish, and graph-candidate
+    /// collection still run; only collection creation, embedding, and vector
+    /// upsert are skipped.
     pub embed: bool,
     pub fetch_provider: Arc<dyn FetchProvider>,
     pub render_provider: Arc<dyn RenderProvider>,
@@ -74,6 +76,7 @@ pub struct WebSourceIndexOutput {
     /// (`source::graph::write_baseline_graph`) to write. Empty on the
     /// unchanged-refresh and map-only paths, since neither prepares documents.
     pub graph_candidates: Vec<GraphCandidate>,
+    pub warnings: Vec<SourceWarning>,
 }
 
 pub async fn index_web_source(
@@ -144,14 +147,23 @@ async fn index_web_source_with_lease(
     let generation = ledger.create_generation(run.source_id.clone()).await?;
     manifest.generation = generation.generation.clone();
     ledger.put_manifest(manifest.clone()).await?;
-    // `scope = Map` and `embed = false` both skip the vectorize/publish-vector
-    // path: map is discover-only by contract, and `embed=false` must never
-    // write vectors (source-pipeline.md Validation Checklist). Both reuse the
-    // same no-vector publish path; the only difference is `documents_prepared`
-    // — `embed=false` still counts prepared documents even though it writes no
-    // vector points, tracked as a currently-shared limitation with `map`.
-    if input.scope == SourceScope::Map || !input.embed {
+    // `scope = Map` is discover-only. `embed=false` is not discover-only: the
+    // source contract requires acquire/normalize/prepare/graph to still run
+    // while skipping only collection creation, embedding, and vector upsert.
+    if input.scope == SourceScope::Map {
         return publish_map_generation(input, ledger, run, generation, manifest, diff).await;
+    }
+    if !input.embed {
+        return publish_prepared_generation_without_vectors(NoVectorGenerationRequest {
+            input,
+            ledger,
+            run,
+            lease,
+            generation,
+            manifest,
+            diff,
+        })
+        .await;
     }
 
     publish_vector_generation(VectorGenerationRequest {
@@ -205,6 +217,90 @@ async fn publish_map_generation(
         vector_points_written: 0,
         removed_pages: diff.counts.removed,
         graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+    })
+}
+
+struct NoVectorGenerationRequest<'a> {
+    input: &'a WebSourceIndexInput,
+    ledger: &'a dyn LedgerStore,
+    run: WebAdapterRun,
+    lease: &'a LeaseGuard,
+    generation: SourceGeneration,
+    manifest: SourceManifest,
+    diff: SourceManifestDiff,
+}
+
+async fn publish_prepared_generation_without_vectors(
+    request: NoVectorGenerationRequest<'_>,
+) -> anyhow::Result<WebSourceIndexOutput> {
+    let NoVectorGenerationRequest {
+        input,
+        ledger,
+        run,
+        lease,
+        generation,
+        manifest,
+        diff,
+    } = request;
+    let prepared = prepare_changed_documents_without_vectors(
+        input,
+        &run,
+        &diff,
+        &generation.generation,
+        ledger,
+    )
+    .await
+    .map_err(|err| err.context("failed to prepare web source generation without vectors"));
+    let prepared = match prepared {
+        Ok(prepared) => prepared,
+        Err(err) => return Err(fail_generation(ledger, generation, err).await),
+    };
+    if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
+        return Err(fail_generation(ledger, generation, err).await);
+    }
+    let completed = match complete_generation(
+        ledger,
+        generation.clone(),
+        &diff,
+        GenerationDocumentCounts {
+            discovered: manifest.items.len() as u64,
+            prepared: prepared.documents_prepared,
+            embedded: 0,
+            published: prepared.documents_prepared,
+            failed: 0,
+        },
+    )
+    .await
+    {
+        Ok(completed) => completed,
+        Err(err) => return Err(fail_generation(ledger, generation, err).await),
+    };
+    let published = publish_generation_without_vectors(ledger, &completed).await?;
+    for status in &prepared.document_statuses {
+        ledger
+            .update_document_status(published_status(status))
+            .await?;
+    }
+    ledger
+        .upsert_source(completed_source_summary(
+            input,
+            &run,
+            manifest.items.len() as u64,
+            &diff,
+            0,
+        ))
+        .await?;
+    Ok(WebSourceIndexOutput {
+        job_id: input.job_id,
+        source_id: run.source_id,
+        generation: published.generation,
+        documents_prepared: prepared.documents_prepared,
+        chunks_prepared: prepared.chunks_prepared,
+        vector_points_written: 0,
+        removed_pages: diff.counts.removed,
+        graph_candidates: prepared.graph_candidates,
+        warnings: prepared.warnings,
     })
 }
 
@@ -384,6 +480,7 @@ async fn record_published_vector_generation(
         vector_points_written: points_written,
         removed_pages: diff.counts.removed,
         graph_candidates: vectorized.graph_candidates,
+        warnings: vectorized.warnings,
     })
 }
 
