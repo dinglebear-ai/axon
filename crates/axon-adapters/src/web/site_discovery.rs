@@ -26,6 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use axon_api::source::*;
+use axon_core::logging::log_warn;
 
 use crate::adapter::Result;
 
@@ -123,9 +124,12 @@ pub(super) async fn crawl_manifest_items(plan: &SourcePlan) -> Result<Vec<Manife
 }
 
 /// Best-effort sitemap.xml backfill, mirroring `crawl_sync`'s
-/// `run_sitemap_backfill`. Failures are swallowed (logged upstream by
-/// `append_sitemap_backfill` itself) — a missing/unreachable sitemap must not
-/// fail discovery of the pages the main crawl already found.
+/// `run_sitemap_backfill`. A failure here is intentionally swallowed rather
+/// than propagated — a missing/unreachable sitemap must not fail discovery of
+/// the pages the main crawl already found — but it must not be silent:
+/// `append_sitemap_backfill` only logs its own *success* path
+/// (`sitemap backfill_complete`), so its `Err` case is logged here instead of
+/// disappearing entirely (PR #418 review).
 async fn backfill_sitemap_urls(
     cfg: &axon_core::config::Config,
     start_url: &str,
@@ -137,12 +141,17 @@ async fn backfill_sitemap_urls(
         .await
         .unwrap_or_default();
     let merged_seen: HashSet<String> = seen_urls.iter().cloned().chain(manifest_urls).collect();
-    let _ = crate::web_engine::engine::append_sitemap_backfill(
+    if let Err(err) = crate::web_engine::engine::append_sitemap_backfill(
         cfg,
         start_url,
         &cfg.output_dir,
         &merged_seen,
         summary,
     )
-    .await;
+    .await
+    {
+        log_warn(&format!(
+            "sitemap backfill_failed url={start_url} err={err}; keeping main-crawl pages only"
+        ));
+    }
 }
