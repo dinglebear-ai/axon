@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-07-13T03:49:44Z",
+  "git_head": "e461da278357bb594c62408b6cfb34cf47a91e14",
+  "updated_by": "openwiki-maintenance",
+  "updated_files": [
+    "openwiki/quickstart.md",
+    "openwiki/architecture/overview.md",
+    "openwiki/domain-concepts.md",
+    "openwiki/source-map.md",
+    "openwiki/workflows.md",
+    "openwiki/operations.md",
+    "openwiki/testing.md",
+    "openwiki/integrations.md",
+    "openwiki/.last-update.json"
+  ]
+}

@@ -85,10 +85,17 @@ services:
       - "${LLAMA_CPP_FIT_CTX:-131072}"
       - --fit-target
       - "${LLAMA_CPP_FIT_TARGET:-512}"
+      - --n-cpu-moe
+      - "${LLAMA_CPP_N_CPU_MOE:-20}"
       - --no-mmap
       - --mlock
       - --flash-attn
       - "on"
+      - --kv-unified
+      - --ctx-checkpoints
+      - "${LLAMA_CPP_CTX_CHECKPOINTS:-4}"
+      - --cache-ram
+      - "${LLAMA_CPP_CACHE_RAM:-2048}"
       - --jinja
       - --no-mmproj
       - --reasoning

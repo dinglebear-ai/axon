@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon brand ...` |
-| REST | `POST /v1/brand` (Implemented) |
-| MCP | `{ "action": "brand" }` |
-| Service | `services::brand::brand` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Brand-identity extraction is available through CLI, MCP, and direct REST.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

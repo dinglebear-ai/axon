@@ -7,11 +7,11 @@ Last Modified: 2026-06-11
 | Surface | Entry point |
 |---|---|
 | CLI | `axon sessions ...` |
-| REST | `POST /v1/ingest`, `POST /v1/ingest/sessions/prepared` (Implemented) |
-| MCP | `{ "action": "ingest", "subaction": "start` with `source_type: "sessions"" }` (`ingest.start` with `source_type: "sessions"`) |
-| Service | `services::ingest::ingest_sessions*` via `services::ingest::ingest_start_with_context`; `services::ingest::ingest_sessions_prepared_start_with_context` for remote prepared payloads |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: CLI command maps to ingest with `source_type: "sessions"` and typed session source options. Remote callers use the prepared sessions endpoint because server-local session scanning is disabled. `sessions watch` is host-local CLI/service automation and intentionally adds no new REST route; prepared uploads use `POST /v1/ingest/sessions/prepared`.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

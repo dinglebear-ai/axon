@@ -7,11 +7,11 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon debug ...` |
-| REST | Missing |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `services::debug::debug_report` |
+| Service | `Not inventoried` |
 
-Parity notes: Needs API shape decision for diagnostics payload and LLM troubleshooting artifacts.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
