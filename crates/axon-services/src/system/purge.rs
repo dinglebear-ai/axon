@@ -107,10 +107,13 @@ struct PurgeExecTarget<'a> {
 
 #[async_trait]
 impl PruneTarget for PurgeExecTarget<'_> {
-    async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
+    async fn current_generation(
+        &self,
+        _source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
         // No source/generation scoping for a raw URL/prefix purge target —
         // nothing to fence against.
-        None
+        Ok(None)
     }
 
     async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
