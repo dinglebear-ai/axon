@@ -114,9 +114,23 @@ fn input_is_web_url(input: &str) -> bool {
     }
 }
 
-/// True when `input` resolves to an existing path on disk.
+/// True when `input` resolves to an existing path on disk, OR uses one of
+/// the recognized local-filesystem path prefixes (`/`, `./`, `../`, `~`).
+///
+/// The lexical half of this check keeps it in agreement with
+/// [`axon_route::canonical::is_lexically_local_path`] (the rule
+/// `axon_route::canonical::canonical_local` uses when the routed dispatch
+/// kind is computed at execution time). Without it, a local path that does
+/// not exist *yet* classifies here as non-local (falling through to
+/// `SafetyClass::PublicNetwork`, which only requires the broad `axon:write`
+/// scope), while the router still resolves the identical input to the local
+/// family once the path exists by the time acquisition actually runs —
+/// letting a caller who never held `axon:local` get an arbitrary local path
+/// embedded through a detached job. See `authorize::authorize_safety_class`
+/// for the execution-time re-check this pairs with.
 async fn input_is_local_path(input: &str) -> bool {
-    tokio::fs::metadata(PathBuf::from(input)).await.is_ok()
+    axon_route::canonical::is_lexically_local_path(input)
+        || tokio::fs::metadata(PathBuf::from(input)).await.is_ok()
 }
 
 /// True when `input` should route to the git clone path.

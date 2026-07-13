@@ -188,6 +188,18 @@ pub async fn index_source_with_auth(
     if let Err(err) = authorize::authorize_route(&route) {
         return Ok(result_map::route_error_result(&input, err));
     }
+    // Re-authorize the routed (dispatch-authoritative) source kind against
+    // the caller's persisted auth snapshot. This is the actual security
+    // boundary for a detached job: the enqueue-time MCP/REST boundary only
+    // ever classifies the raw input once, before this function runs, so a
+    // caller without `axon:local` must be denied here too — not just at
+    // enqueue time — or a not-yet-existing local path can slip through as
+    // `PublicNetwork` at enqueue time and still dispatch to the local family
+    // once the path exists and a `SourceRunner`-claimed job actually runs.
+    // See `authorize::authorize_safety_class` for the full TOCTOU writeup.
+    if let Err(err) = authorize::authorize_safety_class(kind, auth_snapshot.as_ref()) {
+        return Ok(result_map::route_error_result(&input, err));
+    }
     if kind == SourceInputKind::Unsupported {
         return Ok(result_map::route_error_result(
             &input,

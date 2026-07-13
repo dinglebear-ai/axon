@@ -11,7 +11,7 @@ mod index_inputs;
 mod web_options;
 
 use anyhow::Context as _;
-use axon_api::source::{AuthSnapshot, JobId, SourceScope};
+use axon_api::source::{AuthScope, AuthSnapshot, JobId, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
@@ -48,6 +48,18 @@ pub async fn dispatch_local(
     log_info(&format!(
         "command=source collection={collection} kind=local embed={embed}"
     ));
+    // Defense-in-depth backstop, independent of `authorize::authorize_safety_class`
+    // (already run by `index_source_with_auth` before dispatch): re-derive
+    // `has_local_scope` from the caller's auth snapshot and additionally deny
+    // secret-like local paths (`.env`, `.ssh/`, `.codex/`, …) before any
+    // filesystem read. `enforce_local_source_policy`/`is_secret_like_local_path`
+    // were previously defined but never called from any dispatch path — this
+    // wires that denylist in so a future regression in the upstream gate
+    // still cannot reach a secret-like path through the local family.
+    let has_local_scope = auth_snapshot
+        .map(|snapshot| snapshot.granted_scopes.contains(&AuthScope::Local))
+        .unwrap_or(true);
+    super::enforce_local_source_policy(input, has_local_scope)?;
     let index_input = LocalSourceIndexInput {
         root: std::path::PathBuf::from(input),
         collection: collection.to_string(),
