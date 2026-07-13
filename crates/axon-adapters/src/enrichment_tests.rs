@@ -179,6 +179,30 @@ async fn fake_enricher_degraded_mode_attaches_warning() {
     assert_eq!(enrichment.header.warnings.len(), 1);
 }
 
+/// Prerequisite for the vertical-extractor restore (bead pmj7w): callers
+/// (e.g. the git family's index pipeline) need a `SourceEnricher` fixture
+/// that can emit a real, correctly-keyed `GraphCandidate` so plumbing tests
+/// can assert enrichment output survives into a downstream graph result, not
+/// just that `enrich()` was called.
+#[tokio::test]
+async fn fake_enricher_graph_candidate_kind_is_keyed_to_the_real_item() {
+    let plan = source_plan();
+    let item = acquired_item("README.md");
+    let enricher = FakeSourceEnricher::new().with_graph_candidate_kind("doc_reference");
+
+    let enrichment = enricher.enrich(&plan, &item).await.unwrap();
+
+    assert_eq!(enrichment.graph_candidates.len(), 1);
+    let candidate = &enrichment.graph_candidates[0];
+    assert_eq!(candidate.kind, "doc_reference");
+    assert_eq!(candidate.job_id, plan.job_id);
+    assert_eq!(candidate.source_id, plan.route.source.source_id);
+    assert_eq!(
+        candidate.source_item_key,
+        item.manifest_item.source_item_key
+    );
+}
+
 #[tokio::test]
 async fn fake_enricher_capability_override_is_honored() {
     let override_capability = SourceEnricherCapability(CapabilityBase {

@@ -1,3 +1,5 @@
+use axon_adapters::testing::{FakeSourceEnricher, FakeSourceEnricherMode};
+use axon_adapters::{NoopSourceEnricher, SourceEnricher};
 use axon_api::source::*;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
@@ -50,7 +52,17 @@ fn input(repo_root: PathBuf) -> GitSourceIndexInput {
         vector_reservations: None,
         embed: true,
         route: None,
+        enricher: Arc::new(NoopSourceEnricher::new()),
     }
+}
+
+fn input_with_enricher(
+    repo_root: PathBuf,
+    enricher: Arc<dyn SourceEnricher>,
+) -> GitSourceIndexInput {
+    let mut input = input(repo_root);
+    input.enricher = enricher;
+    input
 }
 
 fn input_with_reservations(repo_root: PathBuf) -> GitSourceIndexInput {
@@ -323,6 +335,129 @@ async fn unchanged_git_refresh_reuses_committed_generation_without_vector_work()
     assert_eq!(second.vector_points_written, 0);
     assert_eq!(embedder.calls().await.len(), embedding_calls);
     assert_eq!(vectors.calls().await, vector_calls);
+
+    fs::remove_dir_all(&repo).ok();
+}
+
+/// A repo with a single `.html` file. `ContentKind::Html` (what git's
+/// `content_kind_for` assigns `.html`) is matched by **no** built-in
+/// `axon-parse` parser, so `DocumentPreparer`'s self-parse produces nothing:
+/// no self-parse `GraphCandidate`s (which would otherwise *overwrite* the
+/// caller-supplied list — see `merge_parse_artifacts` in
+/// `axon-document/src/preparer.rs`, a separate pre-existing preparer
+/// precedence policy, out of scope here) and no `structured_parse_error`
+/// payload field (which a mis-triggered schema/OpenAPI heuristic on plain
+/// prose would stamp, failing vector-payload validation). This lets the
+/// enrichment-output plumbing test below assert on the enricher's own
+/// candidate cleanly.
+fn fixture_repo_unparsed_html() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("axon-git-source-enrich-test-{}", Uuid::new_v4()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("page.html"),
+        "<p>hello world with nothing for any parser to latch onto</p>\n",
+    )
+    .unwrap();
+    dir
+}
+
+/// Prerequisite plumbing for the vertical-extractor restore (bead pmj7w): the
+/// `SourceEnricher` stage (`enrich`) must run once per acquired item, between
+/// `acquire` and `normalize`, in the git family's index pipeline — proving
+/// the stage is wired into the pipeline, not just constructed and ignored.
+#[tokio::test]
+async fn git_source_enrichment_stage_is_invoked_once_per_acquired_item() {
+    let repo = fixture_repo();
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+    let enricher = Arc::new(FakeSourceEnricher::new());
+
+    let output = index_git_source(
+        input_with_enricher(repo.clone(), enricher.clone()),
+        &ledger,
+        &embedder,
+        &vectors,
+    )
+    .await
+    .unwrap();
+
+    // Fixture repo has 2 files (README.md, src/lib.rs); the first run treats
+    // both as `added`, so `acquire` yields 2 `AcquiredSourceItem`s.
+    assert_eq!(
+        enricher.calls().len(),
+        2,
+        "enrich() must run once per acquired item"
+    );
+    assert_eq!(output.documents_prepared, 2);
+
+    fs::remove_dir_all(&repo).ok();
+}
+
+/// Prerequisite plumbing for the vertical-extractor restore (bead pmj7w): a
+/// `GraphCandidate` produced by the enrichment stage must survive
+/// `normalize` -> `prepare` and land in the git index output's
+/// `graph_candidates` (the same field the `graphing` stage reads) — proving
+/// enrichment output flows into the downstream graph result, not just that
+/// the stage was called. Uses `FakeSourceEnricher` (not `NoopSourceEnricher`)
+/// so the assertion exercises real enrichment output flowing downstream.
+#[tokio::test]
+async fn git_source_enrichment_graph_candidates_flow_into_index_output() {
+    let repo = fixture_repo_unparsed_html();
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+    let enricher = Arc::new(
+        FakeSourceEnricher::new()
+            .with_result(EnrichmentKind::Extraction, EnrichmentStatus::Completed)
+            .with_graph_candidate_kind("fake_enrichment_marker"),
+    );
+
+    let output = index_git_source(
+        input_with_enricher(repo.clone(), enricher.clone()),
+        &ledger,
+        &embedder,
+        &vectors,
+    )
+    .await
+    .unwrap();
+
+    let calls = enricher.calls();
+    assert_eq!(
+        calls.len(),
+        1,
+        "single-file fixture yields one enrich() call"
+    );
+    assert_eq!(output.graph_candidates.len(), 1);
+    assert_eq!(output.graph_candidates[0].kind, "fake_enrichment_marker");
+    assert_eq!(output.graph_candidates[0].source_item_key, calls[0]);
+
+    fs::remove_dir_all(&repo).ok();
+}
+
+/// A failing enricher must fail the whole git index run rather than being
+/// silently swallowed — enrichment errors are pipeline errors, same as any
+/// other stage (source-pipeline.md error-handling contract).
+#[tokio::test]
+async fn git_source_enrichment_failure_fails_the_index_run() {
+    let repo = fixture_repo();
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+    let enricher = Arc::new(FakeSourceEnricher::new().with_mode(FakeSourceEnricherMode::Failure));
+
+    let result = index_git_source(
+        input_with_enricher(repo.clone(), enricher),
+        &ledger,
+        &embedder,
+        &vectors,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "a failing enricher must fail the git index run"
+    );
 
     fs::remove_dir_all(&repo).ok();
 }
