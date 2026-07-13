@@ -24,6 +24,7 @@ use axon_api::source::{
     ApiError, ErrorStage, JobHeartbeat, JobKind, LifecycleStatus, PipelinePhase, Timestamp,
 };
 use axon_core::config::Config;
+use axon_core::logging::log_warn;
 use axon_jobs::boundary::JobStore;
 use axon_jobs::config_snapshot::apply_config_snapshot;
 use axon_jobs::unified::SqliteUnifiedJobStore;
@@ -111,7 +112,7 @@ pub(crate) async fn heartbeat_running(
     claimed: &UnifiedClaimedJob,
     phase: PipelinePhase,
 ) {
-    let _ = store
+    if let Err(error) = store
         .heartbeat(JobHeartbeat {
             job_id: claimed.job_id,
             attempt: claimed.attempt,
@@ -126,7 +127,15 @@ pub(crate) async fn heartbeat_running(
             counts: None,
             provider_reservations: Vec::new(),
         })
-        .await;
+        .await
+    {
+        // Swallowed by design (heartbeats are best-effort), but a silent
+        // failure here makes stale-job reclaim undebuggable — log it.
+        log_warn(&format!(
+            "heartbeat failed for job {} attempt {} phase {:?}: {error}",
+            claimed.job_id.0, claimed.attempt, phase
+        ));
+    }
 }
 
 /// Runs the real Qdrant/TEI/LLM connectivity check (`system::doctor::doctor`)

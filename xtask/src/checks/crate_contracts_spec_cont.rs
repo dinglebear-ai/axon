@@ -297,6 +297,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "setup",
             "source",
             "source_jobs",
+            "source_url_audit",
             "summarize",
             "sync",
             "system",
