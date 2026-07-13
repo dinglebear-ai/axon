@@ -208,9 +208,10 @@ async fn acquire_then_normalize_claude_session_stamps_metadata() {
         .find(|d| d.path.as_deref() == Some("session.jsonl"))
         .expect("session document present");
     assert_eq!(
-        doc.metadata.get("source_type").and_then(|v| v.as_str()),
+        doc.metadata.get("source_family").and_then(|v| v.as_str()),
         Some("session")
     );
+    assert!(!doc.metadata.contains_key("source_type"));
     assert_eq!(
         doc.metadata
             .get("session_provider")
