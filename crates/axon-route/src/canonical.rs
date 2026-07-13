@@ -34,12 +34,25 @@ pub fn canonicalize(raw: &str, requested_scope: Option<SourceScope>) -> Option<C
         .or_else(|| canonical_web(source))
 }
 
+/// True when `raw` uses one of the recognized local-filesystem path prefixes
+/// (`/`, `./`, `../`, `~`) — the lexical rule [`canonical_local`] uses to
+/// route a source to the local family, independent of whether the path
+/// currently exists on disk.
+///
+/// Exposed so callers that must classify a source's safety class *before*
+/// routing (e.g. `axon-services`'s enqueue-time and execution-time
+/// authorization boundaries) agree with the router's own rule instead of
+/// drifting onto a separate filesystem-existence heuristic. A prior security
+/// bug relied on exactly that drift: a local path that did not exist yet at
+/// enqueue time classified as `PublicNetwork` (only `axon:write` required),
+/// while the router still routed it to the local family once the path
+/// existed by the time a detached job actually ran.
+pub fn is_lexically_local_path(raw: &str) -> bool {
+    raw.starts_with('/') || raw.starts_with("./") || raw.starts_with("../") || raw.starts_with('~')
+}
+
 fn canonical_local(raw: &str, requested_scope: Option<SourceScope>) -> Option<CanonicalSource> {
-    if !(raw.starts_with('/')
-        || raw.starts_with("./")
-        || raw.starts_with("../")
-        || raw.starts_with('~'))
-    {
+    if !is_lexically_local_path(raw) {
         return None;
     }
     let normalized = crate::local_path::normalize_local_path(raw);
