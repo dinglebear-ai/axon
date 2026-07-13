@@ -7,11 +7,11 @@ Last Modified: 2026-06-07
 | Surface | Entry point |
 |---|---|
 | CLI | `axon embed ...` |
-| REST | `POST /v1/embed`, `GET /v1/embed`, `GET /v1/embed/{id}`, `POST /v1/embed/{id}/cancel`, `POST /v1/embed/cleanup`, `DELETE /v1/embed`, `POST /v1/embed/recover` (Implemented) |
-| MCP | `{ "action": "embed", "subaction": "..." }` (`embed.start`, `embed.status`, `embed.cancel`, `embed.list`, `embed.cleanup`, `embed.clear`, `embed.recover`) |
-| Service | `services::embed::{embed_start_with_context,embed_status,embed_list,embed_cancel,embed_cleanup,embed_clear,embed_recover}` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: REST validates local file inputs with the shared server-side embed guard. CLI-only `embed worker` is local process control.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

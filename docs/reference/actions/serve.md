@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon serve ...` |
-| REST | Deferred |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `HTTP server startup` |
+| Service | `Not inventoried` |
 
-Parity notes: Starts this server; not a route.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

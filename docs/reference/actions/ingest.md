@@ -7,11 +7,11 @@ Last Modified: 2026-03-25
 | Surface | Entry point |
 |---|---|
 | CLI | `axon ingest ...` |
-| REST | `POST /v1/ingest`, `GET /v1/ingest`, `GET /v1/ingest/{id}`, `POST /v1/ingest/{id}/cancel`, `POST /v1/ingest/cleanup`, `DELETE /v1/ingest`, `POST /v1/ingest/recover` (Implemented) |
-| MCP | `{ "action": "ingest", "subaction": "..." }` (`ingest.start`, `ingest.status`, `ingest.cancel`, `ingest.list`, `ingest.cleanup`, `ingest.clear`, `ingest.recover`) |
-| Service | `services::ingest::{ingest_start_with_context,ingest_status,ingest_list,ingest_cancel,ingest_cleanup,ingest_clear,ingest_recover}` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Uses canonical `target` field for Git, Reddit, YouTube, and sessions. CLI-only `ingest worker` is local process control.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

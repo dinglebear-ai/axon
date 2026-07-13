@@ -7,11 +7,11 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon memory ...` |
-| REST | `POST /v1/memory` (Implemented) |
-| MCP | `{ "action": "memory", "subaction": "..." }` (`memory.remember`, `memory.list`, `memory.search`, `memory.show`, `memory.link`, `memory.supersede`, `memory.context`) |
-| Service | `services::memory::{dispatch,remember,list,search,show,link,supersede,context}` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Single direct REST endpoint accepts the memory subaction envelope and uses write scope because some subactions mutate persistent memory.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

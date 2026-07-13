@@ -7,11 +7,11 @@ Last Modified: 2026-05-31
 | Surface | Entry point |
 |---|---|
 | CLI | `axon watch ...` |
-| REST | `GET /v1/watch`, `POST /v1/watch`, `POST /v1/watch/{id}/run` (Partial) |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `services::watch::{create_watch_def,list_watch_defs,run_watch_now,list_watch_runs}` |
+| Service | `Not inventoried` |
 
-Parity notes: HTTP exposes create, list, and run-now. Other parsed CLI subcommands remain unimplemented.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

@@ -7,11 +7,11 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon suggest ...` |
-| REST | `POST /v1/suggest` (Implemented) |
-| MCP | `{ "action": "suggest" }` |
-| Service | `services::query::suggest` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Supports focus and collection.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
