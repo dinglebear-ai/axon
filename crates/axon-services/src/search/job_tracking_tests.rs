@@ -48,7 +48,7 @@ async fn track_research_job_records_failed_status_on_error() {
     let store = ctx.job_store().expect("unified job store must be present");
 
     let request_json = serde_json::json!({"operation": "research", "query": "test query"});
-    let result: Result<(), Box<dyn std::error::Error>> =
+    let result: Result<(), crate::search::SearchError> =
         track_research_job(&ctx, request_json, || async {
             crate::search::ensure_tavily_configured(ctx.cfg(), "research")
         })

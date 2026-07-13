@@ -16048,8 +16048,26 @@
           "additionalProperties": true,
           "type": "object"
         },
+        "offset": {
+          "default": 0,
+          "description": "Number of leading results to skip before `limit` is applied.\n`0` (the default) returns the first page.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "query": {
           "type": "string"
+        },
+        "time_range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SearchRequest_SearchTimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict results to a recency window (provider-dependent support)."
         }
       },
       "required": [
@@ -16059,6 +16077,16 @@
       ],
       "title": "SearchRequest",
       "type": "object"
+    },
+    "SearchRequest_SearchTimeRange": {
+      "description": "Result recency filter for [`SearchRequest`]. Mirrors `spider_agent::TimeRange`'s\nfour named variants (its `Custom { start, end }` range is not exposed here —\nno axon caller has ever constructed one; see `ServiceTimeRange` in\n`axon-services`, which has the same four-variant shape).",
+      "enum": [
+        "day",
+        "week",
+        "month",
+        "year"
+      ],
+      "type": "string"
     },
     "SearchResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -29048,7 +29076,7 @@
         "path": "crates/axon-api/src/source/listing.rs"
       },
       {
-        "checksum": "sha256:a5728db42e846a995b35eb01a2d6e34751ba825e630b324852c16e36d4d2ec91",
+        "checksum": "sha256:85467dc859a815e2f56062c9e233d3dea7c532a4950d22f725f78a7a4079e5e3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/provider_io.rs"
       },

@@ -9,9 +9,15 @@ use httpmock::prelude::*;
 use super::*;
 
 fn request(query: &str, limit: u32) -> SearchRequest {
+    request_with_offset(query, limit, 0)
+}
+
+fn request_with_offset(query: &str, limit: u32, offset: u32) -> SearchRequest {
     SearchRequest {
         query: query.to_string(),
         limit,
+        offset,
+        time_range: None,
         metadata: MetadataMap::new(),
     }
 }
