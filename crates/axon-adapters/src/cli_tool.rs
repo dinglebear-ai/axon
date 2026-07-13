@@ -9,12 +9,29 @@
 //! its argv/env/stdout/stderr redacted before being returned for
 //! persistence — see "Tool Execution Policy" in
 //! `docs/pipeline-unification/runtime/security-contract.md`.
+//!
+//! [`CliToolSourceAdapter`] wires the above contract into the real
+//! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. It always
+//! resolves through [`ToolExecutionMode::MetadataOnly`] today: real
+//! (`Execute`-mode) command invocation additionally needs the caller's
+//! granted scopes and a configured command allowlist, and neither is
+//! threaded through `SourcePlan`/`RoutePlan` yet — `axon-services`'s
+//! authorization boundary (`CallerContext.scopes`) stops before the adapter
+//! layer, and `RoutePlan` has no execute-allowlist field. Wiring real
+//! execution is a follow-up once that scope/allowlist threading is designed;
+//! until then, resolving metadata-only unconditionally is the fail-closed,
+//! never-fabricate-output choice consistent with this module's security
+//! contract.
 
+mod adapter;
 mod exec;
+mod metadata;
 mod redact;
 
 use exec::{ExecutionOutcome, execute_command};
 use redact::redact_text;
+
+pub use adapter::CliToolSourceAdapter;
 
 pub const MODULE_NAME: &str = "cli_tool";
 
