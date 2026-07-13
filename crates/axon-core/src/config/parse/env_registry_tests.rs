@@ -25,6 +25,51 @@ fn moved_tuning_has_toml_destination() {
 }
 
 #[test]
+fn tei_tuning_env_keys_map_to_embed_section() {
+    // These fields live on `TomlEmbedSection` (config/parse/toml_config.rs), not
+    // `TomlTeiSection` — both sections use `#[serde(deny_unknown_fields)]`, so a
+    // destination under `tei.*` would make `axon doctor`'s remediation hint add
+    // an unknown field to `[tei]` and hard-fail config parsing.
+    let expected = [
+        (
+            "AXON_TEI_RETRY_BACKOFF_MS",
+            "embed.tei-retry-backoff-ms",
+        ),
+        (
+            "AXON_TEI_COOLDOWN_AFTER_FAILURES",
+            "embed.tei-cooldown-after-failures",
+        ),
+        ("AXON_TEI_COOLDOWN_SECS", "embed.tei-cooldown-secs"),
+        (
+            "AXON_TEI_INTERACTIVE_RESERVED_REQUESTS",
+            "embed.tei-interactive-reserved-requests",
+        ),
+        (
+            "AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS",
+            "embed.tei-background-max-concurrent-requests",
+        ),
+        (
+            "AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS",
+            "embed.tei-maintenance-max-concurrent-requests",
+        ),
+        (
+            "AXON_TEI_QUERY_INSTRUCTION_ENABLED",
+            "embed.tei-query-instruction-enabled",
+        ),
+    ];
+
+    for (key, destination) in expected {
+        let spec = spec_for(key).expect("registered key");
+        assert_eq!(spec.classification, MoveToml);
+        assert_eq!(
+            spec.toml_destination,
+            Some(destination),
+            "{key} should map to {destination}"
+        );
+    }
+}
+
+#[test]
 fn implemented_env_keys_are_registered() {
     let required = [
         "AXON_SEARXNG_URL",
