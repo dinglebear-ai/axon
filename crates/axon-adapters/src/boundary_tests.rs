@@ -9,6 +9,8 @@ async fn fake_adapter_providers_cover_search_fetch_render_and_capture() {
         fake.search(SearchRequest {
             query: "axon".to_string(),
             limit: 1,
+            offset: 0,
+            time_range: None,
             metadata: MetadataMap::new(),
         })
         .await
@@ -121,6 +123,8 @@ async fn fake_adapter_providers_return_failure_modes_and_record_calls() {
         .search(SearchRequest {
             query: "axon".to_string(),
             limit: 1,
+            offset: 0,
+            time_range: None,
             metadata: MetadataMap::new(),
         })
         .await

@@ -2,13 +2,10 @@
 //!
 //! These are inherent methods on [`super::QdrantVectorStore`] (not part of the
 //! [`crate::store::VectorStore`] trait) because they operate on the raw
-//! payload shape the crawl/scrape/ingest pipeline writes today — plain JSON
-//! fields like `url`, `seed_url`, `domain`, `chunk_index`, `scraped_at`,
-//! `source_committed` — rather than the newer `VectorPoint`/`MetadataMap`
-//! model the rest of this crate targets. They exist so `axon-services` (and
-//! ultimately the CLI/MCP/REST commands it backs) can read Qdrant directly
-//! through `axon-vectors` instead of `axon-vector`, so the legacy crate can
-//! eventually be deleted (axon #298).
+//! target vector-payload shape the source pipeline writes today. These methods
+//! exist so `axon-services` (and ultimately the CLI/MCP/REST commands it backs)
+//! can read Qdrant directly through `axon-vectors` instead of `axon-vector`, so
+//! the legacy crate can eventually be deleted (axon #298).
 //!
 //! Every method here reuses [`super::http::QdrantHttp`] (via
 //! `QdrantVectorStore::http()`), so retries, redaction, and error shape stay

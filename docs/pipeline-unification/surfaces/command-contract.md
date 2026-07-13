@@ -26,8 +26,11 @@ terminal affordances. It is not allowed to bypass `axon-api`, `axon-services`,
 ## Design Rules
 
 - `axon <source>` is the source acquisition/indexing happy path.
-- `axon embed`, `axon ingest`, `axon scrape`, `axon crawl`, `axon code-search`,
-  and `axon code-search-watch` are removed user-facing commands.
+- `axon scrape <url>` remains a canonical one-page web acquisition command,
+  implemented as a thin projection over `SourceRequest { scope=page,
+  embed=true }`.
+- `axon embed`, `axon ingest`, `axon crawl`, `axon code-search`, and
+  `axon code-search-watch` are removed user-facing commands.
 - `axon map <source>` remains a top-level discovery command.
 - `axon watch <source>` remains the explicit watch-management entrypoint.
 - `axon extract` remains top-level for structured LLM extraction.
@@ -46,19 +49,23 @@ Verified against the live binary (`cargo build --bin axon`, `axon --help`,
 
 Implemented today:
 
-- `embed`, `ingest`, `scrape`, `crawl`, `code-search`, and
-  `code-search-watch` are already **removed** as `clap` subcommands — they do
+- `embed`, `ingest`, `crawl`, `code-search`, and `code-search-watch` are
+  already **removed** as `clap` subcommands — they do
   not appear in the `Command` enum (`crates/axon-core/src/config/cli.rs`).
+  `scrape` is also absent from the live clap tree in this snapshot, but that is
+  now a gap against the updated contract: it should be restored as the
+  canonical one-page SourceRequest projection described below, not as a legacy
+  scrape pipeline.
 - A default `axon <source>` parser path already exists: `route_bare_source`
   in `crates/axon-core/src/config/source_routing.rs` rewrites argv before
-  clap parsing so any leading token that isn't a recognized subcommand,
-  removed-command name, or global flag is routed to the `source` subcommand
-  (`axon https://x`, `axon ./dir`, `axon r/rust`, `axon pkg:npm/foo`, and
-  even `axon scrape <url>` all resolve to `axon source <target>`). The
-  target grammar's implicit-`<source>`-as-first-positional shape is not yet
-  literal (there is still a real `source` subcommand under the hood), but the
-  removed-command list and default-routing behavior this snapshot previously
-  called "not implemented" are both live.
+  clap parsing so leading tokens such as `axon https://x`, `axon ./dir`,
+  `axon r/rust`, and `axon pkg:npm/foo` route to the `source` subcommand.
+  The current implementation still treats removed command names as ordinary
+  bare-source tokens; under this updated contract, reserved removed command
+  names should fail before service dispatch with replacement guidance, while
+  `scrape` should become a real canonical subcommand.
+- The target grammar's implicit-`<source>`-as-first-positional shape is not yet
+  literal (there is still a real `source` subcommand under the hood).
 - Current subcommands (from `axon --help`) are: `map`, `endpoints`, `search`,
   `research`, `extract`, `screenshot`, `diff`, `brand`, `query`, `retrieve`,
   `ask`, `evaluate`, `train`, `summarize`, `suggest`, `memory`, `sources`,
@@ -152,6 +159,7 @@ this section previously used contradicted it and has been removed.
 | Command | DTO Request | DTO Result | Mutates | Async | Purpose |
 |---|---|---|---:|---:|---|
 | `axon <source>` | `SourceRequest` | `SourceResult` | yes | yes | Acquire, normalize, embed, refresh, and optionally watch a source. |
+| `axon scrape <url>` | `SourceRequest` | `SourceResult` plus clean content output | yes | yes | Fetch/render/normalize exactly one web page, embed by default, and return/save clean content. |
 | `axon map <source>` | `SourceRequest` | `SourceResult` | no | maybe | Discover source items/URLs with `scope=map`, `embed=false`. |
 | `axon watch <source>` | `WatchRequest` | `WatchResult` | yes | no | Create or ensure a watch for a source. |
 | `axon watch <sub>` | `Watch*Request` | `Watch*Result` | yes | maybe | Manage watch lifecycle. |
@@ -191,7 +199,8 @@ this section previously used contradicted it and has been removed.
 
 ## Source Command
 
-`axon <source>` is the only normal way to acquire/index a source.
+`axon <source>` is the normal way to acquire/index a source. `axon scrape
+<url>` is retained as the explicit one-page web-acquisition convenience.
 
 Examples:
 
@@ -230,6 +239,40 @@ Rules:
 - `--no-embed` acquires/normalizes without vector storage.
 - `--wait` blocks until the current job reaches terminal state.
 - Without `--wait`, async work returns immediately with a job descriptor.
+
+## Scrape Command
+
+`axon scrape <url>` fetches, renders when needed, normalizes, embeds, and
+returns or saves exactly one web page. It must not crawl sibling pages,
+sitemaps, or discovered links.
+
+Normalized request:
+
+```json
+{
+  "source": "https://example.com/page",
+  "scope": "page",
+  "embed": true,
+  "refresh": "if_stale",
+  "watch": "disabled",
+  "output": {
+    "response_mode": "auto",
+    "artifact_mode": "auto"
+  }
+}
+```
+
+Rules:
+
+- `scrape` is a SourceRequest projection, not a separate legacy data path.
+- `scope` is fixed to `page` unless the command fails validation.
+- `embed` defaults to true because single pages may be high-value sources.
+- `--no-embed` may be accepted to fetch/normalize without vector storage.
+- Output must include the clean normalized page content inline, by path, or by
+  artifact according to `OutputPolicy`.
+- Vertical extraction, render fallback, headers, cache policy, redaction,
+  ledger, preparation, embedding, publish, and cleanup all use the same web
+  adapter/source pipeline as `axon <url> --scope page`.
 
 ## Target Resolution
 
@@ -792,7 +835,6 @@ completion entries:
 ```text
 axon embed <source>
 axon ingest <source>
-axon scrape <url>
 axon crawl <url>
 axon code-search <query>
 axon code-search-watch <path>
@@ -810,9 +852,12 @@ axon fresh <sub>
 doc-sync gap in this file, not a scope decision — the canonical list above now
 matches those contracts.
 
-The final parser should treat removed commands like any other unknown command.
-Documentation can explain the new command model, but runtime aliases/remap
-handlers are not part of the contract.
+The final parser should reserve removed command tokens in command position and
+fail before service dispatch with a replacement hint and exit code 8. This is
+not a runtime alias: removed commands must not execute legacy behavior or remap
+into a hidden handler. Literal sources with removed-command names remain
+available through explicit source syntax such as `axon source crawl` or a local
+path like `./crawl`.
 
 ## Help and Completions
 

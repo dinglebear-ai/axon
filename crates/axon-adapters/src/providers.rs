@@ -2,10 +2,16 @@
 //! [`crate::boundary::RenderProvider`] / [`crate::boundary::SearchProvider`]
 //! implementations.
 //!
-//! These are the acquisition primitives issue #298's real `WebSourceAdapter`
-//! slice will call in the next wave. Wave 1a (this module) intentionally
-//! stops at the provider boundary: nothing here is wired into
-//! `WebSourceAdapter`, dispatch, or `axon-services` yet.
+//! These are also the acquisition primitives issue #298's real
+//! `WebSourceAdapter` slice calls. Wiring status per provider:
+//! [`http_fetch::HttpFetchProvider`] and [`chrome_render::ChromeRenderProvider`]
+//! are wired into `axon-services`' `TargetLocalSourceRuntime`
+//! (`crates/axon-services/src/context/target_runtime.rs`) and, through it,
+//! `WebSourceAdapter`. [`searxng_search::SearxngSearchProvider`] and
+//! [`tavily_search::TavilySearchProvider`] are wired into `axon-services`'
+//! `search`/`research` commands (`crates/axon-services/src/search/provider.rs`,
+//! issue #298 WS-D) but not into `WebSourceAdapter` — search/research are not
+//! source-acquisition operations.
 
 pub mod chrome_render;
 pub mod http_fetch;

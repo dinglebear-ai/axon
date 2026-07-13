@@ -203,9 +203,10 @@ async fn acquire_then_normalize_stamps_reddit_metadata() {
         .expect("post document present");
 
     assert_eq!(
-        post.metadata.get("source_type").and_then(|v| v.as_str()),
-        Some("reddit")
+        post.metadata.get("source_family").and_then(|v| v.as_str()),
+        Some("social")
     );
+    assert!(!post.metadata.contains_key("source_type"));
     assert_eq!(
         post.metadata.get("source_kind").and_then(|v| v.as_str()),
         Some("reddit")

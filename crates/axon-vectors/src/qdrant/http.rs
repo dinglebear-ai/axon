@@ -5,6 +5,7 @@
 //! extracted API key (from userinfo or the `api_key` query parameter). Only the
 //! opaque marker `"configured"` is ever attached to error context.
 
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
@@ -19,6 +20,29 @@ pub const ENDPOINT_MARKER: &str = "configured";
 
 const MAX_ATTEMPTS: usize = 4;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Process-wide reqwest client shared by every [`QdrantHttp`] instance.
+///
+/// Each `QdrantHttp::new` used to allocate a fresh connection pool even though
+/// upsert/search/delete create short-lived transport wrappers per operation.
+/// Cloning the shared client keeps those operation wrappers cheap while reusing
+/// keep-alive connections.
+static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    #[cfg(test)]
+    CLIENT_BUILDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .expect("failed to build shared qdrant reqwest client")
+});
+
+#[cfg(test)]
+static CLIENT_BUILDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn shared_client_build_count() -> usize {
+    CLIENT_BUILDS.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 /// A Qdrant REST endpoint with credentials split away from the base URL.
 #[derive(Debug, Clone)]
@@ -99,15 +123,8 @@ impl QdrantHttp {
     /// Construct a transport for the configured Qdrant URL, attributing every
     /// surfaced error to `provider_id`.
     pub fn new(url: &str, provider_id: &str) -> Result<Self, ApiError> {
-        let client = Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|err| {
-                transport_error("vector.qdrant.client_init", &err.to_string())
-                    .with_provider_id(provider_id)
-            })?;
         Ok(Self {
-            client,
+            client: SHARED_CLIENT.clone(),
             endpoint: QdrantEndpoint::parse(url),
             provider_id: provider_id.to_string(),
         })

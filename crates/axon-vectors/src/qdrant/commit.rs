@@ -1,7 +1,7 @@
 //! Generation-aware publish operations over the Qdrant REST API.
 //!
-//! Upserted points land with `committed_generation = "uncommitted"` (stamped by
-//! the point builder) so in-flight generations stay invisible to
+//! Upserted points land with `committed_generation = null` (stamped by the
+//! point builder) so in-flight generations stay invisible to
 //! committed-generation searches until publish. `mark_generation_committed`
 //! flips the matching points' `committed_generation`/`document_status` in place;
 //! `mark_unchanged_items_committed` copies carried-forward points into the new

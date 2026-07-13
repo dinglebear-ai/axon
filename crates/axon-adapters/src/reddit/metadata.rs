@@ -68,7 +68,6 @@ pub(super) fn reddit_source_document(
 ) -> SourceDocument {
     let mut metadata = reddit_item_metadata(dump_item);
     metadata.insert("source_family".to_string(), json!("social"));
-    metadata.insert("source_type".to_string(), json!("reddit"));
     metadata.insert("source_kind".to_string(), json!("reddit"));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));

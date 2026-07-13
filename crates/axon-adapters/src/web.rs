@@ -15,6 +15,7 @@ mod metadata;
 mod options;
 mod site_discovery;
 mod url_parts;
+mod vertical;
 mod warc;
 
 use std::sync::Arc;
@@ -112,13 +113,16 @@ impl SourceAdapter for WebSourceAdapter {
         )
         .await?;
 
+        let mut header = stage_header(
+            plan.job_id,
+            "web_fetch",
+            PipelinePhase::Fetching,
+            outcome.items.len(),
+        );
+        header.warnings = outcome.warnings;
+
         Ok(SourceAcquisition {
-            header: stage_header(
-                plan.job_id,
-                "web_fetch",
-                PipelinePhase::Fetching,
-                outcome.items.len(),
-            ),
+            header,
             source_id: plan.route.source.source_id.clone(),
             generation: diff.next_generation.clone(),
             adapter: plan.route.adapter.clone(),

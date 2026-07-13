@@ -17,9 +17,18 @@ fn canonical_uri_filter_has_bare_should_without_min_should() {
         .expect("canonical-uri filter must expose a `should` array");
     assert_eq!(
         should.len(),
-        3,
-        "url + source_item_key + canonical_uri arms"
+        4,
+        "item/source/source-key/chunk canonical URI arms"
     );
+    let keys = should
+        .iter()
+        .filter_map(|condition| condition["key"].as_str())
+        .collect::<Vec<_>>();
+    assert!(keys.contains(&"item_canonical_uri"));
+    assert!(keys.contains(&"source_canonical_uri"));
+    assert!(keys.contains(&"source_item_key"));
+    assert!(keys.contains(&"chunk_locator.canonical_uri"));
+    assert!(!keys.contains(&"url"));
     assert!(
         filter.get("min_should").is_none(),
         "must NOT emit a sibling min_should object (Qdrant 400s on it): {filter}"

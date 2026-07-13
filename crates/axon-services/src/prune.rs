@@ -98,7 +98,8 @@ pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) 
             None => PruneEstimate::default(),
         },
     };
-    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate));
+    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate))
+        .with_collection(ctx.cfg().collection.clone());
     let mut plan = planner.resolve(&request.selector);
     warn_if_unsupported(&mut plan);
     plan
@@ -331,17 +332,23 @@ impl<'a> VectorOnlyPruneTarget<'a> {
 
 #[async_trait]
 impl PruneTarget for VectorOnlyPruneTarget<'_> {
-    async fn current_generation(&self, source_id: Option<&str>) -> Option<SourceGenerationId> {
+    async fn current_generation(
+        &self,
+        source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
         // No ledger wired (e.g. a pure-vector `ServiceContext`) — nothing is
         // known to be "current", so generation-fencing degrades to "not
         // fenced" rather than fabricating a value.
-        let ledger = self.ledger.as_ref()?;
-        let source_id = source_id?;
+        let Some(ledger) = self.ledger.as_ref() else {
+            return Ok(None);
+        };
+        let Some(source_id) = source_id else {
+            return Ok(None);
+        };
         ledger
             .committed_generation(SourceId::new(source_id))
             .await
-            .ok()
-            .flatten()
+            .map_err(|err| err.message)
     }
 
     async fn apply(

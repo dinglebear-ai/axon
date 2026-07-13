@@ -8,10 +8,39 @@ fn domain_chunk0_filter_shape() {
         filter,
         json!({
             "must": [
-                {"key": "domain", "match": {"value": "example.com"}},
+                {"key": "web_domain", "match": {"value": "example.com"}},
                 {"key": "chunk_index", "match": {"value": 0}}
             ]
         })
+    );
+}
+
+#[test]
+fn canonical_uri_from_payload_prefers_target_item_uri() {
+    let payload = json!({
+        "url": "https://legacy.example/docs",
+        "item_canonical_uri": "https://example.com/docs/page",
+        "source_canonical_uri": "https://example.com/docs",
+        "source_item_key": "page",
+        "chunk_locator": { "canonical_uri": "https://example.com/docs/page#chunk" }
+    });
+
+    assert_eq!(
+        canonical_uri_from_payload(&payload),
+        Some("https://example.com/docs/page")
+    );
+}
+
+#[test]
+fn canonical_uri_from_payload_falls_back_to_chunk_locator() {
+    let payload = json!({
+        "url": "https://legacy.example/docs",
+        "chunk_locator": { "canonical_uri": "https://example.com/docs/page#chunk" }
+    });
+
+    assert_eq!(
+        canonical_uri_from_payload(&payload),
+        Some("https://example.com/docs/page#chunk")
     );
 }
 

@@ -78,7 +78,7 @@ impl UnifiedJobRunner for CrawlRunner {
             result = run_fut => result?,
         };
 
-        enqueue_embed_handoff(store, &effective_cfg, &job_output_dir, &summary, claimed).await;
+        enqueue_embed_handoff(store, &effective_cfg, &job_output_dir, &summary, claimed).await?;
         Ok(())
     }
 }
@@ -202,17 +202,23 @@ async fn run_backfill(
 
 /// Enqueue a follow-up `Embed` job on the unified store for the freshly
 /// crawled markdown directory, mirroring `try_enqueue_embed_handoff` in the
-/// legacy runner. Best-effort: an enqueue failure is logged, not fatal to the
-/// crawl job itself — markdown is already safely on disk.
+/// legacy runner. When `embed=true`, this handoff is a required indexing
+/// stage: returning crawl success while the markdown was never queued for
+/// indexing makes search/research waiters report a false success.
 async fn enqueue_embed_handoff(
     store: &SqliteUnifiedJobStore,
     effective_cfg: &Config,
     job_output_dir: &std::path::Path,
     summary: &axon_adapters::web_engine::engine::CrawlSummary,
     claimed: &UnifiedClaimedJob,
-) {
-    if !effective_cfg.embed || summary.markdown_files == 0 {
-        return;
+) -> Result<(), ApiError> {
+    if !effective_cfg.embed {
+        return Ok(());
+    }
+    if summary.markdown_files == 0 {
+        return Err(crawl_error(
+            "crawl produced no markdown files to embed while embed=true",
+        ));
     }
     let markdown_dir = job_output_dir
         .join("markdown")
@@ -221,8 +227,9 @@ async fn enqueue_embed_handoff(
     let config_json = match config_snapshot_json(effective_cfg) {
         Ok(json) => json,
         Err(error) => {
-            tracing::error!(job_id = %claimed.job_id.0, error = %error, "crawl: failed to snapshot config for embed handoff");
-            return;
+            return Err(crawl_error(format!(
+                "failed to snapshot config for embed handoff: {error}"
+            )));
         }
     };
     let request = JobCreateRequest {
@@ -258,12 +265,13 @@ async fn enqueue_embed_handoff(
         metadata: MetadataMap::new(),
         deadline_at: None,
     };
-    match store.create(request).await {
-        Ok(_descriptor) => {}
-        Err(error) => {
-            tracing::error!(job_id = %claimed.job_id.0, error = %error.message, "crawl: failed to enqueue follow-up embed job; markdown on disk but unindexed");
-        }
-    }
+    store.create(request).await.map_err(|error| {
+        crawl_error(format!(
+            "failed to enqueue follow-up embed job; markdown on disk but unindexed: {}",
+            error.message
+        ))
+    })?;
+    Ok(())
 }
 
 fn crawl_error(message: impl Into<String>) -> ApiError {

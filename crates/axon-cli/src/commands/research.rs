@@ -140,7 +140,9 @@ pub async fn run_research(
         ));
     }
 
-    let payload = result?.payload;
+    let payload = result
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?
+        .payload;
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&payload)?);

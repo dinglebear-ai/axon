@@ -1,5 +1,5 @@
 mod job_tracking;
-mod searxng;
+mod provider;
 mod synthesis;
 
 pub use synthesis::{research, research_with_context};
@@ -7,11 +7,13 @@ pub use synthesis::{research, research_with_context};
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::{ResearchResult, SearchOptions, SearchResult, ServiceTimeRange};
 use axon_core::config::Config;
-use spider_agent::{Agent, SearchOptions as SpiderSearchOptions, TimeRange};
+use spider_agent::TimeRange;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
 use tokio::sync::mpsc;
+
+pub(crate) type SearchError = Box<dyn Error + Send + Sync>;
 
 const REDACTED_TOKEN: &str = "[redacted-token]";
 /// Maximum (offset + limit) Tavily window. Larger windows are rejected at the
@@ -32,7 +34,7 @@ pub(super) fn to_spider_time_range(tr: ServiceTimeRange) -> TimeRange {
 ///
 /// Used by both `search` and `research` as a single source of truth for
 /// the prereq check, so callers do not need to duplicate the error message.
-pub(crate) fn ensure_tavily_configured(cfg: &Config, op: &str) -> Result<(), Box<dyn Error>> {
+pub(crate) fn ensure_tavily_configured(cfg: &Config, op: &str) -> Result<(), SearchError> {
     if cfg.tavily_api_key.is_empty() {
         return Err(format!(
             "{op} requires TAVILY_API_KEY — set it in .env (run 'axon doctor' to check service connectivity)"
@@ -44,7 +46,7 @@ pub(crate) fn ensure_tavily_configured(cfg: &Config, op: &str) -> Result<(), Box
 
 /// Reject pagination windows past Tavily's hard cap so callers see a clear
 /// error instead of a silently truncated result set.
-pub(crate) fn enforce_pagination_window(limit: usize, offset: usize) -> Result<(), Box<dyn Error>> {
+pub(crate) fn enforce_pagination_window(limit: usize, offset: usize) -> Result<(), SearchError> {
     let total = limit.saturating_add(offset);
     if total > SEARCH_WINDOW_MAX {
         return Err(format!(
@@ -169,60 +171,34 @@ fn looks_like_secret_token(token: &str) -> bool {
 
 /// Execute a web search and return raw JSON result items.
 ///
-/// Uses self-hosted SearXNG when `cfg.searxng_url` is set; falls back to
-/// Tavily otherwise. The `enforce_pagination_window` guard only applies to
-/// the Tavily path — Tavily caps results at `SEARCH_WINDOW_MAX` per query,
-/// while SearXNG walks pages internally up to its own `MAX_SEARXNG_PAGES` limit.
+/// Uses self-hosted SearXNG when `cfg.searxng_url` is set (delegating to
+/// [`axon_adapters::providers::searxng_search::SearxngSearchProvider`]);
+/// falls back to Tavily otherwise (delegating to
+/// [`axon_adapters::providers::tavily_search::TavilySearchProvider`]). The
+/// `enforce_pagination_window` guard only applies to the Tavily path — Tavily
+/// caps results at `SEARCH_WINDOW_MAX` per query, while SearXNG walks pages
+/// internally up to its own page-walk limit.
 pub async fn search_results(
     cfg: &Config,
     query: &str,
     limit: usize,
     offset: usize,
     time_range: Option<TimeRange>,
-) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    // Prefer self-hosted SearXNG when configured; fall back to Tavily otherwise.
-    if !cfg.searxng_url.is_empty() {
-        let total = limit.saturating_add(offset).max(1);
-        let hits = searxng::searxng_search(cfg, query, total, time_range).await?;
-        return Ok(hits
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .enumerate()
-            .map(|(i, h)| {
-                serde_json::json!({
-                    "position": offset + i + 1,
-                    "title": h.title,
-                    "url": h.url,
-                    "snippet": h.snippet,
-                })
-            })
-            .collect());
+) -> Result<Vec<serde_json::Value>, SearchError> {
+    if cfg.searxng_url.is_empty() {
+        // Tavily path: enforce the API's hard result-count cap before calling out.
+        enforce_pagination_window(limit, offset)?;
     }
-
-    // Tavily path: enforce the API's hard result-count cap before calling out.
-    enforce_pagination_window(limit, offset)?;
-    ensure_tavily_configured(cfg, "search")?;
-    let total = limit.saturating_add(offset).max(1);
-    let mut search_opts = SpiderSearchOptions::new().with_limit(total);
-    if let Some(tr) = time_range {
-        search_opts = search_opts.with_time_range(tr);
-    }
-    let agent = Agent::builder()
-        .with_search_tavily(&cfg.tavily_api_key)
-        .build()?;
-    let results = agent.search_with_options(query, search_opts).await?;
-    Ok(results
-        .results
-        .iter()
-        .skip(offset)
-        .take(limit)
-        .map(|r| {
+    let items = provider::run_search(cfg, query, limit, offset, time_range, "search").await?;
+    Ok(items
+        .into_iter()
+        .enumerate()
+        .map(|(i, item)| {
             serde_json::json!({
-                "position": r.position,
-                "title": r.title,
-                "url": r.url,
-                "snippet": r.snippet,
+                "position": offset + i + 1,
+                "title": item.title,
+                "url": item.url,
+                "snippet": item.snippet,
             })
         })
         .collect())
@@ -261,7 +237,7 @@ pub async fn research_with_context_tracked(
     query: &str,
     opts: SearchOptions,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<ResearchResult, Box<dyn Error>> {
+) -> Result<ResearchResult, SearchError> {
     let request_json = serde_json::json!({
         "operation": "research",
         "query": query,
@@ -281,7 +257,7 @@ pub async fn search(
     query: &str,
     opts: SearchOptions,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<SearchResult, Box<dyn Error>> {
+) -> Result<SearchResult, SearchError> {
     search_batch(cfg, &[query], opts, tx).await
 }
 
@@ -291,7 +267,7 @@ pub async fn search_batch(
     queries: &[&str],
     opts: SearchOptions,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<SearchResult, Box<dyn Error>> {
+) -> Result<SearchResult, SearchError> {
     emit(
         &tx,
         ServiceEvent::Log {

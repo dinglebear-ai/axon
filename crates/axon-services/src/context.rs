@@ -8,6 +8,7 @@ use axon_adapters::providers::{
     chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
 };
+use axon_adapters::{NoopSourceEnricher, SourceEnricher};
 use axon_api::source::ProviderId;
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
@@ -47,6 +48,12 @@ pub struct TargetLocalSourceRuntime {
     /// running a `crawl_for_source` acquisition pre-pass.
     pub fetch_provider: Arc<dyn FetchProvider>,
     pub render_provider: Arc<dyn RenderProvider>,
+    /// Enrichment-stage boundary (source-pipeline.md: `enriching`, between
+    /// `fetching`/`acquire` and `normalizing`/`normalize`). Defaults to
+    /// [`NoopSourceEnricher`] — the stage is wired end-to-end (see the git
+    /// family's `prepare_changed_documents`) but every concrete enricher is a
+    /// no-op passthrough until per-source-kind enrichers land (bead pmj7w).
+    pub enricher: Arc<dyn SourceEnricher>,
 }
 
 impl TargetLocalSourceRuntime {
@@ -91,6 +98,7 @@ impl TargetLocalSourceRuntime {
             embedding_dimensions,
             fetch_provider: Arc::new(HttpFetchProvider::new(HttpFetchConfig::default())),
             render_provider: Arc::new(ChromeRenderProvider::new(ChromeRenderConfig::default())),
+            enricher: Arc::new(NoopSourceEnricher::new()),
         }
     }
 }

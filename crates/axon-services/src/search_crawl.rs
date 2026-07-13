@@ -10,6 +10,8 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::error::Error;
 
+use crate::search::SearchError;
+
 /// Typed result returned by [`search_and_crawl`].
 ///
 /// Contains search results plus the outcome of auto-enqueueing
@@ -57,7 +59,7 @@ pub async fn search_and_crawl(
     service_context: &ServiceContext,
     query: &str,
     opts: SearchOptions,
-) -> Result<SearchAndCrawlResult, Box<dyn Error>> {
+) -> Result<SearchAndCrawlResult, SearchError> {
     let results = search_batch(cfg, &[query], opts, None).await?.results;
     let crawl_output = enqueue_search_crawls(cfg, service_context, &results).await;
     let auto_crawl_status = crawl_status(&results, &crawl_output);

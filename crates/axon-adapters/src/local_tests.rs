@@ -132,7 +132,8 @@ async fn local_adapter_acquires_and_normalizes_source_documents() {
     let docs = normalized.data;
     assert_eq!(docs[0].source_id, SourceId::from("src_local_test"));
     assert_eq!(docs[0].source_item_key, SourceItemKey::from("README.md"));
-    assert_eq!(docs[0].metadata["source_type"], "local_code");
+    assert_eq!(docs[0].metadata["source_family"], "code");
+    assert!(!docs[0].metadata.contains_key("source_type"));
     assert_eq!(docs[0].metadata["source_kind"], "local");
     assert_eq!(docs[0].metadata["source_adapter"], "local");
     assert_eq!(docs[0].metadata["source_scope"], "directory");

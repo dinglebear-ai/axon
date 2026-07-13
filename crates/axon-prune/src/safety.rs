@@ -25,6 +25,10 @@ pub enum PruneDenied {
     /// against yet (only `Source`/`Generation` vector prunes are wired).
     /// Refused rather than silently reporting a no-op "success".
     Unsupported { selector: String, guidance: String },
+    /// The generation-fence lookup itself failed before any delete was
+    /// attempted. Failing closed is safer than treating an unanswerable fence
+    /// check as "nothing current to protect".
+    FenceCheckFailed { reason: String },
 }
 
 impl core::fmt::Display for PruneDenied {
@@ -47,6 +51,10 @@ impl core::fmt::Display for PruneDenied {
                     "prune selector {selector} is not supported yet: {guidance}"
                 )
             }
+            PruneDenied::FenceCheckFailed { reason } => write!(
+                f,
+                "refusing prune: generation-fence check failed ({reason})"
+            ),
         }
     }
 }

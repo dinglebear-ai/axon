@@ -74,9 +74,12 @@ Still genuinely open (not shipped, not just under-documented):
   promotion-rule notes under "Reddit, Feed, and Social Fields" and "YouTube
   and Transcript Fields".
 - `UploadSourceAdapter` (`crates/axon-adapters/src/upload.rs`) stamps
-  `source_family = "upload"`, which is not a valid family and has no remap
-  bridge; it is unwired (no caller) today, so this has not yet caused a
-  validation failure in practice — see "Source Family Classification" below.
+  `source_family = "upload"`, now the 14th `VECTOR_SOURCE_FAMILIES` entry (see
+  "Source Family Classification" below) — resolved as a genuine family rather
+  than a remap bridge, since uploaded content is provenance-tracked
+  separately from a caller-specified local path by design. The adapter is
+  still unwired into `index_source` dispatch (no `axon-services` caller
+  today), so this fix has not yet been exercised by a live payload write.
 
 ## Goals
 
@@ -131,7 +134,7 @@ purely to scope `axon-vectors`'s per-family field allowlist
 resolved adapter or ledger source type. The two enums are deliberately not
 1:1.
 
-Allowed values (`VECTOR_SOURCE_FAMILIES`, 13 total):
+Allowed values (`VECTOR_SOURCE_FAMILIES`, 14 total):
 
 | `source_family` | Typical `source_kind` | Notes |
 |---|---|---|
@@ -148,18 +151,18 @@ Allowed values (`VECTOR_SOURCE_FAMILIES`, 13 total):
 | `tool` | `cli_tool`, `mcp_tool` | CLI/MCP tool execution records. |
 | `docker` | — | Declared for Docker/Compose manifest facts; no adapter emits it yet. |
 | `env` | — | Declared for `.env`-shaped key/locator facts; no adapter emits it yet. |
+| `upload` | `upload` | Staged/prepared uploads (`UploadSourceAdapter`); a distinct field set (`staged_upload`) from `local`/`code` because uploaded content is provenance-tracked separately from a caller-specified local path. |
 
-`source_kind` has no `code`, `package`, `graph`, `social`, `media`, `tool`,
-`docker`, or `env` values of its own (see `SourceKind` in
-`crates/axon-api/src/source/enums.rs`). Conversely, `upload` is a `source_kind`
-value with no corresponding `source_family`: `UploadSourceAdapter`
-(`crates/axon-adapters/src/upload.rs`) currently stamps
-`source_family = "upload"`, which `VECTOR_SOURCE_FAMILIES` does not recognize.
-That adapter has no caller in any current service/CLI/MCP path today, so this
-never reaches payload validation in practice — but it is a real gap that must
-be resolved (add `upload` as a 14th family, or add a remap bridge like
-`package`'s above) before the adapter is wired into a live source pipeline.
-**This is flagged as an open design decision, not fixed here.**
+`source_kind` has no `code`, `package`, `graph`, `social`, `media`, or `tool`
+value of its own (see `SourceKind` in `crates/axon-api/src/source/enums.rs`);
+`docker`/`env` have no `source_kind` at all yet since no adapter emits them.
+`upload` is the one `source_family` that is also a literal `SourceKind`
+variant — `UploadSourceAdapter` (`crates/axon-adapters/src/upload.rs`) stamps
+`source_family = "upload"`, which is now a recognized `VECTOR_SOURCE_FAMILIES`
+entry (previously an unrecognized gap; see the "Current Implementation
+Snapshot" note above). That adapter still has no caller in any current
+service/CLI/MCP path, so this has not yet been exercised by a live payload
+write — wiring it into `index_source` dispatch is a separate follow-up.
 
 ## Visibility Classes
 

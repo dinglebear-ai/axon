@@ -8,6 +8,7 @@
 //! `"configured"` is attached to error context, mirroring the qdrant store's
 //! redaction pattern.
 
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -35,6 +36,28 @@ const MAX_CLIENT_BATCH_SIZE: usize = 256;
 
 /// Environment knob mirroring the legacy client's `TEI_MAX_CLIENT_BATCH_SIZE`.
 const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
+
+/// Process-wide reqwest client shared by every [`TeiClient`].
+///
+/// `TeiEmbeddingProvider::build_client()` calls [`TeiClient::new`] for each
+/// provider operation. Building a fresh `reqwest::Client` there throws away its
+/// connection pool and DNS resolver on every embed/probe call, so the transport
+/// keeps request timeouts per call and shares the pool process-wide.
+static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    #[cfg(test)]
+    CLIENT_BUILDS.fetch_add(1, Ordering::SeqCst);
+    Client::builder()
+        .build()
+        .expect("failed to build shared TEI reqwest client")
+});
+
+#[cfg(test)]
+static CLIENT_BUILDS: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+pub(crate) fn shared_client_build_count() -> u64 {
+    CLIENT_BUILDS.load(Ordering::SeqCst)
+}
 
 /// Tunables for a single `embed_all` invocation.
 #[derive(Debug, Clone)]
@@ -101,20 +124,12 @@ impl TeiClient {
     /// The `/embed` path is appended to the configured base. The reqwest client
     /// carries no per-request timeout; each request applies `request_timeout`.
     pub fn new(params: TeiClientParams) -> Result<Self, ApiError> {
-        let client = Client::builder().build().map_err(|err| {
-            transport_error(
-                "embedding.tei.client_init",
-                "failed to build TEI HTTP client",
-                error_category(&err),
-            )
-            .with_provider_id(&params.provider_id)
-        })?;
         let base = params.endpoint.trim().trim_end_matches('/');
         let embed_url = format!("{base}/embed");
         let info_url = format!("{base}/info");
         let max_batch_inputs = resolve_batch_size(params.max_batch_inputs);
         Ok(Self {
-            client,
+            client: SHARED_CLIENT.clone(),
             embed_url,
             info_url,
             provider_id: params.provider_id,
@@ -379,15 +394,6 @@ fn error_category(err: &reqwest::Error) -> &'static str {
     } else {
         "request"
     }
-}
-
-fn transport_error(code: &str, message: &str, category: &str) -> ApiError {
-    ApiError::new(
-        code,
-        ErrorStage::Embedding,
-        format!("{message} ({category})"),
-    )
-    .with_context("endpoint", ENDPOINT_MARKER)
 }
 
 /// Exponential backoff (`base_ms`, `2*base_ms`, `4*base_ms`, …, capped at 60s)

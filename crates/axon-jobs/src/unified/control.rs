@@ -101,7 +101,11 @@ impl SqliteUnifiedJobStore {
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
         // Last completed safe point before the cancellation unwind begins —
         // the job's phase at the moment cancellation was requested.
-        let last_safe_stage = parse_enum::<PipelinePhase>(row.get::<String, _>("phase")).ok();
+        let last_safe_stage = parse_enum::<PipelinePhase>(row.get::<String, _>("phase"))
+            .inspect_err(|error| {
+                tracing::warn!(job_id = %job_id.0, %error, "failed to parse stored job phase")
+            })
+            .ok();
         validate_transition(job_id, current, LifecycleStatus::Canceling)?;
         let now = now_timestamp();
         let target = if matches!(current, LifecycleStatus::Queued | LifecycleStatus::Pending)

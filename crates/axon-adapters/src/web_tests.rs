@@ -199,6 +199,44 @@ async fn web_docs_scope_acquire_dispatches_chrome_render_for_changed_items() {
 }
 
 #[tokio::test]
+async fn web_acquire_surfaces_per_item_failures_as_stage_warnings() {
+    let providers = FakeAdapterProviders::new().with_mode(crate::boundary::FakeAdapterMode::Fatal);
+    let adapter = adapter(providers);
+    let mut plan = web_plan("https://example.com/docs", SourceScope::Docs);
+    plan.route
+        .validated_options
+        .values
+        .insert("render_mode".to_string(), json!("http"));
+
+    let item = ManifestItem {
+        source_id: plan.route.source.source_id.clone(),
+        source_item_key: SourceItemKey::from("docs/intro"),
+        canonical_uri: "https://example.com/docs/intro".to_string(),
+        item_kind: ItemKind::WebPage,
+        content_kind: None,
+        display_path: Some("docs/intro".to_string()),
+        parent_key: None,
+        size_bytes: None,
+        content_hash: None,
+        mtime: None,
+        version: None,
+        fetch_plan: None,
+        metadata: MetadataMap::new(),
+        graph_hints: Vec::new(),
+    };
+    let diff = manifest_diff(&plan, vec![item]);
+
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+
+    assert!(acquisition.fetched_items.is_empty());
+    assert_eq!(acquisition.header.warnings.len(), 1);
+    assert_eq!(
+        acquisition.header.warnings[0].source_item_key,
+        Some(SourceItemKey::from("docs/intro"))
+    );
+}
+
+#[tokio::test]
 async fn web_urls_keep_safe_queries_in_item_keys_without_leaking_secrets() {
     let adapter = adapter(FakeAdapterProviders::new());
     let mut plan = web_plan("https://example.com/search", SourceScope::Map);

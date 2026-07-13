@@ -1,4 +1,4 @@
-//! URL/prefix purge — ports legacy `axon-vector`'s `qdrant_delete_by_url`
+//! Canonical URI/prefix purge — ports legacy `axon-vector`'s `qdrant_delete_by_url`
 //! (re-exported there as `axon_vector::purge`).
 
 use axon_api::purge::PurgeResult;
@@ -7,16 +7,16 @@ use crate::qdrant::QdrantVectorStore;
 use crate::store::Result;
 
 impl QdrantVectorStore {
-    /// Delete indexed points whose `url` or `seed_url` matches `target`.
+    /// Delete indexed points whose target canonical URI fields match `target`.
     ///
-    /// With `prefix=true`, `url`/`seed_url` also match descendants below the
-    /// target path, using URL path boundaries so `https://x/docs` does not
+    /// With `prefix=true`, canonical URI fields also match descendants below
+    /// the target path, using URL path boundaries so `https://x/docs` does not
     /// match `https://x/docs-old`. `dry_run=true` computes the same counts
     /// without deleting anything.
     ///
     /// Boundary-aware prefix matching is not expressible as a single Qdrant
     /// filter, so — like legacy — this scrolls the *entire* collection
-    /// (projecting only `url`/`seed_url`) and matches client-side before
+    /// (projecting only canonical URI fields) and matches client-side before
     /// batch-deleting the matched point ids.
     pub async fn delete_by_url(
         &self,
@@ -41,20 +41,21 @@ impl QdrantVectorStore {
         self.scroll_pages(
             collection,
             None,
-            serde_json::json!({"include": ["url", "seed_url"]}),
+            serde_json::json!({"include": [
+                "item_canonical_uri",
+                "source_canonical_uri",
+                "source_item_key",
+                "chunk_locator"
+            ]}),
             256,
             |points| {
                 for point in points {
-                    let url = point.payload.get("url").and_then(serde_json::Value::as_str);
-                    let seed_url = point
-                        .payload
-                        .get("seed_url")
-                        .and_then(serde_json::Value::as_str);
-                    if !point_matches_url_target(url, seed_url, target, prefix) {
+                    let values = canonical_values(&point.payload);
+                    if !point_matches_url_target(&values, target, prefix) {
                         continue;
                     }
-                    if let Some(url) = url.filter(|value| !value.is_empty()) {
-                        urls.insert(url.to_string());
+                    if let Some(url) = values.first().filter(|value| !value.is_empty()) {
+                        urls.insert((*url).to_string());
                     }
                     if seen_ids.insert(point.id.to_string()) {
                         ids.push(point.id.clone());
@@ -110,15 +111,32 @@ impl QdrantVectorStore {
     }
 }
 
-/// Ports legacy `point_matches_url_target`.
-fn point_matches_url_target(
-    url: Option<&str>,
-    seed_url: Option<&str>,
-    target: &str,
-    prefix: bool,
-) -> bool {
-    url.is_some_and(|value| url_matches_target(value, target, prefix))
-        || seed_url.is_some_and(|value| url_matches_target(value, target, prefix))
+fn canonical_values(payload: &serde_json::Value) -> Vec<&str> {
+    let mut values = Vec::new();
+    for field in [
+        "item_canonical_uri",
+        "source_canonical_uri",
+        "source_item_key",
+    ] {
+        if let Some(value) = payload.get(field).and_then(serde_json::Value::as_str) {
+            values.push(value);
+        }
+    }
+    if let Some(value) = payload
+        .get("chunk_locator")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|locator| locator.get("canonical_uri"))
+        .and_then(serde_json::Value::as_str)
+    {
+        values.push(value);
+    }
+    values
+}
+
+fn point_matches_url_target(values: &[&str], target: &str, prefix: bool) -> bool {
+    values
+        .iter()
+        .any(|value| url_matches_target(value, target, prefix))
 }
 
 /// Ports legacy `url_matches_target`: exact match, or (when `prefix`) a

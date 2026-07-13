@@ -17,6 +17,10 @@ pub(super) fn web_metadata(plan: &SourcePlan, web: &WebUrlParts) -> MetadataMap 
         json!(plan.route.source.source_id.0.clone()),
     );
     metadata.insert(
+        "source_canonical_uri".to_string(),
+        json!(plan.route.source.canonical_uri.clone()),
+    );
+    metadata.insert(
         "item_canonical_uri".to_string(),
         json!(web.normalized_url.clone()),
     );
@@ -66,6 +70,10 @@ pub(super) fn web_source_document(
     metadata.insert(
         "source_id".to_string(),
         json!(acquisition.source_id.0.clone()),
+    );
+    metadata.insert(
+        "source_canonical_uri".to_string(),
+        json!(plan.route.source.canonical_uri.clone()),
     );
     metadata.insert(
         "source_item_key".to_string(),
@@ -133,7 +141,7 @@ fn structured_title(value: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn web_document_id(source_id: &SourceId, item_key: &SourceItemKey) -> DocumentId {
+pub(super) fn web_document_id(source_id: &SourceId, item_key: &SourceItemKey) -> DocumentId {
     DocumentId::from(format!(
         "doc_web_{}",
         stable_token(&format!("{}\0{}", source_id.0, item_key.0))

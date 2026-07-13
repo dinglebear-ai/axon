@@ -31,9 +31,11 @@ pub mod result_map;
 pub mod routing;
 pub mod tool_policy;
 
-use axon_api::source::{AdapterRef, AuthSnapshot, SourceRequest, SourceResult, SourceScope};
+use axon_api::source::{
+    AdapterRef, AuthScope, AuthSnapshot, SourceRequest, SourceResult, SourceScope,
+};
 use axon_core::http::validate_url;
-use axon_error::ApiError;
+use axon_error::{ApiError, ErrorStage};
 use std::fmt;
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
@@ -140,7 +142,8 @@ pub fn redact_local_path_for_public_payload(path: &str) -> String {
 
 fn is_secret_like_local_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.ends_with("/.env")
+    lower == ".env"
+        || lower.ends_with("/.env")
         || lower.contains("/.ssh/")
         || lower.contains("/.codex/")
         || lower.contains("/.gemini/")
@@ -188,12 +191,19 @@ pub async fn index_source_with_auth(
     if let Err(err) = authorize::authorize_route(&route) {
         return Ok(result_map::route_error_result(&input, err));
     }
+    if let Err(err) = authorize::authorize_safety_class(route.safety_class, auth_snapshot.as_ref())
+    {
+        return Ok(result_map::route_error_result(&input, err));
+    }
+    if let Err(err) = authorize_local_source_policy(&input, kind, auth_snapshot.as_ref()) {
+        return Ok(result_map::route_error_result(&input, err));
+    }
     if kind == SourceInputKind::Unsupported {
         return Ok(result_map::route_error_result(
             &input,
             ApiError::new(
                 "source.route.unsupported_dispatch",
-                axon_error::ErrorStage::Routing,
+                ErrorStage::Routing,
                 "resolved source kind does not have a source dispatch implementation yet",
             )
             .with_context("source_kind", format!("{:?}", route.source.source_kind)),
@@ -300,6 +310,24 @@ pub async fn index_source_with_auth(
         counts,
         graph,
     ))
+}
+
+fn source_security_api_error(err: SourceSecurityError) -> ApiError {
+    ApiError::new(err.code, ErrorStage::Authorizing, err.message)
+}
+
+fn authorize_local_source_policy(
+    input: &str,
+    kind: SourceInputKind,
+    auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<(), ApiError> {
+    if kind != SourceInputKind::Local {
+        return Ok(());
+    }
+    let has_local_scope = auth_snapshot
+        .map(|snapshot| authorize::snapshot_allows_scope(snapshot, AuthScope::Local))
+        .unwrap_or(true);
+    enforce_local_source_policy(input, has_local_scope).map_err(source_security_api_error)
 }
 
 /// Open the `GraphStore`/`MemoryStore` handles the cleanup-debt drain uses to

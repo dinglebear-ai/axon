@@ -154,8 +154,16 @@ async fn acquire_then_normalize_stamps_git_metadata() {
         .find(|d| d.path.as_deref() == Some("README.md"))
         .expect("README document present");
     assert_eq!(
-        readme.metadata.get("source_type").and_then(|v| v.as_str()),
-        Some("git_code")
+        readme
+            .metadata
+            .get("source_family")
+            .and_then(|v| v.as_str()),
+        Some("code")
+    );
+    assert!(!readme.metadata.contains_key("source_type"));
+    assert_eq!(
+        readme.metadata.get("source_kind").and_then(|v| v.as_str()),
+        Some("git")
     );
     assert_eq!(
         readme.metadata.get("git_repo").and_then(|v| v.as_str()),

@@ -34,25 +34,38 @@ fn item_with_etag(uri: &str, etag: &str) -> ManifestItem {
 
 fn opts(mode: RenderMode, min_markdown_chars: usize) -> AcquireOptions {
     AcquireOptions {
+        job_id: JobId::new(uuid::Uuid::nil()),
         mode,
         min_markdown_chars,
         automation_script: None,
         etag_conditional: false,
+        vertical: VerticalOptions {
+            enabled: false,
+            auto_dispatch_skip: Vec::new(),
+            user_agent: None,
+        },
     }
+}
+
+fn require_item(outcome: AcquiredItem, message: &str) -> AcquiredSourceItem {
+    assert!(outcome.warnings.is_empty(), "unexpected warning");
+    outcome.item.expect(message)
 }
 
 #[tokio::test]
 async fn http_mode_calls_fetch_only_and_defaults_content_kind_to_html() {
     let providers = FakeAdapterProviders::new();
-    let acquired = acquire_item(
-        &providers,
-        &providers,
-        &item("https://example.com/docs/intro"),
-        &opts(RenderMode::Http, 200),
-    )
-    .await
-    .unwrap()
-    .expect("http fetch should not be skipped");
+    let acquired = require_item(
+        acquire_item(
+            &providers,
+            &providers,
+            &item("https://example.com/docs/intro"),
+            &opts(RenderMode::Http, 200),
+        )
+        .await
+        .unwrap(),
+        "http fetch should not be skipped",
+    );
 
     assert_eq!(providers.calls().await, vec!["fetch"]);
     assert_eq!(acquired.manifest_item.content_kind, Some(ContentKind::Html));
@@ -66,15 +79,17 @@ async fn http_mode_calls_fetch_only_and_defaults_content_kind_to_html() {
 #[tokio::test]
 async fn chrome_mode_calls_render_once() {
     let providers = FakeAdapterProviders::new();
-    let acquired = acquire_item(
-        &providers,
-        &providers,
-        &item("https://example.com/docs/intro"),
-        &opts(RenderMode::Chrome, 200),
-    )
-    .await
-    .unwrap()
-    .expect("chrome render should not be skipped");
+    let acquired = require_item(
+        acquire_item(
+            &providers,
+            &providers,
+            &item("https://example.com/docs/intro"),
+            &opts(RenderMode::Chrome, 200),
+        )
+        .await
+        .unwrap(),
+        "chrome render should not be skipped",
+    );
 
     assert_eq!(providers.calls().await, vec!["render"]);
     assert_eq!(
@@ -89,15 +104,17 @@ async fn auto_switch_keeps_single_render_when_not_thin() {
     let providers = FakeAdapterProviders::new();
     // The fake's fixed "fake render" body (11 chars) is not thin against a
     // low threshold, so no Chrome re-render should occur.
-    let acquired = acquire_item(
-        &providers,
-        &providers,
-        &item("https://example.com/docs/intro"),
-        &opts(RenderMode::AutoSwitch, 5),
-    )
-    .await
-    .unwrap()
-    .expect("auto-switch should not be skipped");
+    let acquired = require_item(
+        acquire_item(
+            &providers,
+            &providers,
+            &item("https://example.com/docs/intro"),
+            &opts(RenderMode::AutoSwitch, 5),
+        )
+        .await
+        .unwrap(),
+        "auto-switch should not be skipped",
+    );
 
     assert_eq!(providers.calls().await, vec!["render"]);
     assert_eq!(acquired.metadata["web_fetch_method"], "auto_switch_http");
@@ -108,15 +125,17 @@ async fn auto_switch_re_renders_with_chrome_when_thin() {
     let providers = FakeAdapterProviders::new();
     // The fake's fixed "fake render" body (11 chars) is thin against a high
     // threshold, so a second (Chrome) render must occur.
-    let acquired = acquire_item(
-        &providers,
-        &providers,
-        &item("https://example.com/docs/intro"),
-        &opts(RenderMode::AutoSwitch, 1000),
-    )
-    .await
-    .unwrap()
-    .expect("auto-switch should not be skipped");
+    let acquired = require_item(
+        acquire_item(
+            &providers,
+            &providers,
+            &item("https://example.com/docs/intro"),
+            &opts(RenderMode::AutoSwitch, 1000),
+        )
+        .await
+        .unwrap(),
+        "auto-switch should not be skipped",
+    );
 
     assert_eq!(providers.calls().await, vec!["render", "render"]);
     assert_eq!(acquired.metadata["web_fetch_method"], "auto_switch_chrome");
@@ -188,7 +207,7 @@ async fn chrome_mode_threads_automation_script_into_render_request() {
     )
     .await
     .unwrap();
-    assert!(acquired.is_some());
+    assert!(acquired.item.is_some());
 }
 
 // ── Regression 3: etag_conditional / 304 handling ───────────────────────────

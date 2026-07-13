@@ -1,4 +1,4 @@
-//! Sources facet — list of indexed URLs with chunk counts.
+//! Sources facet — list of indexed item canonical URIs with chunk counts.
 
 use crate::system::PayloadParseError;
 use crate::types::{DomainSourcesResult, Pagination, SourcesResult};
@@ -202,7 +202,7 @@ pub async fn sources_with_breakdown(
     Ok(result)
 }
 
-/// Ports legacy `axon-vector`'s `sources_payload`: fetch the `url` facet
+/// Fetch the target `item_canonical_uri` facet
 /// (capped by `AXON_SOURCES_FACET_LIMIT`) and slice it into one limit/offset
 /// page, in the same JSON shape [`map_sources_payload`] expects.
 async fn sources_payload(
@@ -219,7 +219,7 @@ async fn sources_payload(
     );
     let fetch = limit.saturating_add(offset).max(1).min(facet_cap);
     let sources = store
-        .facet(&cfg.collection, "url", None, fetch)
+        .facet(&cfg.collection, "item_canonical_uri", None, fetch)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("sources facet query failed: {e}").into() })?;
     let total = sources.len();
