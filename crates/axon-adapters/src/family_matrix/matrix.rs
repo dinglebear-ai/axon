@@ -375,14 +375,17 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         may_perform_network_fetches: false,
         may_call_render_provider: false,
         may_execute_tools: true,
-        // `is_source_adapter: true` documents matrix/routing intent, not
-        // integration completeness: `cli_tool.rs` exposes a free-function
-        // `resolve_and_acquire` (metadata-only by default, explicit
-        // opt-in `Execute` mode with allowlist/redaction), not yet a
-        // `discover`/`acquire`/`normalize` `SourceAdapter` impl like every
-        // other row here. Wiring it into `SourceAdapter` + job-runtime
-        // dispatch is a follow-up outside this crate's territory; this
-        // row's booleans/scopes are accurate for when that wiring lands.
+        // `CliToolSourceAdapter` (`cli_tool/adapter.rs`) is a real
+        // `discover`/`acquire`/`normalize` `SourceAdapter` impl built on the
+        // metadata-only-by-default `resolve_and_acquire` contract in
+        // `cli_tool.rs`. It always resolves `ToolExecutionMode::MetadataOnly`
+        // today: real (`Execute`-mode) command invocation needs the caller's
+        // granted scopes and a configured command allowlist threaded through
+        // `SourcePlan`/`RoutePlan`, which does not exist yet (see that
+        // module's doc comment). Wiring this adapter into `axon-services`'s
+        // `index_source` dispatch (a new `SourceInputKind::CliTool` +
+        // `classify`/`dispatch` bridge) is a separate follow-up outside this
+        // crate's territory.
         is_source_adapter: true,
         degraded_modes: &["metadata-only", "command-denied", "output-capped"],
         required_graph_fact_kinds: &["tool"],
@@ -408,9 +411,11 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         may_perform_network_fetches: true,
         may_call_render_provider: false,
         may_execute_tools: true,
-        // Same caveat as `CliTool` above: `mcp_tool.rs` exposes a
-        // free-function `resolve_and_acquire`, not yet a `SourceAdapter`
-        // impl. See that row's comment for the follow-up.
+        // `McpToolSourceAdapter` (`mcp_tool/adapter.rs`) is a real
+        // `SourceAdapter` impl, same shape and same follow-up as `CliTool`
+        // above: always `McpExecutionMode::MetadataOnly` until execute-scope/
+        // allowlist/caller threading is designed, and not yet wired into
+        // `axon-services`'s `index_source` dispatch.
         is_source_adapter: true,
         degraded_modes: &["schema-only", "tool-unavailable", "output-capped"],
         required_graph_fact_kinds: &["mcp_server", "mcp_tool"],

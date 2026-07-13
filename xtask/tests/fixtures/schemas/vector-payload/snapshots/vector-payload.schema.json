@@ -1101,6 +1101,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -1579,6 +1584,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -2027,6 +2037,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -2470,6 +2485,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -2912,6 +2932,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -3411,6 +3436,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -3898,6 +3928,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -4397,6 +4432,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -4844,6 +4884,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -5338,6 +5383,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -5831,6 +5881,11 @@
               "required": [
                 "env_locator"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
             }
           ]
         }
@@ -6323,6 +6378,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -6827,6 +6887,524 @@
               "required": [
                 "docker_volume"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "upload"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_locator"
+              ]
             }
           ]
         }
@@ -7231,7 +7809,8 @@
         "local",
         "tool",
         "docker",
-        "env"
+        "env",
+        "upload"
       ],
       "minLength": 1,
       "type": "string",
@@ -7261,6 +7840,9 @@
     },
     "source_scope": {
       "minLength": 1,
+      "type": "string"
+    },
+    "staged_upload": {
       "type": "string"
     },
     "structured_parse_error": {
@@ -8575,6 +9157,86 @@
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal"
+      },
+      {
+        "chunk_hash": "chunk_hash",
+        "chunk_id": "chunk-upload-0",
+        "chunk_index": 0,
+        "chunk_key": "upload-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/upload",
+          "heading_path": [
+            "upload heading"
+          ],
+          "path": "/upload",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
+        "collection": "axon",
+        "committed_generation": null,
+        "content_hash": "sha256:uploadhash",
+        "content_kind": "content_kind",
+        "document_id": "doc-upload",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-upload",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
+        "source_family": "upload",
+        "source_generation": 7,
+        "source_id": "src-upload",
+        "source_item_key": "upload-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "staged_upload": "staged_upload",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
+        "visibility": "internal"
       }
     ],
     "generated_by": "cargo xtask schemas vector-payload",
@@ -8756,7 +9418,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:3a78461feb682823580324fc93aaafcc150944dc679ac11892e8922a4bd8d9a9",
+        "checksum": "sha256:f2e0d4facb6de082f2a82f2a1b9d9213c95a3846e4e32ce696ef30cdc5c74907",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -8771,7 +9433,7 @@
         "path": "crates/axon-vectors/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:3929926228d3bd652c7a1648856ed55eec8c777e5cf986b08aeecad63bbd58bb",
+        "checksum": "sha256:87b71c14b12694f5d440a5fdf5d9db185a50e55c61a61629bf3bed8a9cb07454",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
@@ -8781,7 +9443,7 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:a8d208da3cbafbe06b2c73653a415d24c73cb7949671b0b0b934ca69565c00fd",
+        "checksum": "sha256:5b4c02a619aec03ffc65990b37d64a3b65dc43feb8f5909df8ba2ba52908f0c8",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
@@ -8955,6 +9617,12 @@
           "env_locator"
         ],
         "source_family": "env"
+      },
+      {
+        "fields": [
+          "staged_upload"
+        ],
+        "source_family": "upload"
       }
     ]
   }
