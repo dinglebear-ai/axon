@@ -14,23 +14,43 @@
 //! - `AutoSwitch` — render in `Http` mode first (this is the "fetch" step);
 //!   if the resulting markdown is thin (`< min_markdown_chars`), re-render in
 //!   `Chrome` mode and keep that result. A failed Chrome re-render falls back
-//!   to keeping the original HTTP render, mirroring the documented
-//!   auto-switch gotcha ("Chrome requires a running Chrome instance — if none
-//!   is available, the HTTP result is kept").
+//!   to keeping the original HTTP render, logs a warning, and records a
+//!   [`SourceWarning`] so the degradation is visible to the caller rather
+//!   than silently swallowed (mirrors the documented auto-switch gotcha:
+//!   "Chrome requires a running Chrome instance — if none is available, the
+//!   HTTP result is kept").
 //!
 //! `Chrome`/`AutoSwitch` render requests also carry `automation_script` (when
 //! configured) through to the [`RenderProvider`] — see
 //! `providers::chrome_render` and `web_engine::scrape::apply_automation_scripts`
 //! for how it actually executes.
 //!
+//! ## Concurrency and per-item error isolation (PR #418 review)
+//!
+//! Items acquire with bounded concurrency (up to [`ACQUIRE_CONCURRENCY`] in
+//! flight, see [`acquire_concurrent`]) rather than one at a time — each item
+//! is an independent fetch/render round-trip (2 round-trips on `AutoSwitch`),
+//! so serializing them wasted latency for no correctness benefit. A single
+//! item's fetch/render failure is logged and turned into a [`SourceWarning`]
+//! (see [`resolve_item_outcome`]) rather than propagated with `?` — one bad
+//! item must not discard every already-succeeded sibling in the batch.
+//!
 //! When `warc_path` is configured, every successfully acquired item (HTTP or
 //! Chrome) is archived as a WARC 1.1 `response` record — see [`super::warc`]
-//! for the writer and its documented `ArtifactStore` follow-up.
+//! for the writer and its documented `ArtifactStore` follow-up. WARC archival
+//! is a genuine serial dependency (one ordered on-disk log of records), so a
+//! configured WARC sink falls back to the original one-item-at-a-time
+//! acquisition path (see [`acquire_sequential`]) instead of the concurrent
+//! path. Without a WARC sink, returned item order is **not** guaranteed to
+//! match the input `manifest_items` order — safe today because every
+//! consumer of `fetched_items` keys off each item's own embedded
+//! `manifest_item`, never positional correspondence.
 
 use std::path::Path;
 
 use axon_api::source::*;
 use axon_core::logging::{log_info, log_warn};
+use futures_util::stream::{self, StreamExt};
 use serde_json::Value;
 
 use crate::adapter::Result;
@@ -39,6 +59,13 @@ use crate::boundary::{FetchProvider, RenderProvider};
 use super::options::{
     automation_script_ref, effective_render_mode, etag_conditional, min_markdown_chars, warc_path,
 };
+
+/// Upper bound on in-flight `acquire_item` calls for [`acquire_concurrent`].
+/// Chosen as a sane fixed default (matching `extract::sync`'s per-URL
+/// concurrency) rather than wired to a perf profile — there is no existing
+/// validated web-adapter option for it (see `axon-route::web_options`), and
+/// adding one is a larger follow-up than this fix's scope.
+const ACQUIRE_CONCURRENCY: usize = 16;
 
 /// Options resolved once per [`acquire_changed_items`] call from
 /// `plan.route.validated_options`, then threaded through every item so
@@ -51,10 +78,22 @@ struct AcquireOptions {
 }
 
 /// Acquired items plus any side-effect artifacts produced by this run (today,
-/// at most one WARC archive — see [`super::warc`]).
+/// at most one WARC archive — see [`super::warc`]) and any non-fatal
+/// per-item warnings (isolated failures, Chrome-fallback degradations).
 pub(super) struct AcquireOutcome {
     pub(super) items: Vec<AcquiredSourceItem>,
+    pub(super) warnings: Vec<SourceWarning>,
     pub(super) artifacts: Vec<ArtifactRef>,
+}
+
+/// One item's acquisition outcome. `item` is `None` for a conditional-fetch
+/// 304 skip. `warning` carries a non-fatal degradation alongside a
+/// successful `item` (e.g. the `AutoSwitch` Chrome re-render failing, where
+/// the HTTP render is kept as `item` and `warning` explains why).
+#[derive(Debug)]
+struct AcquiredItem {
+    item: Option<AcquiredSourceItem>,
+    warning: Option<SourceWarning>,
 }
 
 pub(super) async fn acquire_changed_items(
@@ -71,22 +110,124 @@ pub(super) async fn acquire_changed_items(
         etag_conditional: etag_conditional(values),
     };
     let warc_path = warc_path(values);
-    let mut warc_file = open_warc_archive(warc_path.as_deref()).await?;
 
-    let mut items = Vec::with_capacity(manifest_items.len());
-    for item in manifest_items {
-        let Some(acquired) = acquire_item(fetch, render, item, &opts).await? else {
-            continue;
-        };
-        archive_to_warc(&mut warc_file, &acquired).await;
-        items.push(acquired);
-    }
+    let (items, warnings) = match warc_path.as_deref() {
+        Some(path) => {
+            let mut warc_file = open_warc_archive(Some(path)).await?;
+            acquire_sequential(fetch, render, manifest_items, &opts, &mut warc_file).await
+        }
+        None => acquire_concurrent(fetch, render, manifest_items, &opts).await,
+    };
 
     let artifacts = match warc_path {
         Some(path) => vec![super::warc::artifact_ref(&path).await],
         None => Vec::new(),
     };
-    Ok(AcquireOutcome { items, artifacts })
+    Ok(AcquireOutcome {
+        items,
+        warnings,
+        artifacts,
+    })
+}
+
+/// One-at-a-time acquisition, used only when a WARC sink is configured (WARC
+/// archival is an ordered on-disk log, so records must be written in
+/// acquisition order). A failed item is logged and recorded as a
+/// [`SourceWarning`] via [`resolve_item_outcome`] rather than aborting the
+/// remaining items.
+async fn acquire_sequential(
+    fetch: &dyn FetchProvider,
+    render: &dyn RenderProvider,
+    manifest_items: &[ManifestItem],
+    opts: &AcquireOptions,
+    warc_file: &mut Option<tokio::fs::File>,
+) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
+    let mut items = Vec::with_capacity(manifest_items.len());
+    let mut warnings = Vec::new();
+    for item in manifest_items {
+        let outcome = acquire_item(fetch, render, item, opts).await;
+        if let Some(acquired) = resolve_item_outcome(
+            outcome,
+            item.source_item_key.clone(),
+            &item.canonical_uri,
+            &mut warnings,
+        ) {
+            archive_to_warc(warc_file, &acquired).await;
+            items.push(acquired);
+        }
+    }
+    (items, warnings)
+}
+
+/// Bounded-concurrency acquisition (up to [`ACQUIRE_CONCURRENCY`] items in
+/// flight at once), used whenever no WARC sink is configured. Each item is
+/// an independent fetch/render round-trip, so returned item order is not
+/// guaranteed to match `manifest_items`' order — see this module's doc
+/// comment for why that's safe. A failed item is logged and recorded as a
+/// [`SourceWarning`] rather than aborting the batch or discarding
+/// already-succeeded siblings.
+async fn acquire_concurrent(
+    fetch: &dyn FetchProvider,
+    render: &dyn RenderProvider,
+    manifest_items: &[ManifestItem],
+    opts: &AcquireOptions,
+) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
+    let mut pending = stream::iter(manifest_items.to_vec())
+        .map(|item| {
+            let source_item_key = item.source_item_key.clone();
+            let canonical_uri = item.canonical_uri.clone();
+            async move {
+                let outcome = acquire_item(fetch, render, &item, opts).await;
+                (source_item_key, canonical_uri, outcome)
+            }
+        })
+        .buffer_unordered(ACQUIRE_CONCURRENCY);
+
+    let mut items = Vec::new();
+    let mut warnings = Vec::new();
+    while let Some((source_item_key, canonical_uri, outcome)) = pending.next().await {
+        if let Some(acquired) =
+            resolve_item_outcome(outcome, source_item_key, &canonical_uri, &mut warnings)
+        {
+            items.push(acquired);
+        }
+    }
+    (items, warnings)
+}
+
+/// Shared per-item error isolation for both acquisition paths. A hard
+/// per-item error (fetch/render failure propagated by [`acquire_item`]) is
+/// logged and turned into a [`SourceWarning`] instead of aborting the batch.
+/// A soft degradation warning carried alongside a successful item (e.g. the
+/// `AutoSwitch` Chrome fallback failing) is also collected here. Returns the
+/// acquired item, if any, for the caller to keep.
+fn resolve_item_outcome(
+    outcome: Result<AcquiredItem>,
+    source_item_key: SourceItemKey,
+    canonical_uri: &str,
+    warnings: &mut Vec<SourceWarning>,
+) -> Option<AcquiredSourceItem> {
+    match outcome {
+        Ok(AcquiredItem { item, warning }) => {
+            if let Some(warning) = warning {
+                warnings.push(warning);
+            }
+            item
+        }
+        Err(err) => {
+            log_warn(&format!(
+                "web acquire_item_failed uri={canonical_uri} err={err}"
+            ));
+            warnings.push(SourceWarning {
+                code: err.code.to_string(),
+                severity: Severity::Warning,
+                message: format!("failed to acquire {canonical_uri}: {err}"),
+                source_item_key: Some(source_item_key),
+                retryable: err.retryable,
+            });
+            None
+        }
+    }
 }
 
 async fn open_warc_archive(warc_path: Option<&Path>) -> Result<Option<tokio::fs::File>> {
@@ -122,9 +263,15 @@ async fn acquire_item(
     render: &dyn RenderProvider,
     item: &ManifestItem,
     opts: &AcquireOptions,
-) -> Result<Option<AcquiredSourceItem>> {
+) -> Result<AcquiredItem> {
     match opts.mode {
-        RenderMode::Http => acquire_via_fetch(fetch, item, opts.etag_conditional).await,
+        RenderMode::Http => {
+            let fetched = acquire_via_fetch(fetch, item, opts.etag_conditional).await?;
+            Ok(AcquiredItem {
+                item: fetched,
+                warning: None,
+            })
+        }
         RenderMode::Chrome => {
             let rendered = render
                 .render(build_render_request(
@@ -133,11 +280,10 @@ async fn acquire_item(
                     opts.automation_script.clone(),
                 ))
                 .await?;
-            Ok(Some(acquired_from_rendered(
-                item,
-                rendered,
-                "chrome_render",
-            )))
+            Ok(AcquiredItem {
+                item: Some(acquired_from_rendered(item, rendered, "chrome_render")),
+                warning: None,
+            })
         }
         RenderMode::AutoSwitch => {
             acquire_via_auto_switch(
@@ -217,13 +363,15 @@ async fn acquire_via_fetch(
 
 /// `AutoSwitch`: render in `Http` mode (the "fetch" step), and if the
 /// resulting markdown is thin, re-render in `Chrome` mode. A Chrome failure
-/// keeps the original HTTP render rather than failing the whole item.
+/// keeps the original HTTP render rather than failing the whole item, but is
+/// no longer silent: it's logged and returned as a [`SourceWarning`] so
+/// operators see the degradation to thin HTTP (PR #418 review).
 async fn acquire_via_auto_switch(
     render: &dyn RenderProvider,
     item: &ManifestItem,
     min_markdown_chars: usize,
     automation_script: Option<ArtifactRef>,
-) -> Result<Option<AcquiredSourceItem>> {
+) -> Result<AcquiredItem> {
     let first = render
         .render(build_render_request(
             item,
@@ -232,11 +380,10 @@ async fn acquire_via_auto_switch(
         ))
         .await?;
     if first.markdown.chars().count() >= min_markdown_chars {
-        return Ok(Some(acquired_from_rendered(
-            item,
-            first,
-            "auto_switch_http",
-        )));
+        return Ok(AcquiredItem {
+            item: Some(acquired_from_rendered(item, first, "auto_switch_http")),
+            warning: None,
+        });
     }
     match render
         .render(build_render_request(
@@ -246,16 +393,33 @@ async fn acquire_via_auto_switch(
         ))
         .await
     {
-        Ok(rendered) => Ok(Some(acquired_from_rendered(
-            item,
-            rendered,
-            "auto_switch_chrome",
-        ))),
-        Err(_) => Ok(Some(acquired_from_rendered(
-            item,
-            first,
-            "auto_switch_http_fallback",
-        ))),
+        Ok(rendered) => Ok(AcquiredItem {
+            item: Some(acquired_from_rendered(item, rendered, "auto_switch_chrome")),
+            warning: None,
+        }),
+        Err(err) => {
+            log_warn(&format!(
+                "auto_switch: chrome re-render failed for {} — keeping HTTP result: {err}",
+                item.canonical_uri
+            ));
+            Ok(AcquiredItem {
+                item: Some(acquired_from_rendered(
+                    item,
+                    first,
+                    "auto_switch_http_fallback",
+                )),
+                warning: Some(SourceWarning {
+                    code: "web.auto_switch.chrome_fallback_failed".to_string(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "chrome re-render failed for {} — kept HTTP result: {err}",
+                        item.canonical_uri
+                    ),
+                    source_item_key: Some(item.source_item_key.clone()),
+                    retryable: err.retryable,
+                }),
+            })
+        }
     }
 }
 
