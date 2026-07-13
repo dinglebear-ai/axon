@@ -139,6 +139,7 @@ fn build_discovery_config_honors_crawl_options() {
     values.insert("render_mode".to_string(), json!("chrome"));
     values.insert("max_pages".to_string(), json!(25));
     values.insert("max_depth".to_string(), json!(3));
+    values.insert("etag_conditional".to_string(), json!(true));
     values.insert("include_subdomains".to_string(), json!(true));
     values.insert("discover_sitemaps".to_string(), json!(false));
     values.insert(
@@ -153,6 +154,7 @@ fn build_discovery_config_honors_crawl_options() {
     assert_eq!(cfg.render_mode, axon_core::config::RenderMode::Chrome);
     assert_eq!(cfg.max_pages, 25);
     assert_eq!(cfg.max_depth, 3);
+    assert!(cfg.etag_conditional);
     assert!(cfg.include_subdomains);
     assert!(!cfg.discover_sitemaps);
     assert_eq!(

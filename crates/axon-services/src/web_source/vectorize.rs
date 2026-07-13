@@ -9,18 +9,22 @@ use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
 use super::WebSourceIndexInput;
+use super::reuse;
 use super::run::{WebAdapterRun, timestamp};
+use super::vectorize_helpers::{
+    changed_diff_batches, document_status, payload_index, prepared_document_batches,
+    sanitize_web_payload_metadata, take_vertical_parse_artifacts,
+};
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
 const WEB_CHANGED_CHUNK_BATCH_SIZE: usize = 512;
-const VERTICAL_PARSE_FACTS_KEY: &str = "_axon_vertical_parse_facts";
-const VERTICAL_GRAPH_CANDIDATES_KEY: &str = "_axon_vertical_graph_candidates";
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct VectorizeResult {
     pub(super) documents_prepared: u64,
     pub(super) chunks_prepared: u64,
     pub(super) document_statuses: Vec<DocumentStatus>,
+    pub(super) reused_item_keys: Vec<SourceItemKey>,
     /// Parser-produced graph candidates carried by each prepared document
     /// (populated by `DocumentPreparer`'s self-parse when the caller supplies
     /// no pre-computed facts). Collected here so the graphing stage
@@ -44,9 +48,10 @@ struct VectorizeResultWithStats {
     warnings: Vec<SourceWarning>,
 }
 
-struct NormalizedWebDocuments {
-    documents: Vec<SourceDocument>,
-    warnings: Vec<SourceWarning>,
+pub(super) struct NormalizedWebDocuments {
+    pub(super) documents: Vec<SourceDocument>,
+    pub(super) warnings: Vec<SourceWarning>,
+    pub(super) reused_item_keys: Vec<SourceItemKey>,
 }
 
 pub(super) async fn vectorize_changed_documents(
@@ -63,6 +68,7 @@ pub(super) async fn vectorize_changed_documents(
     for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
         let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
         result.warnings.extend(normalized.warnings);
+        result.reused_item_keys.extend(normalized.reused_item_keys);
         let prepared = prepare_source_documents(normalized.documents, generation)?;
         for prepared_batch in prepared_document_batches(prepared, WEB_CHANGED_CHUNK_BATCH_SIZE) {
             let batch_result = vectorize_documents(
@@ -99,6 +105,7 @@ pub(super) async fn prepare_changed_documents_without_vectors(
     for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
         let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
         result.warnings.extend(normalized.warnings);
+        result.reused_item_keys.extend(normalized.reused_item_keys);
         let prepared = prepare_source_documents(normalized.documents, generation)?;
         for document in prepared {
             result.documents_prepared += 1;
@@ -106,7 +113,8 @@ pub(super) async fn prepare_changed_documents_without_vectors(
             result
                 .graph_candidates
                 .extend(document.graph_candidates.clone());
-            let status = document_status(&document, 0, DocumentLifecycleStatus::Prepared);
+            let status =
+                document_status(&document, 0, DocumentLifecycleStatus::Prepared, timestamp());
             ledger.update_document_status(status.clone()).await?;
             result.document_statuses.push(status);
         }
@@ -152,7 +160,7 @@ pub(super) fn published_status(status: &DocumentStatus) -> DocumentStatus {
     }
 }
 
-async fn normalize_changed_documents(
+pub(super) async fn normalize_changed_documents(
     input: &WebSourceIndexInput,
     run: &WebAdapterRun,
     diff: &SourceManifestDiff,
@@ -161,13 +169,141 @@ async fn normalize_changed_documents(
         std::sync::Arc::clone(&input.fetch_provider),
         std::sync::Arc::clone(&input.render_provider),
     );
-    let acquisition = adapter.acquire(&run.plan, diff).await?;
-    let warnings = acquisition.header.warnings.clone();
-    let documents = adapter.normalize(&run.plan, acquisition).await?.data;
+    let mut acquisition = adapter.acquire(&run.plan, diff).await?;
+    let mut warnings = acquisition.header.warnings.clone();
+    let mut documents = Vec::new();
+    let mut documents_to_cache = Vec::new();
+    let mut fetched_items = Vec::new();
+    let mut reused_item_keys = Vec::new();
+
+    for item in std::mem::take(&mut acquisition.fetched_items) {
+        let reuse_required = item
+            .metadata
+            .get("web_reuse_required")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if !reuse_required {
+            fetched_items.push(item);
+            continue;
+        }
+
+        if let Some(reused) = reuse::load_reused_web_document(
+            &run.source_id,
+            diff.previous_generation.as_ref(),
+            &item.manifest_item.source_item_key,
+            &diff.next_generation,
+        ) {
+            reused_item_keys.push(item.manifest_item.source_item_key.clone());
+            documents_to_cache.push(reused.document);
+            continue;
+        }
+
+        warnings.push(SourceWarning {
+            code: "web.reuse.cache_miss_refetch".to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "conditional 304 for {} had no cached committed document; refetching before publish",
+                item.manifest_item.canonical_uri
+            ),
+            source_item_key: Some(item.manifest_item.source_item_key.clone()),
+            retryable: true,
+        });
+        fetched_items
+            .push(refetch_without_conditional(input, run, diff, item.manifest_item).await?);
+    }
+
+    if !fetched_items.is_empty() {
+        acquisition.fetched_items = fetched_items;
+        let normalized = adapter.normalize(&run.plan, acquisition).await?.data;
+        documents_to_cache.extend(normalized.clone());
+        documents.extend(normalized);
+    }
+
+    reuse::cache_documents(&run.source_id, &diff.next_generation, &documents_to_cache);
     Ok(NormalizedWebDocuments {
         documents,
         warnings,
+        reused_item_keys,
     })
+}
+
+async fn refetch_without_conditional(
+    input: &WebSourceIndexInput,
+    run: &WebAdapterRun,
+    diff: &SourceManifestDiff,
+    manifest_item: ManifestItem,
+) -> anyhow::Result<AcquiredSourceItem> {
+    let mut plan = run.plan.clone();
+    plan.route
+        .validated_options
+        .values
+        .insert("etag_conditional".to_string(), serde_json::json!(false));
+    let adapter = WebSourceAdapter::new(
+        std::sync::Arc::clone(&input.fetch_provider),
+        std::sync::Arc::clone(&input.render_provider),
+    );
+    let reacquired = adapter
+        .acquire(
+            &plan,
+            &SourceManifestDiff {
+                header: diff.header.clone(),
+                source_id: diff.source_id.clone(),
+                previous_generation: diff.previous_generation.clone(),
+                next_generation: diff.next_generation.clone(),
+                added: Vec::new(),
+                modified: vec![manifest_item.clone()],
+                removed: Vec::new(),
+                unchanged: Vec::new(),
+                skipped: Vec::new(),
+                failed: Vec::new(),
+                counts: DiffCounts {
+                    added: 0,
+                    modified: 1,
+                    removed: 0,
+                    unchanged: 0,
+                    skipped: 0,
+                    failed: 0,
+                },
+            },
+        )
+        .await?;
+    let mut reacquired_items = reacquired.fetched_items.into_iter();
+    let reacquired = match reacquired_items.next() {
+        Some(item) => item,
+        None => {
+            if let Some(warning) = reacquired.header.warnings.iter().find(|warning| {
+                warning.code == "web.fetch.invalid_304_without_validator"
+                    || warning.message.contains("304 Not Modified")
+            }) {
+                anyhow::bail!(
+                    "unconditional refetch for {} received another 304/reuse response: {}",
+                    manifest_item.canonical_uri,
+                    warning.message
+                );
+            }
+            anyhow::bail!(
+                "unconditional refetch for {} returned no document",
+                manifest_item.canonical_uri
+            );
+        }
+    };
+    let reuse_required = reacquired
+        .metadata
+        .get("web_reuse_required")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if reuse_required
+        || matches!(
+            &reacquired.content_ref,
+            ContentRef::External { uri, .. } if uri.starts_with("reuse://")
+        )
+    {
+        anyhow::bail!(
+            "unconditional refetch for {} returned 304/reuse instead of content",
+            manifest_item.canonical_uri
+        );
+    }
+    Ok(reacquired)
 }
 
 fn prepare_source_documents(
@@ -195,134 +331,6 @@ fn prepare_source_documents(
         documents.push(prepared);
     }
     Ok(documents)
-}
-
-fn take_vertical_parse_artifacts(
-    document: &mut SourceDocument,
-) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
-    let facts = document
-        .metadata
-        .remove(VERTICAL_PARSE_FACTS_KEY)
-        .and_then(|value| serde_json::from_value(value).ok())
-        .unwrap_or_default();
-    let candidates = document
-        .metadata
-        .remove(VERTICAL_GRAPH_CANDIDATES_KEY)
-        .and_then(|value| serde_json::from_value(value).ok())
-        .unwrap_or_default();
-    (facts, candidates)
-}
-
-fn sanitize_web_payload_metadata(document: &mut PreparedDocument) {
-    sanitize_metadata(&mut document.metadata);
-    for chunk in &mut document.chunks {
-        sanitize_metadata(&mut chunk.metadata);
-        if let Some(title) = chunk.title.as_deref().or(document
-            .metadata
-            .get("web_title")
-            .and_then(|value| value.as_str()))
-        {
-            chunk
-                .metadata
-                .insert("web_title".to_string(), serde_json::json!(title));
-        }
-    }
-}
-
-fn sanitize_metadata(metadata: &mut MetadataMap) {
-    for field in [
-        // Acquisition-provenance fields stamped by `axon-adapters::web::acquire`
-        // (issue #298 Wave 1b) — debugging/provenance only, not part of the
-        // "web" vector-payload source-family allowlist
-        // (`axon-vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`).
-        "web_render_mode",
-        "web_status",
-        "web_etag",
-    ] {
-        metadata.remove(field);
-    }
-}
-
-fn changed_diff_batches(diff: &SourceManifestDiff, batch_size: usize) -> Vec<SourceManifestDiff> {
-    let batch_size = batch_size.max(1);
-    let mut batches = Vec::new();
-    let mut current = empty_diff_like(diff);
-    for item in &diff.added {
-        current.added.push(item.clone());
-        if changed_batch_len(&current) == batch_size {
-            push_changed_batch(&mut batches, &mut current, diff);
-        }
-    }
-    for item in &diff.modified {
-        current.modified.push(item.clone());
-        if changed_batch_len(&current) == batch_size {
-            push_changed_batch(&mut batches, &mut current, diff);
-        }
-    }
-    if changed_batch_len(&current) > 0 {
-        push_changed_batch(&mut batches, &mut current, diff);
-    }
-    batches
-}
-
-fn changed_batch_len(batch: &SourceManifestDiff) -> usize {
-    batch.added.len() + batch.modified.len()
-}
-
-fn push_changed_batch(
-    batches: &mut Vec<SourceManifestDiff>,
-    current: &mut SourceManifestDiff,
-    diff: &SourceManifestDiff,
-) {
-    current.counts.added = current.added.len() as u64;
-    current.counts.modified = current.modified.len() as u64;
-    batches.push(std::mem::replace(current, empty_diff_like(diff)));
-}
-
-fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
-    SourceManifestDiff {
-        header: diff.header.clone(),
-        source_id: diff.source_id.clone(),
-        previous_generation: diff.previous_generation.clone(),
-        next_generation: diff.next_generation.clone(),
-        added: Vec::new(),
-        modified: Vec::new(),
-        removed: Vec::new(),
-        unchanged: Vec::new(),
-        skipped: Vec::new(),
-        failed: Vec::new(),
-        counts: DiffCounts {
-            added: 0,
-            modified: 0,
-            removed: 0,
-            unchanged: 0,
-            skipped: 0,
-            failed: 0,
-        },
-    }
-}
-
-fn prepared_document_batches(
-    documents: Vec<PreparedDocument>,
-    max_chunks: usize,
-) -> Vec<Vec<PreparedDocument>> {
-    let max_chunks = max_chunks.max(1);
-    let mut batches = Vec::new();
-    let mut current = Vec::new();
-    let mut current_chunks = 0_usize;
-    for document in documents {
-        let document_chunks = document.chunks.len().max(1);
-        if !current.is_empty() && current_chunks + document_chunks > max_chunks {
-            batches.push(std::mem::take(&mut current));
-            current_chunks = 0;
-        }
-        current_chunks += document_chunks;
-        current.push(document);
-    }
-    if !current.is_empty() {
-        batches.push(current);
-    }
-    batches
 }
 
 async fn vectorize_documents(
@@ -360,6 +368,7 @@ async fn vectorize_documents(
             &document,
             document.chunks.len() as u64,
             DocumentLifecycleStatus::Vectorized,
+            timestamp(),
         );
         ledger.update_document_status(status.clone()).await?;
         result.document_statuses.push(status);
@@ -470,131 +479,6 @@ fn embedding_result_for_document(
     })
 }
 
-fn payload_index(field_name: &str) -> PayloadIndexSpec {
-    PayloadIndexSpec {
-        field_name: field_name.to_string(),
-        field_schema: PayloadFieldSchema::Keyword,
-        required_for_filters: true,
-    }
-}
-
-fn document_status(
-    document: &PreparedDocument,
-    vector_point_count: u64,
-    status: DocumentLifecycleStatus,
-) -> DocumentStatus {
-    DocumentStatus {
-        document_id: document.document_id.clone(),
-        source_id: document.source_id.clone(),
-        source_item_key: document.source_item_key.clone(),
-        generation: Some(document.generation.clone()),
-        status,
-        updated_at: timestamp(),
-        chunk_count: document.chunks.len() as u32,
-        vector_point_count: vector_point_count.min(u32::MAX as u64) as u32,
-        error: None,
-        cleanup_status: None,
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn web_document_with_target_metadata() -> SourceDocument {
-        let mut metadata = MetadataMap::new();
-        metadata.insert("source_family".to_string(), serde_json::json!("web"));
-        metadata.insert("source_kind".to_string(), serde_json::json!("web"));
-        metadata.insert("source_adapter".to_string(), serde_json::json!("web"));
-        metadata.insert("source_scope".to_string(), serde_json::json!("site"));
-        metadata.insert(
-            "item_canonical_uri".to_string(),
-            serde_json::json!("https://example.com/docs/page"),
-        );
-        metadata.insert("visibility".to_string(), serde_json::json!("internal"));
-        metadata.insert("redaction_status".to_string(), serde_json::json!("clean"));
-        metadata.insert("web_title".to_string(), serde_json::json!("Target Fields"));
-        metadata.insert("web_domain".to_string(), serde_json::json!("example.com"));
-        metadata.insert("normalization_version".to_string(), serde_json::json!("v1"));
-        metadata.insert(
-            "web_url".to_string(),
-            serde_json::json!("https://example.com/docs/page?utm=1"),
-        );
-        metadata.insert(
-            "web_seed_url".to_string(),
-            serde_json::json!("https://example.com/docs"),
-        );
-        metadata.insert(
-            "web_origin".to_string(),
-            serde_json::json!("https://example.com"),
-        );
-        metadata.insert("web_path".to_string(), serde_json::json!("/docs/page"));
-        metadata.insert(
-            "web_normalized_url".to_string(),
-            serde_json::json!("https://example.com/docs/page"),
-        );
-        metadata.insert("web_fetch_method".to_string(), serde_json::json!("http"));
-        metadata.insert(
-            "structured_payload_omitted".to_string(),
-            serde_json::json!(false),
-        );
-        metadata.insert("web_render_mode".to_string(), serde_json::json!("chrome"));
-
-        SourceDocument {
-            document_id: DocumentId::new("doc_web_target_metadata"),
-            source_id: SourceId::new("src_web"),
-            source_item_key: SourceItemKey::new("https://example.com/docs/page"),
-            canonical_uri: "https://example.com/docs/page".to_string(),
-            content_kind: ContentKind::Markdown,
-            content: ContentRef::InlineText {
-                text: "# Target Fields\n\nBody text.".to_string(),
-            },
-            metadata,
-            title: Some("Target Fields".to_string()),
-            language: None,
-            path: Some("/docs/page".to_string()),
-            mime_type: None,
-            structured_payload: None,
-            artifact_id: None,
-            chunk_hints: Vec::new(),
-            parser_hints: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn web_source_vectorize_preserves_target_web_metadata() {
-        let prepared = prepare_source_documents(
-            vec![web_document_with_target_metadata()],
-            &SourceGenerationId::new("gen-1"),
-        )
-        .expect("prepare web document");
-        let document = prepared.into_iter().next().expect("prepared document");
-
-        for field in [
-            "normalization_version",
-            "web_url",
-            "web_seed_url",
-            "web_origin",
-            "web_path",
-            "web_normalized_url",
-            "web_fetch_method",
-            "structured_payload_omitted",
-        ] {
-            assert!(
-                document.metadata.contains_key(field),
-                "document metadata should keep {field}"
-            );
-            assert!(
-                document
-                    .chunks
-                    .iter()
-                    .all(|chunk| chunk.metadata.contains_key(field)),
-                "every chunk should keep {field}"
-            );
-        }
-        assert!(
-            !document.metadata.contains_key("web_render_mode"),
-            "debug-only acquisition metadata stays out of vector payloads"
-        );
-    }
-}
+#[path = "vectorize_tests.rs"]
+mod tests;

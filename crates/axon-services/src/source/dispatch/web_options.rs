@@ -45,6 +45,10 @@ pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -
         serde_json::json!(cfg.drop_thin_markdown),
     );
     options.insert(
+        "etag_conditional".to_string(),
+        serde_json::json!(cfg.etag_conditional),
+    );
+    options.insert(
         "render_mode".to_string(),
         serde_json::json!(api_render_mode(cfg.render_mode)),
     );

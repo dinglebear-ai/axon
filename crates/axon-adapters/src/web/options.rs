@@ -160,6 +160,9 @@ pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> 
     if let Some(value) = bool_option(values, "drop_thin_markdown") {
         cfg.drop_thin_markdown = value;
     }
+    if let Some(value) = bool_option(values, "etag_conditional") {
+        cfg.etag_conditional = value;
+    }
     cfg.enable_verticals = verticals_enabled(values);
     cfg.auto_dispatch_skip = auto_dispatch_skip(values);
     cfg.user_agent = user_agent(values);

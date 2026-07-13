@@ -64,13 +64,9 @@ pub(super) async fn page_manifest_item(
     let web = WebUrlParts::parse(&plan.route.source.canonical_uri)?;
     let fetched = fetch.fetch(build_discover_fetch_request(&web)).await?;
     let content_hash = Some(content_ref_hash(&fetched.content));
-    Ok(web_manifest_item(
-        plan,
-        &web,
-        content_hash,
-        fetched.bytes,
-        None,
-    ))
+    let mut item = web_manifest_item(plan, &web, content_hash, fetched.bytes, None);
+    attach_conditional_metadata(&mut item, fetched.etag.as_deref());
+    Ok(item)
 }
 
 fn build_discover_fetch_request(web: &WebUrlParts) -> FetchRequest {
@@ -149,6 +145,13 @@ pub(super) fn web_manifest_item(
         fetch_plan: None,
         metadata,
         graph_hints: Vec::new(),
+    }
+}
+
+pub(crate) fn attach_conditional_metadata(item: &mut ManifestItem, etag: Option<&str>) {
+    if let Some(etag) = etag {
+        item.metadata
+            .insert("web_etag".to_string(), serde_json::json!(etag));
     }
 }
 
