@@ -15,17 +15,12 @@ use crate::types::{
     ResearchResult, ResearchTiming, ResearchUsage, SearchOptions, SummarySource,
 };
 use axon_core::config::Config;
-use axon_core::logging::{log_info, log_warn};
+use axon_core::logging::log_warn;
 use axon_llm::{self as llm, CompletionRequest};
 use spider_agent::{TimeRange, TokenUsage};
 use std::error::Error;
-use std::time::Duration;
 use tokio::sync::mpsc;
 
-/// Maximum number of Tavily attempts (1 initial + 2 retries) before surfacing the error.
-const TAVILY_MAX_ATTEMPTS: u32 = 3;
-/// Base backoff between Tavily retries; doubles on each subsequent failure.
-const TAVILY_BACKOFF_BASE: Duration = Duration::from_millis(750);
 /// Fallback summary includes at most this many extractions.
 const FALLBACK_MAX_EXTRACTIONS: usize = 3;
 /// Fallback summary truncates each snippet at this many characters.
@@ -135,7 +130,17 @@ pub(super) struct RawHit {
 }
 
 /// Run the configured search backend: SearXNG when `cfg.searxng_url` is set,
-/// otherwise Tavily (with bounded retry). Returns `limit + offset` hits.
+/// otherwise Tavily (with bounded retry). Returns `limit + offset` hits,
+/// UNwindowed — `research_payload` (the sole caller) applies its own
+/// `.skip(offset).take(limit)` over the returned page.
+///
+/// Delegates to `axon-adapters`' real `SearxngSearchProvider`/
+/// `TavilySearchProvider` via `super::provider::run_search_for_research`
+/// (issue #298 WS-D) — see that module's doc comment for the retry policy
+/// this preserves. Requests `count = limit + offset` with `offset: 0` at the
+/// provider layer (rather than passing `offset` straight through) because the
+/// provider already windows its own response by `offset`/`limit`; passing the
+/// real `offset` here would double-apply it once more in `research_payload`.
 async fn gather_hits(
     cfg: &Config,
     query: &str,
@@ -144,35 +149,15 @@ async fn gather_hits(
     time_range: Option<TimeRange>,
 ) -> Result<Vec<RawHit>, Box<dyn Error>> {
     let count = (limit + offset).max(1);
-    if !cfg.searxng_url.is_empty() {
-        let hits = super::searxng::searxng_search(cfg, query, count, time_range).await?;
-        return Ok(hits
-            .into_iter()
-            .map(|h| RawHit {
-                url: h.url,
-                title: h.title,
-                snippet: h.snippet,
-            })
-            .collect());
-    }
-
-    use spider_agent::{Agent, SearchOptions as SpiderSearchOptions};
-    super::ensure_tavily_configured(cfg, "research")?;
-    let agent = Agent::builder()
-        .with_search_tavily(&cfg.tavily_api_key)
-        .build()?;
-    let mut search_options = SpiderSearchOptions::new().with_limit(count);
-    if let Some(tr) = time_range {
-        search_options = search_options.with_time_range(tr);
-    }
-    let results = tavily_search_with_retry(&agent, query, search_options).await?;
-    Ok(results
-        .results
+    let items =
+        super::provider::run_search_for_research(cfg, query, count, 0, time_range, "research")
+            .await?;
+    Ok(items
         .into_iter()
-        .map(|r| RawHit {
-            url: r.url,
-            title: r.title,
-            snippet: r.snippet.unwrap_or_default(),
+        .map(|item| RawHit {
+            url: item.url,
+            title: item.title,
+            snippet: item.snippet,
         })
         .collect())
 }
@@ -377,39 +362,6 @@ fn research_rejection_kind(kind: &search_crawl::SearchCrawlRejectionKind) -> &'s
         search_crawl::SearchCrawlRejectionKind::QueueRejected => "queue_rejected",
         search_crawl::SearchCrawlRejectionKind::WaitFailed => "wait_failed",
     }
-}
-
-// ── search retry ─────────────────────────────────────────────────────────────
-
-async fn tavily_search_with_retry(
-    agent: &spider_agent::Agent,
-    query: &str,
-    options: spider_agent::SearchOptions,
-) -> Result<spider_agent::SearchResults, Box<dyn Error>> {
-    let mut last_err: Option<String> = None;
-    for attempt in 1..=TAVILY_MAX_ATTEMPTS {
-        match agent.search_with_options(query, options.clone()).await {
-            Ok(results) => return Ok(results),
-            Err(e) => {
-                let err_text = e.to_string();
-                if attempt == TAVILY_MAX_ATTEMPTS {
-                    last_err = Some(format!(
-                        "tavily search failed after {attempt} attempts: {err_text}"
-                    ));
-                    break;
-                }
-                let backoff = TAVILY_BACKOFF_BASE * 2u32.pow(attempt - 1);
-                log_info(&format!(
-                    "tavily search attempt={attempt} failed ({err_text}); retrying in {}ms",
-                    backoff.as_millis()
-                ));
-                tokio::time::sleep(backoff).await;
-            }
-        }
-    }
-    Err(last_err
-        .unwrap_or_else(|| "tavily search failed".to_string())
-        .into())
 }
 
 // ── synthesis internals ───────────────────────────────────────────────────────

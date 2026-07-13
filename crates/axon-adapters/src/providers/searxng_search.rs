@@ -2,18 +2,16 @@
 //! querying a self-hosted SearXNG instance's JSON API.
 //!
 //! Design choice (Wave 1a of issue #298, matching [`super::http_fetch`] /
-//! [`super::chrome_render`]): this mirrors `axon-services`'s
-//! `search::searxng` module — same endpoint shape
+//! [`super::chrome_render`]): same endpoint shape
 //! (`{base_url}/search?format=json`), same SSRF guard
 //! (`axon_core::http::validate_url` + the shared SSRF-guarded client
-//! builder), and the same "walk pages until satisfied" pagination strategy.
-//! `axon-services` keeps its own copy for now rather than delegating to this
-//! provider: the boundary [`SearchRequest`]/[`SearchResult`] DTOs carry only
-//! `query`/`limit`/`metadata` (no `offset`/`time_range`), so routing
-//! `search`/`research` through this provider today would silently drop two
-//! knobs those commands already expose. Not yet wired into `axon-services`
-//! or `WebSourceAdapter` — see the `providers` module doc comment for the
-//! same scaffolding note that applies to the other real providers here.
+//! builder), and the same "walk pages until satisfied" pagination strategy
+//! `axon-services`'s search backend used to hand-roll. **Wired into
+//! `axon-services`** as of issue #298 WS-D: `crates/axon-services/src/search/provider.rs`
+//! constructs this provider from `Config` and delegates `search`/`research`'s
+//! SearXNG path to it (selected whenever `cfg.searxng_url` is set). Not yet
+//! wired into `WebSourceAdapter`'s acquisition path — see the `providers`
+//! module doc comment.
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -130,12 +128,16 @@ impl SearxngSearchProvider {
         endpoint: &str,
         query: &str,
         pageno: usize,
+        time_range: Option<&'static str>,
     ) -> Result<Vec<SearxRow>> {
-        let params = [
+        let mut params: Vec<(&str, String)> = vec![
             ("q", query.to_string()),
             ("format", "json".to_string()),
             ("pageno", pageno.to_string()),
         ];
+        if let Some(tr) = time_range {
+            params.push(("time_range", tr.to_string()));
+        }
         let response = match client
             .get(endpoint)
             .query(&params)
@@ -204,20 +206,26 @@ impl SearchProvider for SearxngSearchProvider {
             .map_err(|err| self.error("search.client_init", err.to_string()))?;
 
         let limit = (request.limit as usize).max(1);
+        let offset = request.offset as usize;
+        // Fetch `offset + limit` unique hits, then window below — SearXNG has
+        // no offset param of its own, so the caller-visible window is applied
+        // client-side after cross-page dedup.
+        let total = limit.saturating_add(offset).max(1);
+        let time_range = request.time_range.map(time_range_param);
         let mut items: Vec<SearchResultItem> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         for pageno in 1..=MAX_PAGES {
-            if items.len() >= limit {
+            if items.len() >= total {
                 break;
             }
             let rows = self
-                .fetch_page(&client, &endpoint, &request.query, pageno)
+                .fetch_page(&client, &endpoint, &request.query, pageno, time_range)
                 .await?;
             if rows.is_empty() {
                 break;
             }
             for row in rows {
-                if items.len() >= limit {
+                if items.len() >= total {
                     break;
                 }
                 if row.url.is_empty() || !seen.insert(row.url.clone()) {
@@ -234,7 +242,7 @@ impl SearchProvider for SearxngSearchProvider {
         self.health.record_success().await;
         Ok(SearchResult {
             query: request.query,
-            results: items,
+            results: items.into_iter().skip(offset).take(limit).collect(),
         })
     }
 
@@ -259,7 +267,12 @@ impl SearchProvider for SearxngSearchProvider {
                 timeout_ms: Some(self.config.timeout.as_millis() as u64),
                 ..ProviderLimits::default()
             },
-            features: vec!["json".to_string(), "pagination".to_string()],
+            features: vec![
+                "json".to_string(),
+                "pagination".to_string(),
+                "offset".to_string(),
+                "time_range".to_string(),
+            ],
             cooldown_until,
             last_error,
             reservation_policy: ReservationPolicy {
@@ -281,6 +294,16 @@ impl SearchProvider for SearxngSearchProvider {
             render: None,
             credential: None,
         })
+    }
+}
+
+/// Map the boundary [`SearchTimeRange`] to SearXNG's `time_range` query value.
+fn time_range_param(tr: SearchTimeRange) -> &'static str {
+    match tr {
+        SearchTimeRange::Day => "day",
+        SearchTimeRange::Week => "week",
+        SearchTimeRange::Month => "month",
+        SearchTimeRange::Year => "year",
     }
 }
 
