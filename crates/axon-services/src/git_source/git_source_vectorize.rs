@@ -1,3 +1,4 @@
+use axon_adapters::SourceEnricher;
 use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
@@ -57,7 +58,9 @@ pub(super) async fn vectorize_changed_documents(
 ) -> anyhow::Result<VectorizeResult> {
     let mut result = VectorizeResult::default();
     for batch_diff in changed_diff_batches(diff, GIT_CHANGED_DOCUMENT_BATCH_SIZE) {
-        let documents = prepare_changed_documents(run, &batch_diff, generation).await?;
+        let documents =
+            prepare_changed_documents(run, &batch_diff, generation, input.enricher.as_ref())
+                .await?;
         for prepared_batch in prepared_document_batches(documents, GIT_CHANGED_CHUNK_BATCH_SIZE) {
             let batch_result = vectorize_documents(
                 input,
@@ -85,19 +88,29 @@ async fn prepare_changed_documents(
     run: &GitAdapterRun,
     diff: &SourceManifestDiff,
     generation: &SourceGenerationId,
+    enricher: &dyn SourceEnricher,
 ) -> anyhow::Result<Vec<PreparedDocument>> {
-    let source_documents = normalize_changed_documents(run, diff).await?;
-    let mut documents = Vec::with_capacity(source_documents.len());
+    let mut normalized = normalize_changed_documents(run, diff, enricher).await?;
+    let mut documents = Vec::with_capacity(normalized.documents.len());
     let preparer = DocumentPreparer::default();
-    for document in source_documents {
+    for document in normalized.documents.drain(..) {
         let item_key = document.source_item_key.0.clone();
+        // Enrichment-produced graph candidates (source-pipeline.md `enriching`
+        // stage) bypass `DocumentPreparer`'s self-parse for this document, same
+        // as any other caller-supplied `parse_facts`/`graph_candidates`. Empty
+        // with the production-default `NoopSourceEnricher`, so behavior is
+        // unchanged until a per-source-kind enricher contributes candidates.
+        let graph_candidates = normalized
+            .graph_candidates_by_item
+            .remove(&document.source_item_key)
+            .unwrap_or_default();
         let prepared = preparer
             .prepare(PrepareSourceDocumentRequest {
                 document,
                 generation: generation.clone(),
                 profile: None,
                 parse_facts: Vec::new(),
-                graph_candidates: Vec::new(),
+                graph_candidates,
                 warnings: Vec::new(),
                 errors: Vec::new(),
             })
