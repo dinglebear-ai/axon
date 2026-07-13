@@ -11,7 +11,7 @@ mod index_inputs;
 mod web_options;
 
 use anyhow::Context as _;
-use axon_api::source::{AuthScope, AuthSnapshot, JobId, SourceScope};
+use axon_api::source::{AuthScope, AuthSnapshot, JobId, MetadataMap, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
@@ -19,13 +19,17 @@ use web_options::web_crawl_options;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
+use crate::source::SourceExecutionContext;
+use crate::web_source::{
+    WebSourceJobExecution, index_web_source_with_execution, web_source_job_create_request,
+};
 use crate::{
     GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy, SessionSelector,
     WebSourceIndexInput, clone_git_repo, fetch_feed_to_file, fetch_reddit_dump,
     fetch_registry_dump, fetch_youtube_dump, index_feed_source_with_job, index_git_source_with_job,
     index_local_source_with_job, index_reddit_source_with_job, index_registry_source_with_job,
-    index_sessions_source_with_job, index_web_source_with_job, index_youtube_source_with_job,
-    parse_registry_target, parse_session_selector,
+    index_sessions_source_with_job, index_youtube_source_with_job, parse_registry_target,
+    parse_session_selector,
 };
 
 /// Placeholder job id — every `index_*_source_with_job` bridge creates the real
@@ -422,7 +426,7 @@ pub async fn dispatch_session(
 /// function's own parameter) overrides `cfg.max_pages` when set, matching the
 /// pre-Wave-1b behavior.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_web(
+pub(crate) async fn dispatch_web(
     cfg: &Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -432,6 +436,7 @@ pub async fn dispatch_web(
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
     max_pages: Option<u64>,
+    source_execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?}"
@@ -453,14 +458,44 @@ pub async fn dispatch_web(
         fetch_provider: runtime.fetch_provider.clone(),
         render_provider: runtime.render_provider.clone(),
     };
-    let output = index_web_source_with_job(
-        index_input,
-        runtime.jobs.as_ref(),
-        runtime.ledger.as_ref(),
-        runtime.embedding_provider.as_ref(),
-        runtime.vector_store.as_ref(),
-    )
-    .await
+    let output = if let Some(job_id) = source_execution.existing_job_id.clone() {
+        let execution = WebSourceJobExecution {
+            job_id,
+            owns_status: false,
+        };
+        index_web_source_with_execution(
+            index_input,
+            execution,
+            runtime.jobs.as_ref(),
+            runtime.ledger.as_ref(),
+            runtime.embedding_provider.as_ref(),
+            runtime.vector_store.as_ref(),
+        )
+        .await
+    } else {
+        let descriptor = runtime
+            .jobs
+            .create(web_source_job_create_request(
+                &index_input,
+                source_execution.priority,
+                source_execution.idempotency_key.clone(),
+                MetadataMap::new(),
+            ))
+            .await?;
+        let execution = WebSourceJobExecution {
+            job_id: descriptor.job_id,
+            owns_status: true,
+        };
+        index_web_source_with_execution(
+            index_input,
+            execution,
+            runtime.jobs.as_ref(),
+            runtime.ledger.as_ref(),
+            runtime.embedding_provider.as_ref(),
+            runtime.vector_store.as_ref(),
+        )
+        .await
+    }
     .map_err(|e| anyhow::anyhow!(e.to_string()))
     .context("web source indexing failed")?;
     Ok(IndexCounts {

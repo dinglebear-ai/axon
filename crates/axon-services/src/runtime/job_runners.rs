@@ -39,6 +39,7 @@ mod source_runner;
 use crawl_runner::CrawlRunner;
 use ingest_runner::IngestRunner;
 use source_runner::SourceRunner;
+pub(crate) use source_runner::run_source_request_with_context;
 
 /// Build the [`JobRunnerRegistry`] handed to the unified worker at
 /// composition time. Additive by design — any kind not registered here keeps

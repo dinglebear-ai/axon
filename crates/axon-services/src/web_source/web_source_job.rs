@@ -13,72 +13,114 @@ use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
+use super::WebSourceJobExecution;
 use super::{WebSourceIndexInput, WebSourceIndexOutput, index_web_source};
 
 /// Create a source job row, index the web source under it, and record terminal
 /// job status. `input.fetch_provider`/`render_provider` are the real
 /// acquisition boundary `WebSourceAdapter` calls during discover/acquire
 /// (issue #298 Wave 1b) — no crawl needs to have run beforehand.
-pub async fn index_web_source_with_job(
+pub(crate) async fn index_web_source_with_execution(
     mut input: WebSourceIndexInput,
+    execution: WebSourceJobExecution,
     jobs: &dyn JobStore,
     ledger: &dyn LedgerStore,
     embedding_provider: &dyn EmbeddingProvider,
     vector_store: &dyn VectorStore,
 ) -> anyhow::Result<WebSourceIndexOutput> {
-    let descriptor = jobs.create(job_create_request(&input)).await?;
-    input.job_id = descriptor.job_id;
+    input.job_id = execution.job_id;
 
-    // Transition Queued -> Running before indexing; the state machine rejects a
-    // direct Queued -> Completed. The other families run through a JobProgressSink
-    // that performs this transition; the web bridge sets status directly, so do
-    // it explicitly here.
-    jobs.update_status(JobStatusUpdate {
-        job_id: input.job_id,
-        source_id: None,
-        status: LifecycleStatus::Running,
-        phase: PipelinePhase::Preparing,
-        stage_id: None,
-        counts: None,
-        current: None,
-        message: Some("web source indexing".to_string()),
-        error: None,
-    })
-    .await?;
+    if execution.owns_status {
+        // Transition Queued -> Running before indexing; the state machine rejects a
+        // direct Queued -> Completed. The other families run through a JobProgressSink
+        // that performs this transition; the web bridge sets status directly, so do
+        // it explicitly here.
+        jobs.update_status(JobStatusUpdate {
+            job_id: input.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Preparing,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: Some("web source indexing".to_string()),
+            error: None,
+        })
+        .await?;
+    }
 
     match index_web_source(input.clone(), ledger, embedding_provider, vector_store).await {
         Ok(output) => {
-            record_terminal_status(
-                jobs,
-                input.job_id,
-                LifecycleStatus::Completed,
-                Some(counts_for_output(&output)),
-                None,
-            )
-            .await?;
+            if execution.owns_status {
+                record_terminal_status(
+                    jobs,
+                    input.job_id,
+                    LifecycleStatus::Completed,
+                    Some(counts_for_output(&output)),
+                    None,
+                )
+                .await?;
+            }
             Ok(output)
         }
         Err(err) => {
-            let source_error = terminal_source_error(&err);
-            if let Err(status_err) = record_terminal_status(
-                jobs,
-                input.job_id,
-                LifecycleStatus::Failed,
-                None,
-                Some(source_error),
-            )
-            .await
-            {
-                return Err(err.context(format!(
-                    "also failed to record terminal web source job failure: {status_err}"
-                )));
+            if execution.owns_status {
+                let source_error = terminal_source_error(&err);
+                if let Err(status_err) = record_terminal_status(
+                    jobs,
+                    input.job_id,
+                    LifecycleStatus::Failed,
+                    None,
+                    Some(source_error),
+                )
+                .await
+                {
+                    return Err(err.context(format!(
+                        "also failed to record terminal web source job failure: {status_err}"
+                    )));
+                }
             }
             Err(err)
         }
     }
 }
 
-fn job_create_request(input: &WebSourceIndexInput) -> JobCreateRequest {
+pub async fn index_web_source_with_job(
+    input: WebSourceIndexInput,
+    jobs: &dyn JobStore,
+    ledger: &dyn LedgerStore,
+    embedding_provider: &dyn EmbeddingProvider,
+    vector_store: &dyn VectorStore,
+) -> anyhow::Result<WebSourceIndexOutput> {
+    let descriptor = jobs
+        .create(job_create_request(
+            &input,
+            JobPriority::Background,
+            None,
+            MetadataMap::new(),
+        ))
+        .await?;
+    let execution = WebSourceJobExecution {
+        job_id: descriptor.job_id,
+        owns_status: true,
+    };
+    index_web_source_with_execution(
+        input,
+        execution,
+        jobs,
+        ledger,
+        embedding_provider,
+        vector_store,
+    )
+    .await
+}
+
+pub(crate) fn job_create_request(
+    input: &WebSourceIndexInput,
+    priority: JobPriority,
+    idempotency_key: Option<String>,
+    metadata: MetadataMap,
+) -> JobCreateRequest {
     JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
@@ -88,8 +130,8 @@ fn job_create_request(input: &WebSourceIndexInput) -> JobCreateRequest {
         parent_job_id: None,
         root_job_id: None,
         attempt: 1,
-        priority: JobPriority::Background,
-        idempotency_key: None,
+        priority,
+        idempotency_key,
         stage_plan: Vec::new(),
         request: Some(serde_json::json!({
             "source_kind": "web",
@@ -117,7 +159,7 @@ fn job_create_request(input: &WebSourceIndexInput) -> JobCreateRequest {
         result_schema: Some("source_result".to_string()),
         warnings: Vec::new(),
         error: None,
-        metadata: MetadataMap::new(),
+        metadata,
         deadline_at: None,
     }
 }

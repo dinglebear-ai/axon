@@ -122,9 +122,7 @@ impl UnifiedJobRunner for SourceRunner {
             })?;
 
         let ctx = self.service_context().await?;
-        let auth_snapshot: Option<AuthSnapshot> = Some(claimed.auth_snapshot.clone());
-
-        let run_fut = crate::source::index_source_with_auth(source_request, ctx, auth_snapshot);
+        let run_fut = run_source_request_with_context(claimed, source_request, ctx);
         let result = tokio::select! {
             _ = shutdown.cancelled() => return Err(source_error("source canceled")),
             result = run_fut => result,
@@ -135,6 +133,20 @@ impl UnifiedJobRunner for SourceRunner {
             Err(error) => Err(source_error(error.to_string())),
         }
     }
+}
+
+pub(crate) async fn run_source_request_with_context(
+    claimed: &UnifiedClaimedJob,
+    source_request: SourceRequest,
+    ctx: &ServiceContext,
+) -> anyhow::Result<SourceResult> {
+    let auth_snapshot: Option<AuthSnapshot> = Some(claimed.auth_snapshot.clone());
+    let execution = crate::source::SourceExecutionContext::existing_job(
+        claimed.job_id,
+        source_request.clone(),
+        auth_snapshot,
+    );
+    crate::source::index_source_with_execution(source_request, ctx, execution).await
 }
 
 /// Map the terminal [`SourceResult::status`] to the runner's `Result`.

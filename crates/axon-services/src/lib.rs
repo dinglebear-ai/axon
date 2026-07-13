@@ -126,6 +126,9 @@ mod client_contract_tests;
 #[path = "freshness_tests.rs"]
 mod freshness_tests;
 #[cfg(test)]
+#[path = "source_web_job_identity_tests.rs"]
+mod source_web_job_identity_tests;
+#[cfg(test)]
 #[path = "sync_tests.rs"]
 mod sync_tests;
 #[cfg(test)]
