@@ -171,7 +171,6 @@ pub async fn review(
     store: &SqliteMemoryStore,
     request: MemoryReviewRequest,
 ) -> Result<MemoryReviewResult> {
-    let now_secs = store.clock().now_epoch_secs();
     let limit = request.limit.unwrap_or(50).max(1);
     let conn = store.conn().lock().await;
     let mut stmt = conn
@@ -197,7 +196,6 @@ pub async fn review(
             memories.push(record);
         }
     }
-    let _ = now_secs;
     Ok(MemoryReviewResult {
         memories,
         cursor: None,
