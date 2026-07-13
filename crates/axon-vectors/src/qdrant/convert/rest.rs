@@ -165,8 +165,8 @@ pub fn eq2_filter_json(
     field_b: &str,
     value_b: impl Serialize,
 ) -> serde_json::Value {
-    let value_a = serde_json::to_value(value_a).unwrap_or_else(|_| serde_json::Value::Null);
-    let value_b = serde_json::to_value(value_b).unwrap_or_else(|_| serde_json::Value::Null);
+    let value_a = serde_json::to_value(value_a).unwrap_or(serde_json::Value::Null);
+    let value_b = serde_json::to_value(value_b).unwrap_or(serde_json::Value::Null);
     json!({
         "must": [
             match_json(field_a, &value_a),

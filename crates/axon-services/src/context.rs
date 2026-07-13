@@ -2,13 +2,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
+#[cfg(test)]
+use axon_adapters::NoopSourceEnricher;
+use axon_adapters::SourceEnricher;
 use axon_adapters::boundary::{FetchProvider, RenderProvider};
 #[cfg(test)]
 use axon_adapters::providers::{
     chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
 };
-use axon_adapters::{NoopSourceEnricher, SourceEnricher};
 use axon_api::source::ProviderId;
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;

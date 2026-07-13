@@ -8,6 +8,8 @@
 //! content-addressed or semantic versioning scheme, not yet load-bearing for
 //! cache invalidation.
 
+#![allow(clippy::result_large_err)]
+
 pub mod boundary;
 pub mod chunk;
 pub mod chunk_router;

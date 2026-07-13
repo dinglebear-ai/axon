@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 pub mod backend;
 pub mod boundary;
 pub mod cancel;

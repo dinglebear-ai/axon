@@ -725,6 +725,7 @@
         "watch_supported": true
       },
       {
+        "adapter": "upload",
         "credential_requirements": [],
         "default_scope": "file",
         "degraded_modes": [
@@ -929,6 +930,7 @@
         "watch_supported": true
       },
       {
+        "adapter": "deepwiki",
         "credential_requirements": [],
         "default_scope": "repo",
         "degraded_modes": [
@@ -1339,6 +1341,7 @@
         "watch_supported": true
       },
       {
+        "adapter": "cli_tool",
         "credential_requirements": [],
         "default_scope": "tool",
         "degraded_modes": [
@@ -1401,6 +1404,7 @@
         "watch_supported": false
       },
       {
+        "adapter": "mcp_tool",
         "credential_requirements": [],
         "default_scope": "tool",
         "degraded_modes": [
@@ -1460,6 +1464,7 @@
         "watch_supported": false
       },
       {
+        "adapter": "memory",
         "credential_requirements": [],
         "default_scope": "api",
         "degraded_modes": [
@@ -1529,7 +1534,7 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:df5b17cf8d5583dd604d4f16d6de1491038a99fca9dcf4243b0e2d4a66d22917",
+        "checksum": "sha256:6f9d764e75177b3bb54716815285138a8c71a65570d66751086b527f3d79d4b6",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

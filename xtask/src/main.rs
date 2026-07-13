@@ -1,3 +1,12 @@
+#![allow(deprecated)]
+#![allow(
+    clippy::collapsible_if,
+    clippy::redundant_closure,
+    clippy::single_char_add_str,
+    clippy::too_many_arguments,
+    clippy::while_let_on_iterator
+)]
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

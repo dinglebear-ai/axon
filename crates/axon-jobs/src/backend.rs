@@ -6,13 +6,6 @@ use crate::status::JobStatus;
 
 const WAIT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// Stringify any `Display` error into a `Box<dyn Error + Send + Sync>`.
-/// Used throughout `jobs/` and `services/` to satisfy `BackendResult` bounds
-/// when calling older functions that return `Box<dyn Error>` without Send+Sync.
-pub(crate) fn lift_err<E: std::fmt::Display>(e: E) -> Box<dyn std::error::Error + Send + Sync> {
-    e.to_string().into()
-}
-
 pub type JobId = Uuid;
 
 /// Which job table a job belongs to.

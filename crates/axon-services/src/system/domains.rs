@@ -22,12 +22,21 @@ fn payload_domain(payload: &serde_json::Value) -> String {
     payload
         .get("web_domain")
         .and_then(serde_json::Value::as_str)
+        .or_else(|| payload.get("domain").and_then(serde_json::Value::as_str))
         .unwrap_or("unknown")
         .to_string()
 }
 
 fn payload_url(payload: &serde_json::Value) -> String {
+    let has_target_domain = payload
+        .get("web_domain")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|domain| !domain.is_empty());
+    let legacy_url = (!has_target_domain)
+        .then(|| payload.get("url").and_then(serde_json::Value::as_str))
+        .flatten();
     canonical_uri_from_payload(payload)
+        .or(legacy_url)
         .unwrap_or_default()
         .to_string()
 }

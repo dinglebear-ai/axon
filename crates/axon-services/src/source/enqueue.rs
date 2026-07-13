@@ -75,7 +75,7 @@ pub async fn enqueue_source(
     if routed.kind == SourceInputKind::Unsupported {
         return Ok(result_map::route_error_result(
             &input,
-            axon_error::ApiError::new(
+            ApiError::new(
                 "source.route.unsupported_dispatch",
                 ErrorStage::Routing,
                 "resolved source kind does not have a source dispatch implementation yet",

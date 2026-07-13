@@ -143,10 +143,10 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         }
         let metadata = fs::metadata(&file)
             .map_err(|err| fs_error("adapter.upload.stat_failed", &file, err))?;
-        if let Some(max_file_bytes) = options.max_file_bytes {
-            if metadata.len() > max_file_bytes {
-                continue;
-            }
+        if let Some(max_file_bytes) = options.max_file_bytes
+            && metadata.len() > max_file_bytes
+        {
+            continue;
         }
         if !metadata.is_file() {
             continue;
@@ -376,10 +376,10 @@ fn root_for_item_keys(root: &Path, scope: SourceScope) -> &Path {
 }
 
 fn public_base_uri(canonical_uri: &str) -> String {
-    if let Some((scheme, rest)) = canonical_uri.split_once("://") {
-        if scheme == "upload" {
-            return format!("upload://{}", rest.trim_matches('/'));
-        }
+    if let Some((scheme, rest)) = canonical_uri.split_once("://")
+        && scheme == "upload"
+    {
+        return format!("upload://{}", rest.trim_matches('/'));
     }
     "upload://source".to_string()
 }

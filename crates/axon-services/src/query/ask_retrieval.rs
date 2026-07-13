@@ -195,9 +195,9 @@ fn build_ask_context_from_hits(
     let mut context = String::from(CONTEXT_PREFIX);
     let mut selected_urls: Vec<String> = Vec::new();
     let mut domains: BTreeSet<String> = BTreeSet::new();
-    let mut source_idx = 1usize;
 
-    for hit in hits.iter().take(chunk_limit) {
+    for (zero_based_source_idx, hit) in hits.iter().take(chunk_limit).enumerate() {
+        let source_idx = zero_based_source_idx + 1;
         let source = display_source(&hit.canonical_uri);
         let header = format!("## Top Chunk [S{}]: {}\n\n", source_idx, source);
         let body = defang_chunk_text(&hit.text);
@@ -221,7 +221,6 @@ fn build_ask_context_from_hits(
             domains.insert(host);
         }
         selected_urls.push(hit.canonical_uri.clone());
-        source_idx += 1;
     }
 
     let chunks_selected = selected_urls.len();

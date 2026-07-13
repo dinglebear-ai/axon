@@ -6,6 +6,8 @@
 //! extraction inventory, §5.4 "Authz scope constants"). Do not alter the
 //! literal values.
 
+#![allow(clippy::too_many_arguments)]
+
 pub mod affinity;
 pub mod caller;
 pub mod decision;

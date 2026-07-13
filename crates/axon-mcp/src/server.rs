@@ -314,8 +314,7 @@ impl ServerHandler for AxonMcpServer {
         // these two actions are covered right now.
         let base_required_scope =
             required_scope_for_tool(request.name.as_ref(), &action, &subaction);
-        let required_scope =
-            server_authz::required_scope_with_mutates_if(&action, base_required_scope);
+        let required_scope = required_scope_with_mutates_if(&action, base_required_scope);
         match (auth, required_scope) {
             // Deny: sentinel returned for unknown actions — even with a valid
             // token, we refuse rather than accidentally granting access.

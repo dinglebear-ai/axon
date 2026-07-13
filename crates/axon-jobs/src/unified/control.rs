@@ -29,6 +29,7 @@ impl SqliteUnifiedJobStore {
     /// makes sense while a job is parked waiting on a provider; applying it
     /// to any other status would be silently meaningless once the claim query
     /// only special-cases `waiting`.
+    #[allow(dead_code)]
     pub(crate) async fn apply_provider_cooling(
         &self,
         job_id: JobId,

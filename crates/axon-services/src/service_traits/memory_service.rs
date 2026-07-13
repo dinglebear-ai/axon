@@ -141,7 +141,7 @@ fn fake_record(memory_id: MemoryId, request: &MemoryRequest) -> MemoryRecord {
     MemoryRecord {
         memory_id,
         memory_type: request.memory_type,
-        status: axon_api::source::MemoryStatus::Active,
+        status: MemoryStatus::Active,
         body: request.body.clone(),
         confidence: request.confidence,
         salience: request.salience,
@@ -376,7 +376,7 @@ impl MemoryService for FakeMemoryService {
         let record = records
             .get_mut(&memory_id.0)
             .ok_or_else(|| anyhow::anyhow!("memory {} not found", memory_id.0))?;
-        record.status = axon_api::source::MemoryStatus::Forgotten;
+        record.status = MemoryStatus::Forgotten;
         Ok(record_to_result(record))
     }
 

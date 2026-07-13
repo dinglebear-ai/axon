@@ -137,10 +137,10 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         let safe_path = safe_item_path(root_for_keys, &key)?;
         let metadata = fs::metadata(&safe_path)
             .map_err(|err| fs_error("adapter.local.stat_failed", &safe_path, err))?;
-        if let Some(max_file_bytes) = options.max_file_bytes {
-            if metadata.len() > max_file_bytes {
-                continue;
-            }
+        if let Some(max_file_bytes) = options.max_file_bytes
+            && metadata.len() > max_file_bytes
+        {
+            continue;
         }
         if !metadata.is_file() {
             continue;
@@ -349,10 +349,10 @@ fn root_for_item_keys(root: &Path, scope: SourceScope) -> &Path {
 }
 
 fn public_base_uri(canonical_uri: &str) -> String {
-    if let Some((scheme, rest)) = canonical_uri.split_once("://") {
-        if scheme == "local" {
-            return format!("local://{}", rest.trim_matches('/'));
-        }
+    if let Some((scheme, rest)) = canonical_uri.split_once("://")
+        && scheme == "local"
+    {
+        return format!("local://{}", rest.trim_matches('/'));
     }
     "local://source".to_string()
 }

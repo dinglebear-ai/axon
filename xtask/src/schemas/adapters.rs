@@ -20,6 +20,7 @@ pub fn adapter_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     Ok(vec![capability, markdown])
 }
 
+#[allow(dead_code)]
 pub fn generate_adapter_capability_artifact() -> Result<SchemaArtifact> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -297,6 +298,7 @@ fn adapter_json(adapter: &AdapterDefinition) -> Result<Value> {
 fn matrix_json(spec: &SourceAdapterSpec) -> Result<Value> {
     let mut value = json!({
         "family": source_family_wire(spec.family),
+        "adapter": spec.adapter,
         "version": spec.version,
         "source_kinds": wire_list(spec.source_kinds)?,
         "vector_namespace": spec.vector_namespace,
@@ -329,9 +331,7 @@ fn matrix_json(spec: &SourceAdapterSpec) -> Result<Value> {
         "optional_graph_fact_kinds": spec.optional_graph_fact_kinds,
     });
     let object = value.as_object_mut().expect("matrix record object");
-    if spec.is_source_adapter {
-        object.insert("adapter".to_string(), json!(spec.adapter));
-    } else {
+    if !spec.is_source_adapter {
         object.insert("integration".to_string(), json!(spec.adapter));
     }
     Ok(value)

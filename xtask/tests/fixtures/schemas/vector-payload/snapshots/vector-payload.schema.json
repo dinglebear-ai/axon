@@ -9551,7 +9551,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:f9ee03f30e3972cf07002859ad51ccee9c66b000f1b35f812f30c24fc3d185d9",
+        "checksum": "sha256:16b14941e8d74d4475bd678248c9db1363ea6504252f8f58506eb4e83a4f543a",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -9561,7 +9561,7 @@
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
       {
-        "checksum": "sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2",
+        "checksum": "sha256:5888f298ef6deb59b3a932cca604ff0749147dee1f2486fe84bd44ba8ebc9cc7",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },

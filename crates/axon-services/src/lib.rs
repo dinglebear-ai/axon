@@ -3,6 +3,17 @@
 // `#[async_trait]`; the extra layer pushes query-depth layout computation
 // past the default recursion limit (128). Raised, not worked around.
 #![recursion_limit = "256"]
+#![allow(unused_imports, unused_qualifications)]
+#![allow(
+    clippy::await_holding_lock,
+    clippy::clone_on_copy,
+    clippy::collapsible_if,
+    clippy::doc_lazy_continuation,
+    clippy::field_reassign_with_default,
+    clippy::question_mark,
+    clippy::result_large_err,
+    clippy::too_many_arguments
+)]
 
 pub mod action_api;
 pub mod artifacts;

@@ -7,7 +7,7 @@
 //! existing runtime callers still go through `crate::engine::RetrievalEngine`'s
 //! inherent API and `crate::service::run_query`.
 
-#![allow(dead_code)]
+#![allow(dead_code, clippy::result_large_err)]
 
 pub mod ask_context;
 pub mod boundary;

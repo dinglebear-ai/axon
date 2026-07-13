@@ -143,13 +143,11 @@ impl AxonMcpServer {
         let store = self.open_store().await?;
         let update = WatchUpdateRequest {
             enabled: req.enabled,
-            schedule: req
-                .every_seconds
-                .map(|every_seconds| axon_api::source::WatchSchedule {
-                    every_seconds: every_seconds.max(0) as u64,
-                    cron: None,
-                    timezone: None,
-                }),
+            schedule: req.every_seconds.map(|every_seconds| WatchSchedule {
+                every_seconds: every_seconds.max(0) as u64,
+                cron: None,
+                timezone: None,
+            }),
             options: None,
             embed: None,
             collection: req.collection.clone(),

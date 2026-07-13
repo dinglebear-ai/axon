@@ -126,10 +126,10 @@ pub struct AdapterRegistry {
 impl AdapterRegistry {
     pub fn from_adapters(mut adapters: Vec<AdapterDefinition>) -> Self {
         for adapter in &mut adapters {
-            if let Some(minimum) = minimum_safety_class(adapter.source_kind) {
-                if safety_rank(adapter.safety_class) < safety_rank(minimum) {
-                    adapter.safety_class = minimum;
-                }
+            if let Some(minimum) = minimum_safety_class(adapter.source_kind)
+                && safety_rank(adapter.safety_class) < safety_rank(minimum)
+            {
+                adapter.safety_class = minimum;
             }
             if !adapter.supported_scopes.contains(&adapter.default_scope) {
                 adapter.supported_scopes.push(adapter.default_scope);

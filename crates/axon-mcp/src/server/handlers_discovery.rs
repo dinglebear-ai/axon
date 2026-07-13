@@ -78,15 +78,14 @@ impl AxonMcpServer {
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .ok_or_else(|| invalid_params("providers.get requires `provider_id`"))?;
-                let found = providers
+                providers
                     .into_iter()
                     .find(|p| p["id"] == provider_id)
                     .ok_or_else(|| {
                         invalid_params(format!(
                             "provider.unavailable: unknown provider `{provider_id}`"
                         ))
-                    })?;
-                found
+                    })?
             }
             other => {
                 return Err(invalid_params(format!(

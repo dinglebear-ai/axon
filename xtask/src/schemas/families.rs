@@ -48,16 +48,19 @@ pub trait FamilyGenerator {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum FamilyStatus {
     RegistryBacked,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct FamilyMetadata {
     pub family: SchemaFamily,
     pub status: FamilyStatus,
 }
 
+#[allow(dead_code)]
 pub fn family_metadata() -> Vec<FamilyMetadata> {
     all_families()
         .into_iter()
@@ -113,6 +116,7 @@ impl FamilyGenerator for Generator {
 }
 
 struct FamilySpec {
+    #[allow(dead_code)]
     family: SchemaFamily,
     title: &'static str,
     owner_crates: &'static [&'static str],

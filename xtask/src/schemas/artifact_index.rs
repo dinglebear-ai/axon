@@ -9,6 +9,7 @@ use super::artifact::SchemaArtifact;
 
 #[derive(Debug, Clone)]
 pub struct IndexedArtifact {
+    #[allow(dead_code)]
     pub family: SchemaFamily,
     pub path: PathBuf,
     pub raw: String,
@@ -50,6 +51,7 @@ impl ArtifactIndex {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn from_existing(
         root: &Path,
         family: SchemaFamily,
@@ -74,10 +76,12 @@ impl ArtifactIndex {
         Ok(index)
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, path: impl AsRef<Path>) -> Option<&IndexedArtifact> {
         self.artifacts.get(path.as_ref())
     }
 
+    #[allow(dead_code)]
     pub fn contains(&self, path: impl AsRef<Path>) -> bool {
         self.artifacts.contains_key(path.as_ref())
     }

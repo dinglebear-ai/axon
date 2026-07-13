@@ -1,10 +1,10 @@
+#[cfg(test)]
 mod format;
-
-pub(crate) use format::{format_error, job_runtime_text};
 
 use serde_json::Value;
 
 /// Extract the `"collection"` string from a job's `config_json`, if present.
+#[cfg(test)]
 pub(crate) fn collection_from_config(config_json: &Value) -> Option<&str> {
     config_string(config_json, "collection")
 }

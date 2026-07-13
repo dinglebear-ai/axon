@@ -13,6 +13,7 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use std::sync::Arc;
 
+#[cfg(test)]
 pub(super) use self::registry_source_adapter::registry_source_id;
 use self::registry_source_adapter::{
     RegistryAdapterRun, collection_spec, discover_manifest, resolve_adapter_run, source_summary,
