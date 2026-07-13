@@ -1,9 +1,13 @@
+mod job_execution;
 mod publish;
 mod run;
 mod vectorize;
 mod web_source_job;
 
+pub(crate) use self::job_execution::WebSourceJobExecution;
+pub(crate) use self::web_source_job::index_web_source_with_execution;
 pub use self::web_source_job::index_web_source_with_job;
+pub(crate) use self::web_source_job::job_create_request as web_source_job_create_request;
 
 use std::sync::Arc;
 

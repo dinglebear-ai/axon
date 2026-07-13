@@ -24,6 +24,7 @@ pub mod authorize;
 pub mod classify;
 pub mod dispatch;
 pub mod enqueue;
+pub(crate) mod execution;
 pub mod graph;
 pub mod job_tracking;
 pub mod prune;
@@ -40,6 +41,7 @@ use std::fmt;
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use classify::SourceInputKind;
+pub(crate) use execution::SourceExecutionContext;
 use result_map::{IndexCounts, to_source_result};
 
 /// Stable owner id used to lease sources indexed through this orchestrator when
@@ -165,10 +167,27 @@ pub async fn index_source(
     index_source_with_auth(request, ctx, None).await
 }
 
+pub(crate) async fn index_source_with_execution(
+    request: SourceRequest,
+    ctx: &ServiceContext,
+    execution: SourceExecutionContext,
+) -> anyhow::Result<SourceResult> {
+    index_source_inner(request, ctx, execution).await
+}
+
 pub async fn index_source_with_auth(
     request: SourceRequest,
     ctx: &ServiceContext,
     auth_snapshot: Option<AuthSnapshot>,
+) -> anyhow::Result<SourceResult> {
+    let execution = SourceExecutionContext::inline(request.clone(), auth_snapshot);
+    index_source_inner(request, ctx, execution).await
+}
+
+async fn index_source_inner(
+    request: SourceRequest,
+    ctx: &ServiceContext,
+    execution: SourceExecutionContext,
 ) -> anyhow::Result<SourceResult> {
     let input = request.source.trim().to_string();
     if input.is_empty() {
@@ -191,11 +210,13 @@ pub async fn index_source_with_auth(
     if let Err(err) = authorize::authorize_route(&route) {
         return Ok(result_map::route_error_result(&input, err));
     }
-    if let Err(err) = authorize::authorize_safety_class(route.safety_class, auth_snapshot.as_ref())
+    if let Err(err) =
+        authorize::authorize_safety_class(route.safety_class, execution.auth_snapshot.as_ref())
     {
         return Ok(result_map::route_error_result(&input, err));
     }
-    if let Err(err) = authorize_local_source_policy(&input, kind, auth_snapshot.as_ref()) {
+    if let Err(err) = authorize_local_source_policy(&input, kind, execution.auth_snapshot.as_ref())
+    {
         return Ok(result_map::route_error_result(&input, err));
     }
     if kind == SourceInputKind::Unsupported {
@@ -236,10 +257,11 @@ pub async fn index_source_with_auth(
         &input,
         &collection,
         owner_id,
-        auth_snapshot.as_ref(),
+        execution.auth_snapshot.as_ref(),
         request.embed,
         &request.limits,
         &route,
+        &execution,
     )
     .await?;
 
@@ -265,7 +287,7 @@ pub async fn index_source_with_auth(
     job_tracking::track_graph_mutation(
         ctx.job_store(),
         counts.job_id,
-        auth_snapshot.as_ref(),
+        execution.auth_snapshot.as_ref(),
         &graph,
     )
     .await;
@@ -294,7 +316,7 @@ pub async fn index_source_with_auth(
     job_tracking::track_prune(
         ctx.job_store(),
         counts.job_id,
-        auth_snapshot.as_ref(),
+        execution.auth_snapshot.as_ref(),
         &drain,
     )
     .await;
@@ -398,6 +420,7 @@ async fn dispatch_kind(
     embed: bool,
     limits: &axon_api::source::SourceLimits,
     route: &axon_api::source::RoutePlan,
+    execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
         SourceInputKind::Local => {
@@ -471,6 +494,7 @@ async fn dispatch_kind(
                 auth_snapshot,
                 embed,
                 limits.max_pages,
+                execution,
             )
             .await
         }
