@@ -1,8 +1,12 @@
 use super::*;
 use axon_api::source::enums::LifecycleStatus;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
-use axon_api::source::prune::{PruneSelector, PruneTargetKind};
+use axon_api::source::prune::{PruneSelector, PruneStep, PruneTargetKind};
 use axon_api::source::vector::VectorDeleteSelector;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::plan::PrunePlanner;
 use crate::testing::{FakePruneTarget, FakeScopeSource, cleanup_debt_estimate};
@@ -151,6 +155,51 @@ async fn generation_fence_blocks_current_generation() {
         out,
         Err(crate::safety::PruneDenied::CurrentGenerationFenced { .. })
     ));
+}
+
+#[tokio::test]
+async fn fence_check_error_denies_without_apply() {
+    let sel = PruneSelector::Generation {
+        source_id: SourceId::new("owner/repo"),
+        generation: SourceGenerationId::new("gen-old"),
+    };
+    let est = axon_api::source::prune::PruneEstimate {
+        vector_points: 3,
+        ..Default::default()
+    };
+    let plan = PrunePlanner::new(FakeScopeSource::new(est)).resolve(&sel);
+    let applied = Arc::new(AtomicBool::new(false));
+    let target = FenceFailureTarget {
+        applied: Arc::clone(&applied),
+    };
+    let executor = PruneExecutor::new(target);
+
+    let out = executor.execute(&plan, &PruneAuthz::admin()).await;
+
+    assert!(matches!(
+        out,
+        Err(crate::safety::PruneDenied::FenceCheckFailed { .. })
+    ));
+    assert!(!applied.load(Ordering::SeqCst), "apply must not run");
+}
+
+struct FenceFailureTarget {
+    applied: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl PruneTarget for FenceFailureTarget {
+    async fn current_generation(
+        &self,
+        _source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
+        Err("ledger unavailable".to_string())
+    }
+
+    async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
+        self.applied.store(true, Ordering::SeqCst);
+        Ok(StepExecution::deleted(1))
+    }
 }
 
 #[tokio::test]

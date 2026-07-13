@@ -177,10 +177,13 @@ struct DedupeExecTarget<'a> {
 
 #[async_trait]
 impl PruneTarget for DedupeExecTarget<'_> {
-    async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
+    async fn current_generation(
+        &self,
+        _source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
         // Dedupe is collection-wide, not source/generation scoped — nothing
         // to fence against.
-        None
+        Ok(None)
     }
 
     async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
