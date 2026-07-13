@@ -151,3 +151,89 @@ async fn search_batch_empty_queries_returns_empty() {
     .expect("search_batch with empty queries should not fail");
     assert!(result.results.is_empty());
 }
+
+// ── search_results delegation ───────────────────────────────────────────────
+
+mod search_results_delegation_tests {
+    use super::*;
+    use axon_core::http::LoopbackGuard;
+    use httpmock::MockServer;
+
+    fn searx_json(results: &[(&str, &str, &str)]) -> serde_json::Value {
+        serde_json::json!({
+            "results": results
+                .iter()
+                .map(|(url, title, content)| {
+                    serde_json::json!({ "url": url, "title": title, "content": content })
+                })
+                .collect::<Vec<_>>()
+        })
+    }
+
+    /// `search_results` positions must be `offset + i + 1`, recomputed after
+    /// delegating the fetch/window step to `SearxngSearchProvider`.
+    #[tokio::test]
+    async fn search_results_recomputes_position_from_offset() {
+        let _loopback = LoopbackGuard::allow();
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/search");
+                then.status(200).json_body(searx_json(&[
+                    ("https://a.test/1", "1", "c1"),
+                    ("https://a.test/2", "2", "c2"),
+                    ("https://a.test/3", "3", "c3"),
+                ]));
+            })
+            .await;
+        let mut cfg = Config::test_default();
+        cfg.searxng_url = server.base_url();
+
+        let results = search_results(&cfg, "q", 1, 2, None)
+            .await
+            .expect("search_results should succeed");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["position"], 3);
+        assert_eq!(results[0]["url"], "https://a.test/3");
+    }
+
+    /// The 100-result pagination cap only applies to the Tavily fallback path
+    /// — SearXNG walks its own pages internally and is not capped here. This
+    /// asymmetry predates the provider delegation; this test guards against
+    /// losing it.
+    #[tokio::test]
+    async fn search_results_pagination_cap_not_enforced_for_searxng() {
+        let _loopback = LoopbackGuard::allow();
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/search");
+                then.status(200)
+                    .json_body(searx_json(&[("https://a.test/1", "1", "c1")]));
+            })
+            .await;
+        let mut cfg = Config::test_default();
+        cfg.searxng_url = server.base_url();
+
+        // limit=60 + offset=50 = 110 > SEARCH_WINDOW_MAX(100): this would be
+        // rejected on the Tavily path but must succeed here.
+        let results = search_results(&cfg, "q", 60, 50, None)
+            .await
+            .expect("searxng path must not enforce the tavily-only pagination cap");
+        assert!(results.len() <= 1);
+    }
+
+    /// The same oversized window IS rejected on the Tavily fallback path,
+    /// before any network call (fails on the pagination-window check itself).
+    #[tokio::test]
+    async fn search_results_pagination_cap_enforced_for_tavily_fallback() {
+        let mut cfg = Config::test_default();
+        cfg.tavily_api_key = "tvly-test-key".to_string();
+        assert!(cfg.searxng_url.is_empty());
+
+        let err = search_results(&cfg, "q", 60, 50, None)
+            .await
+            .expect_err("110 > SEARCH_WINDOW_MAX must be rejected");
+        assert!(err.to_string().contains("search window too large"));
+    }
+}

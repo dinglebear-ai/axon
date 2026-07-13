@@ -1,5 +1,5 @@
 mod job_tracking;
-mod searxng;
+mod provider;
 mod synthesis;
 
 pub use synthesis::{research, research_with_context};
@@ -7,7 +7,7 @@ pub use synthesis::{research, research_with_context};
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::{ResearchResult, SearchOptions, SearchResult, ServiceTimeRange};
 use axon_core::config::Config;
-use spider_agent::{Agent, SearchOptions as SpiderSearchOptions, TimeRange};
+use spider_agent::TimeRange;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
@@ -169,10 +169,13 @@ fn looks_like_secret_token(token: &str) -> bool {
 
 /// Execute a web search and return raw JSON result items.
 ///
-/// Uses self-hosted SearXNG when `cfg.searxng_url` is set; falls back to
-/// Tavily otherwise. The `enforce_pagination_window` guard only applies to
-/// the Tavily path — Tavily caps results at `SEARCH_WINDOW_MAX` per query,
-/// while SearXNG walks pages internally up to its own `MAX_SEARXNG_PAGES` limit.
+/// Uses self-hosted SearXNG when `cfg.searxng_url` is set (delegating to
+/// [`axon_adapters::providers::searxng_search::SearxngSearchProvider`]);
+/// falls back to Tavily otherwise (delegating to
+/// [`axon_adapters::providers::tavily_search::TavilySearchProvider`]). The
+/// `enforce_pagination_window` guard only applies to the Tavily path — Tavily
+/// caps results at `SEARCH_WINDOW_MAX` per query, while SearXNG walks pages
+/// internally up to its own page-walk limit.
 pub async fn search_results(
     cfg: &Config,
     query: &str,
@@ -180,49 +183,20 @@ pub async fn search_results(
     offset: usize,
     time_range: Option<TimeRange>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    // Prefer self-hosted SearXNG when configured; fall back to Tavily otherwise.
-    if !cfg.searxng_url.is_empty() {
-        let total = limit.saturating_add(offset).max(1);
-        let hits = searxng::searxng_search(cfg, query, total, time_range).await?;
-        return Ok(hits
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .enumerate()
-            .map(|(i, h)| {
-                serde_json::json!({
-                    "position": offset + i + 1,
-                    "title": h.title,
-                    "url": h.url,
-                    "snippet": h.snippet,
-                })
-            })
-            .collect());
+    if cfg.searxng_url.is_empty() {
+        // Tavily path: enforce the API's hard result-count cap before calling out.
+        enforce_pagination_window(limit, offset)?;
     }
-
-    // Tavily path: enforce the API's hard result-count cap before calling out.
-    enforce_pagination_window(limit, offset)?;
-    ensure_tavily_configured(cfg, "search")?;
-    let total = limit.saturating_add(offset).max(1);
-    let mut search_opts = SpiderSearchOptions::new().with_limit(total);
-    if let Some(tr) = time_range {
-        search_opts = search_opts.with_time_range(tr);
-    }
-    let agent = Agent::builder()
-        .with_search_tavily(&cfg.tavily_api_key)
-        .build()?;
-    let results = agent.search_with_options(query, search_opts).await?;
-    Ok(results
-        .results
-        .iter()
-        .skip(offset)
-        .take(limit)
-        .map(|r| {
+    let items = provider::run_search(cfg, query, limit, offset, time_range, "search").await?;
+    Ok(items
+        .into_iter()
+        .enumerate()
+        .map(|(i, item)| {
             serde_json::json!({
-                "position": r.position,
-                "title": r.title,
-                "url": r.url,
-                "snippet": r.snippet,
+                "position": offset + i + 1,
+                "title": item.title,
+                "url": item.url,
+                "snippet": item.snippet,
             })
         })
         .collect())

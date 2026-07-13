@@ -6,11 +6,31 @@ use super::common::*;
 use super::enums::CredentialKind;
 use super::ids::*;
 
+/// Result recency filter for [`SearchRequest`]. Mirrors `spider_agent::TimeRange`'s
+/// four named variants (its `Custom { start, end }` range is not exposed here —
+/// no axon caller has ever constructed one; see `ServiceTimeRange` in
+/// `axon-services`, which has the same four-variant shape).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchTimeRange {
+    Day,
+    Week,
+    Month,
+    Year,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchRequest {
     pub query: String,
     pub limit: u32,
+    /// Number of leading results to skip before `limit` is applied.
+    /// `0` (the default) returns the first page.
+    #[serde(default)]
+    pub offset: u32,
+    /// Restrict results to a recency window (provider-dependent support).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_range: Option<SearchTimeRange>,
     pub metadata: MetadataMap,
 }
 

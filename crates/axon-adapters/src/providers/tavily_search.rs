@@ -2,16 +2,16 @@
 //! `spider_agent`'s built-in Tavily AI Search client
 //! (`spider_agent::Agent::builder().with_search_tavily(api_key)`), the same
 //! client `axon-services`'s `search`/`research` Tavily path already uses
-//! (see `crates/axon-services/src/search.rs` and
-//! `crates/axon-services/src/search/synthesis.rs`). This reuses
+//! (see `crates/axon-services/src/search/provider.rs`). This reuses
 //! `spider_agent`'s HTTP handling and JSON parsing directly rather than
 //! hand-rolling a second Tavily client.
 //!
 //! Design choice (Wave 1a of issue #298, matching [`super::http_fetch`] /
-//! [`super::chrome_render`] / [`super::searxng_search`]): not yet wired into
-//! `axon-services` or `WebSourceAdapter` — see the `providers` module doc
-//! comment for the same scaffolding note that applies to the other real
-//! providers here.
+//! [`super::chrome_render`] / [`super::searxng_search`]): **wired into
+//! `axon-services`** as of issue #298 WS-D — `search`/`research` delegate
+//! their Tavily path (the fallback when `cfg.searxng_url` is unset) to this
+//! provider. Not yet wired into `WebSourceAdapter`'s acquisition path — see
+//! the `providers` module doc comment.
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -118,11 +118,30 @@ fn map_results(query: String, results: spider_agent::SearchResults) -> SearchRes
     }
 }
 
+/// Map the boundary [`SearchTimeRange`] to `spider_agent`'s `TimeRange`.
+fn map_time_range(tr: SearchTimeRange) -> spider_agent::TimeRange {
+    match tr {
+        SearchTimeRange::Day => spider_agent::TimeRange::Day,
+        SearchTimeRange::Week => spider_agent::TimeRange::Week,
+        SearchTimeRange::Month => spider_agent::TimeRange::Month,
+        SearchTimeRange::Year => spider_agent::TimeRange::Year,
+    }
+}
+
 #[async_trait]
 impl SearchProvider for TavilySearchProvider {
     async fn search(&self, request: SearchRequest) -> Result<SearchResult> {
-        let options = TavilySearchOptions::new().with_limit((request.limit as usize).max(1));
-        let results = match self
+        let limit = (request.limit as usize).max(1);
+        let offset = request.offset as usize;
+        // Tavily has no offset param of its own: request `offset + limit`
+        // results (it numbers `position` sequentially from 1) and window
+        // client-side below.
+        let total = limit.saturating_add(offset).max(1);
+        let mut options = TavilySearchOptions::new().with_limit(total);
+        if let Some(tr) = request.time_range {
+            options = options.with_time_range(map_time_range(tr));
+        }
+        let mut results = match self
             .agent
             .search_with_options(&request.query, options)
             .await
@@ -130,6 +149,7 @@ impl SearchProvider for TavilySearchProvider {
             Ok(results) => results,
             Err(err) => return Err(self.record_search_error(&err).await),
         };
+        results.results = results.results.into_iter().skip(offset).take(limit).collect();
 
         self.health.record_success().await;
         Ok(map_results(request.query, results))
@@ -153,7 +173,11 @@ impl SearchProvider for TavilySearchProvider {
             version: env!("CARGO_PKG_VERSION").to_string(),
             health,
             limits: ProviderLimits::default(),
-            features: vec!["ai_search".to_string()],
+            features: vec![
+                "ai_search".to_string(),
+                "offset".to_string(),
+                "time_range".to_string(),
+            ],
             cooldown_until,
             last_error,
             reservation_policy: ReservationPolicy {
