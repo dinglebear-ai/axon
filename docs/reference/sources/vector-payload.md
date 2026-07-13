@@ -14,7 +14,7 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-api/src/source/vector.rs` | `sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336` |
+| `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5` |
 | `crates/axon-vectors/src/payload_families.rs` | `sha256:8bbaac4ddff2dc10413ce58a59a78756cac29fec8bc2e17da2c12acc3481a4bf` |
 | `crates/axon-vectors/src/point.rs` | `sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2` |
