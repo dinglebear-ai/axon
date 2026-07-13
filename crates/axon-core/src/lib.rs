@@ -8,6 +8,7 @@ pub mod endpoints;
 pub mod env;
 pub mod error;
 pub mod events;
+pub mod hardening;
 pub mod health;
 pub mod http;
 pub mod llm;

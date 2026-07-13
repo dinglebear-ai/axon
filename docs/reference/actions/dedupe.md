@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon dedupe ...` |
-| REST | `POST /v1/dedupe` (Implemented) |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `services::system::dedupe` |
+| Service | `Not inventoried` |
 
-Parity notes: Mutating vector maintenance command; migrate remains CLI-only.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

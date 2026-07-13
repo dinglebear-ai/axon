@@ -22,10 +22,10 @@
 //! `SqliteUnifiedJobStore::create_job` / `find_by_idempotency_key`.
 
 use axon_api::source::{
-    AdapterRef, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap, SourceIntent,
-    SourceRequest, SourceResult,
+    AdapterRef, AuthScope, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap,
+    SourceIntent, SourceRequest, SourceResult,
 };
-use axon_error::ErrorStage;
+use axon_error::{ApiError, ErrorStage};
 use axon_jobs::boundary::JobStore;
 
 use super::authorize;
@@ -62,10 +62,20 @@ pub async fn enqueue_source(
     if let Err(err) = authorize::authorize_route(&routed.route) {
         return Ok(result_map::route_error_result(&input, err));
     }
+    if let Err(err) =
+        authorize::authorize_safety_class(routed.route.safety_class, auth_snapshot.as_ref())
+    {
+        return Ok(result_map::route_error_result(&input, err));
+    }
+    if let Err(err) =
+        authorize_detached_local_source_policy(&input, routed.kind, auth_snapshot.as_ref())
+    {
+        return Ok(result_map::route_error_result(&input, err));
+    }
     if routed.kind == SourceInputKind::Unsupported {
         return Ok(result_map::route_error_result(
             &input,
-            axon_error::ApiError::new(
+            ApiError::new(
                 "source.route.unsupported_dispatch",
                 ErrorStage::Routing,
                 "resolved source kind does not have a source dispatch implementation yet",
@@ -97,6 +107,21 @@ pub async fn enqueue_source(
         canonical_uri,
         descriptor,
     ))
+}
+
+fn authorize_detached_local_source_policy(
+    input: &str,
+    kind: SourceInputKind,
+    auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<(), ApiError> {
+    if kind != SourceInputKind::Local {
+        return Ok(());
+    }
+    let has_local_scope = auth_snapshot
+        .map(|snapshot| authorize::snapshot_allows_scope(snapshot, AuthScope::Local))
+        .unwrap_or(false);
+    super::enforce_local_source_policy(input, has_local_scope)
+        .map_err(|err| ApiError::new(err.code, ErrorStage::Authorizing, err.message))
 }
 
 /// Build the `JobKind::Source` create request. `claimed.request_json` on the

@@ -40,14 +40,32 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // owns document preparation DTO adapters, chunk routing profiles, fake
     // preparers, and sidecar tests.
     "crates/axon-document",
-    "crates/axon-crawl",
-    "crates/axon-vector",
-    "crates/axon-ingest",
-    // axon-extract was deleted outright in Phase 12 (clean break, not a
-    // staged cutover) -- see
-    // docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md.
-    // Its two genuinely self-contained pieces (extract_sync, generic
-    // scrape's HTTP-fetch fallback) moved to axon-services/axon-crawl.
+    // axon-vector was deleted outright (issue #298 finale, clean break, not a
+    // staged cutover): its last real dependent, `ask --explain`'s legacy
+    // reranker, was ported onto `axon-retrieval`'s hybrid RRF hits (see
+    // `crates/axon-services/src/query/ask_retrieval/explain.rs`); everything
+    // else the crate owned (TEI/Qdrant embed pipeline, code/markdown/text
+    // chunkers, ask/evaluate/suggest synthesis) had already moved to
+    // `axon-vectors`/`axon-embedding`/`axon-document`/`axon-retrieval`/
+    // `axon-services` in earlier #298 slices.
+    // axon-extract is restored as the transitional vertical-extractor catalog:
+    // removing it before re-homing the catalog behind adapter/parser ownership
+    // would drop source coverage for GitHub, registries, social/docs/product
+    // verticals, and package metadata enrichment.
+    "crates/axon-extract",
+    // axon-ingest was likewise deleted outright (issue #298 cleanup, not a
+    // staged cutover): its still-live pieces (sessions machinery, ingest
+    // orchestration/classification) moved to axon-services (sessions_legacy,
+    // ingest::{orchestrate,progress,classify_target,target_parse}); the
+    // provider-orchestration code it used to own for github/gitlab/gitea/
+    // generic_git/reddit/youtube/rss was deleted outright in the earlier
+    // Phase 12 clean break.
+    // axon-crawl was deleted outright (issue #298 Wave 2a, mechanical move not
+    // a rewrite): its Spider-based HTTP/Chrome crawl engine, manifest,
+    // sitemap, and screenshot modules relocated verbatim into
+    // `crates/axon-adapters/src/web_engine/` (re-exported at
+    // `axon_adapters::web_engine::*`), dropping the temporary
+    // axon-adapters -> axon-crawl dependency Wave 1a introduced.
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",

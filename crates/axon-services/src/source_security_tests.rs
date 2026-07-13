@@ -46,6 +46,24 @@ async fn local_source_denies_secret_paths_without_local_scope() {
 }
 
 #[tokio::test]
+async fn local_source_denies_secret_paths_with_local_scope() {
+    let value = read_fixture("security/local/env-file.invalid.json");
+
+    let err = enforce_local_source_policy(value["path"].as_str().unwrap(), true)
+        .expect_err("secret-like local paths are denied even with local scope");
+
+    assert_eq!(err.code, "security.local_secret_denied");
+}
+
+#[tokio::test]
+async fn local_source_denies_bare_env_file_with_local_scope() {
+    let err = enforce_local_source_policy(".env", true)
+        .expect_err("bare .env paths are denied before filesystem reads");
+
+    assert_eq!(err.code, "security.local_secret_denied");
+}
+
+#[tokio::test]
 async fn local_source_redacts_absolute_paths_from_public_payloads() {
     let value = read_fixture("security/local/env-file.invalid.json");
     let path = value["path"].as_str().unwrap();

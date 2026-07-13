@@ -18,11 +18,14 @@
 //! result step is only emitted when the boundary has a real, non-fabricated
 //! estimate.
 //!
-//! `axon-vectors::store::VectorStore` also has no live "count without
-//! deleting" primitive, so `plan()` cannot report a real point count for
-//! `Source`/`Generation`/`Collection` selectors either. Rather than fabricate a
-//! number, the plan carries a warning saying so — the dry-run still proves out
-//! the request is well-formed and authorized without lying about impact.
+//! `Source`/`Generation` selectors are sized from the ledger's committed
+//! manifest item count; `Collection` selectors are sized by counting points
+//! directly against the live vector store (`QdrantVectorStore::
+//! count_collection_points`) since a whole collection has no ledger-tracked
+//! source/generation to read a manifest for. For selectors this module cannot
+//! size at all yet (CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache), the
+//! plan carries a warning saying so — the dry-run still proves out the
+//! request is well-formed and authorized without lying about impact.
 //!
 //! ## Safety
 //!
@@ -34,11 +37,15 @@
 //! caller-derived authz is threaded in by [`prune_execute`]'s caller.
 
 use std::error::Error;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use axon_api::source::common::SourceWarning;
+use axon_api::source::enums::Severity;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneEstimate, PrunePlan, PruneRequest, PruneResult, PruneSelector};
 use axon_api::source::vector::VectorDeleteSelector;
+use axon_ledger::store::LedgerStore;
 use axon_prune::plan::PruneScopeSource;
 use axon_prune::{PruneExecutor, PrunePlanner, PruneTarget, StepExecution};
 // Re-exported so transports (CLI/MCP/REST) can construct/consume prune authz
@@ -59,40 +66,68 @@ use crate::context::ServiceContext;
 /// reports real ledger-backed counts for `Source`/`Generation` selectors.
 pub fn prune_plan(request: &PruneRequest) -> PrunePlan {
     let planner = PrunePlanner::new(NullScopeSource);
-    planner.resolve(&request.selector)
+    let mut plan = planner.resolve(&request.selector);
+    warn_if_unsupported(&mut plan);
+    plan
 }
 
 /// Real-count variant of [`prune_plan`]: reads `ctx`'s
 /// [`axon_ledger::store::LedgerStore`] for a genuine, non-fabricated impact
 /// estimate before resolving the plan.
 ///
-/// Only `Source`/`Generation` selectors are sizeable from the ledger today —
+/// `Source`/`Generation` selectors are sizeable from the ledger —
 /// `vector_points` is reported from the committed manifest's item count (a
-/// real, ledger-backed proxy for chunk count; `VectorStore` still has no
-/// count-without-deleting primitive, see module docs) and `ledger_generations`
+/// real, ledger-backed proxy for chunk count) and `ledger_generations`
 /// reflects whether a committed generation/manifest was actually found.
-/// Other selector shapes (`Collection`, `CleanupDebt`, `Artifact`, `Graph`,
-/// `Memory`, `JobRetention`, `Cache`) still resolve to a zero estimate for the
-/// same honest-zero reason `NullScopeSource` documents — the ledger has
-/// nothing to size for them.
+/// `Collection` selectors are sizeable from the live vector store instead (see
+/// [`estimate_collection_points`]) — the ledger has nothing to say about a
+/// whole collection. Other selector shapes (`CleanupDebt`, `Artifact`,
+/// `Graph`, `Memory`, `JobRetention`, `Cache`) still resolve to a zero
+/// estimate for the same honest-zero reason `NullScopeSource` documents —
+/// neither store has anything to size for them yet.
 pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) -> PrunePlan {
-    let estimate = match ctx.target_local_source_runtime() {
-        Some(runtime) => estimate_from_ledger(runtime.ledger.as_ref(), &request.selector).await,
-        // No target-local ledger wired for this `ServiceContext` (e.g. a
-        // pure-vector `ServiceContext::new`) — honest zero, same rationale as
-        // `NullScopeSource`.
-        None => PruneEstimate::default(),
+    let estimate = match &request.selector {
+        PruneSelector::Collection { collection } => {
+            estimate_collection_points(ctx, collection).await
+        }
+        _ => match ctx.target_local_source_runtime() {
+            Some(runtime) => estimate_from_ledger(runtime.ledger.as_ref(), &request.selector).await,
+            // No target-local ledger wired for this `ServiceContext` (e.g. a
+            // pure-vector `ServiceContext::new`) — honest zero, same
+            // rationale as `NullScopeSource`.
+            None => PruneEstimate::default(),
+        },
     };
-    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate));
-    planner.resolve(&request.selector)
+    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate))
+        .with_collection(ctx.cfg().collection.clone());
+    let mut plan = planner.resolve(&request.selector);
+    warn_if_unsupported(&mut plan);
+    plan
+}
+
+/// Real point-count estimate for a `Collection` selector: counts every point
+/// currently stored in `collection` via the live vector store (the same
+/// store `prune_execute` deletes against). Best-effort — an unreachable
+/// Qdrant or an absent collection degrades to the same honest zero
+/// `NullScopeSource`/`estimate_from_ledger` report elsewhere in this module,
+/// rather than erroring a dry-run plan.
+async fn estimate_collection_points(ctx: &ServiceContext, collection: &str) -> PruneEstimate {
+    let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    match vector_store
+        .count_collection_points(collection, axon_error::ErrorStage::Planning)
+        .await
+    {
+        Ok(count) => PruneEstimate {
+            vector_points: count,
+            ..Default::default()
+        },
+        Err(_) => PruneEstimate::default(),
+    }
 }
 
 /// Compute a real `PruneEstimate` for `selector` from ledger data. See
 /// [`prune_plan_estimated`] for what is and is not sizeable this way.
-async fn estimate_from_ledger(
-    ledger: &dyn axon_ledger::store::LedgerStore,
-    selector: &PruneSelector,
-) -> PruneEstimate {
+async fn estimate_from_ledger(ledger: &dyn LedgerStore, selector: &PruneSelector) -> PruneEstimate {
     match selector {
         PruneSelector::Source { source_id } => {
             match ledger.committed_generation(source_id.clone()).await {
@@ -106,15 +141,16 @@ async fn estimate_from_ledger(
             source_id,
             generation,
         } => manifest_estimate(ledger, source_id.clone(), generation.clone()).await,
-        // Collection/CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache
-        // selectors don't name a ledger-sizeable source+generation — honest
-        // zero, same as `NullScopeSource`.
+        // CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache selectors don't
+        // name a ledger-sizeable source+generation — honest zero, same as
+        // `NullScopeSource`. `Collection` is sized separately by
+        // `estimate_collection_points` before this function is ever called.
         _ => PruneEstimate::default(),
     }
 }
 
 async fn manifest_estimate(
-    ledger: &dyn axon_ledger::store::LedgerStore,
+    ledger: &dyn LedgerStore,
     source_id: SourceId,
     generation: SourceGenerationId,
 ) -> PruneEstimate {
@@ -125,6 +161,39 @@ async fn manifest_estimate(
             ..Default::default()
         },
         _ => PruneEstimate::default(),
+    }
+}
+
+/// Guidance for selectors this vector-only prune target cannot execute a delete
+/// against today. `Source`/`Generation`/`Collection` are wired; everything else
+/// (CleanupDebt, Artifact, Graph, Memory, JobRetention, Cache) has no store
+/// adapter, so executing it would silently delete nothing. We refuse loudly and
+/// warn on the plan instead.
+fn unsupported_selector_guidance(selector: &PruneSelector) -> Option<String> {
+    match selector {
+        PruneSelector::Source { .. }
+        | PruneSelector::Generation { .. }
+        | PruneSelector::Collection { .. } => None,
+        _ => Some(
+            "this selector's boundary has no delete adapter yet; only `--source` and \
+             `--generation` prunes are wired to a store today"
+                .to_string(),
+        ),
+    }
+}
+
+/// Push a warning onto the plan when its selector cannot be executed, so the
+/// dry-run (and the plan returned alongside an execute) never reads as a clean
+/// no-op success.
+fn warn_if_unsupported(plan: &mut PrunePlan) {
+    if let Some(guidance) = unsupported_selector_guidance(&plan.selector) {
+        plan.warnings.push(SourceWarning {
+            code: "prune.selector_unsupported".to_string(),
+            severity: Severity::Warning,
+            message: guidance,
+            source_item_key: None,
+            retryable: false,
+        });
     }
 }
 
@@ -162,10 +231,30 @@ pub async fn prune_execute(
         authz,
     )?;
 
+    // Refuse selectors with no wired delete adapter rather than running an empty
+    // plan and reporting a no-op as success (the vector-only target can only
+    // execute `Source`/`Generation`/`Collection`).
+    if let Some(guidance) = unsupported_selector_guidance(&plan.selector) {
+        return Err(PruneDenied::Unsupported {
+            selector: format!("{:?}", plan.selector),
+            guidance,
+        });
+    }
+
     let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    // Thread the target-local ledger (when this `ServiceContext` has one) so
+    // `current_generation()` can report the real committed generation and the
+    // executor's generation-fence actually fences. A `ServiceContext` with no
+    // ledger wired (e.g. a pure-vector context) leaves this `None`, matching
+    // `VectorOnlyPruneTarget::current_generation`'s documented "not fenced"
+    // degradation.
+    let ledger = ctx
+        .target_local_source_runtime()
+        .map(|runtime| Arc::clone(&runtime.ledger));
     let target = VectorOnlyPruneTarget {
         vector_store: &vector_store,
         collection: ctx.cfg().collection.clone(),
+        ledger,
     };
     let executor = PruneExecutor::new(target);
     executor.execute(plan, authz).await
@@ -210,6 +299,11 @@ impl PruneScopeSource for NullScopeSource {
 struct VectorOnlyPruneTarget<'a> {
     vector_store: &'a dyn VectorStore,
     collection: String,
+    /// The target-local ledger, when this target was built from a
+    /// `ServiceContext` that has one wired (see [`prune_execute`]). `None`
+    /// preserves the previous "not fenced" degradation for contexts with no
+    /// ledger (e.g. a pure-vector `ServiceContext::new`).
+    ledger: Option<Arc<dyn LedgerStore>>,
 }
 
 impl<'a> VectorOnlyPruneTarget<'a> {
@@ -218,18 +312,43 @@ impl<'a> VectorOnlyPruneTarget<'a> {
         Self {
             vector_store,
             collection: collection.into(),
+            ledger: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_ledger(
+        vector_store: &'a dyn VectorStore,
+        collection: impl Into<String>,
+        ledger: Arc<dyn LedgerStore>,
+    ) -> Self {
+        Self {
+            vector_store,
+            collection: collection.into(),
+            ledger: Some(ledger),
         }
     }
 }
 
 #[async_trait]
 impl PruneTarget for VectorOnlyPruneTarget<'_> {
-    async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
-        // No ledger wired here — nothing is known to be "current", so
-        // generation-fencing degrades to "not fenced" rather than fabricating
-        // a value. Real generation-fencing for user-requested prunes lands
-        // once this module reads the ledger's committed generation.
-        None
+    async fn current_generation(
+        &self,
+        source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
+        // No ledger wired (e.g. a pure-vector `ServiceContext`) — nothing is
+        // known to be "current", so generation-fencing degrades to "not
+        // fenced" rather than fabricating a value.
+        let Some(ledger) = self.ledger.as_ref() else {
+            return Ok(None);
+        };
+        let Some(source_id) = source_id else {
+            return Ok(None);
+        };
+        ledger
+            .committed_generation(SourceId::new(source_id))
+            .await
+            .map_err(|err| err.message)
     }
 
     async fn apply(

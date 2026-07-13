@@ -1352,12 +1352,12 @@
         "path": "crates/axon-core/src/config/cli/setup_args.rs"
       },
       {
-        "checksum": "sha256:906aa128ffd9876e675b8ba3ce139777f50172726c26d8d55fbbe40894377065",
+        "checksum": "sha256:ad7c2b39eb9c0bde4bfb138554506c874ef4e4cb610bd33e0180cc7468a26069",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
       {
-        "checksum": "sha256:9058776d7aeba4fff80334cbe2eba2f662ddedf94631ae50e4fce07bb8c9c0a6",
+        "checksum": "sha256:27f28e9b91bae673646b2ae77dde96784b06ea142a81b8fda67f363ef14d043a",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry.rs"
       },

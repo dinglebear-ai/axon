@@ -46,11 +46,15 @@ pub struct TeiEmbeddingConfig {
     pub max_input_tokens: u32,
     pub max_batch_tokens: u32,
     pub instruction_support: InstructionSupport,
+    /// Base backoff (ms), before exponential growth + jitter, between retried
+    /// `/embed` requests on 429/5xx. Config: `[providers.embedding].retry-backoff-ms`.
+    pub retry_backoff_ms: u64,
+    /// Total attempts per request = `Config::tei_max_retries + 1` (caller
+    /// computes this — see `axon-services::context::target_runtime`).
+    /// Config: `[providers.embedding].max-retries`, env `TEI_MAX_RETRIES`.
+    /// Clamped to at least 1 by [`TeiEmbeddingProvider::new`].
+    pub max_attempts: usize,
 }
-
-/// Total attempts per request = 1 initial + 5 retries, matching the legacy
-/// client's default `tei_max_retries = 5`.
-const MAX_ATTEMPTS: usize = 6;
 
 /// Deterministic single-token input used to measure the provider's output
 /// dimensionality (TEI `/info` does not expose it). A stable input keeps the
@@ -62,6 +66,21 @@ const DIMENSION_PROBE_INPUT: &str = "axon";
 /// any realistic in-flight batch count) — it exists purely to fold live
 /// `record_success`/`record_failure` outcomes into `capabilities()`, not to
 /// gate concurrency.
+///
+/// The trip threshold is intentionally hardcoded at 1 (not driven by
+/// `[providers.embedding].cooldown-after-failures`): a single `embed()` call
+/// already exhausts the full configured `max_attempts` retry budget
+/// internally before `record_failure` is invoked once, so by the time this
+/// tracker sees a failure at all, the provider has already proven itself
+/// unhealthy across several real HTTP attempts — see the contract test
+/// `embed_retry_exhaustion_cools_the_provider_and_capabilities_report_it_live`
+/// (provider-contract F5-10..13/V01/V03), which requires cooling on that
+/// first recorded failure. `cooldown-after-failures`/`cooldown-secs` DO drive
+/// the separate scheduler-facing reservation pool in
+/// `axon-services::context::target_runtime::embedding_reservation_config`,
+/// which is the "avoid bottlenecks" admission-control knob the config
+/// contract describes; this tracker is a health *report*, not a scheduling
+/// gate, so it keeps its own fixed invariant.
 const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
@@ -83,15 +102,18 @@ impl TeiEmbeddingProvider {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
+        // At least 1 attempt regardless of a misconfigured/zero `max_attempts`.
+        let max_attempts = config.max_attempts.max(1);
         Self {
             config,
             health,
-            max_attempts: MAX_ATTEMPTS,
+            max_attempts,
         }
     }
 
-    /// Override the retry-attempt budget (production always uses
-    /// [`MAX_ATTEMPTS`]). Lets tests exercise retry-exhaustion/cooling
+    /// Override the retry-attempt budget (production threads
+    /// `TeiEmbeddingConfig::max_attempts`, computed by the caller from
+    /// `cfg.tei_max_retries + 1`). Lets tests exercise retry-exhaustion/cooling
     /// deterministically without waiting out the real exponential backoff —
     /// see `tei_client_tests.rs`.
     #[cfg(test)]
@@ -129,6 +151,7 @@ impl TeiEmbeddingProvider {
             max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
             max_attempts: self.max_attempts,
             request_timeout: self.config.timeout,
+            retry_backoff_base_ms: self.config.retry_backoff_ms,
         })
     }
 

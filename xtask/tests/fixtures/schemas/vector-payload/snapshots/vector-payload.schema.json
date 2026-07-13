@@ -864,6 +864,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -875,6 +935,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -1045,6 +1110,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -1287,6 +1357,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -1298,6 +1428,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -1468,6 +1603,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -1680,6 +1820,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -1691,6 +1891,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -1861,6 +2066,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -2068,6 +2278,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -2079,6 +2349,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -2249,6 +2524,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -2521,6 +2801,11 @@
             },
             {
               "required": [
+                "session_provider"
+              ]
+            },
+            {
+              "required": [
                 "session_id"
               ]
             },
@@ -2687,6 +2972,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -2964,6 +3254,71 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
+              ]
+            },
+            {
+              "required": [
                 "session_id"
               ]
             },
@@ -3130,6 +3485,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -3407,6 +3767,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -3568,6 +3988,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -3845,6 +4270,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -3856,6 +4341,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -4011,6 +4501,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -4288,6 +4783,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -4299,6 +4854,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -4404,6 +4964,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -4681,6 +5246,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -4692,6 +5317,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -4842,6 +5472,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -5119,6 +5754,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -5130,6 +5825,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -5280,6 +5980,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -5557,6 +6262,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -5568,6 +6333,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -5718,6 +6488,11 @@
             {
               "required": [
                 "env_locator"
+              ]
+            },
+            {
+              "required": [
+                "staged_upload"
               ]
             }
           ]
@@ -5995,6 +6770,66 @@
             },
             {
               "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -6006,6 +6841,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -6167,6 +7007,534 @@
               "required": [
                 "docker_volume"
               ]
+            },
+            {
+              "required": [
+                "staged_upload"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_family": {
+            "const": "upload"
+          }
+        },
+        "required": [
+          "source_family"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "code_language"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_name"
+              ]
+            },
+            {
+              "required": [
+                "code_symbol_kind"
+              ]
+            },
+            {
+              "required": [
+                "code_file_type"
+              ]
+            },
+            {
+              "required": [
+                "code_is_test"
+              ]
+            },
+            {
+              "required": [
+                "code_parse_status"
+              ]
+            },
+            {
+              "required": [
+                "symbol_extraction_status"
+              ]
+            },
+            {
+              "required": [
+                "manifest"
+              ]
+            },
+            {
+              "required": [
+                "git_provider"
+              ]
+            },
+            {
+              "required": [
+                "git_host"
+              ]
+            },
+            {
+              "required": [
+                "git_repo"
+              ]
+            },
+            {
+              "required": [
+                "git_owner"
+              ]
+            },
+            {
+              "required": [
+                "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "feed_title"
+              ]
+            },
+            {
+              "required": [
+                "feed_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_id"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_link"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_published"
+              ]
+            },
+            {
+              "required": [
+                "feed_entry_author"
+              ]
+            },
+            {
+              "required": [
+                "structured_parse_error"
+              ]
+            },
+            {
+              "required": [
+                "reddit_author"
+              ]
+            },
+            {
+              "required": [
+                "reddit_created_utc"
+              ]
+            },
+            {
+              "required": [
+                "reddit_score"
+              ]
+            },
+            {
+              "required": [
+                "reddit_num_comments"
+              ]
+            },
+            {
+              "required": [
+                "reddit_upvote_ratio"
+              ]
+            },
+            {
+              "required": [
+                "reddit_subreddit"
+              ]
+            },
+            {
+              "required": [
+                "reddit_domain"
+              ]
+            },
+            {
+              "required": [
+                "reddit_is_video"
+              ]
+            },
+            {
+              "required": [
+                "reddit_distinguished"
+              ]
+            },
+            {
+              "required": [
+                "reddit_gilded"
+              ]
+            },
+            {
+              "required": [
+                "reddit_flair"
+              ]
+            },
+            {
+              "required": [
+                "reddit_permalink"
+              ]
+            },
+            {
+              "required": [
+                "reddit_kind"
+              ]
+            },
+            {
+              "required": [
+                "video_id"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_url"
+              ]
+            },
+            {
+              "required": [
+                "yt_uploader_id"
+              ]
+            },
+            {
+              "required": [
+                "yt_upload_date"
+              ]
+            },
+            {
+              "required": [
+                "yt_duration"
+              ]
+            },
+            {
+              "required": [
+                "yt_view_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_like_count"
+              ]
+            },
+            {
+              "required": [
+                "yt_tags"
+              ]
+            },
+            {
+              "required": [
+                "yt_categories"
+              ]
+            },
+            {
+              "required": [
+                "yt_thumbnail"
+              ]
+            },
+            {
+              "required": [
+                "segment_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_title"
+              ]
+            },
+            {
+              "required": [
+                "web_domain"
+              ]
+            },
+            {
+              "required": [
+                "web_status_code"
+              ]
+            },
+            {
+              "required": [
+                "web_depth"
+              ]
+            },
+            {
+              "required": [
+                "normalization_version"
+              ]
+            },
+            {
+              "required": [
+                "web_url"
+              ]
+            },
+            {
+              "required": [
+                "web_seed_url"
+              ]
+            },
+            {
+              "required": [
+                "web_origin"
+              ]
+            },
+            {
+              "required": [
+                "web_path"
+              ]
+            },
+            {
+              "required": [
+                "web_normalized_url"
+              ]
+            },
+            {
+              "required": [
+                "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "structured_payload_omitted"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
+                "package_ecosystem"
+              ]
+            },
+            {
+              "required": [
+                "package_name"
+              ]
+            },
+            {
+              "required": [
+                "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
+              ]
+            },
+            {
+              "required": [
+                "session_id"
+              ]
+            },
+            {
+              "required": [
+                "session_turn_index"
+              ]
+            },
+            {
+              "required": [
+                "session_tool_name"
+              ]
+            },
+            {
+              "required": [
+                "session_skill_name"
+              ]
+            },
+            {
+              "required": [
+                "graph_node_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_edge_ids"
+              ]
+            },
+            {
+              "required": [
+                "graph_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_id"
+              ]
+            },
+            {
+              "required": [
+                "memory_importance"
+              ]
+            },
+            {
+              "required": [
+                "memory_status"
+              ]
+            },
+            {
+              "required": [
+                "memory_recallable"
+              ]
+            },
+            {
+              "required": [
+                "memory_type"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_kind"
+              ]
+            },
+            {
+              "required": [
+                "memory_scope_value"
+              ]
+            },
+            {
+              "required": [
+                "memory_confidence"
+              ]
+            },
+            {
+              "required": [
+                "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "redaction_version"
+              ]
+            },
+            {
+              "required": [
+                "redacted_field_count"
+              ]
+            },
+            {
+              "required": [
+                "dropped_field_count"
+              ]
+            },
+            {
+              "required": [
+                "detector_names"
+              ]
+            },
+            {
+              "required": [
+                "local_checkout"
+              ]
+            },
+            {
+              "required": [
+                "local_path_key"
+              ]
+            },
+            {
+              "required": [
+                "local_git_remote"
+              ]
+            },
+            {
+              "required": [
+                "local_git_commit"
+              ]
+            },
+            {
+              "required": [
+                "tool_name"
+              ]
+            },
+            {
+              "required": [
+                "tool_action"
+              ]
+            },
+            {
+              "required": [
+                "tool_side_effect_class"
+              ]
+            },
+            {
+              "required": [
+                "tool_output_artifact_id"
+              ]
+            },
+            {
+              "required": [
+                "docker_image"
+              ]
+            },
+            {
+              "required": [
+                "docker_service"
+              ]
+            },
+            {
+              "required": [
+                "docker_port"
+              ]
+            },
+            {
+              "required": [
+                "docker_volume"
+              ]
+            },
+            {
+              "required": [
+                "env_key"
+              ]
+            },
+            {
+              "required": [
+                "env_locator"
+              ]
             }
           ]
         }
@@ -6263,9 +7631,17 @@
       "x-qdrant-index": "keyword"
     },
     "committed_generation": {
-      "minLength": 1,
-      "type": "string",
-      "x-qdrant-index": "keyword"
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer",
+          "x-qdrant-index": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "x-qdrant-index": "integer"
     },
     "content_hash": {
       "minLength": 1,
@@ -6338,6 +7714,12 @@
       "type": "string"
     },
     "env_locator": {
+      "type": "string"
+    },
+    "extractor_name": {
+      "type": "string"
+    },
+    "extractor_version": {
       "type": "string"
     },
     "feed_entry_author": {
@@ -6443,6 +7825,9 @@
     "memory_type": {
       "type": "string"
     },
+    "normalization_version": {
+      "type": "string"
+    },
     "package_ecosystem": {
       "type": "string"
     },
@@ -6526,6 +7911,9 @@
     "session_id": {
       "type": "string"
     },
+    "session_provider": {
+      "type": "string"
+    },
     "session_skill_name": {
       "type": "string"
     },
@@ -6557,16 +7945,17 @@
         "local",
         "tool",
         "docker",
-        "env"
+        "env",
+        "upload"
       ],
       "minLength": 1,
       "type": "string",
       "x-qdrant-index": "keyword"
     },
     "source_generation": {
-      "minLength": 1,
-      "type": "string",
-      "x-qdrant-index": "keyword"
+      "minimum": 0,
+      "type": "integer",
+      "x-qdrant-index": "integer"
     },
     "source_id": {
       "minLength": 1,
@@ -6589,11 +7978,13 @@
       "minLength": 1,
       "type": "string"
     },
-    "source_type": {
-      "minLength": 1,
+    "staged_upload": {
       "type": "string"
     },
     "structured_parse_error": {
+      "type": "string"
+    },
+    "structured_payload_omitted": {
       "type": "string"
     },
     "structured_record_kind": {
@@ -6659,10 +8050,34 @@
     "web_domain": {
       "type": "string"
     },
+    "web_fetch_method": {
+      "type": "string"
+    },
+    "web_normalized_url": {
+      "type": "string"
+    },
+    "web_origin": {
+      "type": "string"
+    },
+    "web_path": {
+      "type": "string"
+    },
+    "web_seed_url": {
+      "type": "string"
+    },
     "web_status_code": {
       "type": "integer"
     },
+    "web_structured_blob": {
+      "type": "string"
+    },
+    "web_structured_kind": {
+      "type": "string"
+    },
     "web_title": {
+      "type": "string"
+    },
+    "web_url": {
       "type": "string"
     },
     "yt_categories": {
@@ -7156,8 +8571,11 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "extractor_name": "extractor_name",
+        "extractor_version": "extractor_version",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-web",
+        "normalization_version": "normalization_version",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "source_adapter": "source_adapter",
@@ -7186,13 +8604,22 @@
           "yaml_path": null
         },
         "source_scope": "source_scope",
+        "structured_payload_omitted": "structured_payload_omitted",
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal",
         "web_depth": 1,
         "web_domain": "example.com",
+        "web_fetch_method": "web_fetch_method",
+        "web_normalized_url": "web_normalized_url",
+        "web_origin": "web_origin",
+        "web_path": "web_path",
+        "web_seed_url": "web_seed_url",
         "web_status_code": 200,
-        "web_title": "Example Docs"
+        "web_structured_blob": "web_structured_blob",
+        "web_structured_kind": "web_structured_kind",
+        "web_title": "Example Docs",
+        "web_url": "web_url"
       },
       {
         "chunk_hash": "chunk_hash",
@@ -7326,6 +8753,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "session_id": "session-session",
+        "session_provider": "codex",
         "session_skill_name": "test-driven-development",
         "session_tool_name": "schemas",
         "session_turn_index": 3,
@@ -7867,6 +9295,86 @@
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "visibility": "internal"
+      },
+      {
+        "chunk_hash": "chunk_hash",
+        "chunk_id": "chunk-upload-0",
+        "chunk_index": 0,
+        "chunk_key": "upload-chunk-key",
+        "chunk_locator": {
+          "canonical_uri": "https://example.com/upload",
+          "heading_path": [
+            "upload heading"
+          ],
+          "path": "/upload",
+          "range": {
+            "byte_end": null,
+            "byte_start": null,
+            "char_end": null,
+            "char_start": null,
+            "csv_row": null,
+            "dom_selector": null,
+            "json_pointer": null,
+            "line_end": 4,
+            "line_start": 1,
+            "session_turn_id": null,
+            "time_end_ms": null,
+            "time_start_ms": null,
+            "turn_end": null,
+            "turn_start": null,
+            "xml_xpath": null,
+            "yaml_path": null
+          },
+          "symbol": null
+        },
+        "chunk_text": "chunk_text",
+        "chunking_method": "heading_sections",
+        "chunking_profile": "markdown_sections",
+        "collection": "axon",
+        "committed_generation": null,
+        "content_hash": "sha256:uploadhash",
+        "content_kind": "content_kind",
+        "document_id": "doc-upload",
+        "document_status": "prepared",
+        "embedded_at": "2026-06-30T00:00:00Z",
+        "embedding_dimensions": 768,
+        "embedding_model": "text-embedding-test",
+        "embedding_profile": "default",
+        "embedding_provider": "tei",
+        "item_canonical_uri": "item_canonical_uri",
+        "job_id": "job-upload",
+        "payload_contract_version": "2026-07-01",
+        "redaction_status": "clean",
+        "source_adapter": "source_adapter",
+        "source_canonical_uri": "source_canonical_uri",
+        "source_family": "upload",
+        "source_generation": 7,
+        "source_id": "src-upload",
+        "source_item_key": "upload-item",
+        "source_kind": "source_kind",
+        "source_range": {
+          "byte_end": null,
+          "byte_start": null,
+          "char_end": null,
+          "char_start": null,
+          "csv_row": null,
+          "dom_selector": null,
+          "json_pointer": null,
+          "line_end": 4,
+          "line_start": 1,
+          "session_turn_id": null,
+          "time_end_ms": null,
+          "time_start_ms": null,
+          "turn_end": null,
+          "turn_start": null,
+          "xml_xpath": null,
+          "yaml_path": null
+        },
+        "source_scope": "source_scope",
+        "staged_upload": "staged_upload",
+        "vector_namespace": "vector_namespace",
+        "vector_point_id": "vector_point_id",
+        "visibility": "internal"
       }
     ],
     "generated_by": "cargo xtask schemas vector-payload",
@@ -7891,7 +9399,7 @@
         },
         {
           "field_name": "committed_generation",
-          "field_schema": "keyword"
+          "field_schema": "integer"
         },
         {
           "field_name": "content_hash",
@@ -7943,7 +9451,7 @@
         },
         {
           "field_name": "source_generation",
-          "field_schema": "keyword"
+          "field_schema": "integer"
         },
         {
           "field_name": "source_id",
@@ -8038,22 +9546,22 @@
     },
     "source_inputs": [
       {
-        "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac",
+        "checksum": "sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:05e7599bf73a198985f45333d16c1621c0f818afc8a9ee6b0adc15bcf844cea5",
+        "checksum": "sha256:16b14941e8d74d4475bd678248c9db1363ea6504252f8f58506eb4e83a4f543a",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1",
+        "checksum": "sha256:d245b4d5b15916f926d3cbbcef48cf7fb841541aecf99f923ec5aea8b32e6ac5",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
       {
-        "checksum": "sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2",
+        "checksum": "sha256:5888f298ef6deb59b3a932cca604ff0749147dee1f2486fe84bd44ba8ebc9cc7",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },
@@ -8063,7 +9571,7 @@
         "path": "crates/axon-vectors/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604",
+        "checksum": "sha256:87b71c14b12694f5d440a5fdf5d9db185a50e55c61a61629bf3bed8a9cb07454",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
@@ -8073,12 +9581,12 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae",
+        "checksum": "sha256:5b4c02a619aec03ffc65990b37d64a3b65dc43feb8f5909df8ba2ba52908f0c8",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
       {
-        "checksum": "sha256:b08b2bb1c274d220205262573685b1cfb1b2bea67a10c87bd59922444d362ede",
+        "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54",
         "kind": "rust_module",
         "path": "xtask/src/schemas/vector_payload_markdown.rs"
       }
@@ -8156,7 +9664,19 @@
           "web_title",
           "web_domain",
           "web_status_code",
-          "web_depth"
+          "web_depth",
+          "normalization_version",
+          "web_url",
+          "web_seed_url",
+          "web_origin",
+          "web_path",
+          "web_normalized_url",
+          "web_fetch_method",
+          "extractor_name",
+          "extractor_version",
+          "structured_payload_omitted",
+          "web_structured_kind",
+          "web_structured_blob"
         ],
         "source_family": "web"
       },
@@ -8170,6 +9690,7 @@
       },
       {
         "fields": [
+          "session_provider",
           "session_id",
           "session_turn_index",
           "session_tool_name",
@@ -8236,6 +9757,12 @@
           "env_locator"
         ],
         "source_family": "env"
+      },
+      {
+        "fields": [
+          "staged_upload"
+        ],
+        "source_family": "upload"
       }
     ]
   }

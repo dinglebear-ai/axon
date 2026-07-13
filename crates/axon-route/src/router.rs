@@ -180,6 +180,14 @@ impl SourceRouter {
             }
         }
 
+        // Web is the first adapter with a real (non-legacy) per-option value
+        // schema (adapter-scopes.md "Web Adapter" table); see `web_options.rs`.
+        // Other adapters only get the key-membership check above until they
+        // grow their own typed option schemas.
+        if adapter.adapter.name == "web" {
+            crate::web_options::validate(&request.options.values)?;
+        }
+
         if adapter.safety_class == SafetyClass::ToolExecution && !policy.allow_tool_execution {
             return Err(ApiError::new(
                 "route.tool_execution.denied",

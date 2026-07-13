@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub(super) struct RuntimeMemoryMetadata {
     pub(super) project: Option<String>,
     pub(super) repo: Option<String>,

@@ -12,10 +12,10 @@ use crate::redactor::{DefaultRedactor, RedactionContext, RedactionReport, redact
 
 /// Insert `value` for `field` only when the field is absent or blank.
 pub(super) fn insert_default_string(metadata: &mut MetadataMap, field: &str, value: &str) {
-    if !metadata
+    if metadata
         .get(field)
         .and_then(|existing| existing.as_str())
-        .is_some_and(|existing| !existing.trim().is_empty())
+        .is_none_or(|existing| existing.trim().is_empty())
     {
         metadata.insert(field.to_string(), json!(value));
     }

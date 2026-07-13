@@ -98,7 +98,43 @@ specific extension property, never on the whole DTO.
 
 ## DTO Registry Source
 
-`axon-api` must expose a generated or static DTO registry:
+**Current implementation (2026-07-12):** the real DTO registry that gates
+generation is xtask-local, not exposed from `axon-api` itself, because schemas
+are derived directly from the real `axon_api::source::*` (and sibling module)
+types via `schemars::JsonSchema` rather than hand-maintained per-field specs:
+
+- `xtask/src/schemas/api_defs.rs::PHASE_1_REQUIRED_API_DEFS` — a flat
+  `&[&str]` of DTO names that must appear as `$defs` entries in the generated
+  `docs/reference/api/schemas.json`. Each entry is produced by
+  `schema_def::<T>()`, which calls `schemars::schema_for!(T)` against the real
+  Rust type (e.g. `schema_def::<axon_api::source::SourceRequest>("SourceRequest")`)
+  — the JSON shape always matches the Rust struct because it's derived from it,
+  not hand-copied.
+- `xtask/src/schemas/api_defs.rs::PHASE_1_DEFERRED_API_DEFS` — `(name,
+  owner_plan_doc, reason)` triples for DTOs intentionally not yet required
+  (e.g. `QueryRequest`/`AskRequest` pending `phase-3b-security-error-memory.md`
+  policy work), checked only for having a non-empty owner and reason.
+- `crates/axon-api/src/schema_registry.rs::removed_dto_names()` — the
+  removed-DTO-name list (`EmbedRequest`, `IngestRequest`, `CrawlRequest`,
+  `ScrapeRequest`, `CodeSearchRequest`) consumed by
+  `xtask/src/schemas/registry.rs`'s `check_removed_api_dto_shapes` /
+  `check_removed_surface_drift`, which fails generation if any of these names
+  reappear as `$defs` entries. This is the one part of `schema_registry.rs`
+  that is real and load-bearing; a fictional, uncalled
+  `dto_schema_registry()`/`enum_schema_registry()` pair that used to live
+  alongside it (invented DTO/enum names like `SourceRecord`/`LedgerEntry` that
+  never matched any generated `$defs` entry) was deleted as dead code in the
+  2026-07-12 alignment audit.
+- `xtask/src/schemas/registry.rs::CANONICAL_ENUMS` (in the sibling
+  `canonical_enums` submodule) plays the equivalent real role for enums:
+  `check_enum_projection_drift` asserts the generated schema's enum values
+  match this list bidirectionally (no missing, no stray non-canonical values).
+
+The richer per-field `DtoSchemaSpec`/`DtoFieldSpec`/`DtoExtensionPoint` shape
+below remains this contract's **target** shape for a future explicit registry
+with field-level metadata, examples, and extension-point policy — it is not
+yet implemented by either the real xtask registry above or by `axon-api`
+itself. Do not treat it as describing current behavior:
 
 ```rust
 pub struct DtoSchemaSpec {
@@ -135,8 +171,9 @@ pub struct DtoExtensionPoint {
 }
 ```
 
-The schema generator fails if a public DTO lacks a registry entry or if the
-registry entry does not match the generated JSON schema.
+Once implemented, the schema generator should fail if a public DTO lacks a
+registry entry or if the registry entry does not match the generated JSON
+schema.
 
 ## Required Enum Definitions
 

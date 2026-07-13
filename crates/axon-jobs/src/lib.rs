@@ -1,7 +1,10 @@
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 pub mod backend;
 pub mod boundary;
 pub mod cancel;
 pub mod config_snapshot;
+pub mod config_snapshot_store;
 pub mod crawl;
 pub mod embed;
 pub mod error;

@@ -25,7 +25,6 @@ pub(super) fn youtube_source_document(
     let video_url = format!("https://www.youtube.com/watch?v={}", video.video_id);
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("media"));
-    metadata.insert("source_type".to_string(), json!("youtube"));
     metadata.insert("source_kind".to_string(), json!("youtube"));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));

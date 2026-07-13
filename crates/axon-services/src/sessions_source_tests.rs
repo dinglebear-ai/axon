@@ -143,14 +143,17 @@ async fn sessions_refresh_writes_vectors_then_commits_source_generation() {
     // The bridge must sanitize adapter/preparer metadata to the shared vector
     // payload contract: forbidden absolute-path + non-allowlisted session
     // fields (and the transcript preparer's `segment_kind`) are dropped, while
-    // the allowlisted `session_id` and the `session` source family survive.
+    // the allowlisted `session_id` / `session_provider` and the `session`
+    // source family survive. `session_provider` is `required:yes` per
+    // `docs/pipeline-unification/sources/metadata-payload.md` (Session
+    // Fields) — it must NOT be dropped (axon #298 contract fix).
     for point in vectors.points("axon-test").await {
         assert!(
             point.payload.get("session_workspace_path").is_none(),
             "forbidden absolute-path field must be stripped"
         );
         assert!(
-            point.payload.get("session_provider").is_none(),
+            point.payload.get("session_agent").is_none(),
             "non-allowlisted session field must be stripped"
         );
         assert!(
@@ -159,6 +162,11 @@ async fn sessions_refresh_writes_vectors_then_commits_source_generation() {
         );
         assert_eq!(point.payload["source_family"].as_str(), Some("session"));
         assert_eq!(point.payload["session_id"].as_str(), Some("abc123"));
+        assert_eq!(
+            point.payload["session_provider"].as_str(),
+            Some("claude"),
+            "required session_provider field must survive remap_to_vector_payload_contract"
+        );
     }
     let source = ledger
         .get_source(output.source_id.clone())

@@ -203,7 +203,12 @@ async fn acquire_then_normalize_stamps_feed_metadata() {
         .find(|d| d.canonical_uri == "https://example.com/a")
         .expect("entry a present");
     assert_eq!(
-        first.metadata.get("source_type").and_then(|v| v.as_str()),
+        first.metadata.get("source_family").and_then(|v| v.as_str()),
+        Some("feed")
+    );
+    assert!(!first.metadata.contains_key("source_type"));
+    assert_eq!(
+        first.metadata.get("source_kind").and_then(|v| v.as_str()),
         Some("feed")
     );
     assert_eq!(

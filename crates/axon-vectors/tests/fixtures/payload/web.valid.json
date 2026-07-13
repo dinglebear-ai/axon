@@ -42,6 +42,8 @@
   "web_domain": "example.com",
   "web_status_code": 200,
   "web_depth": 1,
+  "web_structured_kind": "Article",
+  "web_structured_blob": "{\"kind\":\"json_ld\",\"schema_type\":\"Article\",\"blob\":{\"@type\":\"Article\"}}",
   "vector_point_id": "vpt-web-1",
   "source_canonical_uri": "https://example.com/docs#intro",
   "content_kind": "markdown",

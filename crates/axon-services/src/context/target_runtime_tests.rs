@@ -4,7 +4,38 @@ use axon_core::config::Config;
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
 use sqlx::sqlite::SqlitePoolOptions;
 
+use super::tei_max_attempts;
 use crate::context::TargetLocalSourceRuntime;
+
+/// `tei_max_attempts` is the one place `cfg.tei_max_retries` becomes the real
+/// attempt budget threaded into `TeiEmbeddingConfig::max_attempts` — previously
+/// `TeiEmbeddingProvider` always used a hardcoded `MAX_ATTEMPTS = 6` regardless
+/// of `[providers.embedding].max-retries`/`TEI_MAX_RETRIES`.
+#[test]
+fn tei_max_attempts_reflects_configured_retry_count_not_a_hardcoded_default() {
+    let mut cfg = Config::test_default();
+
+    cfg.tei_max_retries = 5;
+    assert_eq!(
+        tei_max_attempts(&cfg),
+        6,
+        "default tei_max_retries=5 should still yield the historical 6 total attempts"
+    );
+
+    cfg.tei_max_retries = 2;
+    assert_eq!(
+        tei_max_attempts(&cfg),
+        3,
+        "a non-default tei_max_retries must change the computed attempt budget"
+    );
+
+    cfg.tei_max_retries = 0;
+    assert_eq!(
+        tei_max_attempts(&cfg),
+        1,
+        "zero retries still allows exactly one (the initial) attempt"
+    );
+}
 
 /// `from_config` builds the three real stores + reservations from the shared
 /// SQLite pool (one runtime DB) and a dummy Qdrant URL. The ledger binds to the

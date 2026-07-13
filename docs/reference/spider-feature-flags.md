@@ -3,15 +3,17 @@
 > **Webclaw port feature flags** (tls-fingerprinting, quickjs, social-verticals) are documented in
 > [`docs/reference/cargo-features.md`](cargo-features.md) — that file also covers runtime env-var gates.
 
-**Total feature entries tracked in this inventory: 80 (includes `basic` meta-feature)**
-**Flags enabled in Axon: 21 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
+**Total feature entries tracked in this inventory: 89 (includes the `basic` meta-feature; +6 rows vs. the previous count, added to track spider 2.52.0's `__basic` force-enabled set — see "Transitively Enabled via `basic` → `__basic`" below)**
+**Flags enabled in Axon: 33 (spider) + 2 (spider_agent) + spider_transformations (no flags) — spider's 33 = 20 explicitly declared in `crates/axon-crawl/Cargo.toml` + 13 transitively force-enabled via `basic` → `__basic` as of spider 2.52.0 (2 of the 13 — `rate_limit`, `request_coalesce` — compile but have no call sites upstream, i.e. dead code today)**
 
 ---
 
 ## Active Dependency Declarations
 
 ```toml
-# Root Cargo.toml (single-crate workspace — only one Cargo.toml)
+# crates/axon-crawl/Cargo.toml — axon is a multi-crate Cargo workspace (see root
+# CLAUDE.md "Workspace layout (Rust crates)"); the spider dependency is declared in
+# the axon-crawl crate, not the root Cargo.toml.
 spider = { version = "2", default-features = false, features = [
     "basic", "chrome", "regex", "sitemap", "adblock",
     "chrome_stealth", "chrome_screenshot", "chrome_store_page",
@@ -37,9 +39,46 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 
 ---
 
+## Transitively Enabled via `basic` → `__basic` (spider 2.52.0)
+
+> **New in spider 2.52.0.** Spider restructured its `basic` meta-feature so that
+> `basic = ["__basic", "basic_tls"]`, and `__basic` itself is defined as: `sync`,
+> `cookies`, `ua_generator` (already declared), `encoding`,
+> `string_interner_buffer_backend`, `balance`, `real_browser`, `disk_native_tls`,
+> `time` (already declared), `adaptive_concurrency`, `priority_frontier`,
+> `dns_cache`, `rate_limit`, `request_coalesce`, `auto_throttle`, `etag_cache`
+> (already declared), `warc` (already declared). Of the 13 not already in
+> `crates/axon-crawl/Cargo.toml`'s explicit list, none were opted into by
+> axon-crawl — they ride along with `basic`. Verified against spider 2.52.0's own
+> `Cargo.toml` `[features]` table and `cargo tree -p axon-crawl -e features -i
+> spider`. See the root `CLAUDE.md` "Spider feature flags with observable
+> behavior" section for the CLAUDE.md-side summary.
+
+| Flag | Behaviorally significant? | Notes |
+|------|---------------------------|-------|
+| `balance` | Not exercised | Previously documented here as "NOT enabled." As of spider 2.52.0 it IS compiled in via `__basic`, but axon still doesn't rely on its throttling — concurrency stays governed by our performance profiles. |
+| `cookies` | **Yes** | Spider now attaches a persistent cookie jar per crawl by default. Real, previously-undocumented behavior change — revisit whether axon wants cookie persistence across a crawl. Independently also pulled in by the already-declared `chrome` feature. |
+| `real_browser` | **Yes, conditionally** | Changes spider's local-Chrome `CHROME_ARGS` (drops `--no-sandbox`). Only matters on the fallback path where spider launches its own Chrome process — i.e. when `AXON_CHROME_REMOTE_URL` is unset. Production always sets `AXON_CHROME_REMOTE_URL`, so this doesn't bite there. |
+| `rate_limit` | No — dead upstream | Compiles `src/utils/rate_limiter.rs` (per-domain token bucket) in spider 2.52.0, but nothing else in the crate calls into it (`rate_limiter::` has no external call sites). Track on future spider bumps in case upstream wires it up. |
+| `request_coalesce` | No — dead upstream | Compiles `src/utils/coalesce.rs` (in-flight request dedup) in spider 2.52.0, but nothing else in the crate calls into it (`coalesce::` has no external call sites). Implies `sync`. Track on future spider bumps. |
+| `sync` | Not exercised | Also already implied independently by the already-declared `warc` feature. No axon call site. |
+| `encoding` | Not exercised | No axon call site; internal to spider's charset handling. |
+| `disk_native_tls` | Not exercised | Implies `disk` (`dep:sqlx`) and the `sqlx` crate's own `runtime-tokio-native-tls` feature. axon uses SQLite jobs + Qdrant, not spider's disk-backed cache — the `sqlx` optional dependency is now compiled into the binary but unused by axon code. |
+| `priority_frontier` | Not exercised | No axon call site. |
+| `dns_cache` | Not exercised | No axon call site. |
+| `string_interner_buffer_backend` | Not exercised | Internal string-interning backend selection; no axon call site. |
+| `auto_throttle` | Not exercised | Implies `time` (already declared). No axon call site or config wiring. |
+| `adaptive_concurrency` | **Yes, opt-in** | Already documented separately in the section below and in root `CLAUDE.md` — axon gates it behind `[workers.adaptive-concurrency] enabled = true`; controller logic stays in `src/crawl/engine/adaptive.rs`. |
+
+`ua_generator`, `time`, `etag_cache`, and `warc` are also members of `__basic`, but
+axon already declares them explicitly in `crates/axon-crawl/Cargo.toml` — no
+change for those four.
+
+---
+
 ## Flags In Use
 
-### spider crate — 21 flags enabled
+### spider crate — 20 explicitly declared flags (+ `adaptive_concurrency` via `basic`, 21 rows below)
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
@@ -81,11 +120,11 @@ Used in two files for HTML→Markdown content transformation:
 
 ---
 
-## Full Flag Inventory (all 79, includes `basic` meta-feature)
+## Full Flag Inventory (all 89, includes `basic` meta-feature)
 
 `✅` = enabled in Axon · `—` = not used
 
-### Core (25)
+### Core (34)
 
 | Flag | Status | Notes |
 |------|--------|-------|
@@ -97,16 +136,16 @@ Used in two files for HTML→Markdown content transformation:
 | `fs` | — | Project uses SQLite jobs plus Qdrant vector storage, not spider disk FS |
 | `sitemap` | ✅ | Sitemap discovery + backfill |
 | `time` | ✅ | Timing/duration tracking for crawl operations |
-| `encoding` | — | |
+| `encoding` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic`. No axon call site — see "Transitively Enabled" above. |
 | `serde` | — | Project uses its own serde deps directly |
-| `sync` | — | |
+| `sync` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic` (also already implied independently by the already-declared `warc` feature). No axon call site. |
 | `control` | ✅ | Runtime crawl control — pause/resume/shutdown. Crawl cancellation sends Spider shutdown for the active crawl target before returning canceled |
 | `adaptive_concurrency` | ✅ via `basic` | Opt-in runtime crawl concurrency. TOML-only in Axon; 429, 5xx, and broadcast lag reduce target. No arbitrary decrease-factor or sync-interval knobs until Spider honors them. |
 | `full_resources` | — | |
-| `cookies` | — | |
+| `cookies` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic` (also independently implied by the already-declared `chrome` feature). Spider now attaches a persistent cookie jar per crawl by default — a real, previously-undocumented behavior change; see "Transitively Enabled" above. |
 | `spoof` | — | `chrome_stealth` covers bot-evasion needs |
 | `headers` | ✅ | Custom HTTP header injection for crawl requests |
-| `balance` | — | Silent concurrency throttling with no logging — we manage concurrency ourselves via performance profiles |
+| `balance` | ✅ via `__basic` | Previously "NOT enabled" here. As of spider 2.52.0 it IS transitively compiled in via `basic` → `__basic`, but axon still doesn't rely on it — we manage concurrency ourselves via performance profiles. Silent concurrency throttling with no logging if it were ever wired up. |
 | `cron` | — | |
 | `tracing` | — | Project uses `tracing` crate directly, not via spider |
 | `cowboy` | — | Full concurrency with no throttle — dangerous, prefer `balance` |
@@ -115,6 +154,12 @@ Used in two files for HTML→Markdown content transformation:
 | `extra_information` | — | |
 | `cmd` | — | tokio process support within spider (axon has its own) |
 | `io_uring` | — | |
+| `rate_limit` | ✅ via `__basic` (dead upstream) | Transitively enabled by spider 2.52.0's `basic` → `__basic`. Compiles `src/utils/rate_limiter.rs` (per-domain token bucket), but nothing else in spider 2.52.0 calls into it — dead code today. Track on future spider bumps. |
+| `request_coalesce` | ✅ via `__basic` (dead upstream) | Transitively enabled by spider 2.52.0's `basic` → `__basic`. Compiles `src/utils/coalesce.rs` (in-flight request dedup), but nothing else in spider 2.52.0 calls into it — dead code today. Implies `sync`. Track on future spider bumps. |
+| `priority_frontier` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic`. No axon call site. |
+| `dns_cache` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic`. No axon call site. |
+| `string_interner_buffer_backend` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic`. Internal string-interning backend selection; no axon call site. |
+| `auto_throttle` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic` (implies `time`, already declared). No axon call site or config wiring. |
 | `simd` | ✅ | SIMD-accelerated text/JSON parsing |
 | `inline-more` | ✅ | Aggressive function inlining in spider internals for runtime perf |
 
@@ -127,11 +172,11 @@ Used in two files for HTML→Markdown content transformation:
 
 | Flag | Status | Notes |
 |------|--------|-------|
-| `disk` | — | Project uses SQLite jobs plus Qdrant vector storage, not spider disk cache |
-| `disk_native_tls` | — | |
-| `disk_aws` | — | |
+| `disk` | ✅ via `__basic` (`disk_native_tls`) | Transitively enabled by spider 2.52.0's `basic` → `__basic` (via `disk_native_tls`, which lists `disk` as a prerequisite). Project still uses SQLite jobs plus Qdrant vector storage, not spider's disk cache — the code is compiled in but unused. |
+| `disk_native_tls` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic`. Also enables the `sqlx` crate's own `runtime-tokio-native-tls` feature. Unused by axon. |
+| `disk_aws` | — | Not part of `__basic`; still requires its own explicit opt-in |
 
-### Caching (6)
+### Caching (7)
 
 | Flag | Status | Notes |
 |------|--------|-------|
@@ -163,7 +208,7 @@ Used in two files for HTML→Markdown content transformation:
 | `chrome_remote_cache_mem` | — | |
 | `adblock` | ✅ | Implicit ad/tracker blocking during Chrome renders |
 | remote local policy API | ✅ via `chrome` | `chrome.remote-local-policy` pushes Spider/Chromey's local interception policy to capable remote Chrome engines for Chrome-rendered crawls only. Generic CDP proxies may reject it; standalone `axon screenshot` is not wired in this release. |
-| `real_browser` | — | |
+| `real_browser` | ✅ via `__basic` | Transitively enabled by spider 2.52.0's `basic` → `__basic`. Changes spider's local-Chrome `CHROME_ARGS` (drops `--no-sandbox`) on the fallback path where spider launches its own Chrome process — only relevant when `AXON_CHROME_REMOTE_URL` is unset; production always sets it. |
 | `smart` | — | Project implements its own `auto-switch` logic in `engine.rs` |
 
 ### WebDriver (7)
@@ -231,17 +276,16 @@ Used in two files for HTML→Markdown content transformation:
 | Category | Total | Enabled |
 |----------|-------|---------|
 
-| Core | 26 | 12 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`, `adaptive_concurrency`, `warc`) — `glob` is NOT enabled |
-
-| Storage | 3 | 0 |
-| Caching | 6 | 2 (`cache_mem`, `etag_cache`) |
-| Chrome / Browser | 17 | 7 (`chrome`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `adblock`) |
+| Core | 34 | 21 — 11 previously enabled (`regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`, `adaptive_concurrency`, `warc`; `basic` itself is the meta-feature, not a separate row) plus 10 newly force-enabled by spider 2.52.0's `basic` → `__basic` (`balance`, `cookies`, `encoding`, `sync`, `rate_limit`, `request_coalesce`, `priority_frontier`, `dns_cache`, `string_interner_buffer_backend`, `auto_throttle`) — `glob` is still NOT enabled |
+| Storage | 3 | 2 (`disk`, `disk_native_tls`) newly force-enabled via `basic` → `__basic` (spider 2.52.0) — unused by axon, which stores jobs in SQLite and vectors in Qdrant; `disk_aws` still NOT enabled |
+| Caching | 7 | 2 (`cache_mem`, `etag_cache`) |
+| Chrome / Browser | 17 | 8 (`chrome`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `adblock`, `real_browser`) — `real_browser` newly force-enabled via `basic` → `__basic` (spider 2.52.0) |
 | Firewall | 1 | 0 (`firewall` NOT enabled — build.rs rate-limit panic) |
 | WebDriver | 7 | 0 |
 | AI / LLM | 2 | 1 via spider_agent (`openai`) |
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **80** | **21 spider + 2 spider_agent = 23** |
+| **Total** | **89** | **33 spider + 2 spider_agent = 35** |
 
-> `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.
+> `basic` is a meta-feature on the `spider` crate; as of spider 2.52.0 it expands to `["__basic", "basic_tls"]` and force-enables 13 features axon never declared (`__basic`'s own list, minus the 4 axon already declares explicitly — see "Transitively Enabled via `basic` → `__basic`" above). The project still uses `default-features = false` on all spider crates, so anything beyond `basic`'s own transitive closure remains excluded.

@@ -3789,7 +3789,7 @@
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:f4621603d2656007a2a601778c10986e755c8849c7826310f7afad74b9d078ce",
+        "checksum": "sha256:c556baa7a90233cb34eb4bd93e06b7421ffd7498ddf5294b5380efd599b35fb4",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
@@ -3819,7 +3819,7 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:f45a688cca4b367be606fd4caa833aa500fb52c9f786dbc6c3b81e8b03317fe0",
+        "checksum": "sha256:21ccae6b108e6f5fa0c00197e5695fa4e7f3ef46a98aadcdc5a626f1e151fe36",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
@@ -3834,7 +3834,7 @@
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:0960db61568609c37bc11774b341690a3292d189d7d684b1c6bdc7aef3049051",
+        "checksum": "sha256:25a3b6108fc7378ec6f5709a1e5ad605ba85b13d071d434c626cc16f37afdcf0",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

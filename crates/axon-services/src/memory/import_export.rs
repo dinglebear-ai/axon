@@ -139,7 +139,7 @@ pub async fn export(
         uri: written.to_string_lossy().to_string(),
         size_bytes: Some(payload.len() as u64),
         content_hash: Some(content_hash),
-        created_at: axon_api::source::Timestamp::from(chrono::Utc::now()),
+        created_at: Timestamp::from(chrono::Utc::now()),
     });
 
     Ok(result)

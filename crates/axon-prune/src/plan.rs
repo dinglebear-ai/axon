@@ -28,11 +28,22 @@ pub trait PruneScopeSource {
 /// Resolves selectors into dry-run plans. Stateless; holds a scope source.
 pub struct PrunePlanner<S: PruneScopeSource> {
     scope: S,
+    collection: String,
 }
 
 impl<S: PruneScopeSource> PrunePlanner<S> {
     pub fn new(scope: S) -> Self {
-        Self { scope }
+        Self {
+            scope,
+            collection: "axon".to_string(),
+        }
+    }
+
+    /// Set the active vector collection for source/generation vector steps.
+    /// Collection selectors still keep their explicitly requested collection.
+    pub fn with_collection(mut self, collection: impl Into<String>) -> Self {
+        self.collection = collection.into();
+        self
     }
 
     /// Resolve `selector` into a concrete plan. The returned plan is a
@@ -40,7 +51,7 @@ impl<S: PruneScopeSource> PrunePlanner<S> {
     /// canonical cleanup-debt execution order.
     pub fn resolve(&self, selector: &PruneSelector) -> PrunePlan {
         let estimated = self.scope.estimate(selector);
-        let mut steps = build_steps(selector, &estimated);
+        let mut steps = build_steps(selector, &estimated, &self.collection);
         steps.sort_by_key(|s| s.target.order_rank());
 
         PrunePlan {
@@ -58,7 +69,11 @@ impl<S: PruneScopeSource> PrunePlanner<S> {
 /// Emit the concrete steps for a selector from its estimate. Only boundaries
 /// with a positive estimate contribute a step, so the plan reflects exactly
 /// what would be deleted.
-fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> {
+fn build_steps(
+    selector: &PruneSelector,
+    est: &PruneEstimate,
+    active_collection: &str,
+) -> Vec<PruneStep> {
     let (source_id, generation) = match selector {
         PruneSelector::Source { source_id } => (Some(source_id.clone()), None),
         PruneSelector::Generation {
@@ -72,7 +87,7 @@ fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> 
     let mut push = |target: PruneTargetKind, n: u64, desc: &str| {
         if n > 0 {
             let vector_selector = match target {
-                PruneTargetKind::Vector => vector_selector_for(selector),
+                PruneTargetKind::Vector => vector_selector_for(selector, active_collection),
                 _ => None,
             };
             let (graph_stable_keys, graph_edge_ids) = match target {
@@ -131,10 +146,13 @@ fn build_steps(selector: &PruneSelector, est: &PruneEstimate) -> Vec<PruneStep> 
     steps
 }
 
-fn vector_selector_for(selector: &PruneSelector) -> Option<VectorDeleteSelector> {
+fn vector_selector_for(
+    selector: &PruneSelector,
+    active_collection: &str,
+) -> Option<VectorDeleteSelector> {
     match selector {
         PruneSelector::Source { source_id } => Some(VectorDeleteSelector::Source {
-            collection: "axon".to_string(),
+            collection: active_collection.to_string(),
             source_id: source_id.clone(),
             generation: None,
         }),
@@ -142,9 +160,12 @@ fn vector_selector_for(selector: &PruneSelector) -> Option<VectorDeleteSelector>
             source_id,
             generation,
         } => Some(VectorDeleteSelector::Generation {
-            collection: "axon".to_string(),
+            collection: active_collection.to_string(),
             source_id: source_id.clone(),
             generation: generation.clone(),
+        }),
+        PruneSelector::Collection { collection } => Some(VectorDeleteSelector::Collection {
+            collection: collection.clone(),
         }),
         _ => None,
     }

@@ -104,6 +104,7 @@ pub async fn reinforce(
     let (_, created, _) = age_and_bounds(&record, now_secs);
     crate::observe::emit(
         store.sink(),
+        JobId::from(uuid::Uuid::new_v4()),
         crate::observe::MemoryPhase::Reinforcing,
         &record,
         Severity::Info,
@@ -197,9 +198,15 @@ pub async fn contradict(
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
     let (_, created, _) = age_and_bounds(&record, now_secs);
+    // Both memories are affected by the SAME contradiction, so they share one
+    // `job_id` — otherwise each emit would look like an unrelated
+    // single-event job to the observability sink's `(job_id, sequence)`
+    // correlation.
+    let job_id = JobId::from(uuid::Uuid::new_v4());
     for rec in [&record, &other] {
         crate::observe::emit(
             store.sink(),
+            job_id,
             crate::observe::MemoryPhase::Reviewing,
             rec,
             Severity::Warning,
@@ -251,6 +258,7 @@ pub async fn set_status(
     } {
         crate::observe::emit(
             store.sink(),
+            JobId::from(uuid::Uuid::new_v4()),
             phase,
             &record,
             Severity::Info,

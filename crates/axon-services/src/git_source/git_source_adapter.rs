@@ -1,9 +1,11 @@
 //! Git adapter dispatch — builds the `SourcePlan` for a prepared clone and
-//! drives the `GitSourceAdapter` through discover / acquire / normalize.
+//! drives the `GitSourceAdapter` through discover / acquire / enrich / normalize.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use axon_adapters::SourceAdapter;
+use axon_adapters::SourceEnricher;
 use axon_adapters::git::{GitSourceAdapter, GitTarget, parse_git_target};
 use axon_api::source::*;
 use sha2::{Digest, Sha256};
@@ -43,15 +45,76 @@ pub(super) async fn discover_manifest(run: &GitAdapterRun) -> anyhow::Result<Sou
     Ok(GitSourceAdapter::new().discover(&run.plan).await?)
 }
 
+/// Output of [`normalize_changed_documents`]: the normalized documents plus
+/// any enrichment-stage graph candidates keyed by `source_item_key`, for
+/// [`super::git_source_vectorize::prepare_changed_documents`] to fold into
+/// the matching document's `PrepareSourceDocumentRequest.graph_candidates`
+/// (bypassing `DocumentPreparer`'s self-parse for that document, per the
+/// `SourceEnricher` contract).
+#[derive(Debug, Default)]
+pub(super) struct NormalizedGitDocuments {
+    pub(super) documents: Vec<SourceDocument>,
+    pub(super) graph_candidates_by_item: BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
+}
+
+/// Drives `acquire` -> `enrich` (one call per acquired item, source-pipeline.md
+/// `enriching` stage) -> `normalize`. The enrichment stage sits strictly
+/// between acquire and normalize: it sees the raw `AcquiredSourceItem`s before
+/// normalization discards fetch-time detail, and its `parse_hints` are merged
+/// into the corresponding normalized `SourceDocument.parser_hints` (already an
+/// existing field the parser step consults) while `graph_candidates` are
+/// carried out-of-band for the caller to thread into `prepare`.
 pub(super) async fn normalize_changed_documents(
     run: &GitAdapterRun,
     diff: &SourceManifestDiff,
-) -> anyhow::Result<Vec<SourceDocument>> {
+    enricher: &dyn SourceEnricher,
+) -> anyhow::Result<NormalizedGitDocuments> {
     let acquisition = GitSourceAdapter::new().acquire(&run.plan, diff).await?;
-    Ok(GitSourceAdapter::new()
+    let enrichments = enrich_fetched_items(run, enricher, &acquisition.fetched_items).await?;
+    let mut documents = GitSourceAdapter::new()
         .normalize(&run.plan, acquisition)
         .await?
-        .data)
+        .data;
+    let mut graph_candidates_by_item = BTreeMap::new();
+    for document in &mut documents {
+        let Some(enrichment) = enrichments.get(&document.source_item_key) else {
+            continue;
+        };
+        document.parser_hints.extend(enrichment.parse_hints.clone());
+        if !enrichment.graph_candidates.is_empty() {
+            graph_candidates_by_item.insert(
+                document.source_item_key.clone(),
+                enrichment.graph_candidates.clone(),
+            );
+        }
+    }
+    Ok(NormalizedGitDocuments {
+        documents,
+        graph_candidates_by_item,
+    })
+}
+
+/// Enrich every acquired item and return the results keyed by
+/// `source_item_key`. With `NoopSourceEnricher` (the production default) this
+/// is a no-op passthrough — every call returns `EnrichmentStatus::NotNeeded`
+/// with empty hints/candidates.
+async fn enrich_fetched_items(
+    run: &GitAdapterRun,
+    enricher: &dyn SourceEnricher,
+    fetched_items: &[AcquiredSourceItem],
+) -> anyhow::Result<BTreeMap<SourceItemKey, SourceEnrichment>> {
+    let mut enrichments = BTreeMap::new();
+    for item in fetched_items {
+        let enrichment = enricher.enrich(&run.plan, item).await.map_err(|err| {
+            anyhow::anyhow!(
+                "git source enrichment failed for {}: {}",
+                item.manifest_item.source_item_key.0,
+                err.message
+            )
+        })?;
+        enrichments.insert(item.manifest_item.source_item_key.clone(), enrichment);
+    }
+    Ok(enrichments)
 }
 
 pub(super) fn collection_spec(collection: &str, dimensions: u32) -> CollectionSpec {

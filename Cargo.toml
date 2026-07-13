@@ -7,6 +7,7 @@ members = [
     "crates/axon-core",
     "crates/axon-observe",
     "crates/axon-route",
+    "crates/axon-extract",
     "crates/axon-adapters",
     "crates/axon-ledger",
     "crates/axon-parse",
@@ -18,9 +19,6 @@ members = [
     "crates/axon-retrieval",
     "crates/axon-llm",
     "crates/axon-prune",
-    "crates/axon-crawl",
-    "crates/axon-vector",
-    "crates/axon-ingest",
     "crates/axon-jobs",
     "crates/axon-services",
     "crates/axon-mcp",
@@ -74,7 +72,6 @@ name = "axon"
 
 [dependencies]
 axon-core = { path = "crates/axon-core" }
-axon-vector = { path = "crates/axon-vector" }
 axon-jobs = { path = "crates/axon-jobs" }
 axon-services = { path = "crates/axon-services" }
 axon-mcp = { path = "crates/axon-mcp" }
@@ -150,7 +147,6 @@ opt-level = 2
 [dev-dependencies]
 axon-core = { path = "crates/axon-core", features = ["test-util"] }
 axon-llm = { path = "crates/axon-llm" }
-axon-vector = { path = "crates/axon-vector", features = ["test-util"] }
 tokio = { version = "1", features = [
   "macros",
   "rt-multi-thread",

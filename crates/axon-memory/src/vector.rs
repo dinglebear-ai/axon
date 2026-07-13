@@ -216,7 +216,7 @@ impl VectorBackedMemoryStore {
         let records = self.inner.load_many(memory_ids).await?;
         let mut warnings = search.warnings;
         let mut results = Vec::new();
-        for (hit, record) in search.results.into_iter().zip(records.into_iter()) {
+        for (hit, record) in search.results.into_iter().zip(records) {
             let Some(record) = record else {
                 warnings.push(SourceWarning {
                     code: "memory.metadata_missing".to_string(),

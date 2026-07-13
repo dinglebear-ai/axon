@@ -26,7 +26,7 @@ use crate::collector::{ObservabilitySink, Result};
 /// monotonic per-`job_id` sequence at emit time, matching every other
 /// pure event builder in this crate (see `crate::event::base_event`).
 pub fn to_progress_event(event: &SecurityAuditEvent) -> SourceProgressEvent {
-    let job_id = event.job_id.clone().unwrap_or_default();
+    let job_id = event.job_id.unwrap_or_default();
     let (severity, status) = severity_and_status(event.kind);
 
     SourceProgressEvent {

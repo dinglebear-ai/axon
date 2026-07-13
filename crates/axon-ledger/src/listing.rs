@@ -24,35 +24,35 @@ pub fn resolve_limit(requested: Option<u32>) -> u32 {
 /// True when `source` satisfies every filter set on `request`. Filters left
 /// unset (`None`/empty) act as wildcards; all set filters are ANDed together.
 pub fn matches_request(source: &SourceSummary, request: &SourceListRequest) -> bool {
-    if let Some(kind) = request.source_kind {
-        if source.source_kind != kind {
-            return false;
-        }
+    if let Some(kind) = request.source_kind
+        && source.source_kind != kind
+    {
+        return false;
     }
-    if let Some(adapter) = request.adapter.as_deref() {
-        if !source.adapter.name.eq_ignore_ascii_case(adapter) {
-            return false;
-        }
+    if let Some(adapter) = request.adapter.as_deref()
+        && !source.adapter.name.eq_ignore_ascii_case(adapter)
+    {
+        return false;
     }
-    if let Some(status) = request.status {
-        if source.status != status {
-            return false;
-        }
+    if let Some(status) = request.status
+        && source.status != status
+    {
+        return false;
     }
-    if let Some(authority) = request.authority {
-        if source.authority != authority {
-            return false;
-        }
+    if let Some(authority) = request.authority
+        && source.authority != authority
+    {
+        return false;
     }
-    if let Some(watch_enabled) = request.watch_enabled {
-        if source.watch_id.is_some() != watch_enabled {
-            return false;
-        }
+    if let Some(watch_enabled) = request.watch_enabled
+        && source.watch_id.is_some() != watch_enabled
+    {
+        return false;
     }
-    if let Some(tag) = request.tag.as_deref() {
-        if !source.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
-            return false;
-        }
+    if let Some(tag) = request.tag.as_deref()
+        && !source.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
+    {
+        return false;
     }
     if let Some(query) = request.query.as_deref() {
         let needle = query.trim().to_lowercase();

@@ -15,7 +15,6 @@ pub(super) fn git_source_document(
 ) -> SourceDocument {
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("code"));
-    metadata.insert("source_type".to_string(), json!("git_code"));
     metadata.insert("source_kind".to_string(), json!("git"));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));

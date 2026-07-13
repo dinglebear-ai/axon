@@ -221,9 +221,10 @@ async fn acquire_then_normalize_stamps_youtube_metadata() {
         .find(|d| d.metadata.get("video_id").and_then(|v| v.as_str()) == Some("dQw4w9WgXcQ"))
         .expect("first video document present");
     assert_eq!(
-        rick.metadata.get("source_type").and_then(|v| v.as_str()),
-        Some("youtube")
+        rick.metadata.get("source_family").and_then(|v| v.as_str()),
+        Some("media")
     );
+    assert!(!rick.metadata.contains_key("source_type"));
     assert_eq!(
         rick.metadata.get("source_kind").and_then(|v| v.as_str()),
         Some("youtube")

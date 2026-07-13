@@ -18,7 +18,7 @@ fn router_honors_typed_pr8_profiles_from_chunk_hints() {
         }];
 
         assert_eq!(
-            ChunkRouter::default().route(&doc).unwrap(),
+            ChunkRouter.route(&doc).unwrap(),
             expected,
             "typed profile override should route"
         );
@@ -35,7 +35,7 @@ fn typed_chunk_hint_wins_over_metadata_profile_escape_hatch() {
     }];
 
     assert_eq!(
-        ChunkRouter::default().route(&doc).unwrap(),
+        ChunkRouter.route(&doc).unwrap(),
         ChunkingProfile::PlainTextWindows
     );
 }
@@ -46,7 +46,7 @@ fn router_honors_metadata_profile_when_no_typed_hint_exists() {
     doc.metadata = metadata([("axon_document_profile", json!("code_symbol"))]);
 
     assert_eq!(
-        ChunkRouter::default().route(&doc).unwrap(),
+        ChunkRouter.route(&doc).unwrap(),
         ChunkingProfile::CodeSymbol
     );
 }
@@ -89,7 +89,7 @@ fn router_selects_profile_from_document_shape_when_no_override_exists() {
     ];
 
     for (doc, expected) in cases {
-        assert_eq!(ChunkRouter::default().route(&doc).unwrap(), expected);
+        assert_eq!(ChunkRouter.route(&doc).unwrap(), expected);
     }
 }
 
@@ -161,7 +161,7 @@ fn chunk_profile_completeness_covers_required_profiles() {
     ];
 
     for (doc, expected) in cases {
-        assert_eq!(ChunkRouter::default().route(&doc).unwrap(), expected);
+        assert_eq!(ChunkRouter.route(&doc).unwrap(), expected);
     }
 }
 
@@ -171,7 +171,7 @@ fn router_ignores_generic_profile_metadata() {
     doc.metadata = metadata([("profile", json!("production"))]);
 
     assert_eq!(
-        ChunkRouter::default().route(&doc).unwrap(),
+        ChunkRouter.route(&doc).unwrap(),
         ChunkingProfile::PlainTextWindows
     );
 }
@@ -198,7 +198,7 @@ fn router_recognizes_common_manifest_and_config_files() {
         };
 
         assert_eq!(
-            ChunkRouter::default().route(&doc).unwrap(),
+            ChunkRouter.route(&doc).unwrap(),
             expected,
             "{path} should route to the expected profile"
         );
@@ -247,7 +247,7 @@ fn metadata(entries: impl IntoIterator<Item = (&'static str, serde_json::Value)>
 }
 
 fn route_for_path(path: &str) -> ChunkingProfile {
-    ChunkRouter::default()
+    ChunkRouter
         .route(&source_doc(ContentKind::PlainText, "body").with_path(path))
         .unwrap()
 }
@@ -359,7 +359,7 @@ fn route_decision_reads_adapter_and_scope_from_document_metadata() {
         ("source_scope", json!("diff")),
     ]);
 
-    let decision = ChunkRouter::default().route_decision(&doc).unwrap();
+    let decision = ChunkRouter.route_decision(&doc).unwrap();
     assert_eq!(decision.profile, ChunkingProfile::CodeSymbol);
     // Fragment-prone adapter forces the fallback method even though the
     // document is tiny.

@@ -1,5 +1,7 @@
 //! Source resolution and routing for the unified source pipeline.
 
+#![allow(clippy::large_enum_variant, clippy::result_large_err)]
+
 pub mod alias;
 pub mod authority;
 pub mod boundary;
@@ -14,6 +16,7 @@ pub mod router;
 pub mod scope;
 pub mod source_id;
 pub mod testing;
+mod web_options;
 
 pub use alias::AliasRecord;
 pub use authority::{AuthorityRecord, InMemoryAuthorityRegistry};

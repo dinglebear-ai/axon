@@ -144,6 +144,14 @@ STRUCT_TO_ACTION: dict[str, str] = {
     STRUCT_NAME_OVERRIDES.get(k, f"{k}Request"): v for k, v in VARIANT_TO_ACTION.items()
 }
 
+# Actions that remain on the shared AxonRequest enum (for REST/CLI
+# compatibility) but are DENIED on the MCP surface: MCP_ACTION_SPECS omits them
+# and crates/axon-mcp/src/server.rs rejects them with invalid_params before
+# dispatch (issue #298 WS-G). They must not be documented as MCP tool actions.
+MCP_DENIED_ACTIONS: frozenset[str] = frozenset(
+    {"sources", "domains", "stats", "elicit_demo"}
+)
+
 # Lifecycle families get special documentation treatment.
 LIFECYCLE_FAMILIES: set[str] = {"extract"}
 

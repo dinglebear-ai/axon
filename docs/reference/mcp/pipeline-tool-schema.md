@@ -72,16 +72,16 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 |---|---|
 | `crates/axon-api/src/mcp_schema.rs` | `sha256:3eacee7dde24fa4745784bcbf0ac868b0f966907b210a863ea0bc34558ad1779` |
 | `crates/axon-api/src/mcp_schema/prune_request.rs` | `sha256:385d395e928a7ed96ccc4903ac2e56f835193b58d3c67c0c7179180ce4ae9f70` |
-| `crates/axon-api/src/mcp_schema/requests.rs` | `sha256:f4621603d2656007a2a601778c10986e755c8849c7826310f7afad74b9d078ce` |
+| `crates/axon-api/src/mcp_schema/requests.rs` | `sha256:c556baa7a90233cb34eb4bd93e06b7421ffd7498ddf5294b5380efd599b35fb4` |
 | `crates/axon-api/src/mcp_schema/requests/discovery.rs` | `sha256:fe0bc74dd850407fd249d86e24541f64518e403aa4a6a87130764e7336834548` |
 | `crates/axon-api/src/mcp_schema/requests/graph.rs` | `sha256:0eaaaaaf9782d9165b519401a91bbf784485088ae34a618dd512755606706118` |
 | `crates/axon-api/src/mcp_schema/requests/watch.rs` | `sha256:5d651565b3ff61875b4dfb9e5f1a6c5aa17cb92b78f4f20f69ccd3d9d0ec4990` |
 | `crates/axon-api/src/mcp_schema/utility.rs` | `sha256:145a07007148573c36e39c7fe46c8486a25813f82a50288b2f336815a8404cbf` |
 | `crates/axon-mcp/src/schema_registry.rs` | `sha256:fc7de3b93f7f0f31cc5149efd9b8b3729f887f79d1f74ba6a9bdde245d8e5eee` |
-| `crates/axon-mcp/src/server.rs` | `sha256:f45a688cca4b367be606fd4caa833aa500fb52c9f786dbc6c3b81e8b03317fe0` |
+| `crates/axon-mcp/src/server.rs` | `sha256:21ccae6b108e6f5fa0c00197e5695fa4e7f3ef46a98aadcdc5a626f1e151fe36` |
 | `crates/axon-mcp/src/server/authz.rs` | `sha256:68f50617fb2536b6e2e1b99c68caa434067da3eac287d32fb0a627de6951b71d` |
 | `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc` |
-| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:0960db61568609c37bc11774b341690a3292d189d7d684b1c6bdc7aef3049051` |
+| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:25a3b6108fc7378ec6f5709a1e5ad605ba85b13d071d434c626cc16f37afdcf0` |
 
 ## Drift Checks
 

@@ -48,3 +48,26 @@ impl PayloadParseError {
         Self(msg.into())
     }
 }
+
+fn canonical_uri_from_payload(payload: &serde_json::Value) -> Option<&str> {
+    [
+        "item_canonical_uri",
+        "source_canonical_uri",
+        "source_item_key",
+    ]
+    .into_iter()
+    .find_map(|field| {
+        payload
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+    })
+    .or_else(|| {
+        payload
+            .get("chunk_locator")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|locator| locator.get("canonical_uri"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+    })
+}

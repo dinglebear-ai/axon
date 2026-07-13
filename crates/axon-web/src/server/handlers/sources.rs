@@ -24,6 +24,15 @@
 //! trust boundary); the per-source boundary is skipped there, matching the
 //! router's decision to skip scope layers for loopback.
 //!
+//! The classifier (input kind -> [`SafetyClass`]) lives in
+//! [`axon_services::source::classify::safety_class_for`] and the scope mapping
+//! ([`SafetyClass`] -> required scope) lives in
+//! `axon_authz::required_scope_for_safety_class` — both shared with the MCP
+//! `source` action (`crates/axon-mcp/src/server/handlers_source.rs`), which
+//! runs the equivalent boundary against `AuthSnapshot::granted_scopes` so a
+//! caller cannot bypass the local-filesystem/tool-execution scope upgrade by
+//! calling through MCP instead of REST.
+//!
 //! `index_source`'s future is not `Send` (the web-source bridge holds a
 //! `Box<dyn Error>` across an `.await`), so — like `admin::run_watch` — the
 //! call runs on a blocking thread via `spawn_blocking` + `Handle::block_on`,
@@ -51,8 +60,9 @@ use axon_api::source::{
 };
 use axon_authz::VisibilityPolicy;
 use axon_authz::policy::{ScopeSecurityPolicy, SecurityPolicy};
+use axon_authz::required_scope_for_safety_class as required_scope_for;
 use axon_error::ErrorStage;
-use axon_services::source::classify::{SourceInputKind, classify_source_input};
+use axon_services::source::classify::{classify_source_input, safety_class_for};
 use axum::{Extension, extract::State, http::StatusCode};
 use lab_auth::AuthContext;
 use std::sync::Arc;
@@ -109,23 +119,23 @@ pub(crate) async fn index_source(
 
     let want_async = request.execution.detached && request.execution.mode != ExecutionMode::Wait;
 
-    if want_async {
-        if let Some(job_store) = state.service_context.job_store() {
-            let result = axon_services::source::enqueue::enqueue_source(
-                request,
-                job_store.as_ref(),
-                auth_snapshot,
+    if want_async && let Some(job_store) = state.service_context.job_store() {
+        let result = axon_services::source::enqueue::enqueue_source(
+            request,
+            job_store.as_ref(),
+            auth_snapshot,
+        )
+        .await
+        .map_err(|err| {
+            HttpError::new(
+                StatusCode::BAD_GATEWAY,
+                "upstream_unavailable",
+                err.to_string(),
             )
-            .await
-            .map_err(|err| {
-                HttpError::new(
-                    StatusCode::BAD_GATEWAY,
-                    "upstream_unavailable",
-                    err.to_string(),
-                )
-            })?;
-            return Ok((StatusCode::ACCEPTED, Json(result)));
-        }
+        })?;
+        return Ok((StatusCode::ACCEPTED, Json(result)));
+    }
+    if want_async {
         // No job store configured — degrade to the synchronous path below
         // rather than failing a detached request outright.
     }
@@ -221,31 +231,13 @@ fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
     caller
 }
 
-/// Map a classified source input to its [`SafetyClass`].
-fn safety_class_for(kind: SourceInputKind) -> SafetyClass {
-    match kind {
-        SourceInputKind::Local => SafetyClass::LocalFilesystem,
-        // Web/git/feed/youtube/reddit/registry all fetch over the network.
-        // (CLI/MCP tool execution sources are not classified by the current
-        // input classifier; when they are, they map to `ToolExecution`.)
-        _ => SafetyClass::PublicNetwork,
-    }
-}
-
-/// The fine-grained scope required for a source of the given [`SafetyClass`].
-///
-/// `LocalFilesystem` → `axon:local`, `ToolExecution` → `axon:execute` (both
-/// independent from `axon:write`). Network sources are already covered by the
-/// broad `axon:write` gate on the route, so they map back to `axon:write`.
-fn required_scope_for(safety_class: SafetyClass) -> &'static str {
-    match safety_class {
-        SafetyClass::LocalFilesystem => axon_authz::AXON_LOCAL_SCOPE,
-        SafetyClass::ToolExecution => axon_authz::AXON_EXECUTE_SCOPE,
-        SafetyClass::PublicNetwork | SafetyClass::AuthenticatedNetwork => {
-            axon_authz::AXON_WRITE_SCOPE
-        }
-    }
-}
+// `safety_class_for` (input kind -> `SafetyClass`) and `required_scope_for`
+// (`SafetyClass` -> required scope, aliased above from
+// `axon_authz::required_scope_for_safety_class`) both now live in shared
+// crates so REST and MCP (`crates/axon-mcp/src/server/handlers_source.rs`)
+// authorize a source with the exact same classifier and scope mapping — see
+// `axon_services::source::classify::safety_class_for`'s doc comment for why
+// that matters.
 
 fn safety_class_str(safety_class: SafetyClass) -> &'static str {
     match safety_class {

@@ -53,6 +53,8 @@ pub struct FakePruneTarget {
     applied: Mutex<Vec<AppliedStep>>,
     /// The current committed generation (fenced against). `None` = no source.
     current_generation: Option<SourceGenerationId>,
+    /// Force the fence lookup to fail closed.
+    fail_current_generation: bool,
     /// Boundaries that should fail on apply (to exercise partial failure).
     fail: Mutex<Vec<PruneTargetKind>>,
 }
@@ -64,6 +66,7 @@ impl FakePruneTarget {
             remaining: Mutex::new(counts),
             applied: Mutex::new(Vec::new()),
             current_generation: None,
+            fail_current_generation: false,
             fail: Mutex::new(Vec::new()),
         }
     }
@@ -81,6 +84,12 @@ impl FakePruneTarget {
     /// Set the current committed generation used for fencing.
     pub fn with_current_generation(mut self, generation: SourceGenerationId) -> Self {
         self.current_generation = Some(generation);
+        self
+    }
+
+    /// Force `current_generation()` to return an error.
+    pub fn failing_current_generation(mut self) -> Self {
+        self.fail_current_generation = true;
         self
     }
 
@@ -103,8 +112,14 @@ impl FakePruneTarget {
 
 #[async_trait]
 impl PruneTarget for FakePruneTarget {
-    async fn current_generation(&self, _source_id: Option<&str>) -> Option<SourceGenerationId> {
-        self.current_generation.clone()
+    async fn current_generation(
+        &self,
+        _source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
+        if self.fail_current_generation {
+            return Err("forced current_generation failure".to_string());
+        }
+        Ok(self.current_generation.clone())
     }
 
     async fn apply(&self, step: &PruneStep) -> Result<StepExecution, String> {

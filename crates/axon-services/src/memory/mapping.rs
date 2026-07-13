@@ -10,9 +10,9 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 use super::runtime_metadata::detect_runtime_memory_metadata;
+use crate::sessions_legacy::redact_session_text;
 use axon_api::mcp_schema::{MemoryEdgeType, MemoryNodeType, MemoryRequest};
 use axon_api::source::{MemoryLink, MemoryRecord, MemoryScope, MemoryStatus, MemoryType};
-use axon_ingest::sessions::redact_session_text;
 
 /// Link types used to persist the CLI project/repo/file scope facets.
 pub(super) const LINK_PROJECT: &str = "memory_project";

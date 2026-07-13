@@ -18,10 +18,10 @@ use crate::unified_codec::*;
 
 impl SqliteUnifiedJobStore {
     pub(crate) async fn create_job(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
-        if let Some(idempotency_key) = request.idempotency_key.as_deref() {
-            if let Some(summary) = find_by_idempotency_key(&self.pool, idempotency_key).await? {
-                return Ok(descriptor(&summary));
-            }
+        if let Some(idempotency_key) = request.idempotency_key.as_deref()
+            && let Some(summary) = find_by_idempotency_key(&self.pool, idempotency_key).await?
+        {
+            return Ok(descriptor(&summary));
         }
 
         let job_id = JobId::new(Uuid::new_v4());

@@ -1,17 +1,22 @@
 //! `ask` retrieval half routed through the new `axon-retrieval` engine.
 //!
-//! Issue #298 cutover: the SEARCH + CONTEXT portion of `ask` now embeds +
+//! Issue #298 cutover: the SEARCH + CONTEXT portion of `ask` embeds +
 //! hybrid-searches through [`axon_retrieval::run_query`] (dense + bm42 RRF)
-//! instead of the legacy `axon_vector::ops::commands::ask::build_ask_context`
-//! reranker + full-doc fetcher. The retrieved chunks are formatted into the
-//! same `Sources:\n ## Top Chunk [S#]: …` context string the synthesis prompt
-//! expects, wrapped in the `AskContext`, and handed to the UNCHANGED synthesis
-//! pipeline (`axon_vector::ops::commands::ask::ask_result_from_context`), which
-//! keeps the existing Gemini/core-llm completion, citation validation, and
-//! result assembly.
+//! instead of legacy axon-vector's `build_ask_context` reranker + full-doc
+//! fetcher. The retrieved chunks are formatted into the `Sources:\n ## Top
+//! Chunk [S#]: …` context string the synthesis prompt expects, wrapped in
+//! [`super::synthesis::AskContext`], and handed to the synthesis pipeline in
+//! `super::synthesis` (also ported off legacy axon-vector in this same
+//! cutover — see that module's doc comment), which runs the LLM completion,
+//! citation validation/repair, and result assembly.
 //!
-//! The LLM synthesis half is deliberately left on the legacy path per the slice
-//! scope; only retrieval + context-build were cut over.
+//! `cfg.ask_explain` (`ask --explain`, used by `train`) is the #298 finale:
+//! the legacy reranker (and the `axon-vector` crate that housed it) is
+//! retired entirely, so explain requests now run the SAME retrieval pass as
+//! a normal `ask` and skip only the LLM call — see [`explain`] for how the
+//! trace is derived from the retrieval engine's hits, and
+//! [`super::synthesis::assemble::assemble_explain_result`] for the
+//! no-synthesis result assembly.
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -22,12 +27,14 @@ use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_retrieval::{QueryServiceHit, QueryServiceRequest, run_query};
-use axon_vector::ops::commands::ask::ask_result_from_context_with_deltas;
-use axon_vector::ops::commands::ask::{AskContext, ask_result, ask_result_from_context};
 use axon_vectors::store::VectorStore;
 
+use super::synthesis::assemble::assemble_explain_result;
+use super::synthesis::{AskContext, ask_result_from_context, ask_result_from_context_with_deltas};
 use crate::context::{ServiceContext, build_read_stores_from_config};
 use crate::types::AskResult;
+
+mod explain;
 
 /// Prefix that opens every ask context blob; the synthesis prompt keys off it.
 const CONTEXT_PREFIX: &str = "Sources:\n";
@@ -49,22 +56,6 @@ pub async fn ask_via_retrieval<F>(
 where
     F: FnMut(&str) + Send,
 {
-    // Explain mode traces the LEGACY reranker's per-candidate decisions
-    // (`AskResult.explain`), which the retrieval engine does not produce. The
-    // #298 cutover replaces only the normal ask retrieval path; explain-ask
-    // (used by `train`) stays on the legacy `build_ask_context` reranker so its
-    // candidate trace remains available.
-    if cfg.ask_explain {
-        return ask_result(cfg, question)
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(ServiceError::new(format!(
-                    "ask (explain) failed for {}: {e}",
-                    question.chars().take(80).collect::<String>()
-                )))
-            });
-    }
-
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(
             "ask requires both QDRANT_URL and TEI_URL to be configured for the retrieval engine"
@@ -73,6 +64,30 @@ where
     }
 
     let ask_started = std::time::Instant::now();
+
+    // Explain mode (`ask --explain`, used by `train`) runs the exact same
+    // retrieval pass as a normal ask, then traces it into an
+    // `AskExplainTrace` instead of calling the LLM. See `explain` for the
+    // trace-building logic and its module doc for what narrowed relative to
+    // the retired legacy reranker's trace.
+    if cfg.ask_explain {
+        let (ask_ctx, hits) = retrieval_ask_context_with_hits(ctx, cfg, question, "ask").await?;
+        let trace = explain::build_explain_trace(
+            cfg,
+            question,
+            &hits,
+            ask_ctx.chunks_selected,
+            &ask_ctx.context,
+        );
+        return Ok(assemble_explain_result(
+            cfg,
+            question,
+            &ask_ctx,
+            trace,
+            ask_started.elapsed().as_millis(),
+        ));
+    }
+
     let ask_ctx = retrieval_ask_context(ctx, cfg, question, "ask").await?;
 
     let synth = match on_delta {
@@ -106,6 +121,21 @@ pub(crate) async fn retrieval_ask_context(
     question: &str,
     label: &str,
 ) -> Result<AskContext, Box<dyn Error>> {
+    let (ask_ctx, _hits) = retrieval_ask_context_with_hits(ctx, cfg, question, label).await?;
+    Ok(ask_ctx)
+}
+
+/// Same as [`retrieval_ask_context`], but also returns the full candidate-pool
+/// hits (in retrieval order) alongside the built [`AskContext`]. The plain
+/// `ask`/`evaluate` callers only need the context, so [`retrieval_ask_context`]
+/// discards the hits; `ask --explain` (via [`explain::build_explain_trace`])
+/// needs both.
+async fn retrieval_ask_context_with_hits(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    label: &str,
+) -> Result<(AskContext, Vec<QueryServiceHit>), Box<dyn Error>> {
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(format!(
             "{label} requires both QDRANT_URL and TEI_URL to be configured for the retrieval engine"
@@ -148,18 +178,15 @@ pub(crate) async fn retrieval_ask_context(
     })?;
 
     let retrieval_elapsed_ms = retrieval_started.elapsed().as_millis();
-    Ok(build_ask_context_from_hits(
-        cfg,
-        result.hits,
-        retrieval_elapsed_ms,
-    ))
+    let ask_ctx = build_ask_context_from_hits(cfg, &result.hits, retrieval_elapsed_ms);
+    Ok((ask_ctx, result.hits))
 }
 
 /// Assemble an [`AskContext`] from the retrieval hits, formatting the context
 /// string in the exact shape the synthesis prompt expects.
 fn build_ask_context_from_hits(
     cfg: &Config,
-    hits: Vec<QueryServiceHit>,
+    hits: &[QueryServiceHit],
     retrieval_elapsed_ms: u128,
 ) -> AskContext {
     let chunk_limit = cfg.ask_chunk_limit.max(1);
@@ -168,9 +195,9 @@ fn build_ask_context_from_hits(
     let mut context = String::from(CONTEXT_PREFIX);
     let mut selected_urls: Vec<String> = Vec::new();
     let mut domains: BTreeSet<String> = BTreeSet::new();
-    let mut source_idx = 1usize;
 
-    for hit in hits.into_iter().take(chunk_limit) {
+    for (zero_based_source_idx, hit) in hits.iter().take(chunk_limit).enumerate() {
+        let source_idx = zero_based_source_idx + 1;
         let source = display_source(&hit.canonical_uri);
         let header = format!("## Top Chunk [S{}]: {}\n\n", source_idx, source);
         let body = defang_chunk_text(&hit.text);
@@ -193,8 +220,7 @@ fn build_ask_context_from_hits(
         {
             domains.insert(host);
         }
-        selected_urls.push(hit.canonical_uri);
-        source_idx += 1;
+        selected_urls.push(hit.canonical_uri.clone());
     }
 
     let chunks_selected = selected_urls.len();

@@ -100,9 +100,10 @@ Planned by this contract:
 | `reset` | Explicit destructive local store reset. | plan, approve, delete, verify |
 
 `source` is the normal ingestion/indexing job kind. Former top-level crawl,
-scrape, embed, ingest, sessions, GitHub, crates, YouTube, RSS, Reddit, local
-files, CLI tool, and MCP tool ingestion paths become source jobs with different
-adapters and scopes.
+embed, ingest, sessions, GitHub, crates, YouTube, RSS, Reddit, local files, CLI
+tool, and MCP tool ingestion paths become source jobs with different adapters
+and scopes. The retained `scrape` command also creates a source job, fixed to
+the web adapter's `page` scope and `embed=true` by default.
 
 `watch_run` is not a serialized `JobKind`; watch executions use
 `job_kind=watch` and `job_intent=exec`.

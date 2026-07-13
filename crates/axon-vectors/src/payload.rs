@@ -138,10 +138,10 @@ fn validate_forbidden_fields(metadata: &MetadataMap) -> Result<(), VectorPayload
 }
 
 fn validate_generations(metadata: &MetadataMap) -> Result<(), VectorPayloadValidationError> {
-    if !metadata
+    if metadata
         .get("source_generation")
         .and_then(Value::as_i64)
-        .is_some_and(|value| value >= 0)
+        .is_none_or(|value| value < 0)
     {
         return Err(VectorPayloadValidationError::InvalidGeneration {
             field: "source_generation".to_string(),
@@ -153,9 +153,7 @@ fn validate_generations(metadata: &MetadataMap) -> Result<(), VectorPayloadValid
         });
     };
     if !committed_generation.is_null()
-        && !committed_generation
-            .as_i64()
-            .is_some_and(|value| value >= 0)
+        && committed_generation.as_i64().is_none_or(|value| value < 0)
     {
         return Err(VectorPayloadValidationError::InvalidGeneration {
             field: "committed_generation".to_string(),
@@ -289,7 +287,6 @@ pub const VECTOR_SHARED_FIELDS: &[&str] = &[
     "collection",
     "vector_point_id",
     "source_family",
-    "source_type",
     "source_kind",
     "source_adapter",
     "source_scope",
