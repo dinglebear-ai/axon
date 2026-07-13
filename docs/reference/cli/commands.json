@@ -1352,7 +1352,7 @@
         "path": "crates/axon-core/src/config/cli/setup_args.rs"
       },
       {
-        "checksum": "sha256:906aa128ffd9876e675b8ba3ce139777f50172726c26d8d55fbbe40894377065",
+        "checksum": "sha256:ad7c2b39eb9c0bde4bfb138554506c874ef4e4cb610bd33e0180cc7468a26069",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
