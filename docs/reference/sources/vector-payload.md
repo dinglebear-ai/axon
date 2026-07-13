@@ -16,7 +16,7 @@ See the family contract for declared output paths.
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:f9ee03f30e3972cf07002859ad51ccee9c66b000f1b35f812f30c24fc3d185d9` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:f2e0d4facb6de082f2a82f2a1b9d9213c95a3846e4e32ce696ef30cdc5c74907` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:d245b4d5b15916f926d3cbbcef48cf7fb841541aecf99f923ec5aea8b32e6ac5` |
 | `crates/axon-vectors/src/point.rs` | `sha256:e476be2613a55a0078a156b5266bfa767ac4b9ab651b0d1b4a2ce1fd14ff3fc2` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:87b71c14b12694f5d440a5fdf5d9db185a50e55c61a61629bf3bed8a9cb07454` |
@@ -104,7 +104,7 @@ Payload validation rejects secret field fragments and secret value fragments bef
 | `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
-| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth`, `normalization_version`, `web_url`, `web_seed_url`, `web_origin`, `web_path`, `web_normalized_url`, `web_fetch_method`, `structured_payload_omitted`, `web_structured_kind`, `web_structured_blob` |
+| `web` | `web_title`, `web_domain`, `web_status_code`, `web_depth`, `normalization_version`, `web_url`, `web_seed_url`, `web_origin`, `web_path`, `web_normalized_url`, `web_fetch_method`, `extractor_name`, `extractor_version`, `structured_payload_omitted`, `web_structured_kind`, `web_structured_blob` |
 | `package` | `package_ecosystem`, `package_name`, `package_version` |
 | `session` | `session_provider`, `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |

@@ -11,6 +11,7 @@ async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
+axon-extract = { path = "../axon-extract" }
 axon-observe = { path = "../axon-observe" }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -21,7 +22,12 @@ hex = "0.4"
 ignore = "0.4"
 pulldown-cmark = "0.13"
 reflink-copy = "0.1"
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream", "form"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "json",
+  "rustls",
+  "stream",
+  "form",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -55,9 +61,7 @@ spider_transformations = "2"
 # crate/feature `axon-services` already depends on for its Tavily search path
 # (see `crates/axon-services/Cargo.toml`). Only the search client is needed
 # here, not `openai`.
-spider_agent = { version = "2.47.89", default-features = false, features = [
-  "search_tavily",
-] }
+spider_agent = { version = "2.47.89", default-features = false, features = ["search_tavily"] }
 tempfile = "3"
 tokio = { version = "1", features = [
   "rt",

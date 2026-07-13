@@ -20,6 +20,7 @@ fn counts(source_id: &str, generation: &str) -> IndexCounts {
         vector_points_written: 0,
         removed: 0,
         graph_candidates: Vec::new(),
+        warnings: Vec::new(),
     }
 }
 

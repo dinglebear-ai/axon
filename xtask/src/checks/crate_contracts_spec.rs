@@ -87,7 +87,6 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-vector",
             "axon-crawl",
             "axon-ingest",
-            "axon-extract",
             "axon-code-index",
         ],
     },

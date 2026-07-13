@@ -11,6 +11,7 @@ fn required_retrieval_payload_indexes_include_generation_safe_filters() {
     let indexes = required_retrieval_payload_indexes();
     let required = [
         "source_id",
+        "source_family",
         "source_kind",
         "source_adapter",
         "source_scope",

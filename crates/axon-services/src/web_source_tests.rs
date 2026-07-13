@@ -113,6 +113,14 @@ async fn embed_false_writes_no_vectors_but_still_completes() {
         Some(output.generation.clone())
     );
     assert_eq!(output.vector_points_written, 0);
+    assert!(
+        output.documents_prepared >= 1,
+        "embed=false must still acquire, normalize, and prepare changed documents"
+    );
+    assert!(
+        output.chunks_prepared >= 1,
+        "embed=false must still chunk prepared documents"
+    );
     assert_eq!(
         embedder.calls().await.len(),
         0,

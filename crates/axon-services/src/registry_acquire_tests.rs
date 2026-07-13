@@ -14,6 +14,18 @@ fn parses_each_registry() {
         parse_registry_target("pkg:crates/serde").unwrap(),
         ("crates".to_string(), "serde".to_string())
     );
+    assert_eq!(
+        parse_registry_target("pkg://crates/serde").unwrap(),
+        ("crates".to_string(), "serde".to_string())
+    );
+    assert_eq!(
+        parse_registry_target("npm:left-pad").unwrap(),
+        ("npm".to_string(), "left-pad".to_string())
+    );
+    assert_eq!(
+        parse_registry_target("pypi:FastAPI").unwrap(),
+        ("pypi".to_string(), "FastAPI".to_string())
+    );
 }
 
 #[test]
@@ -37,6 +49,9 @@ fn registry_is_case_insensitive_and_trimmed() {
 #[test]
 fn is_registry_target_matches_valid_and_rejects_others() {
     assert!(is_registry_target("pkg:npm/left-pad"));
+    assert!(is_registry_target("pkg://npm/left-pad"));
+    assert!(is_registry_target("npm:left-pad"));
+    assert!(is_registry_target("pypi:requests"));
     assert!(is_registry_target("pkg:crates/serde"));
     // Not a registry target.
     assert!(!is_registry_target("left-pad"));

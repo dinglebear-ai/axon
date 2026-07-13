@@ -90,6 +90,7 @@ pub fn check_collection_drift(existing: &CollectionSpec, incoming: &CollectionSp
 pub fn required_retrieval_payload_indexes() -> Vec<PayloadIndexSpec> {
     [
         ("source_id", PayloadFieldSchema::Keyword),
+        ("source_family", PayloadFieldSchema::Keyword),
         ("source_kind", PayloadFieldSchema::Keyword),
         ("source_adapter", PayloadFieldSchema::Keyword),
         ("source_scope", PayloadFieldSchema::Keyword),

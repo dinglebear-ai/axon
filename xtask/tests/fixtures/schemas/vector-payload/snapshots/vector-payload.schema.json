@@ -899,6 +899,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -1382,6 +1392,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -1835,6 +1855,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -2279,6 +2309,16 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
               ]
             },
             {
@@ -3249,6 +3289,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -3752,6 +3802,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -4241,6 +4301,16 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
               ]
             },
             {
@@ -4748,6 +4818,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -5197,6 +5277,16 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
               ]
             },
             {
@@ -5699,6 +5789,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -6197,6 +6297,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -6691,6 +6801,16 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
               ]
             },
             {
@@ -7203,6 +7323,16 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -7584,6 +7714,12 @@
       "type": "string"
     },
     "env_locator": {
+      "type": "string"
+    },
+    "extractor_name": {
+      "type": "string"
+    },
+    "extractor_version": {
       "type": "string"
     },
     "feed_entry_author": {
@@ -8435,6 +8571,8 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "extractor_name": "extractor_name",
+        "extractor_version": "extractor_version",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-web",
         "normalization_version": "normalization_version",
@@ -9418,7 +9556,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:f2e0d4facb6de082f2a82f2a1b9d9213c95a3846e4e32ce696ef30cdc5c74907",
+        "checksum": "sha256:d245b4d5b15916f926d3cbbcef48cf7fb841541aecf99f923ec5aea8b32e6ac5",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -9534,6 +9672,8 @@
           "web_path",
           "web_normalized_url",
           "web_fetch_method",
+          "extractor_name",
+          "extractor_version",
           "structured_payload_omitted",
           "web_structured_kind",
           "web_structured_blob"

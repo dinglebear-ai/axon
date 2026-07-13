@@ -67,6 +67,8 @@ testing.rs
 
 - `axon-api`, `axon-error`, `axon-core`, `axon-route`, `axon-authz`,
   `axon-observe`
+- `axon-extract` as the transitional vertical-extractor catalog used by the web
+  adapter until those modules are re-homed behind adapter/parser ownership
 - acquisition libraries such as HTTP, git, feed, transcript, archive, and tool
   clients when hidden behind adapter implementations
 

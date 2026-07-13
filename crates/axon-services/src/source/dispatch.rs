@@ -87,6 +87,7 @@ pub async fn dispatch_local(
         vector_points_written: output.vector_points_written,
         removed: output.removed_files,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -145,6 +146,7 @@ pub async fn dispatch_git(
         vector_points_written: output.vector_points_written,
         removed: output.removed_files,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -195,6 +197,7 @@ pub async fn dispatch_feed(
         vector_points_written: output.vector_points_written,
         removed: output.removed_entries,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -246,6 +249,7 @@ pub async fn dispatch_reddit(
         vector_points_written: output.vector_points_written,
         removed: output.removed_items,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -297,6 +301,7 @@ pub async fn dispatch_youtube(
         vector_points_written: output.vector_points_written,
         removed: output.removed_videos,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -349,6 +354,7 @@ pub async fn dispatch_registry(
         vector_points_written: output.vector_points_written,
         removed: output.removed_versions,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -402,6 +408,7 @@ pub async fn dispatch_session(
         vector_points_written: output.vector_points_written,
         removed: output.removed_files,
         graph_candidates: output.graph_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -465,6 +472,7 @@ pub async fn dispatch_web(
         vector_points_written: output.vector_points_written,
         removed: output.removed_pages,
         graph_candidates: output.graph_candidates,
+        warnings: output.warnings,
     })
 }
 

@@ -9,13 +9,11 @@
 //! [`super::resolve_runtime_with_workers`] hands the registry to
 //! `SqliteJobBackend::new_with_workers_and_registry` at composition time.
 //!
-//! Scope: this wave wires `ProviderProbe` (backed by the real
-//! `system::doctor::doctor` connectivity check) and `Memory` (backed by real
-//! `SqliteMemoryStore::compact`/`import` calls — see [`MemoryCompactionRunner`]).
-//! `GraphMutation`/`Prune`/`Watch` are intentionally left unregistered — they
-//! run as sub-steps of a parent operation or have their own scheduler, and
-//! forcing them through this seam here risks a rushed, wrong implementation
-//! of the trickiest cases.
+//! Registered here today: `ProviderProbe`, `Extract`, `Embed`, `Crawl`,
+//! `Ingest`, `Source`, and `Memory`. `GraphMutation`/`Prune`/`Watch` are
+//! intentionally left unregistered: they run as sub-steps of a parent operation
+//! or have their own scheduler, and forcing them through this seam here risks a
+//! rushed, wrong implementation of the trickiest cases.
 
 use std::sync::Arc;
 

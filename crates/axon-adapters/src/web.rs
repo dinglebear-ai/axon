@@ -15,6 +15,7 @@ mod metadata;
 mod options;
 mod site_discovery;
 mod url_parts;
+mod vertical;
 mod warc;
 
 use std::sync::Arc;
