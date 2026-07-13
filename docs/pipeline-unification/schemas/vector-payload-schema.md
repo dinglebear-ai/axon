@@ -99,7 +99,7 @@ This list is generated from `VECTOR_REQUIRED_FIELDS`
 (`crates/axon-vectors/src/payload.rs`) — do not hand-maintain a second
 required-field list that can drift from it.
 
-`source_family` is a payload-only classification axis (13 values,
+`source_family` is a payload-only classification axis (14 values,
 `VECTOR_SOURCE_FAMILIES`) distinct from `source_kind` — see "Source Family
 Classification" in
 [`../sources/metadata-payload.md`](../sources/metadata-payload.md#source-family-classification)
