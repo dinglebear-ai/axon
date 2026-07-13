@@ -30,6 +30,12 @@ pub struct FakeSourceEnricher {
     enrichment_kind: EnrichmentKind,
     enrichment_status: EnrichmentStatus,
     capability_override: Option<SourceEnricherCapability>,
+    /// When set, `enrich()` emits one [`GraphCandidate`] per call with this
+    /// `kind`, keyed to the real `item`/`plan` identity so pipeline-level
+    /// plumbing tests (matching candidates back to a document by
+    /// `source_item_key`) see a realistic, correctly-keyed candidate rather
+    /// than a canned fixture.
+    graph_candidate_kind: Option<String>,
     calls: Arc<Mutex<Vec<SourceItemKey>>>,
 }
 
@@ -40,6 +46,7 @@ impl FakeSourceEnricher {
             enrichment_kind: EnrichmentKind::Metadata,
             enrichment_status: EnrichmentStatus::Completed,
             capability_override: None,
+            graph_candidate_kind: None,
             calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -52,6 +59,15 @@ impl FakeSourceEnricher {
     pub fn with_result(mut self, kind: EnrichmentKind, status: EnrichmentStatus) -> Self {
         self.enrichment_kind = kind;
         self.enrichment_status = status;
+        self
+    }
+
+    /// Configure `enrich()` to emit one [`GraphCandidate`] of `kind` per call,
+    /// stamped with the real `job_id`/`source_id`/`source_item_key` from the
+    /// call's `plan`/`item` so callers can assert the candidate survives
+    /// downstream matching (e.g. by `source_item_key`).
+    pub fn with_graph_candidate_kind(mut self, kind: impl Into<String>) -> Self {
+        self.graph_candidate_kind = Some(kind.into());
         self
     }
 
@@ -117,6 +133,10 @@ impl SourceEnricher for FakeSourceEnricher {
         } else {
             Vec::new()
         };
+        let graph_candidates = match &self.graph_candidate_kind {
+            Some(kind) => vec![fake_graph_candidate(kind.clone(), plan, item)],
+            None => Vec::new(),
+        };
         Ok(SourceEnrichment {
             header: StageResultHeader {
                 job_id: plan.job_id,
@@ -145,7 +165,7 @@ impl SourceEnricher for FakeSourceEnricher {
             metadata: MetadataMap::new(),
             parse_hints: Vec::new(),
             chunk_hints: Vec::new(),
-            graph_candidates: Vec::new(),
+            graph_candidates,
             artifacts: Vec::new(),
             warnings,
         })
@@ -163,5 +183,34 @@ impl SourceEnricher for FakeSourceEnricher {
             features: vec!["fake".to_string()],
             limits: MetadataMap::new(),
         }))
+    }
+}
+
+/// Build a minimal, correctly-keyed [`GraphCandidate`] for
+/// [`FakeSourceEnricher::with_graph_candidate_kind`].
+fn fake_graph_candidate(
+    kind: String,
+    plan: &SourcePlan,
+    item: &AcquiredSourceItem,
+) -> GraphCandidate {
+    GraphCandidate {
+        candidate_id: format!("fake_{}", item.manifest_item.source_item_key.0),
+        job_id: plan.job_id,
+        source_id: plan.route.source.source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key.clone(),
+        item_canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: None,
+        kind,
+        merge_key: None,
+        producer: GraphCandidateProducer {
+            adapter: "fake-source-enricher".to_string(),
+            parser: None,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        evidence: Vec::new(),
+        confidence: 1.0,
+        metadata: MetadataMap::new(),
     }
 }
