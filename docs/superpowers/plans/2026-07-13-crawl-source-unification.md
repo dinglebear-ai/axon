@@ -55,15 +55,14 @@ The tasks are ordered so later tasks can run on a real unified Source job path r
 - `crates/axon-services/src/search_source_index.rs` — source-backed bounded auto-index helper for search/research.
 - `crates/axon-services/src/source/events.rs` — durable source progress event helper for migrated web phases.
 - `crates/axon-observe/src/source_metrics.rs` — bounded-label source pipeline metrics helpers.
-- `crates/axon-services/src/test_support/source_web.rs` — shared fake web/source runtime helpers used by the new integration tests.
-- `crates/axon-services/tests/source_web_job_identity.rs` — integration tests for exact-one Source job identity.
-- `crates/axon-services/tests/source_web_304_reuse.rs` — integration tests for mixed modified/304/removed web runs.
-- `crates/axon-services/tests/source_web_artifacts.rs` — integration tests for ArtifactStore-backed WARC/clean output.
-- `crates/axon-services/tests/source_web_crawl_cutover.rs` — integration tests for site/docs Source jobs with no child Embed.
-- `crates/axon-cli/tests/scrape_map_source_projection.rs` — CLI parser/JSON projection tests for scrape/map/crawl reservation.
-- `crates/axon-services/tests/source_auto_index_cutover.rs` — watch/refresh/search/research source-job assertions.
-- `crates/axon-services/tests/source_observability.rs` — event/metric coverage tests.
-- `crates/axon-services/tests/legacy_crawl_unreachable.rs` — static and SQLite migration guards.
+- `crates/axon-services/src/source_web_job_identity_tests.rs` — in-crate tests for exact-one Source job identity.
+- `crates/axon-services/src/source_web_304_reuse_tests.rs` — in-crate tests for mixed modified/304/removed web runs.
+- `crates/axon-services/src/source_web_artifacts_tests.rs` — in-crate tests for ArtifactStore-backed WARC/clean output.
+- `crates/axon-services/src/source_web_crawl_cutover_tests.rs` — in-crate tests for site/docs Source jobs with no child Embed.
+- `crates/axon-cli/src/scrape_map_source_projection_tests.rs` — CLI parser/JSON projection tests for scrape/map/crawl reservation.
+- `crates/axon-services/src/source_auto_index_cutover_tests.rs` — watch/refresh/search/research source-job assertions.
+- `crates/axon-services/src/source_observability_tests.rs` — event/metric coverage tests.
+- `crates/axon-services/src/legacy_crawl_unreachable_tests.rs` — static and SQLite migration guards.
 
 ### Modified Files
 
@@ -77,6 +76,7 @@ The tasks are ordered so later tasks can run on a real unified Source job path r
 - `crates/axon-adapters/src/web/manifest_items.rs` — preserve ETag/last-modified/content hash metadata for reuse.
 - `crates/axon-adapters/src/web/warc.rs` — return WARC bytes/provenance instead of treating a direct file path as durable state.
 - `crates/axon-services/src/source.rs` — add execution-context overload, thread events, enforce publish fence.
+- `crates/axon-services/src/test_support.rs` — extend existing flat test-support module with fake web/source runtime helpers used by the new in-crate tests.
 - `crates/axon-services/src/source/dispatch.rs` — pass existing Source job execution context to the web family bridge.
 - `crates/axon-services/src/web_source.rs` and `crates/axon-services/src/web_source/*` — reuse, artifacts, publish fence, map/scrape output, events, metrics.
 - `crates/axon-services/src/runtime/job_runners/source_runner.rs` — call the execution-context overload with the claimed job id.
@@ -189,7 +189,7 @@ pub struct StoredWebArtifact {
 }
 ```
 
-Test harness names used below are backed by `crates/axon-services/src/test_support/source_web.rs` and re-exported from `crates/axon-services/src/test_support/mod.rs` under `#[cfg(test)]`:
+Test harness names used below are backed by the existing flat `crates/axon-services/src/test_support.rs` module under `#[cfg(test)]`. Keep the new tests in `crates/axon-services/src/*_tests.rs` and wire them with `#[cfg(test)] #[path = "..."] mod ...;` from the relevant module or `lib.rs`; integration tests under `crates/axon-services/tests/` cannot use this crate-private support module.
 
 ```rust
 pub struct SourceRuntimeHarness {
@@ -237,7 +237,7 @@ pub struct WatchDispatchHarness {
 - Modify: `crates/axon-core/src/config/source_routing_tests.rs`
 - Modify: `crates/axon-core/src/config/cli.rs`
 - Modify: `crates/axon-cli/src/lib.rs`
-- Test: `crates/axon-cli/tests/scrape_map_source_projection.rs`
+- Test: `crates/axon-cli/src/scrape_map_source_projection_tests.rs`
 
 **Interfaces:**
 - Consumes: existing `route_bare_source(args: Vec<String>, command: &clap::Command) -> Vec<String>`.
@@ -470,7 +470,7 @@ git commit -m "feat(cli): reserve crawl and restore scrape surface"
 - Modify: `crates/axon-services/src/source/dispatch.rs`
 - Modify: `crates/axon-services/src/web_source/web_source_job.rs`
 - Modify: `crates/axon-services/src/runtime/job_runners/source_runner.rs`
-- Test: `crates/axon-services/tests/source_web_job_identity.rs`
+- Test: `crates/axon-services/src/source_web_job_identity_tests.rs`
 
 **Interfaces:**
 - Consumes: `SourceRequest`, `AuthSnapshot`, `JobStore`, `LedgerStore`, existing `index_web_source`.
@@ -478,7 +478,7 @@ git commit -m "feat(cli): reserve crawl and restore scrape surface"
 
 - [ ] **Step 1: Write failing exact-one-job tests**
 
-Create `crates/axon-services/tests/source_web_job_identity.rs`:
+Create `crates/axon-services/src/source_web_job_identity_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::{AuthSnapshot, ExecutionMode, JobKind, SourceRequest, SourceScope};
@@ -572,7 +572,7 @@ impl SourceRuntimeHarness {
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_job_identity -- --nocapture
+cargo test -p axon-services source_web_job_identity -- --nocapture
 ```
 
 Expected: compile failure for `source_context_with_fake_web`, `test_jobs`, and `index_source_with_execution`.
@@ -747,7 +747,7 @@ let run_fut = crate::source::index_source_with_execution(source_request, ctx, ex
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_job_identity -- --nocapture
+cargo test -p axon-services source_web_job_identity -- --nocapture
 cargo test -p axon-services source_runner -- --nocapture
 ```
 
@@ -756,7 +756,7 @@ Expected: both pass; no nested `JobKind::Source` row appears in the detached web
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-services/src/source.rs crates/axon-services/src/source/execution.rs crates/axon-services/src/source/dispatch.rs crates/axon-services/src/web_source/web_source_job.rs crates/axon-services/src/web_source/job_execution.rs crates/axon-services/src/runtime/job_runners/source_runner.rs crates/axon-services/tests/source_web_job_identity.rs
+git add crates/axon-services/src/source.rs crates/axon-services/src/source/execution.rs crates/axon-services/src/source/dispatch.rs crates/axon-services/src/test_support.rs crates/axon-services/src/web_source/web_source_job.rs crates/axon-services/src/web_source/job_execution.rs crates/axon-services/src/runtime/job_runners/source_runner.rs crates/axon-services/src/source_web_job_identity_tests.rs
 git commit -m "fix(source): preserve one job id for web source indexing"
 ```
 
@@ -768,7 +768,7 @@ git commit -m "fix(source): preserve one job id for web source indexing"
 - Modify: `crates/axon-adapters/src/web/manifest_items.rs`
 - Modify: `crates/axon-services/src/web_source/run.rs`
 - Modify: `crates/axon-services/src/web_source/vectorize.rs`
-- Test: `crates/axon-services/tests/source_web_304_reuse.rs`
+- Test: `crates/axon-services/src/source_web_304_reuse_tests.rs`
 
 **Interfaces:**
 - Consumes: `SourceManifestDiff`, `SourceDocument`, `DocumentCache`, previous committed ledger generation.
@@ -776,7 +776,7 @@ git commit -m "fix(source): preserve one job id for web source indexing"
 
 - [ ] **Step 1: Write failing mixed 304 tests**
 
-Create `crates/axon-services/tests/source_web_304_reuse.rs`:
+Create `crates/axon-services/src/source_web_304_reuse_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::{SourceRefreshPolicy, SourceRequest, SourceScope};
@@ -840,7 +840,7 @@ async fn mixed_modified_304_and_removed_counts_are_distinct() {
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_304_reuse -- --nocapture
+cargo test -p axon-services source_web_304_reuse -- --nocapture
 ```
 
 Expected: compile failure for missing `reuse` module and harness helpers, or runtime failure showing 304 items are dropped or re-embedded.
@@ -973,7 +973,7 @@ Add `reused_documents` to the output metadata and exclude reused documents from 
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_304_reuse -- --nocapture
+cargo test -p axon-services source_web_304_reuse -- --nocapture
 cargo test -p axon-adapters web:: -- --nocapture
 ```
 
@@ -982,7 +982,7 @@ Expected: mixed modified/304/removed runs commit a complete manifest, reused pag
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-adapters/src/web/acquire.rs crates/axon-adapters/src/web/manifest_items.rs crates/axon-services/src/web_source/reuse.rs crates/axon-services/src/web_source/run.rs crates/axon-services/src/web_source/vectorize.rs crates/axon-services/tests/source_web_304_reuse.rs
+git add crates/axon-adapters/src/web/acquire.rs crates/axon-adapters/src/web/manifest_items.rs crates/axon-services/src/test_support.rs crates/axon-services/src/web_source/reuse.rs crates/axon-services/src/web_source/run.rs crates/axon-services/src/web_source/vectorize.rs crates/axon-services/src/source_web_304_reuse_tests.rs
 git commit -m "fix(web-source): reuse previous documents on 304"
 ```
 
@@ -995,7 +995,7 @@ git commit -m "fix(web-source): reuse previous documents on 304"
 - Modify: `crates/axon-services/src/web_source.rs`
 - Modify: `crates/axon-services/src/web_source/publish.rs`
 - Modify: `crates/axon-services/src/source/prune.rs`
-- Test: `crates/axon-services/tests/source_web_artifacts.rs`
+- Test: `crates/axon-services/src/source_web_artifacts_tests.rs`
 
 **Interfaces:**
 - Consumes: `axon_core::boundary::ArtifactStore`, `ArtifactWriteRequest`, `OutputPolicy`, acquired web items.
@@ -1003,7 +1003,7 @@ git commit -m "fix(web-source): reuse previous documents on 304"
 
 - [ ] **Step 1: Write failing artifact tests**
 
-Create `crates/axon-services/tests/source_web_artifacts.rs`:
+Create `crates/axon-services/src/source_web_artifacts_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::{ArtifactKind, ArtifactMode, ResponseMode, SourceRequest, SourceScope};
@@ -1066,7 +1066,7 @@ async fn cleanup_debt_deletes_superseded_artifacts() {
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_artifacts -- --nocapture
+cargo test -p axon-services source_web_artifacts -- --nocapture
 ```
 
 Expected: failure because WARC is still a direct path artifact and cleanup skips artifact debt.
@@ -1213,7 +1213,7 @@ In `crates/axon-services/src/source/prune.rs`, drain `ArtifactDelete` and `Cache
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_artifacts -- --nocapture
+cargo test -p axon-services source_web_artifacts -- --nocapture
 cargo test -p axon-core artifact -- --nocapture
 ```
 
@@ -1222,7 +1222,7 @@ Expected: WARC and clean content artifacts carry hash/source/job metadata, and c
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-adapters/src/web/warc.rs crates/axon-adapters/src/web/acquire.rs crates/axon-services/src/web_source.rs crates/axon-services/src/web_source/artifacts.rs crates/axon-services/src/web_source/publish.rs crates/axon-services/src/source/prune.rs crates/axon-services/tests/source_web_artifacts.rs
+git add crates/axon-adapters/src/web/warc.rs crates/axon-adapters/src/web/acquire.rs crates/axon-services/src/test_support.rs crates/axon-services/src/web_source.rs crates/axon-services/src/web_source/artifacts.rs crates/axon-services/src/web_source/publish.rs crates/axon-services/src/source/prune.rs crates/axon-services/src/source_web_artifacts_tests.rs
 git commit -m "feat(web-source): store WARC and clean output artifacts"
 ```
 
@@ -1235,7 +1235,7 @@ git commit -m "feat(web-source): store WARC and clean output artifacts"
 - Modify: `crates/axon-services/src/runtime/job_runners.rs`
 - Modify: `crates/axon-services/src/runtime/job_runners/crawl_runner.rs`
 - Modify: `crates/axon-core/src/http.rs`
-- Test: `crates/axon-services/tests/source_web_crawl_cutover.rs`
+- Test: `crates/axon-services/src/source_web_crawl_cutover_tests.rs`
 
 **Interfaces:**
 - Consumes: `SourceRequest.scope=site|docs`, web adapter discovery/acquire, artifact and reuse work from Tasks 3-4.
@@ -1243,7 +1243,7 @@ git commit -m "feat(web-source): store WARC and clean output artifacts"
 
 - [ ] **Step 1: Write failing crawl-cutover tests**
 
-Create `crates/axon-services/tests/source_web_crawl_cutover.rs`:
+Create `crates/axon-services/src/source_web_crawl_cutover_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::{JobKind, SourceRequest, SourceScope};
@@ -1307,7 +1307,7 @@ async fn ssrf_denies_tailscale_and_private_targets() {
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_crawl_cutover -- --nocapture
+cargo test -p axon-services source_web_crawl_cutover -- --nocapture
 ```
 
 Expected: failure showing Crawl/Embed jobs still appear or SSRF allows `100.64.0.0/10`.
@@ -1407,7 +1407,7 @@ Do not register `CrawlRunner` in the default registry. Keep `crawl_runner.rs` pr
 Run:
 
 ```bash
-cargo test -p axon-services --test source_web_crawl_cutover -- --nocapture
+cargo test -p axon-services source_web_crawl_cutover -- --nocapture
 cargo test -p axon-core http -- --nocapture
 cargo xtask check-layering
 ```
@@ -1417,7 +1417,7 @@ Expected: Source site/docs runs create Source jobs only; vector failure leaves n
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-services/src/source/dispatch.rs crates/axon-services/src/web_source.rs crates/axon-services/src/web_source/run.rs crates/axon-services/src/web_source/publish.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-core/src/http.rs crates/axon-services/tests/source_web_crawl_cutover.rs
+git add crates/axon-services/src/source/dispatch.rs crates/axon-services/src/test_support.rs crates/axon-services/src/web_source.rs crates/axon-services/src/web_source/run.rs crates/axon-services/src/web_source/publish.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-core/src/http.rs crates/axon-services/src/source_web_crawl_cutover_tests.rs
 git commit -m "feat(source): run site and docs crawl through Source jobs"
 ```
 
@@ -1430,7 +1430,7 @@ git commit -m "feat(source): run site and docs crawl through Source jobs"
 - Modify: `crates/axon-cli/src/commands/mod.rs`
 - Modify: `crates/axon-cli/src/lib.rs`
 - Modify: `crates/axon-core/src/config/cli.rs`
-- Test: `crates/axon-cli/tests/scrape_map_source_projection.rs`
+- Test: `crates/axon-cli/src/scrape_map_source_projection_tests.rs`
 
 **Interfaces:**
 - Consumes: `SourceRequest`, `SourceScope::Page`, `SourceScope::Map`, `SourceIntent::Map`, `OutputPolicy`.
@@ -1438,7 +1438,7 @@ git commit -m "feat(source): run site and docs crawl through Source jobs"
 
 - [ ] **Step 1: Write failing CLI projection tests**
 
-Create `crates/axon-cli/tests/scrape_map_source_projection.rs`:
+Create `crates/axon-cli/src/scrape_map_source_projection_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 #[test]
@@ -1578,7 +1578,7 @@ Expected: scrape and map capture `SourceRequest`; `crawl` remains reserved.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/axon-cli/src/commands/scrape_source.rs crates/axon-cli/src/commands/map.rs crates/axon-cli/src/commands/source.rs crates/axon-cli/src/commands/mod.rs crates/axon-cli/src/lib.rs crates/axon-core/src/config/cli.rs crates/axon-cli/tests/scrape_map_source_projection.rs
+git add crates/axon-cli/src/commands/scrape_source.rs crates/axon-cli/src/commands/map.rs crates/axon-cli/src/commands/source.rs crates/axon-cli/src/commands/mod.rs crates/axon-cli/src/lib.rs crates/axon-core/src/config/cli.rs crates/axon-cli/src/scrape_map_source_projection_tests.rs
 git commit -m "feat(cli): project scrape and map through SourceRequest"
 ```
 
@@ -1593,7 +1593,7 @@ git commit -m "feat(cli): project scrape and map through SourceRequest"
 - Modify: `crates/axon-cli/src/commands/refresh.rs`
 - Modify: `crates/axon-mcp/src/server/handlers_query.rs`
 - Modify: `crates/axon-web/src/server/handlers/exploration.rs`
-- Test: `crates/axon-services/tests/source_auto_index_cutover.rs`
+- Test: `crates/axon-services/src/source_auto_index_cutover_tests.rs`
 
 **Interfaces:**
 - Consumes: Source job enqueue from Tasks 2 and 5.
@@ -1601,7 +1601,7 @@ git commit -m "feat(cli): project scrape and map through SourceRequest"
 
 - [ ] **Step 1: Write failing auto-index tests**
 
-Create `crates/axon-services/tests/source_auto_index_cutover.rs`:
+Create `crates/axon-services/src/source_auto_index_cutover_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::{JobKind, SourceScope};
@@ -1769,7 +1769,7 @@ Expected: tests pass; grep output contains only migration-only files, reserved-t
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-services/src/search_source_index.rs crates/axon-jobs/src/watch/dispatch.rs crates/axon-services/src/refresh.rs crates/axon-services/src/search_crawl.rs crates/axon-cli/src/commands/search.rs crates/axon-cli/src/commands/refresh.rs crates/axon-mcp/src/server/handlers_query.rs crates/axon-web/src/server/handlers/exploration.rs crates/axon-services/tests/source_auto_index_cutover.rs
+git add crates/axon-services/src/search_source_index.rs crates/axon-jobs/src/watch/dispatch.rs crates/axon-services/src/refresh.rs crates/axon-services/src/search_crawl.rs crates/axon-cli/src/commands/search.rs crates/axon-cli/src/commands/refresh.rs crates/axon-mcp/src/server/handlers_query.rs crates/axon-web/src/server/handlers/exploration.rs crates/axon-services/src/source_auto_index_cutover_tests.rs
 git commit -m "feat(source): auto-index web callers with Source jobs"
 ```
 
@@ -1784,7 +1784,7 @@ git commit -m "feat(source): auto-index web callers with Source jobs"
 - Modify: `crates/axon-services/src/web_source.rs`
 - Modify: `crates/axon-web/src/server/handlers/jobs.rs`
 - Modify: `crates/axon-cli/src/commands/status.rs`
-- Test: `crates/axon-services/tests/source_observability.rs`
+- Test: `crates/axon-services/src/source_observability_tests.rs`
 
 **Interfaces:**
 - Consumes: single Source job id from Task 2.
@@ -1792,7 +1792,7 @@ git commit -m "feat(source): auto-index web callers with Source jobs"
 
 - [ ] **Step 1: Write failing observability tests**
 
-Create `crates/axon-services/tests/source_observability.rs`:
+Create `crates/axon-services/src/source_observability_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::{PipelinePhase, SourceRequest, SourceScope};
@@ -1991,7 +1991,7 @@ Expected: ordered phase events, shared REST/CLI event source, and high-cardinali
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-services/src/source/events.rs crates/axon-observe/src/source_metrics.rs crates/axon-observe/src/lib.rs crates/axon-services/src/source.rs crates/axon-services/src/source/dispatch.rs crates/axon-services/src/web_source.rs crates/axon-web/src/server/handlers/jobs.rs crates/axon-cli/src/commands/status.rs crates/axon-services/tests/source_observability.rs
+git add crates/axon-services/src/source/events.rs crates/axon-observe/src/source_metrics.rs crates/axon-observe/src/lib.rs crates/axon-services/src/source.rs crates/axon-services/src/source/dispatch.rs crates/axon-services/src/web_source.rs crates/axon-web/src/server/handlers/jobs.rs crates/axon-cli/src/commands/status.rs crates/axon-services/src/source_observability_tests.rs
 git commit -m "feat(source): add web pipeline events and metrics"
 ```
 
@@ -2007,7 +2007,7 @@ git commit -m "feat(source): add web pipeline events and metrics"
 - Modify: `crates/axon-web/src/server/handlers/jobs.rs`
 - Modify: `crates/axon-mcp/src/server.rs`
 - Modify: generated docs and schema fixture files updated by `cargo xtask schemas generate --update-fixtures`
-- Test: `crates/axon-services/tests/legacy_crawl_unreachable.rs`
+- Test: `crates/axon-services/src/legacy_crawl_unreachable_tests.rs`
 
 **Interfaces:**
 - Consumes: all callers moved to Source jobs by Tasks 5-7.
@@ -2015,7 +2015,7 @@ git commit -m "feat(source): add web pipeline events and metrics"
 
 - [ ] **Step 1: Write failing legacy unreachable tests**
 
-Create `crates/axon-services/tests/legacy_crawl_unreachable.rs`:
+Create `crates/axon-services/src/legacy_crawl_unreachable_tests.rs` and wire it as an in-crate test module:
 
 ```rust
 use axon_api::source::JobKind;
@@ -2172,7 +2172,7 @@ Expected: grep contains only migration-only code, invalid fixtures, reserved-tok
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/axon-api/src/source/enums.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-services/src/runtime/job_runners/crawl_runner.rs crates/axon-services/src/runtime/sqlite/crawl_bridge.rs crates/axon-services/src/crawl.rs crates/axon-web/src/server/routing.rs crates/axon-web/src/server/handlers/jobs.rs crates/axon-mcp/src/server.rs crates/axon-services/tests/legacy_crawl_unreachable.rs crates/axon-mcp/tests/fixtures/schema/removed_crawl.invalid.json docs/reference
+git add crates/axon-api/src/source/enums.rs crates/axon-services/src/runtime/job_runners.rs crates/axon-services/src/runtime/job_runners/crawl_runner.rs crates/axon-services/src/runtime/sqlite/crawl_bridge.rs crates/axon-services/src/crawl.rs crates/axon-web/src/server/routing.rs crates/axon-web/src/server/handlers/jobs.rs crates/axon-mcp/src/server.rs crates/axon-services/src/legacy_crawl_unreachable_tests.rs crates/axon-mcp/tests/fixtures/schema/removed_crawl.invalid.json docs/reference
 git commit -m "refactor(crawl): retire legacy crawl job surface"
 ```
 
@@ -2198,10 +2198,10 @@ Run:
 ```bash
 cargo test -p axon-core source_routing_tests -- --nocapture
 cargo test -p axon-cli --test scrape_map_source_projection -- --nocapture
-cargo test -p axon-services --test source_web_job_identity -- --nocapture
-cargo test -p axon-services --test source_web_304_reuse -- --nocapture
-cargo test -p axon-services --test source_web_artifacts -- --nocapture
-cargo test -p axon-services --test source_web_crawl_cutover -- --nocapture
+cargo test -p axon-services source_web_job_identity -- --nocapture
+cargo test -p axon-services source_web_304_reuse -- --nocapture
+cargo test -p axon-services source_web_artifacts -- --nocapture
+cargo test -p axon-services source_web_crawl_cutover -- --nocapture
 cargo test -p axon-services --test source_auto_index_cutover -- --nocapture
 cargo test -p axon-services --test source_observability -- --nocapture
 cargo test -p axon-services --test legacy_crawl_unreachable -- --nocapture
