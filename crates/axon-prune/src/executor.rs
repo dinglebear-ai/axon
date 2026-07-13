@@ -57,8 +57,14 @@ impl StepExecution {
 #[async_trait]
 pub trait PruneTarget: Send + Sync {
     /// The current committed generation for `source`, used to fence deletes.
-    /// `None` when the source is unknown (nothing current to protect).
-    async fn current_generation(&self, source_id: Option<&str>) -> Option<SourceGenerationId>;
+    /// `Ok(None)` when the source is unknown (nothing current to protect).
+    /// `Err` when the lookup itself failed (e.g. a ledger read error) — the
+    /// executor fails CLOSED on this rather than treating an error the same
+    /// as "nothing to protect" (see [`crate::safety::PruneDenied::FenceCheckFailed`]).
+    async fn current_generation(
+        &self,
+        source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String>;
 
     /// Apply one plan step. Called in cleanup-debt execution order.
     async fn apply(&self, step: &PruneStep) -> Result<StepExecution, String>;
@@ -111,8 +117,20 @@ impl<T: PruneTarget> PruneExecutor<T> {
             // must never target the current committed generation.
             if let Some(target_gen) = &step.generation {
                 let source_id = step.source_id.as_ref().map(|s| s.0.as_str());
-                if let Some(current) = self.target.current_generation(source_id).await {
-                    fence_generation(target_gen, &current)?;
+                match self.target.current_generation(source_id).await {
+                    Ok(Some(current)) => fence_generation(target_gen, &current)?,
+                    Ok(None) => {
+                        // Nothing current is known for this source — honestly
+                        // nothing to protect, so the fence does not apply.
+                    }
+                    Err(reason) => {
+                        // Fail closed: a fence-check failure (e.g. a ledger
+                        // read error) must never be treated as "nothing to
+                        // protect". Refuse the whole prune rather than risk
+                        // deleting a generation that was never actually
+                        // confirmed non-current.
+                        return Err(PruneDenied::FenceCheckFailed { reason });
+                    }
                 }
             }
 
