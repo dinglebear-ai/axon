@@ -1,21 +1,16 @@
 //! Domain-scoped listing helpers built on [`super::scroll`].
 //!
 //! Ports legacy `axon-vector`'s `qdrant_domain_has_indexed_url` and
-//! `qdrant_urls_for_domain_page`. The unbounded variants
-//! (`qdrant_urls_for_domain`, `qdrant_urls_for_domain_limited`,
-//! `qdrant_indexed_urls`) are trivial compositions of
-//! [`QdrantVectorStore::scroll_pages`] plus this module's `domain_chunk0_filter`
-//! (or, for the global listing, just the bare `chunk_index == 0` clause) —
-//! project the `url` field and dedupe into a `HashSet` — and are not ported
-//! as dedicated methods; none of them have any consumer outside `axon-vector`
-//! today (grep confirmed).
+//! `qdrant_urls_for_domain_page` onto the target vector payload fields:
+//! `web_domain` for the domain facet/filter and canonical URI fields for item
+//! listings.
 
 use crate::qdrant::QdrantVectorStore;
 use crate::store::Result;
 
 impl QdrantVectorStore {
     /// Whether any point for `domain` has been indexed (`chunk_index == 0` —
-    /// the legacy convention for "one row per unique document").
+    /// one row per unique document).
     ///
     /// Ports legacy `qdrant_domain_has_indexed_url`. Note legacy's signature
     /// takes only `domain`, not a separate `url` — this matches that, not the
@@ -33,11 +28,9 @@ impl QdrantVectorStore {
         Ok(!page.points.is_empty())
     }
 
-    /// One page of the domain's unique indexed URLs (`chunk_index == 0`),
-    /// deduped within the page and returned alongside an opaque next-page
-    /// cursor (`None` once exhausted). Ports legacy
-    /// `qdrant_urls_for_domain_page`, used by the `sources_for_domain`
-    /// cursor-paginated listing.
+    /// One page of the domain's unique indexed item canonical URIs
+    /// (`chunk_index == 0`), deduped within the page and returned alongside an
+    /// opaque next-page cursor (`None` once exhausted).
     pub async fn urls_for_domain_page(
         &self,
         collection: &str,
@@ -50,7 +43,12 @@ impl QdrantVectorStore {
             .scroll_page(
                 collection,
                 Some(domain_chunk0_filter(domain)),
-                serde_json::json!({"include": ["url"]}),
+                serde_json::json!({"include": [
+                    "item_canonical_uri",
+                    "source_canonical_uri",
+                    "source_item_key",
+                    "chunk_locator"
+                ]}),
                 limit,
                 offset,
             )
@@ -58,11 +56,7 @@ impl QdrantVectorStore {
         let mut seen = std::collections::HashSet::new();
         let mut urls = Vec::new();
         for point in &page.points {
-            if let Some(url) = point
-                .payload
-                .get("url")
-                .and_then(serde_json::Value::as_str)
-                .filter(|value| !value.is_empty())
+            if let Some(url) = canonical_uri_from_payload(&point.payload)
                 && seen.insert(url.to_string())
             {
                 urls.push(url.to_string());
@@ -75,9 +69,32 @@ impl QdrantVectorStore {
 pub(super) fn domain_chunk0_filter(domain: &str) -> serde_json::Value {
     serde_json::json!({
         "must": [
-            {"key": "domain", "match": {"value": domain}},
+            {"key": "web_domain", "match": {"value": domain}},
             {"key": "chunk_index", "match": {"value": 0}}
         ]
+    })
+}
+
+fn canonical_uri_from_payload(payload: &serde_json::Value) -> Option<&str> {
+    [
+        "item_canonical_uri",
+        "source_canonical_uri",
+        "source_item_key",
+    ]
+    .into_iter()
+    .find_map(|field| {
+        payload
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+    })
+    .or_else(|| {
+        payload
+            .get("chunk_locator")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|locator| locator.get("canonical_uri"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
     })
 }
 

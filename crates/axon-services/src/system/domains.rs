@@ -1,6 +1,6 @@
-//! Domains facet — indexed domains with vector / URL counts.
+//! Domains facet — indexed web domains with vector / canonical-item counts.
 
-use crate::system::{PayloadParseError, normalize_domain_query};
+use crate::system::{PayloadParseError, canonical_uri_from_payload, normalize_domain_query};
 use crate::types::{
     DetailedDomainFacet, DetailedDomainsResult, DomainFacet, DomainIndexedResult, DomainsResult,
     Pagination,
@@ -18,22 +18,16 @@ const DEFAULT_DOMAINS_FACET_LIMIT: usize = 100_000;
 /// `qdrant_scroll_pages_selective`'s fixed 256-point page.
 const SCROLL_PAGE_LIMIT: usize = 256;
 
-/// `domain` field from a raw point payload, or `"unknown"` when absent.
-/// Ports legacy `axon-vector`'s `payload_domain`.
 fn payload_domain(payload: &serde_json::Value) -> String {
     payload
-        .get("domain")
+        .get("web_domain")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("unknown")
         .to_string()
 }
 
-/// `url` field from a raw point payload, or `""` when absent. Ports legacy
-/// `axon-vector`'s `payload_url`.
 fn payload_url(payload: &serde_json::Value) -> String {
-    payload
-        .get("url")
-        .and_then(serde_json::Value::as_str)
+    canonical_uri_from_payload(payload)
         .unwrap_or_default()
         .to_string()
 }
@@ -80,7 +74,7 @@ pub fn map_domains_payload(
     })
 }
 
-/// Ports legacy `axon-vector`'s `domains_payload`: fetch the `domain` facet
+/// Fetch the `web_domain` facet
 /// (capped by `AXON_DOMAINS_FACET_LIMIT`) and slice it into one
 /// limit/offset page, in the same JSON shape [`map_domains_payload`] expects.
 async fn domains_payload(
@@ -97,7 +91,7 @@ async fn domains_payload(
     );
     let fetch = limit.saturating_add(offset).max(1).min(facet_cap);
     let domains = store
-        .facet(&cfg.collection, "domain", None, fetch)
+        .facet(&cfg.collection, "web_domain", None, fetch)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("domains facet query failed: {e}").into() })?;
     let values = domains
@@ -185,14 +179,20 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
     let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
     let mut count = 0usize;
     let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
-    // Selective payload: only fetch domain + url fields. Avoids transferring
-    // multi-KB chunk_text per point — the detailed domains scan only aggregates
-    // domain membership and URL sets.
+    // Selective payload: only fetch domain + canonical URI fields. Avoids
+    // transferring multi-KB chunk_text per point — the detailed domains scan
+    // only aggregates domain membership and item URI sets.
     store
         .scroll_pages(
             &cfg.collection,
             None,
-            serde_json::json!({"include": ["domain", "url"]}),
+            serde_json::json!({"include": [
+                "web_domain",
+                "item_canonical_uri",
+                "source_canonical_uri",
+                "source_item_key",
+                "chunk_locator"
+            ]}),
             SCROLL_PAGE_LIMIT,
             |points| {
                 for point in points {
