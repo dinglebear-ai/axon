@@ -1,47 +1,127 @@
 # Qdrant Payload Schema Contract
 
-Status: active
-Last updated: 2026-06-13
+Status: active (two-generation document — see note below)
+Last updated: 2026-07-12
 
 This document is the authoritative reference for fields stored in Qdrant point payloads.
 Code must conform to this contract; if the code diverges, update the code and this document
 together in the same commit.
 
+> **Two generations of payload in this document.** The pipeline-unification rewrite (#298)
+> replaced the payload contract wholesale: the current write path is
+> `axon-vectors::payload`/`axon-vectors::point` (`crates/axon-vectors/src/payload.rs`,
+> `crates/axon-vectors/src/point/point_payload.rs`), fully specified in
+> [`docs/pipeline-unification/sources/metadata-payload.md`](../pipeline-unification/sources/metadata-payload.md)
+> and [`docs/pipeline-unification/schemas/vector-payload-schema.md`](../pipeline-unification/schemas/vector-payload-schema.md).
+> The **Universal Fields** table directly below reflects that current contract — this pass
+> reconciled it against `point_payload.rs`. **Source Types** through **Payload Schema
+> Versioning** document the **pre-unification legacy shape** (`url`, `domain`, `source_type`,
+> integer `payload_schema_version` 1–8, `provider`, `gh_*`, etc.), verified against the
+> `crates/axon-*` tree as no longer written by any current code path — but it is not merely
+> historical: `axon doctor`'s cutover detection (`crates/axon-core/src/health/doctor/cutover.rs`,
+> `crates/axon-services/src/reset/qdrant.rs`) actively scrolls for legacy
+> `payload_schema_version` points to flag an incompatible/non-empty store and recommend
+> `axon reset` before a collection can safely take current-contract writes
+> (`TARGET_PAYLOAD_SCHEMA_VERSION = 8` in `crates/axon-api/src/reset.rs`). Keep those sections
+> accurate for that purpose; do not merge the two generations into one table.
+>
+> **Not reconciled in this pass:** "Collection Schema and VectorMode", "Point Lifecycle", and
+> "Design Rules" below reference some function names that no longer exist in `axon-vectors`
+> (e.g. `qdrant_delete_stale_tail`, `qdrant_delete_by_url_filter`, `get_or_fetch_vector_mode`,
+> `COLLECTION_MODES`, `src/ingest/git_payload.rs`), while others still do
+> (`ensure_collection`, `ensure_payload_indexes` in `crates/axon-vectors/src/qdrant/store_impl.rs`).
+> That is collection/index/lifecycle mechanics, a different contract surface than the
+> payload-field reconciliation this pass covered — treat those three sections as unverified
+> until a follow-up pass checks them against current code.
+
 ---
 
 ## Universal Fields
 
-Every point in every collection carries these fields, regardless of source.
+Current contract (`axon-vectors`). Every point built by `axon-vectors::point::build_payload`
+carries these fields unconditionally — they are exactly `VECTOR_REQUIRED_FIELDS` in
+`crates/axon-vectors/src/payload.rs`, enforced by `VectorPayload::try_from_metadata`.
+**Indexed** reflects the payload-index specs actually created at collection-provisioning time
+(`required_retrieval_payload_indexes()` in `crates/axon-vectors/src/collection.rs`) — several
+fields are validated/required but have no dedicated Qdrant field index today.
 
 | Field | Qdrant type | Indexed | Notes |
 |-------|-------------|---------|-------|
-| `url` | keyword | yes | Canonical source URL. Default point ID = UUID v5(`NAMESPACE_URL`, `"<url>:<chunk_index>"` bytes). Some stable record sources, such as memory, provide explicit point IDs. |
-| `domain` | keyword | yes | Hostname only (`github.com`, `reddit.com`). |
-| `seed_url` | keyword | yes | Origin that started this chunk's acquisition: the crawl start URL (crawl path) or ingest target (ingest path), distinct from the per-page `url`. Falls back to the doc's own `url` for direct `embed`/`scrape`. Faceted by `axon refresh`. Added in schema v5; absent on older points. |
-| `source_type` | keyword | yes | See Source Types below. |
-| `content_type` | keyword | no | `"markdown"` or `"text"`. |
-| `chunk_index` | integer | yes | 0-based position within the document. |
-| `chunk_text` | raw string | no | The stored text chunk. Never truncated. |
-| `scraped_at` | datetime | yes | RFC3339 timestamp at embed time. |
-| `payload_schema_version` | integer | yes | Schema version at embed time. Pre-lu6a points lack this field (implicit v1). Current: `8`. |
+| `payload_contract_version` | keyword | no | Dated contract version string, e.g. `"2026-07-01"` (`VECTOR_PAYLOAD_CONTRACT_VERSION`). Distinct from the legacy integer `payload_schema_version` below. |
+| `collection` | keyword | no | Qdrant collection name the point was written to. |
+| `vector_point_id` | keyword | no | Store-level point id. |
+| `vector_namespace` | keyword | yes | Dense vector name/namespace (e.g. `documents`). |
+| `source_family` | keyword (enum) | no | Payload-field-allowlist classification axis — 13 values, `VECTOR_SOURCE_FAMILIES`. See "Source Family Classification" in `metadata-payload.md`; distinct from `source_kind`. |
+| `source_kind` | keyword | no | Canonical `SourceKind` (`web`, `git`, `local`, `registry`, `feed`, `reddit`, `youtube`, `session`, `cli_tool`, `mcp_tool`, `memory`, `upload`). |
+| `source_adapter` | keyword | no | Adapter name that acquired the source item. |
+| `source_scope` | keyword | no | Resolved `SourceScope`. |
+| `source_id` | keyword | yes | Stable ledger id for the source identity. |
+| `source_canonical_uri` | keyword | no | Canonical URI of the source identity (collapses onto `item_canonical_uri` for single-item sources). |
+| `source_item_key` | keyword | no | Stable item key within the source. |
+| `item_canonical_uri` | keyword | no | Canonical URI of the item/page/file. |
+| `source_generation` | integer | yes | Generation being written. |
+| `committed_generation` | integer or null | yes | Latest generation safe for search; `null` until a publisher commits it. |
+| `document_id` | keyword | yes | Document identity. |
+| `chunk_id` | keyword | yes | Chunk identity. |
+| `chunk_index` | integer | no | 0-based position within the document. |
+| `content_kind` | keyword | yes | `code`, `markdown`, `html`, `plain_text`, `transcript`, `structured`, `binary_metadata`, etc. |
+| `content_hash` | keyword | no | Hash of normalized document content. |
+| `chunk_hash` | keyword | no | Hash of normalized chunk text plus locator. |
+| `chunk_text` | raw string | no | The stored chunk text. Required and non-empty — every chunk has text by definition; see "chunk_text is required" note below. |
+| `chunk_locator` | object (`ChunkLocator`) | no | Stable locator for the chunk within the source. |
+| `source_range` | object (`SourceRange`) | no | Combined byte/line/selector/time range for the chunk. |
+| `visibility` | keyword (enum) | yes | `public`, `internal`, `sensitive`, `redacted`, `derived`. |
+| `redaction_status` | keyword (enum) | yes | `clean`, `redacted`, `failed`. |
+| `job_id` | keyword | no | Job that produced this point. |
+| `document_status` | keyword | no | See `DocumentLifecycleStatus` in `metadata-payload.md` (currently written as `vectorized`, then flipped to `published` on commit). |
+| `embedding_model` | keyword | no | Embedding model name. |
+| `embedding_dimensions` | integer | no | Dense vector dimensions. |
+| `embedding_provider` | keyword | no | TEI/OpenAI/etc. provider. |
+| `embedding_profile` | keyword | no | Embedding-pipeline profile (currently always `"document"`). |
+| `embedded_at` | datetime | no | Embed completion time (RFC3339). |
+| `chunking_profile` | keyword | no | Tuned chunking profile the preparer selected. |
+| `chunking_method` | keyword | no | Concrete chunking method used. |
 
-### Conditional Universal Fields
+**`chunk_text` is required, not optional.** `VECTOR_REQUIRED_FIELDS` includes it and
+`payload_shape.rs::validate_shapes` rejects an empty/missing value
+(`missing_chunk_text.invalid.json` is a dedicated validation fixture); `point_payload.rs`
+unconditionally stamps `chunk_text` from the chunk's own content. A chunk with no text is not
+a valid chunk in the current pipeline.
 
-Present only when the condition is met. Absence is intentional — do not write null placeholders for these.
+### Conditional/Optional Shared Fields (current contract)
 
-| Field | Qdrant type | Indexed | When present |
-|-------|-------------|---------|--------------|
-| `title` | raw string | no | Source has a title (ingest paths, most verticals). Absent for generic crawl/embed. |
-| `extractor_name` | keyword | yes | Vertical extractor produced this point (`"github_repo"`, `"crates_io"`, etc.). Absent for crawl/embed. |
-| `structured_kind` | keyword | no | Structured-data pass found JSON-LD/Next.js/SvelteKit: `"jsonld"`, `"next_data"`, `"sveltekit"`. |
-| `structured_type` | raw string | no | Schema.org type when `structured_kind` is present (`"Article"`, `"Product"`, …). |
-| `structured_id` | raw string | no | Schema.org `@id` when present. |
-| `structured_blob` | raw JSON | no | Full raw structured-data JSON object. Not indexed; use `structured_kind` for filtering. |
-| `chunk_content_kind` | keyword | yes | Planner classification for this chunk: `"code"`, `"markdown"`, or `"plain_text"`. Added in schema v8. |
-| `chunk_locator` | raw string | no | Stable locator for the chunk within the source, e.g. `src/lib.rs#L10-L34` or `<url>#chunk-2048`. Added in schema v8. |
-| `source_range` | raw JSON | no | Object with `line_start`, `line_end`, `byte_start`, and `byte_end` for the chunk. Added in schema v8. |
-| `chunking_fallback` | keyword | no | Present when the source-doc planner used a safe fallback such as plain-text markdown handling. Added in schema v8. |
-| `code_chunk_source` | keyword | no | File planner source for chunk metadata: `"tree_sitter"`, `"markdown"`, or `"prose"`. Added in schema v8. |
+These are declared in `VECTOR_SHARED_FIELDS` (`crates/axon-vectors/src/payload.rs`) as allowed
+but are **not** in `VECTOR_REQUIRED_FIELDS` — present when the adapter/chunker populates them,
+absent otherwise. Do not write null placeholders for these.
+
+| Field | Notes |
+|-------|-------|
+| `chunk_key` | Stable cleanup/upsert key. In practice always populated by `point_payload.rs`, but not contract-required. |
+| `embedding_batch_id` | Batch correlation id. In practice always populated by `point_payload.rs`, but not contract-required. |
+| `source_type` | Legacy passthrough field some adapters still stamp (e.g. `scrape.rs`); not part of the required contract. |
+| `chunk_content_kind` | Declared for chunk-level content classification; no current writer. |
+| `chunking_fallback`, `chunking_fallback_from` | Set by `axon-document`'s preparer (`crates/axon-document/src/preparer/chunk_build.rs`) when the ideal chunker fell back to a safer method. |
+| `preferred_chunking_method`, `actual_chunking_method`, `code_chunk_source` | Set by the code chunker (`crates/axon-document/src/code.rs`). |
+| `markdown_block_kind`, `section_level`, `code_fence_language` | Set by the markdown chunker (`crates/axon-document/src/markdown.rs`). |
+| `structured_record_kind`, `toml_table` | Set by the structured-formats chunker (`crates/axon-document/src/structured_formats.rs`). |
+| `transcript_speaker` | Declared for transcript-turn chunks. |
+
+The old universal `title`/`extractor_name`/`structured_kind`/`structured_type`/`structured_id`/
+`structured_blob` fields documented here previously no longer exist in any form — vertical
+extractors were removed with `axon-extract` (see
+`docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md`).
+The nearest current equivalent, `web_structured_kind`/`web_structured_blob`, is **not**
+universal — it is scoped to the `web` source family (see `VECTOR_SOURCE_FAMILY_FIELDS` in
+`crates/axon-vectors/src/payload_families.rs`).
+
+---
+
+## Legacy (Pre-Unification) Schema
+
+Everything from here through "Payload Schema Versioning" documents the payload shape written
+before the #298 pipeline-unification rewrite. No current code path writes this shape; it
+remains here because it is what `axon doctor`/`axon reset` cutover detection looks for in an
+existing, not-yet-reset Qdrant collection (see the note at the top of this document).
 
 ---
 

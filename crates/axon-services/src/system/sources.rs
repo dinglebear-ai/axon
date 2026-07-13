@@ -3,14 +3,18 @@
 use crate::system::PayloadParseError;
 use crate::types::{DomainSourcesResult, Pagination, SourcesResult};
 use axon_core::config::Config;
-use axon_vector::ops::qdrant::{
-    qdrant_scroll_pages_selective, qdrant_urls_for_domain_page, sources_payload,
-};
+use axon_core::env::env_usize_clamped;
+use axon_vectors::qdrant::QdrantVectorStore;
 use std::collections::BTreeMap;
 use std::error::Error;
 use url::Url;
 
 const DOMAIN_SOURCES_MAX_LIMIT: usize = 10_000;
+/// Mirrors legacy `sources_payload`'s facet-fetch cap.
+const DEFAULT_SOURCES_FACET_LIMIT: usize = 100_000;
+/// Payload page size for the schema-version-breakdown scroll — matches
+/// legacy `qdrant_scroll_pages_selective`'s fixed 256-point page.
+const SCROLL_PAGE_LIMIT: usize = 256;
 
 pub fn map_sources_payload(
     payload: &serde_json::Value,
@@ -132,7 +136,9 @@ pub async fn sources_for_domain(
         return Err(PayloadParseError::new("domain sources use cursor, not offset").into());
     }
     let limit = pagination.limit.clamp(1, DOMAIN_SOURCES_MAX_LIMIT);
-    let (urls, next_cursor) = qdrant_urls_for_domain_page(cfg, &normalized, limit, cursor)
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let (urls, next_cursor) = store
+        .urls_for_domain_page(&cfg.collection, &normalized, limit, cursor)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("domain sources scroll failed: {e}").into() })?;
     Ok(domain_sources_from_urls(
@@ -154,26 +160,30 @@ pub async fn sources_schema_version_breakdown(
     cfg: &Config,
 ) -> Result<BTreeMap<u32, usize>, Box<dyn Error>> {
     let mut counts: BTreeMap<u32, usize> = BTreeMap::new();
-    qdrant_scroll_pages_selective(
-        cfg,
-        serde_json::json!({"include": ["payload_schema_version"]}),
-        |points: &[serde_json::Value]| {
-            for point in points {
-                let version = point
-                    .get("payload")
-                    .and_then(|p| p.get("payload_schema_version"))
-                    .and_then(serde_json::Value::as_u64)
-                    .map(|n| n as u32)
-                    .unwrap_or(1);
-                *counts.entry(version).or_insert(0) += 1;
-            }
-            true
-        },
-    )
-    .await
-    .map_err(|e| -> Box<dyn Error> {
-        format!("schema-version breakdown scroll failed: {e}").into()
-    })?;
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    store
+        .scroll_pages(
+            &cfg.collection,
+            None,
+            serde_json::json!({"include": ["payload_schema_version"]}),
+            SCROLL_PAGE_LIMIT,
+            |points| {
+                for point in points {
+                    let version = point
+                        .payload
+                        .get("payload_schema_version")
+                        .and_then(serde_json::Value::as_u64)
+                        .map(|n| n as u32)
+                        .unwrap_or(1);
+                    *counts.entry(version).or_insert(0) += 1;
+                }
+                true
+            },
+        )
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!("schema-version breakdown scroll failed: {e}").into()
+        })?;
     Ok(counts)
 }
 
@@ -192,14 +202,48 @@ pub async fn sources_with_breakdown(
     Ok(result)
 }
 
+/// Ports legacy `axon-vector`'s `sources_payload`: fetch the `url` facet
+/// (capped by `AXON_SOURCES_FACET_LIMIT`) and slice it into one limit/offset
+/// page, in the same JSON shape [`map_sources_payload`] expects.
+async fn sources_payload(
+    store: &QdrantVectorStore,
+    cfg: &Config,
+    limit: usize,
+    offset: usize,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let facet_cap = env_usize_clamped(
+        "AXON_SOURCES_FACET_LIMIT",
+        DEFAULT_SOURCES_FACET_LIMIT,
+        1,
+        1_000_000,
+    );
+    let fetch = limit.saturating_add(offset).max(1).min(facet_cap);
+    let sources = store
+        .facet(&cfg.collection, "url", None, fetch)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("sources facet query failed: {e}").into() })?;
+    let total = sources.len();
+    let urls: Vec<serde_json::Value> = sources
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|(url, chunks)| serde_json::json!({"url": url, "chunks": chunks}))
+        .collect();
+    Ok(serde_json::json!({
+        "count": total,
+        "limit": limit,
+        "offset": offset,
+        "urls": urls,
+    }))
+}
+
 #[must_use = "sources returns a Result that should be handled"]
 pub async fn sources(
     cfg: &Config,
     pagination: Pagination,
 ) -> Result<SourcesResult, Box<dyn Error>> {
-    let payload = sources_payload(cfg, pagination.limit, pagination.offset)
-        .await
-        .map_err(|e| -> Box<dyn Error> { format!("sources facet query failed: {e}").into() })?;
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let payload = sources_payload(&store, cfg, pagination.limit, pagination.offset).await?;
     Ok(map_sources_payload(&payload)?)
 }
 

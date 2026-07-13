@@ -2,27 +2,79 @@
 //!
 //! Per the pruning contract (`docs/pipeline-unification/runtime/pruning-contract.md`
 //! §"Dedupe"), dedupe is a prune operation with a non-source selector and must
-//! go through `axon-prune`'s plan/execute path. This facade wraps the real
-//! `axon_vector::dedupe_payload` scan-and-delete call in a single-step
-//! `PrunePlan` driven by `PruneExecutor` so it gets the same admin gate and
-//! execution accounting every other destructive prune passes through. The
-//! duplicate-detection/deletion logic itself is unchanged (still
-//! `axon-vector`'s two-pass scroll), and the wire response is still the same
-//! `DedupeResult` shape.
+//! go through `axon-prune`'s plan/execute path. This facade wraps the
+//! duplicate-detection/deletion scan in a single-step `PrunePlan` driven by
+//! `PruneExecutor` so it gets the same admin gate and execution accounting
+//! every other destructive prune passes through.
+//!
+//! The two-pass duplicate scan is driven by `axon-vectors`'
+//! [`axon_vectors::qdrant::QdrantVectorStore`] scroll primitives (ports legacy
+//! `axon-vector`'s `dedupe_payload`, which drove the identical algorithm over
+//! the legacy client) and deletes matched duplicates via the store's generic
+//! [`axon_vectors::store::VectorStore::delete`] with a
+//! `VectorDeleteSelector::Points` batch — the duplicate-detection/deletion
+//! LOGIC itself (FNV-keyed two-pass scan, keep-newest-by-`scraped_at`) is
+//! unchanged, and the wire response is still the same `DedupeResult` shape.
 
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use axon_api::source::ids::{JobId, SourceGenerationId};
+use axon_api::source::ids::{JobId, SourceGenerationId, VectorPointId};
 use axon_api::source::prune::{PrunePlan, PruneSelector, PruneStep, PruneTargetKind};
+use axon_api::source::vector::VectorDeleteSelector;
 use axon_core::config::Config;
 use axon_prune::{PruneAuthz, PruneExecutor, PruneTarget, StepExecution};
-use axon_vector::ops::qdrant::dedupe_payload;
+use axon_vectors::qdrant::QdrantVectorStore;
+use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::DedupeResult;
+
+/// Points deleted per `points/delete` request — mirrors legacy
+/// `qdrant_delete_points`'s 1000-id batch chunking.
+const DELETE_BATCH_SIZE: usize = 1000;
+
+/// Payload page size for the two dedupe scroll passes — matches legacy
+/// `qdrant_scroll_pages_selective`'s fixed 256-point page.
+const SCROLL_PAGE_LIMIT: usize = 256;
+
+static DEDUPE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard that resets DEDUPE_IN_PROGRESS to false when dropped.
+/// Ensures the flag is cleared even if the scan returns an error.
+struct DedupeGuard;
+
+impl Drop for DedupeGuard {
+    fn drop(&mut self) {
+        DEDUPE_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
+
+/// Compact per-point record, only allocated for duplicate keys (pass 2).
+struct DedupeRecord {
+    id: String,
+    /// RFC3339 string — lexicographic ordering is correct for ISO8601 timestamps.
+    scraped_at: String,
+}
+
+/// FNV-1a 64-bit hash of a URL string used as a compact map key.
+/// Avoids heap-allocating the full URL string per map entry. Fixed seed
+/// ensures stability within a single dedupe run (keys are never persisted).
+#[inline]
+fn fnv64_url(s: &str) -> u64 {
+    const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+    let mut hash = FNV_OFFSET;
+    for b in s.bytes() {
+        hash ^= u64::from(b);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
 
 #[must_use = "dedupe returns a Result that should be handled"]
 pub async fn dedupe(
@@ -113,10 +165,11 @@ pub async fn dedupe(
     }
 }
 
-/// [`PruneTarget`] that drives the real `axon-vector` dedupe scan+delete.
-/// Single-step, so `apply()` is called exactly once; `duplicate_groups`
-/// (which doesn't fit [`StepExecution`]'s plain delete count) is stashed in
-/// `out` for the caller to read back after `execute()` returns.
+/// [`PruneTarget`] that drives the real duplicate scan+delete over
+/// `axon-vectors`. Single-step, so `apply()` is called exactly once;
+/// `duplicate_groups` (which doesn't fit [`StepExecution`]'s plain delete
+/// count) is stashed in `out` for the caller to read back after `execute()`
+/// returns.
 struct DedupeExecTarget<'a> {
     cfg: &'a Config,
     out: &'a Mutex<Option<(usize, usize)>>,
@@ -131,21 +184,180 @@ impl PruneTarget for DedupeExecTarget<'_> {
     }
 
     async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
-        // `dedupe_payload` returns a `Box<dyn Error + Send + Sync>`; converted
-        // to a plain `String` immediately so nothing `!Send` crosses an
-        // `.await` boundary in the caller.
-        let value = dedupe_payload(self.cfg)
+        let (duplicate_groups, deleted) = dedupe_collection(self.cfg)
             .await
-            .map_err(|e| format!("dedupe failed: {e}"))?;
-        let duplicate_groups = value
-            .get("duplicate_groups")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0) as usize;
-        let deleted = value
-            .get("deleted")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0) as usize;
+            .map_err(|e| e.to_string())?;
         *self.out.lock().expect("dedupe mutex poisoned") = Some((duplicate_groups, deleted));
         Ok(StepExecution::deleted(deleted as u64))
     }
+}
+
+/// Remove duplicate points that share the same `(url, chunk_index)` key.
+///
+/// **Memory**: Two-pass approach — pass 1 counts occurrences using a compact
+/// `(fnv64(url), chunk_index)` key with no per-point String allocations; pass 2
+/// scrolls again and allocates `DedupeRecord`s only for keys with count > 1.
+/// At 2.5M points with ~1% duplicates this saves roughly 10× peak RSS compared
+/// to a single-pass approach that stores records for every point.
+///
+/// **Performance**: O(n) full collection scroll — on large collections (millions
+/// of points) this can take 60-120+ seconds. This is inherent to deduplication
+/// and cannot be replaced with a facet query.
+async fn dedupe_collection(cfg: &Config) -> Result<(usize, usize), Box<dyn Error>> {
+    // Prevent concurrent deduplication runs — two simultaneous full-collection
+    // scrolls race on deletes and produce misleading duplicate counts.
+    if DEDUPE_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        return Err("deduplication already in progress for this process".into());
+    }
+    let _guard = DedupeGuard;
+
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let collection = cfg.collection.clone();
+
+    // Selective payload: only fetch the fields needed for dedup (url,
+    // chunk_index, scraped_at). Avoids transferring multi-KB chunk_text
+    // per point — ~28x less data on a 7M-point collection.
+    let with_payload = serde_json::json!({"include": ["url", "chunk_index", "scraped_at"]});
+
+    // Pass 1: count occurrences per compact key — no record storage.
+    let mut counts: HashMap<(u64, i64), u32> = HashMap::new();
+    store
+        .scroll_pages(
+            &collection,
+            None,
+            with_payload.clone(),
+            SCROLL_PAGE_LIMIT,
+            |points| {
+                for point in points {
+                    let url = point
+                        .payload
+                        .get("url")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default();
+                    if url.is_empty() {
+                        continue;
+                    }
+                    let ci = point
+                        .payload
+                        .get("chunk_index")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0);
+                    *counts.entry((fnv64_url(url), ci)).or_insert(0) += 1;
+                }
+                true
+            },
+        )
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("dedupe pass 1 scroll failed: {e}").into() })?;
+
+    // Identify keys with duplicates (count > 1). Keys with count == 1
+    // (~99%+ of keys) are filtered out so pass 2 skips allocating records
+    // for unique points — the primary memory saving of this approach.
+    let dup_keys: HashSet<(u64, i64)> = counts
+        .into_iter()
+        .filter_map(|(k, n)| if n > 1 { Some(k) } else { None })
+        .collect();
+
+    if dup_keys.is_empty() {
+        return Ok((0, 0));
+    }
+
+    // Pass 2: collect records only for duplicate keys.
+    let mut by_key: HashMap<(u64, i64), Vec<DedupeRecord>> = HashMap::new();
+    store
+        .scroll_pages(
+            &collection,
+            None,
+            with_payload,
+            SCROLL_PAGE_LIMIT,
+            |points| {
+                for point in points {
+                    let id = point.id.as_str().unwrap_or("").to_string();
+                    if id.is_empty() {
+                        continue;
+                    }
+                    let url = point
+                        .payload
+                        .get("url")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default();
+                    if url.is_empty() {
+                        continue;
+                    }
+                    let ci = point
+                        .payload
+                        .get("chunk_index")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0);
+                    let key = (fnv64_url(url), ci);
+                    if !dup_keys.contains(&key) {
+                        continue;
+                    }
+                    let scraped_at = point
+                        .payload
+                        .get("scraped_at")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    by_key
+                        .entry(key)
+                        .or_default()
+                        .push(DedupeRecord { id, scraped_at });
+                }
+                true
+            },
+        )
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("dedupe pass 2 scroll failed: {e}").into() })?;
+
+    let mut to_delete: Vec<String> = Vec::new();
+    let mut dup_groups = 0usize;
+    for mut records in by_key.into_values() {
+        if records.len() <= 1 {
+            continue;
+        }
+        dup_groups += 1;
+        // Keep the most-recently-scraped copy; delete the rest.
+        // RFC3339 strings sort lexicographically in chronological order.
+        records.sort_unstable_by(|a, b| b.scraped_at.cmp(&a.scraped_at));
+        to_delete.extend(records.into_iter().skip(1).map(|r| r.id));
+    }
+
+    delete_point_ids(&store, &collection, &to_delete).await?;
+
+    Ok((dup_groups, to_delete.len()))
+}
+
+/// Batch-delete points by id via the generic [`VectorStore::delete`] with a
+/// `Points` selector — `points/delete` acknowledges the operation but does
+/// not report a real deleted count (see `VectorDeleteSelector::Points`'s
+/// handling in `axon-vectors`' `delete_inner`), so the caller's own
+/// `to_delete.len()` is the source of truth for how many were removed, same
+/// as legacy `qdrant_delete_points` returning `ids.len()`.
+async fn delete_point_ids(
+    store: &QdrantVectorStore,
+    collection: &str,
+    ids: &[String],
+) -> Result<(), Box<dyn Error>> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    for batch in ids.chunks(DELETE_BATCH_SIZE) {
+        let point_ids = batch
+            .iter()
+            .cloned()
+            .map(VectorPointId::new)
+            .collect::<Vec<_>>();
+        store
+            .delete(VectorDeleteSelector::Points {
+                collection: collection.to_string(),
+                point_ids,
+            })
+            .await
+            .map_err(|e| -> Box<dyn Error> { format!("dedupe delete batch failed: {e}").into() })?;
+    }
+    Ok(())
 }

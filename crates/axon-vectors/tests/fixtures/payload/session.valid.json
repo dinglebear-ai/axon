@@ -32,6 +32,7 @@
   "embedding_provider": "tei",
   "embedding_profile": "document",
   "embedded_at": "2026-07-01T12:00:00Z",
+  "session_provider": "codex",
   "session_id": "session-a",
   "session_turn_index": 4,
   "session_tool_name": "exec_command",

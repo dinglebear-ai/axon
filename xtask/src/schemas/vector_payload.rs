@@ -425,6 +425,7 @@ fn source_specific_example_value(field: &str, family: &str) -> Value {
         "package_ecosystem" => json!("cargo"),
         "package_name" => json!("axon"),
         "package_version" => json!("6.2.1"),
+        "session_provider" => json!("codex"),
         "session_id" => json!(format!("session-{family}")),
         "session_turn_index" => json!(3),
         "session_tool_name" => json!("schemas"),

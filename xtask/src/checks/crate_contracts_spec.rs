@@ -1,20 +1,27 @@
 //! Data tables mirroring `docs/pipeline-unification/crates/<name>/README.md`.
 //!
-//! Two categories of workspace crate carry a pipeline-unification contract:
+//! Three categories of workspace crate carry a pipeline-unification contract:
 //!
 //! - Crates built fresh for issue #298 (`axon-adapters`, `axon-document`,
 //!   `axon-embedding`, `axon-error`, `axon-graph`, `axon-ledger`, `axon-llm`,
 //!   `axon-memory`, `axon-observe`, `axon-parse`, `axon-prune`,
 //!   `axon-retrieval`, `axon-route`, `axon-vectors`) were built to the
-//!   contract's minimal module list, so `modules` is non-empty and enforced.
-//! - Pre-existing production crates (`axon-api`, `axon-authz`, `axon-cli`,
-//!   `axon-core`, `axon-jobs`, `axon-mcp`, `axon-services`, `axon-web`) still
-//!   carry their full current-behavior module surface, which is much larger
-//!   than the target contract's minimal list. Enforcing the target module
-//!   list against them today would flag the *unfinished refactor* as if it
-//!   were drift — see `docs/pipeline-unification/README.md`'s "Current
-//!   Implementation Snapshot" framing. `modules` is left empty for these; only
-//!   the dependency-direction rule is enforced.
+//!   contract's minimal module list, so `modules` is non-empty and enforced
+//!   against that target list.
+//! - Five pre-existing production crates (`axon-api`, `axon-cli`, `axon-mcp`,
+//!   `axon-services`, `axon-web`) keep their full current-behavior module
+//!   surface until the #298 cutover — the target contract's minimal module
+//!   list (`docs/pipeline-unification/foundation/crate-structure.md`) does not
+//!   apply to them yet. Their `modules` entries below instead list the
+//!   crate's actual, shipped `pub mod` surface (synced 2026-07-12 from
+//!   `crates/<name>/src/lib.rs`), so the check still has teeth: it fails if a
+//!   documented module is renamed/removed without updating the docs, without
+//!   falsely flagging the unfinished #298 refactor as drift.
+//! - The remaining pre-existing crates (`axon-authz`, `axon-core`,
+//!   `axon-jobs`) still carry `modules: &[]` — see
+//!   `docs/pipeline-unification/README.md`'s "Current Implementation
+//!   Snapshot" framing. Only the dependency-direction rule is enforced for
+//!   these until they're similarly reconciled.
 //!
 //! `forbidden_axon_deps` is derived only from each README's explicit
 //! "Dependencies Forbidden" text (named crates, or unambiguous category terms
@@ -86,7 +93,25 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-api",
-        modules: &[],
+        // Actual shipped `pub mod` surface (crates/axon-api/src/lib.rs), not
+        // the target-contract minimal list — see module doc comment above.
+        modules: &[
+            "contract",
+            "diff",
+            "explain",
+            "ingest",
+            "job_dto",
+            "job_progress",
+            "job_status",
+            "mcp_schema",
+            "migration",
+            "purge",
+            "reset",
+            "result",
+            "schema_registry",
+            "service_job",
+            "source",
+        ],
         // README: "all domain crates except `axon-error`" — the only axon
         // dependency this crate may declare is axon-error.
         forbidden_axon_deps: &[
@@ -135,7 +160,9 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-cli",
-        modules: &[],
+        // Actual shipped `pub mod` surface (crates/axon-cli/src/lib.rs), not
+        // the target-contract minimal list — see module doc comment above.
+        modules: &["commands", "json", "schema_registry", "ui"],
         forbidden_axon_deps: &[],
     },
     CrateContract {
@@ -270,7 +297,6 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "candidate",
             "authority",
             "merge",
-            "query",
             "testing",
         ],
         forbidden_axon_deps: &[

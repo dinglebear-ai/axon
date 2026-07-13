@@ -34,7 +34,6 @@ evidence.rs
 candidate.rs
 authority.rs
 merge.rs
-query.rs
 testing.rs
 ```
 
@@ -48,7 +47,8 @@ testing.rs
 - `GraphCandidateIngest`
 - `AuthorityLink`
 - `GraphMergePolicy`
-- `GraphQuery`
+- `GraphQueryRequest` / `GraphQueryResult` — querying is a `GraphStore::query()`
+  trait method, not a standalone `GraphQuery` type or `query.rs` module
 - `FakeGraphStore`
 
 ## Dependencies Allowed

@@ -1,6 +1,6 @@
 //! `purge` service facade — delete indexed points by URL (or seed-URL prefix).
 //!
-//! The delete LOGIC lives in `axon-vector` (it owns the Qdrant data) and the
+//! The delete LOGIC lives in `axon-vectors` (it owns the Qdrant data) and the
 //! result DTO lives in `axon-api`. This is a **thin facade**, not a
 //! reimplementation: it exists so every transport keeps one import surface
 //! (`services::system::purge`) and gets the `Box<dyn Error>` error contract.
@@ -10,11 +10,13 @@
 //! Per the pruning contract (`docs/pipeline-unification/runtime/pruning-contract.md`),
 //! purge is a prune operation and must go through `axon-prune`'s plan/execute
 //! path rather than calling the vector delete directly — this function now
-//! wraps the real `axon_vector::purge` call in a single-step `PrunePlan`
-//! driven by `PruneExecutor`, so it gets execution-order handling and the
-//! same admin gate every other destructive prune passes through. The
-//! URL-matching delete logic itself is unchanged (still `axon-vector`'s
-//! scroll + delete), and the wire response is still the same `PurgeResult`
+//! wraps [`axon_vectors::qdrant::QdrantVectorStore::delete_by_url`] (ports
+//! legacy `axon-vector`'s `qdrant_delete_by_url`, re-exported there as
+//! `axon_vector::purge`) in a single-step `PrunePlan` driven by
+//! `PruneExecutor`, so it gets execution-order handling and the same admin
+//! gate every other destructive prune passes through. The URL-matching
+//! delete logic itself is unchanged (still a full scroll + client-side match
+//! + batch delete), and the wire response is still the same `PurgeResult`
 //! shape.
 
 use std::error::Error;
@@ -25,6 +27,7 @@ use axon_api::source::ids::{JobId, SourceGenerationId};
 use axon_api::source::prune::{PrunePlan, PruneSelector, PruneStep, PruneTargetKind};
 use axon_core::config::Config;
 use axon_prune::{PruneAuthz, PruneExecutor, PruneTarget, StepExecution};
+use axon_vectors::qdrant::QdrantVectorStore;
 use uuid::Uuid;
 
 use crate::types::PurgeResult;
@@ -89,7 +92,7 @@ pub async fn purge(
         .ok_or_else(|| -> Box<dyn Error> { "purge executor produced no result".into() })
 }
 
-/// [`PruneTarget`] that drives the real `axon-vector` URL-matching delete.
+/// [`PruneTarget`] that drives the real `axon-vectors` URL-matching delete.
 /// Single-step, so `apply()` is called exactly once; the full [`PurgeResult`]
 /// (including `sample_urls`/`matched_url_count`, which don't fit
 /// [`StepExecution`]'s plain delete count) is stashed in `out` for the caller
@@ -111,7 +114,9 @@ impl PruneTarget for PurgeExecTarget<'_> {
     }
 
     async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
-        let result = axon_vector::purge(self.cfg, self.target, self.prefix, self.dry_run)
+        let store = QdrantVectorStore::new(self.cfg.qdrant_url.clone(), "qdrant".to_string());
+        let result = store
+            .delete_by_url(&self.cfg.collection, self.target, self.prefix, self.dry_run)
             .await
             .map_err(|e| e.to_string())?;
         let deleted = result.deleted_points as u64;

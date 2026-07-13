@@ -864,6 +864,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -875,6 +885,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -1287,6 +1302,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -1298,6 +1323,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -1680,6 +1710,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -1691,6 +1731,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -2068,6 +2113,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -2079,6 +2134,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -2517,6 +2577,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -2964,6 +3029,21 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
+              ]
+            },
+            {
+              "required": [
                 "session_id"
               ]
             },
@@ -3407,6 +3487,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -3845,6 +3935,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -3856,6 +3956,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -4288,6 +4393,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -4299,6 +4414,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -4681,6 +4801,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -4692,6 +4822,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -5119,6 +5254,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -5130,6 +5275,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -5557,6 +5707,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -5568,6 +5728,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -5995,6 +6160,16 @@
             },
             {
               "required": [
+                "web_structured_kind"
+              ]
+            },
+            {
+              "required": [
+                "web_structured_blob"
+              ]
+            },
+            {
+              "required": [
                 "package_ecosystem"
               ]
             },
@@ -6006,6 +6181,11 @@
             {
               "required": [
                 "package_version"
+              ]
+            },
+            {
+              "required": [
+                "session_provider"
               ]
             },
             {
@@ -6526,6 +6706,9 @@
     "session_id": {
       "type": "string"
     },
+    "session_provider": {
+      "type": "string"
+    },
     "session_skill_name": {
       "type": "string"
     },
@@ -6661,6 +6844,12 @@
     },
     "web_status_code": {
       "type": "integer"
+    },
+    "web_structured_blob": {
+      "type": "string"
+    },
+    "web_structured_kind": {
+      "type": "string"
     },
     "web_title": {
       "type": "string"
@@ -7192,6 +7381,8 @@
         "web_depth": 1,
         "web_domain": "example.com",
         "web_status_code": 200,
+        "web_structured_blob": "web_structured_blob",
+        "web_structured_kind": "web_structured_kind",
         "web_title": "Example Docs"
       },
       {
@@ -7326,6 +7517,7 @@
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "session_id": "session-session",
+        "session_provider": "codex",
         "session_skill_name": "test-driven-development",
         "session_tool_name": "schemas",
         "session_turn_index": 3,
@@ -8038,7 +8230,7 @@
     },
     "source_inputs": [
       {
-        "checksum": "sha256:97c767a15c9f88a3a7278ac32c6b7b1a4fce722223e9dd3c5f59079fee69b9ac",
+        "checksum": "sha256:aa51d22fa959ffa8ea4c816b8205af20b86ae8faf83b0d873883e12ca9581336",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/vector.rs"
       },
@@ -8048,7 +8240,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:a79cdb7ff0b922e5345e470cd4cc25985f34924b31e79499aee6468c93a2c3e1",
+        "checksum": "sha256:8bbaac4ddff2dc10413ce58a59a78756cac29fec8bc2e17da2c12acc3481a4bf",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -8063,7 +8255,7 @@
         "path": "crates/axon-vectors/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:34a1edc5a11e47d4175555cc82c33ba37be84b24c58da16d5ec8d7aaa7a65604",
+        "checksum": "sha256:3929926228d3bd652c7a1648856ed55eec8c777e5cf986b08aeecad63bbd58bb",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
@@ -8073,7 +8265,7 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:87b4b6e2dbc95009e772b953f1a5b024e145870d2db5c7ad5ad10bd5a74a47ae",
+        "checksum": "sha256:a8d208da3cbafbe06b2c73653a415d24c73cb7949671b0b0b934ca69565c00fd",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
@@ -8156,7 +8348,9 @@
           "web_title",
           "web_domain",
           "web_status_code",
-          "web_depth"
+          "web_depth",
+          "web_structured_kind",
+          "web_structured_blob"
         ],
         "source_family": "web"
       },
@@ -8170,6 +8364,7 @@
       },
       {
         "fields": [
+          "session_provider",
           "session_id",
           "session_turn_index",
           "session_tool_name",

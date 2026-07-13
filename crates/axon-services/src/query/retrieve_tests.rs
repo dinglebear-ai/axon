@@ -1,7 +1,6 @@
 use super::*;
-use crate::types::{DocumentBackend, RetrieveOptions};
+use crate::types::RetrieveOptions;
 use axon_core::config::Config;
-use axon_vector::ops::qdrant::DirectRetrieveResult;
 
 // ── map_retrieve_result ───────────────────────────────────────────────────
 
@@ -35,30 +34,13 @@ fn map_retrieve_result_serializes_legacy_shape_when_metadata_absent() {
     );
 }
 
-#[test]
-fn map_direct_retrieve_preserves_metadata() {
-    let result = map_direct_retrieve_result(DirectRetrieveResult {
-        requested_url: "example.com/docs".to_string(),
-        matched_url: Some("https://example.com/docs".to_string()),
-        chunk_count: 2,
-        content: "hello".to_string(),
-        truncated: true,
-        warnings: vec!["partial result".to_string()],
-        variant_errors: vec![axon_vector::ops::qdrant::RetrieveVariantError {
-            url: "https://example.com/docs/".to_string(),
-            error: "timeout".to_string(),
-        }],
-    });
-    assert_eq!(result.requested_url.as_deref(), Some("example.com/docs"));
-    assert_eq!(
-        result.matched_url.as_deref(),
-        Some("https://example.com/docs")
-    );
-    assert!(result.truncated);
-    assert_eq!(result.warnings, vec!["partial result"]);
-    assert_eq!(result.variant_errors[0].url, "https://example.com/docs/");
-    assert_eq!(result.backend, Some(DocumentBackend::Qdrant));
-}
+// Coverage for the Qdrant-retrieve-result mapping (previously
+// `map_direct_retrieve_preserves_metadata`, testing the now-removed
+// `map_direct_retrieve_result` / legacy axon-vector's `DirectRetrieveResult`)
+// moved to `retrieve::map_tests` (`retrieve_map_tests.rs`), alongside the new
+// `axon_retrieval::retrieve::RetrievedDocument`-based
+// `retrieve::map_retrieved_document` it now tests.
+
 #[tokio::test]
 async fn retrieve_rejects_local_code_urls() {
     let err = retrieve(

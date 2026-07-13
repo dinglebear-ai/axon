@@ -1,13 +1,14 @@
 use super::{CodeSearchWatchDryRunPlan, CodeSearchWatchDryRunRoot};
 use anyhow::Result;
 use axon_core::config::CodeSearchWatchConfig;
-use axon_vector::ops::file_ingest::{SelectionPolicy, collect_files, should_include_file};
-use axon_vector::ops::input::select;
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::process::Command;
+
+mod select;
+use select::{collect_code_search_files, is_pruned_dir, should_include_file};
 
 const GIT_LS_FILES_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -60,13 +61,13 @@ pub(super) async fn build_code_search_watch_dry_run_plan(
 }
 
 async fn collect_code_search_watch_files(root: &Path) -> Result<Vec<PathBuf>> {
-    match collect_git_files_for_watch(root, SelectionPolicy::CodeSearch).await {
+    match collect_git_files_for_watch(root).await {
         Ok(files) => Ok(files),
-        Err(_) => collect_files(root, SelectionPolicy::CodeSearch).await,
+        Err(_) => collect_code_search_files(root).await,
     }
 }
 
-async fn collect_git_files_for_watch(root: &Path, policy: SelectionPolicy) -> Result<Vec<PathBuf>> {
+async fn collect_git_files_for_watch(root: &Path) -> Result<Vec<PathBuf>> {
     let output = tokio::time::timeout(
         GIT_LS_FILES_TIMEOUT,
         Command::new("git")
@@ -102,7 +103,7 @@ async fn collect_git_files_for_watch(root: &Path, policy: SelectionPolicy) -> Re
         let Ok(metadata) = tokio::fs::metadata(&path).await else {
             continue;
         };
-        if metadata.is_file() && should_include_file(&path, root, policy) {
+        if metadata.is_file() && should_include_file(&path, root) {
             files.push(path);
         }
     }
@@ -167,7 +168,7 @@ fn is_git_checkout_root(path: &Path) -> bool {
 fn code_search_watch_path_is_pruned(root: &Path, path: &Path) -> bool {
     let rel = path.strip_prefix(root).unwrap_or(path);
     rel.components().any(|component| match component {
-        Component::Normal(name) => name.to_str().is_some_and(select::is_pruned_dir),
+        Component::Normal(name) => name.to_str().is_some_and(is_pruned_dir),
         _ => false,
     })
 }

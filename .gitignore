@@ -3,6 +3,13 @@
 .env.*
 services.env
 !.env.example
+# Config-schema contract fixtures (crates/axon-core/tests/fixtures/env/) —
+# fake placeholder content, not real secrets. Needed to override a common
+# global `*.env` gitignore pattern some contributors have in
+# ~/.config/git/ignore, which otherwise silently excludes these tracked
+# fixture files. See docs/pipeline-unification/schemas/config-schema.md's
+# "Validation Fixtures" list.
+!crates/axon-core/tests/fixtures/env/*.env
 .broadcastr
 # ── Runtime artifacts ────────────────────────────────────────────────────────
 /bin/

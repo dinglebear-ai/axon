@@ -27,6 +27,7 @@ pub mod stage;
 pub mod state;
 pub mod status;
 pub mod vector;
+pub mod waf_diagnostics;
 
 pub use audit::*;
 pub use auth::*;
@@ -51,6 +52,7 @@ pub use stage::*;
 pub use state::*;
 pub use status::*;
 pub use vector::*;
+pub use waf_diagnostics::*;
 
 #[cfg(test)]
 #[path = "source_tests.rs"]

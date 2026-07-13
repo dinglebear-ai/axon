@@ -70,12 +70,18 @@ pub trait MemoryGraphMirror: Send + Sync {
     async fn derived_from(&self, compacted: &MemoryRecord, sources: &[MemoryRecord]) -> Result<()>;
 
     /// Record an evidence-backed edge from `record`'s memory node to
-    /// `link.target` (contract "Graph Integration": "link | create
-    /// evidence-backed edge to source/repo/file/issue/pr/entity"). The
-    /// target is referenced by stable key only — this crate does not own
-    /// the target node's shape/kind, which belongs to whichever domain
-    /// produced it.
-    async fn link(&self, record: &MemoryRecord, link: &MemoryLink) -> Result<()>;
+    /// `target`'s memory node (contract "Graph Integration": "link | create
+    /// evidence-backed edge"). Both endpoints are emitted as nodes and keyed by
+    /// their canonical `memory:<id>` stable key, so the edge passes graph
+    /// candidate validation (which requires both endpoints to resolve to a node
+    /// present in the candidate). The service layer validates both ids exist as
+    /// memories before this is called.
+    async fn link(
+        &self,
+        record: &MemoryRecord,
+        target: &MemoryRecord,
+        link: &MemoryLink,
+    ) -> Result<()>;
 
     /// Mark a memory's node as no longer recallable (forgotten). The node
     /// stays (history is never lost per the crate's decay invariant) but its
@@ -171,17 +177,23 @@ impl MemoryGraphMirror for GraphBackedMemoryMirror {
         Ok(())
     }
 
-    async fn link(&self, record: &MemoryRecord, link: &MemoryLink) -> Result<()> {
+    async fn link(
+        &self,
+        record: &MemoryRecord,
+        target: &MemoryRecord,
+        link: &MemoryLink,
+    ) -> Result<()> {
         let memory_key = memory_stable_key(&record.memory_id);
+        let target_key = memory_stable_key(&target.memory_id);
         let candidate = edge_candidate(
             format!(
                 "memory-link:{}:{}:{}",
-                record.memory_id.0, link.link_type, link.target
+                record.memory_id.0, link.link_type, target.memory_id.0
             ),
-            vec![memory_node(record)],
+            vec![memory_node(record), memory_node(target)],
             link_type_to_edge_kind(&link.link_type),
             &memory_key,
-            &link.target,
+            &target_key,
             Some(link.link_type.as_str()),
         );
         self.graph.upsert_candidates(vec![candidate]).await?;
@@ -381,9 +393,11 @@ impl MemoryStore for GraphBackedMemoryStore {
     async fn link(&self, request: MemoryLinkRequest) -> Result<MemoryResult> {
         let memory_id = request.memory_id.clone();
         let link = request.link.clone();
+        let target_id = MemoryId::new(link.target.clone());
         let result = self.inner.link(request).await?;
         let record = self.load_or_missing(&memory_id).await?;
-        self.mirror.link(&record, &link).await?;
+        let target = self.load_or_missing(&target_id).await?;
+        self.mirror.link(&record, &target, &link).await?;
         Ok(result)
     }
 

@@ -11,9 +11,6 @@ axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
-axon-crawl = { path = "../axon-crawl" }
-axon-vector = { path = "../axon-vector" }
-axon-ingest = { path = "../axon-ingest" }
 axon-memory = { path = "../axon-memory" }
 axon-jobs = { path = "../axon-jobs" }
 axon-observe = { path = "../axon-observe" }
@@ -33,6 +30,7 @@ chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.18"
 psl = "2"
 futures-util = "0.3"
+hex = "0.4"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
 rand_core = { version = "0.9", features = ["os_rng", "std"] }
 sha2 = "0.10"
@@ -107,7 +105,6 @@ test-util = []
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
-axon-vector = { path = "../axon-vector", features = ["test-util"] }
 httpmock = "0.8"
 serial_test = "3"
 proptest = "1"

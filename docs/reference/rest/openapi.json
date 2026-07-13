@@ -1494,25 +1494,6 @@
     {
       "method": "POST",
       "mutates": true,
-      "operation_id": "watch_run",
-      "path": "/v1/watch/{id}/run",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "202",
-        "400",
-        "401",
-        "403",
-        "404",
-        "500",
-        "502"
-      ],
-      "result_dto": "WatchRunResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
       "operation_id": "watches_create",
       "path": "/v1/watches",
       "request_dto": "WatchRequest",
@@ -1586,6 +1567,26 @@
         "502"
       ],
       "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "watches_exec",
+      "path": "/v1/watches/{watch_id}/exec",
+      "request_dto": "WatchExecRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "JobDescriptor",
       "streaming": false
     },
     {
@@ -1796,7 +1797,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:f99294dacc94f7fbc144f82c964d2c22e56b6848324cd50d6969d1ae5e7a7075",
+        "checksum": "sha256:e0b929b027f8a1311417c3d29400f373e167c4f913b5a1ff13c2f965bd5a9fbc",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

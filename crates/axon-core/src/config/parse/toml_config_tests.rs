@@ -182,6 +182,46 @@ fn root_config_example_parses() {
     load_toml_config_from_str(&raw).unwrap();
 }
 
+/// Resolves a path under `crates/axon-core/tests/fixtures/`, the config
+/// schema contract's fixture root (see
+/// docs/pipeline-unification/schemas/config-schema.md's "Validation
+/// Fixtures").
+fn config_schema_fixture(relative: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(relative)
+}
+
+#[test]
+fn config_fixture_minimal_valid_parses() {
+    let raw = std::fs::read_to_string(config_schema_fixture("config/minimal.valid.toml"))
+        .expect("read minimal.valid.toml fixture");
+    load_toml_config_from_str(&raw).expect("minimal.valid.toml fixture should parse");
+}
+
+#[test]
+fn config_fixture_full_valid_parses() {
+    let raw = std::fs::read_to_string(config_schema_fixture("config/full.valid.toml"))
+        .expect("read full.valid.toml fixture");
+    load_toml_config_from_str(&raw).expect("full.valid.toml fixture should parse");
+}
+
+#[test]
+fn config_fixture_unknown_key_invalid_fails() {
+    let raw = std::fs::read_to_string(config_schema_fixture("config/unknown-key.invalid.toml"))
+        .expect("read unknown-key.invalid.toml fixture");
+    let result = load_toml_config_from_str(&raw);
+    assert!(
+        result.is_err(),
+        "unknown-key.invalid.toml fixture should fail to parse"
+    );
+    let err = result.err().unwrap();
+    assert!(
+        err.contains("parse error"),
+        "expected a parse error mentioning the unknown key, got: {err}"
+    );
+}
+
 #[test]
 fn valid_toml_parses_build_section() {
     let cfg = load_toml_config_from_str("[server]\nallow-fallback-web-assets = true\n")

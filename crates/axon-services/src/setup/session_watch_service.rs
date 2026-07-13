@@ -1,7 +1,7 @@
+use crate::sessions_legacy::watch::validate::{SessionWatchRoots, validate_session_file_path};
 use crate::setup::{LocalSetupPhase, LocalSetupStatus};
 use axon_core::config::SessionWatchServiceAction;
 use axon_core::paths::axon_home_dir;
-use axon_ingest::sessions::watch::validate::{SessionWatchRoots, validate_session_file_path};
 use serde::Serialize;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};

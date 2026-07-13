@@ -280,6 +280,54 @@ async fn context_excludes_working_by_default() {
 }
 
 #[tokio::test]
+async fn context_includes_contradicted_memories_with_warning() {
+    let (store, clock) = store();
+    let a = store
+        .remember(request(MemoryType::Fact, "port is 8080", "axon"))
+        .await
+        .unwrap();
+    let b = store
+        .remember(request(MemoryType::Fact, "port is 9090", "axon"))
+        .await
+        .unwrap();
+
+    store
+        .contradict(MemoryContradictRequest {
+            memory_id: a.memory_id.clone(),
+            conflicting_id: b.memory_id.clone(),
+            reason: Some("port mismatch".to_string()),
+            timestamp: ts(&clock),
+        })
+        .await
+        .unwrap();
+
+    let ctx = store
+        .context(MemoryContextRequest {
+            token_budget: 1000,
+            query: Some("port".to_string()),
+            source_id: None,
+            graph_node_id: None,
+            filters: MetadataMap::new(),
+            depth: None,
+            include_working: false,
+        })
+        .await
+        .unwrap();
+
+    // Contract "Context Assembly": contradicted is not in the default
+    // context-exclusion list (only forgotten/superseded/archived are), so
+    // both contradicted memories still surface in context...
+    assert_eq!(ctx.memories.len(), 2);
+    // ...but — matching `search()`'s "Recall rules" behavior — the caller is
+    // warned that the context includes unresolved contradictions.
+    assert!(
+        ctx.warnings.iter().any(|w| w.code == "memory.contradicted"),
+        "expected a memory.contradicted warning, got: {:?}",
+        ctx.warnings
+    );
+}
+
+#[tokio::test]
 async fn reinforce_raises_score_and_appends_history() {
     let (store, clock) = store();
     let created = store

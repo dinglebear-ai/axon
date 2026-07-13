@@ -245,12 +245,17 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
             "/v1/watch",
             get(handlers::admin::list_watch).post(handlers::admin::create_watch),
         )
-        .route("/v1/watch/{id}/run", post(handlers::admin::run_watch))
         .route("/v1/watches", post(handlers::source_watch::create_watch))
         .route(
             "/v1/watches/{watch_id}",
             axum::routing::patch(handlers::source_watch::update_watch)
                 .delete(handlers::source_watch::delete_watch),
+        )
+        // Canonical replacement for the removed legacy `POST
+        // /v1/watch/{id}/run` (rest-contract.md "Removed Route Behavior").
+        .route(
+            "/v1/watches/{watch_id}/exec",
+            post(handlers::source_watch::exec_watch),
         )
         .route(
             "/v1/watches/{watch_id}/pause",

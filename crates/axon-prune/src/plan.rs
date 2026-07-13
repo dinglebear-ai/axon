@@ -146,6 +146,9 @@ fn vector_selector_for(selector: &PruneSelector) -> Option<VectorDeleteSelector>
             source_id: source_id.clone(),
             generation: generation.clone(),
         }),
+        PruneSelector::Collection { collection } => Some(VectorDeleteSelector::Collection {
+            collection: collection.clone(),
+        }),
         _ => None,
     }
 }

@@ -75,7 +75,10 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-mcp",
-        modules: &[],
+        // Actual shipped `pub mod` surface (crates/axon-mcp/src/lib.rs), not
+        // the target-contract minimal list — see crate_contracts_spec.rs's
+        // module doc comment.
+        modules: &["auth", "schema", "schema_registry", "server"],
         forbidden_axon_deps: &["axon-cli", "axon-web"],
     },
     CrateContract {
@@ -94,7 +97,6 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "testing",
         ],
         forbidden_axon_deps: &[
-            "axon-vectors",
             "axon-llm",
             "axon-cli",
             "axon-mcp",
@@ -243,7 +245,67 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-services",
-        modules: &[],
+        // Actual shipped `pub mod` surface (crates/axon-services/src/lib.rs),
+        // not the target-contract minimal list — see crate_contracts_spec.rs's
+        // module doc comment. `pub(crate) mod` internals (e.g. `web_source`,
+        // `git_source`) are intentionally excluded — they aren't public API.
+        modules: &[
+            "action_api",
+            "artifacts",
+            "brand",
+            "client_contract",
+            "code_search_watch",
+            "config",
+            "config_snapshot_hash",
+            "context",
+            "crawl",
+            "crawl_sync",
+            "debug",
+            "diff",
+            "document",
+            "embed",
+            "endpoints",
+            "events",
+            "extract",
+            "feed_acquire",
+            "graph",
+            "feed_target",
+            "freshness",
+            "git_acquire",
+            "ingest",
+            "jobs",
+            "map",
+            "memory",
+            "migrate",
+            "mobile_sessions",
+            "query",
+            "reddit_acquire",
+            "reddit_target",
+            "prune",
+            "refresh",
+            "reset",
+            "registry_acquire",
+            "runtime",
+            "scrape",
+            "screenshot",
+            "search",
+            "search_crawl",
+            "service_traits",
+            "sessions",
+            "sessions_legacy",
+            "sessions_target",
+            "setup",
+            "source",
+            "source_jobs",
+            "summarize",
+            "sync",
+            "system",
+            "transport",
+            "types",
+            "watch",
+            "youtube_acquire",
+            "youtube_target",
+        ],
         // Legacy crates intentionally NOT forbidden: axon-services currently
         // composes axon-crawl/axon-vector/axon-ingest/axon-extract pre-cutover.
         forbidden_axon_deps: &["axon-cli", "axon-mcp", "axon-web"],
@@ -279,7 +341,20 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-web",
-        modules: &[],
+        // Actual shipped `pub mod` surface (crates/axon-web/src/lib.rs), not
+        // the target-contract minimal list — see crate_contracts_spec.rs's
+        // module doc comment.
+        modules: &[
+            "auth",
+            "health",
+            "metrics",
+            "panel_first_run",
+            "panel_stack",
+            "schema_registry",
+            "security",
+            "server",
+            "static_assets",
+        ],
         forbidden_axon_deps: &["axon-cli", "axon-mcp"],
     },
 ];
