@@ -7,11 +7,11 @@ Last Modified: 2026-06-01
 | Surface | Entry point |
 |---|---|
 | CLI | `axon doctor ...` |
-| REST | `GET /v1/doctor` (Implemented) |
-| MCP | `{ "action": "doctor" }` |
-| Service | `services::system::doctor` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: Returns diagnostics to authenticated callers; boolean probes use healthz/readyz.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

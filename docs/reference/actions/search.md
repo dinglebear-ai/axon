@@ -7,11 +7,11 @@ Last Modified: 2026-03-03
 | Surface | Entry point |
 |---|---|
 | CLI | `axon search ...` |
-| REST | `POST /v1/search` (Implemented) |
-| MCP | `{ "action": "search" }` |
-| Service | `services::search_crawl::search_and_crawl` for CLI/MCP handler path; `services::search::search` for side-effect-free helpers |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: HTTP intentionally follows CLI/MCP auto-crawl behavior.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

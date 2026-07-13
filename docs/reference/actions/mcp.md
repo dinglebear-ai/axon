@@ -7,11 +7,11 @@ Last Modified: 2026-03-10
 | Surface | Entry point |
 |---|---|
 | CLI | `axon mcp ...` |
-| REST | Deferred |
+| REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
-| Service | `MCP server startup` |
+| Service | `Not inventoried` |
 
-Parity notes: Starts the MCP transport itself; not a remote API operation.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 

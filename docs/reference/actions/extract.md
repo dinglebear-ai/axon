@@ -7,11 +7,11 @@ Last Modified: 2026-06-07
 | Surface | Entry point |
 |---|---|
 | CLI | `axon extract ...` |
-| REST | `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`, `POST /v1/extract/{id}/cancel`, `POST /v1/extract/cleanup`, `DELETE /v1/extract`, `POST /v1/extract/recover` (Implemented) |
-| MCP | `{ "action": "extract", "subaction": "..." }` (`extract.start`, `extract.status`, `extract.cancel`, `extract.list`, `extract.cleanup`, `extract.clear`, `extract.recover`) |
-| Service | `services::extract::{extract_start_with_context,extract_status,extract_list,extract_cancel,extract_cleanup,extract_clear,extract_recover}` |
+| REST | Not inventoried |
+| MCP | Not exposed as a dedicated MCP action. |
+| Service | `Not inventoried` |
 
-Parity notes: REST accepts canonical DTOs; the public schema only advertises `auto` until the async service has mode parity.
+Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
