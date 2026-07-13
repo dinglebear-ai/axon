@@ -6,11 +6,10 @@ use sha2::{Digest, Sha256};
 pub fn source_id(source_kind: SourceKind, canonical_uri: &str) -> SourceId {
     SourceId::new(format!(
         "src_{}",
-        stable_hash(&format!(
+        &stable_hash(&format!(
             "{}:{canonical_uri}:v1",
             source_kind_key(source_kind)
         ))[..16]
-            .to_string()
     ))
 }
 

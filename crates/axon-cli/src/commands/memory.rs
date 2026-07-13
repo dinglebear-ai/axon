@@ -31,6 +31,7 @@ pub async fn run_memory(
 /// Every `axon memory <subaction>` name, including `import`/`export` (which
 /// dispatch through [`import_export`] rather than [`request_from_positionals`]
 /// because they carry a `records` bundle no other subaction needs).
+#[allow(dead_code)]
 pub(crate) fn memory_subcommand_names() -> &'static [&'static str] {
     &[
         "remember",

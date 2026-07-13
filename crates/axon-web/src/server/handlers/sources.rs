@@ -119,23 +119,23 @@ pub(crate) async fn index_source(
 
     let want_async = request.execution.detached && request.execution.mode != ExecutionMode::Wait;
 
-    if want_async {
-        if let Some(job_store) = state.service_context.job_store() {
-            let result = axon_services::source::enqueue::enqueue_source(
-                request,
-                job_store.as_ref(),
-                auth_snapshot,
+    if want_async && let Some(job_store) = state.service_context.job_store() {
+        let result = axon_services::source::enqueue::enqueue_source(
+            request,
+            job_store.as_ref(),
+            auth_snapshot,
+        )
+        .await
+        .map_err(|err| {
+            HttpError::new(
+                StatusCode::BAD_GATEWAY,
+                "upstream_unavailable",
+                err.to_string(),
             )
-            .await
-            .map_err(|err| {
-                HttpError::new(
-                    StatusCode::BAD_GATEWAY,
-                    "upstream_unavailable",
-                    err.to_string(),
-                )
-            })?;
-            return Ok((StatusCode::ACCEPTED, Json(result)));
-        }
+        })?;
+        return Ok((StatusCode::ACCEPTED, Json(result)));
+    }
+    if want_async {
         // No job store configured — degrade to the synchronous path below
         // rather than failing a detached request outright.
     }

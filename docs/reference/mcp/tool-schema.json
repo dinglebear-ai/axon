@@ -3819,7 +3819,7 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:32979b110d72248a4d97ca8d08c0b2bcf1c6d891fb3f7fa5a4902e01ac7b0308",
+        "checksum": "sha256:21ccae6b108e6f5fa0c00197e5695fa4e7f3ef46a98aadcdc5a626f1e151fe36",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
@@ -3834,7 +3834,7 @@
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:0960db61568609c37bc11774b341690a3292d189d7d684b1c6bdc7aef3049051",
+        "checksum": "sha256:25a3b6108fc7378ec6f5709a1e5ad605ba85b13d071d434c626cc16f37afdcf0",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

@@ -23,6 +23,7 @@ use axon_embedding::reservation::ProviderReservationManager;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
+#[cfg(test)]
 pub(super) use self::git_source_adapter::git_source_id;
 use self::git_source_adapter::{
     GitAdapterRun, collection_spec, discover_manifest, resolve_adapter_run, source_summary,

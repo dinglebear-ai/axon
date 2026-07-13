@@ -66,6 +66,7 @@ pub(crate) fn job_runtime_text(
 }
 
 /// First line of error_text, truncated to 60 chars.
+#[allow(dead_code)]
 pub(crate) fn format_error(error_text: Option<&str>) -> Option<String> {
     let text = error_text?.trim();
     if text.is_empty() {

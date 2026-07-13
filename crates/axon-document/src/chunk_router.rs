@@ -4,7 +4,9 @@ use std::str::FromStr;
 
 #[cfg(test)]
 use axon_api::source::ChunkProfile;
-use axon_api::source::{ContentKind, ContentRef, MetadataMap, SourceDocument};
+#[cfg(test)]
+use axon_api::source::ContentRef;
+use axon_api::source::{ContentKind, MetadataMap, SourceDocument};
 
 use crate::profile::ChunkingProfile;
 
@@ -105,6 +107,7 @@ impl ChunkRouter {
     /// fallback chain, and size limits. Considers the source adapter/scope
     /// (read from the shared metadata envelope, per `metadata-payload.md`)
     /// and the normalized document size, not just content kind.
+    #[cfg(test)]
     pub(crate) fn route_decision(&self, doc: &SourceDocument) -> Result<RouteDecision, String> {
         let profile = self.route(doc)?;
         Ok(decision_for_profile(
@@ -116,6 +119,7 @@ impl ChunkRouter {
     }
 }
 
+#[cfg(test)]
 fn document_size_bytes(doc: &SourceDocument) -> usize {
     match &doc.content {
         ContentRef::InlineText { text } => text.len(),

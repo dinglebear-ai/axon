@@ -13,6 +13,7 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use std::sync::Arc;
 
+#[cfg(test)]
 pub(super) use self::feed_source_adapter::feed_source_id;
 use self::feed_source_adapter::{
     FeedAdapterRun, collection_spec, discover_manifest, resolve_adapter_run, source_summary,

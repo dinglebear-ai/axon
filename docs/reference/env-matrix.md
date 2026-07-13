@@ -144,6 +144,7 @@ They are not Axon runtime configuration and must not be added to production env 
 
 | Key | Class | Placement | Notes | Source |
 |-----|-------|-----------|-------|--------|
+| `AXON_RUSTC_WRAPPER` | external/test-only | not-runtime | Legacy prefix value exported by the cargo rustc wrapper for cargo-bin-artifact-wrapper compatibility | scripts |
 | `AXON_RUSTC_WRAPPER_DELEGATE` | external/test-only | not-runtime | Optional cargo rustc wrapper delegate command override | scripts |
 | `AXON_RUSTC_WRAPPER_LOCAL_BIN` | external/test-only | not-runtime | Test/install destination override for the local Axon binary | scripts |
 | `AXON_RUSTC_WRAPPER_NO_SCCACHE` | external/test-only | not-runtime | Test switch to bypass sccache in the cargo rustc wrapper | scripts |

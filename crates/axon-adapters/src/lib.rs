@@ -6,6 +6,8 @@
 //! wired and exercised by tests in this crate and consumed by
 //! `axon-services`.
 
+#![allow(clippy::large_enum_variant, clippy::result_large_err)]
+
 pub mod acquisition;
 pub mod adapter;
 pub mod boundary;

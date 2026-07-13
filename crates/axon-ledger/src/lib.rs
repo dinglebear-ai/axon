@@ -3,6 +3,8 @@
 //! This crate is intentionally marker-only in PR0. Runtime behavior moves here
 //! in issue #298 implementation PRs after contract tests exist.
 
+#![allow(clippy::result_large_err)]
+
 pub mod cleanup_debt;
 pub mod diff;
 pub mod document_status;

@@ -69,6 +69,7 @@ impl AskTiming {
 
     /// Disabled accumulator with no request_start (used by paths like
     /// `evaluate` that don't emit ask sub-stage timing).
+    #[cfg(test)]
     pub(crate) fn disabled() -> Self {
         AskTiming::Disabled {
             request_start: None,

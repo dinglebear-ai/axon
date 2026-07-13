@@ -374,7 +374,7 @@ fn generation_delete_filter(
         "source_id",
         &source_id.0,
         "source_generation",
-        &generation_payload_i64(generation, "source_generation")?,
+        generation_payload_i64(generation, "source_generation")?,
     ))
 }
 
@@ -401,7 +401,7 @@ fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
                     "source_id",
                     &source_id.0,
                     "source_generation",
-                    &generation_payload_i64(generation, "source_generation")?,
+                    generation_payload_i64(generation, "source_generation")?,
                 ),
                 None => eq_filter_json("source_id", &source_id.0),
             };
@@ -429,7 +429,7 @@ fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
                     "document_id",
                     &document_id.0,
                     "source_generation",
-                    &generation_payload_i64(generation, "source_generation")?,
+                    generation_payload_i64(generation, "source_generation")?,
                 ),
                 None => eq_filter_json("document_id", &document_id.0),
             };

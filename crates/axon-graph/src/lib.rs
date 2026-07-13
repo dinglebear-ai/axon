@@ -15,6 +15,8 @@
 //! [`store::GraphStore`] trait; [`store::FakeGraphStore`] is an in-memory fake
 //! for higher-layer tests.
 
+#![allow(clippy::result_large_err)]
+
 pub mod authority;
 pub mod candidate;
 pub mod edge;

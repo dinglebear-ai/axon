@@ -1,5 +1,7 @@
 //! Source resolution and routing for the unified source pipeline.
 
+#![allow(clippy::large_enum_variant, clippy::result_large_err)]
+
 pub mod alias;
 pub mod authority;
 pub mod boundary;

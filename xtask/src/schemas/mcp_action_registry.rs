@@ -303,6 +303,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
 /// (`crates/axon-mcp/src/server.rs`'s removed/HTTP-only match arms) — read
 /// there for reference. Used only by the drift test's negative-space check;
 /// not part of the generated schema.
+#[allow(dead_code)]
 pub(super) const KNOWN_NON_LIVE_ACTIONS: &[&str] = &[
     "crawl",
     "embed",
