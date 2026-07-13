@@ -11,7 +11,7 @@
 //! the existing bridge-level `embed`/`max_items` tests in
 //! `reddit_source_tests.rs`/`youtube_source_tests.rs`/`registry_source_tests.rs`.
 
-use axon_api::source::ProviderId;
+use axon_api::source::{AuthScope, AuthSnapshot, ProviderId, SourceRequest};
 use axon_core::http::LoopbackGuard;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::boundary::FakeJobWatchStore;
@@ -76,6 +76,42 @@ fn write_two_session_fixtures(dir: &std::path::Path) {
         ),
     )
     .unwrap();
+}
+
+#[tokio::test]
+async fn dispatch_local_denies_secret_like_path_before_bridge() {
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors.clone(), ledger);
+    let request = SourceRequest::local_path("./.env", false);
+    let routed =
+        crate::source::routing::resolve_source_route(&request).expect("local source should route");
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+
+    let result = dispatch_local(
+        &runtime,
+        "./.env",
+        "axon-test",
+        "test-owner",
+        Some(&snapshot),
+        true,
+        &routed.route,
+    )
+    .await;
+    let err = match result {
+        Ok(_) => panic!("secret-like local paths should be denied before indexing"),
+        Err(err) => err,
+    };
+
+    assert!(
+        err.to_string().contains("security.local_secret_denied"),
+        "expected secret-path denial, got: {err:?}"
+    );
+    assert!(
+        vectors.points("axon-test").await.is_empty(),
+        "denied local source must not write vectors"
+    );
 }
 
 #[tokio::test]

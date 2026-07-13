@@ -114,9 +114,11 @@ fn input_is_web_url(input: &str) -> bool {
     }
 }
 
-/// True when `input` resolves to an existing path on disk.
+/// True when `input` resolves to an existing path on disk or uses the same
+/// lexical local-path prefixes the source router uses for local identity.
 async fn input_is_local_path(input: &str) -> bool {
-    tokio::fs::metadata(PathBuf::from(input)).await.is_ok()
+    axon_route::canonical::is_lexically_local_path(input)
+        || tokio::fs::metadata(PathBuf::from(input)).await.is_ok()
 }
 
 /// True when `input` should route to the git clone path.

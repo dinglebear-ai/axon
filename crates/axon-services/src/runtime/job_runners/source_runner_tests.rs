@@ -1,8 +1,8 @@
 use super::*;
 use crate::runtime::job_runners::build_registry;
 use axon_api::source::{
-    AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind,
-    JobPriority, JobStagePlan, MetadataMap, PipelinePhase,
+    AuthScope, AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobIntent,
+    JobKind as UnifiedJobKind, JobPriority, JobStagePlan, MetadataMap, PipelinePhase,
 };
 use axon_jobs::SqliteJobBackend;
 use axon_jobs::boundary::JobStore;
@@ -148,6 +148,33 @@ async fn source_runner_with_missing_payload_fails_with_api_error() {
     assert!(
         error.message.contains("source_request"),
         "expected a validation error naming the missing field, got: {}",
+        error.message
+    );
+}
+
+#[tokio::test]
+async fn source_runner_rechecks_local_scope_from_persisted_snapshot() {
+    let (_tmp, cfg) = test_cfg().await;
+    let runner = SourceRunner::new(Arc::clone(&cfg));
+    let backend = SqliteJobBackend::new(Arc::clone(&cfg))
+        .await
+        .expect("enqueue-only backend");
+    let store = SqliteUnifiedJobStore::new(Arc::clone(backend.pool()).as_ref().clone());
+
+    let request = SourceRequest::local_path("/tmp/axon-missing-runner-local-auth-test", true);
+    let mut claimed =
+        claim_source_job(&store, serde_json::json!({"source_request": request})).await;
+    claimed.auth_snapshot = AuthSnapshot::default();
+    claimed.auth_snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write];
+
+    let shutdown = CancellationToken::new();
+    let result = runner.run(&claimed, &store, &shutdown).await;
+
+    let error = result.expect_err("worker-local source without local scope must fail the job");
+    assert_eq!(error.code.0, "job_runner.source_failed");
+    assert!(
+        error.message.contains("axon:local"),
+        "expected source runner to surface the service auth recheck, got: {}",
         error.message
     );
 }

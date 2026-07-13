@@ -34,12 +34,12 @@ pub fn canonicalize(raw: &str, requested_scope: Option<SourceScope>) -> Option<C
         .or_else(|| canonical_web(source))
 }
 
+pub fn is_lexically_local_path(raw: &str) -> bool {
+    raw.starts_with('/') || raw.starts_with("./") || raw.starts_with("../") || raw.starts_with('~')
+}
+
 fn canonical_local(raw: &str, requested_scope: Option<SourceScope>) -> Option<CanonicalSource> {
-    if !(raw.starts_with('/')
-        || raw.starts_with("./")
-        || raw.starts_with("../")
-        || raw.starts_with('~'))
-    {
+    if !is_lexically_local_path(raw) {
         return None;
     }
     let normalized = crate::local_path::normalize_local_path(raw);

@@ -1,6 +1,6 @@
 use super::*;
 use crate::source::routing;
-use axon_api::source::{SourceRequest, SourceScope};
+use axon_api::source::{AuthScope, AuthSnapshot, SafetyClass, SourceRequest, SourceScope};
 
 /// The router's declared reddit credential requirement (see
 /// `axon-route`'s `AdapterRegistry::target_defaults`) must survive into the
@@ -91,4 +91,57 @@ fn authorize_route_allows_sources_without_credential_requirements() {
 
     assert!(routed.route.credential_requirements.is_empty());
     assert!(authorize_route(&routed.route).is_ok());
+}
+
+#[test]
+fn authorize_safety_class_denies_local_without_local_scope() {
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write];
+
+    let err = authorize_safety_class(SafetyClass::LocalFilesystem, Some(&snapshot))
+        .expect_err("local source requires explicit local scope");
+
+    assert_eq!(err.code.to_string(), "auth.scope_required");
+    assert_eq!(
+        err.details.get("required_scope").map(String::as_str),
+        Some("axon:local")
+    );
+}
+
+#[test]
+fn authorize_safety_class_allows_local_with_local_scope() {
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+
+    authorize_safety_class(SafetyClass::LocalFilesystem, Some(&snapshot))
+        .expect("local scope should authorize local source execution");
+}
+
+#[test]
+fn authorize_safety_class_allows_trusted_local_none_snapshot() {
+    authorize_safety_class(SafetyClass::LocalFilesystem, None)
+        .expect("trusted local/loopback callers use the absence of a snapshot");
+}
+
+#[test]
+fn authorize_safety_class_allows_trusted_system_snapshot() {
+    let snapshot = AuthSnapshot::trusted_system("test");
+
+    authorize_safety_class(SafetyClass::LocalFilesystem, Some(&snapshot))
+        .expect("trusted local persisted snapshots authorize local source execution");
+}
+
+#[test]
+fn authorize_safety_class_uses_route_safety_for_execute_sources() {
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write];
+
+    let err = authorize_safety_class(SafetyClass::ToolExecution, Some(&snapshot))
+        .expect_err("tool-execution route safety requires explicit execute scope");
+
+    assert_eq!(err.code.to_string(), "auth.scope_required");
+    assert_eq!(
+        err.details.get("required_scope").map(String::as_str),
+        Some("axon:execute")
+    );
 }

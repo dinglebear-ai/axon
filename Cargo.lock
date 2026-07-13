@@ -832,6 +832,7 @@ dependencies = [
  "async-trait",
  "axon-adapters",
  "axon-api",
+ "axon-authz",
  "axon-core",
  "axon-document",
  "axon-embedding",

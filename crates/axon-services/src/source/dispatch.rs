@@ -11,7 +11,7 @@ mod index_inputs;
 mod web_options;
 
 use anyhow::Context as _;
-use axon_api::source::{AuthSnapshot, JobId, SourceScope};
+use axon_api::source::{AuthScope, AuthSnapshot, JobId, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
@@ -48,6 +48,10 @@ pub async fn dispatch_local(
     log_info(&format!(
         "command=source collection={collection} kind=local embed={embed}"
     ));
+    let has_local_scope = auth_snapshot
+        .map(|snapshot| super::authorize::snapshot_allows_scope(snapshot, AuthScope::Local))
+        .unwrap_or(true);
+    super::enforce_local_source_policy(input, has_local_scope)?;
     let index_input = LocalSourceIndexInput {
         root: std::path::PathBuf::from(input),
         collection: collection.to_string(),
