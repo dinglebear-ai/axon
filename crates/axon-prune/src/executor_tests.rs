@@ -154,6 +154,33 @@ async fn generation_fence_blocks_current_generation() {
 }
 
 #[tokio::test]
+async fn fence_check_failure_fails_closed_and_refuses_prune() {
+    // A `current_generation()` error (e.g. a ledger read error such as
+    // SQLITE_BUSY, pool exhaustion, or IO) must never be treated the same as
+    // "nothing to protect" — the executor must fail CLOSED and refuse the
+    // whole prune rather than risk deleting a generation that was never
+    // actually confirmed non-current (D1 remediation, PR #418 review).
+    let sel = PruneSelector::Generation {
+        source_id: SourceId::new("owner/repo"),
+        generation: SourceGenerationId::new("gen-1"),
+    };
+    let est = axon_api::source::prune::PruneEstimate {
+        vector_points: 3,
+        ..Default::default()
+    };
+    let plan = PrunePlanner::new(FakeScopeSource::new(est)).resolve(&sel);
+    let target = FakePruneTarget::from_steps(&plan.steps).failing_current_generation();
+    let executor = PruneExecutor::new(target);
+
+    let out = executor.execute(&plan, &PruneAuthz::admin()).await;
+
+    assert!(matches!(
+        out,
+        Err(crate::safety::PruneDenied::FenceCheckFailed { .. })
+    ));
+}
+
+#[tokio::test]
 async fn old_generation_passes_fence_and_deletes() {
     let sel = PruneSelector::Generation {
         source_id: SourceId::new("owner/repo"),

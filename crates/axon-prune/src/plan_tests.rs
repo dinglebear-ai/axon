@@ -109,6 +109,82 @@ fn collection_selector_produces_vector_step_with_collection_delete_selector() {
 }
 
 #[test]
+fn vector_selector_uses_configured_collection_not_hardcoded_axon() {
+    // D4 remediation (PR #418 review): a deployment with `AXON_COLLECTION`
+    // set to something other than "axon" must not have its Source/Generation
+    // prune steps hardcode "axon" as the delete target — that silently
+    // deletes from the wrong collection (or a nonexistent one).
+    let est = PruneEstimate {
+        vector_points: 7,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est)).with_collection("cortex_v2");
+    let plan = planner.resolve(&source_sel());
+
+    let vector_step = plan
+        .steps
+        .iter()
+        .find(|s| s.target == PruneTargetKind::Vector)
+        .expect("vector step present");
+    match vector_step.vector_selector.as_ref() {
+        Some(VectorDeleteSelector::Source { collection, .. }) => {
+            assert_eq!(collection, "cortex_v2");
+        }
+        other => panic!("expected Source selector, got {other:?}"),
+    }
+}
+
+#[test]
+fn generation_selector_also_uses_configured_collection() {
+    let sel = PruneSelector::Generation {
+        source_id: SourceId::new("owner/repo"),
+        generation: SourceGenerationId::new("gen-2"),
+    };
+    let est = PruneEstimate {
+        vector_points: 5,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est)).with_collection("cortex_v2");
+    let plan = planner.resolve(&sel);
+
+    let vector_step = plan
+        .steps
+        .iter()
+        .find(|s| s.target == PruneTargetKind::Vector)
+        .expect("vector step present");
+    match vector_step.vector_selector.as_ref() {
+        Some(VectorDeleteSelector::Generation { collection, .. }) => {
+            assert_eq!(collection, "cortex_v2");
+        }
+        other => panic!("expected Generation selector, got {other:?}"),
+    }
+}
+
+#[test]
+fn collection_selector_keeps_its_own_named_collection_even_with_different_active_collection() {
+    // A `Collection`-selector prune is allowed to name an arbitrary
+    // collection distinct from the process's active `AXON_COLLECTION` (e.g.
+    // cleaning up a stale collection) — `with_collection` must not clobber
+    // that explicit name.
+    let sel = PruneSelector::Collection {
+        collection: "some_other_collection".to_string(),
+    };
+    let est = PruneEstimate {
+        vector_points: 3,
+        ..PruneEstimate::default()
+    };
+    let planner = PrunePlanner::new(FakeScopeSource::new(est)).with_collection("cortex_v2");
+    let plan = planner.resolve(&sel);
+
+    assert_eq!(
+        plan.steps[0].vector_selector,
+        Some(VectorDeleteSelector::Collection {
+            collection: "some_other_collection".to_string(),
+        })
+    );
+}
+
+#[test]
 fn empty_estimate_yields_empty_plan() {
     let planner = PrunePlanner::new(FakeScopeSource::new(PruneEstimate::default()));
     let plan = planner.resolve(&source_sel());
