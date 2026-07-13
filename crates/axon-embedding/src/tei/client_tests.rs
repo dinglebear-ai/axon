@@ -55,6 +55,43 @@ fn resolve_batch_size_clamps_to_valid_range() {
 }
 
 #[test]
+fn tei_client_new_reuses_the_shared_client_across_many_constructions() {
+    let before = shared_client_build_count();
+    for i in 0..5 {
+        TeiClient::new(TeiClientParams {
+            endpoint: "http://127.0.0.1:1".to_string(),
+            provider_id: format!("tei-{i}"),
+            max_batch_inputs: 8,
+            max_attempts: 1,
+            request_timeout: Duration::from_millis(10),
+            retry_backoff_base_ms: 500,
+        })
+        .expect("client construction performs no I/O");
+    }
+    let after = shared_client_build_count();
+    assert!(
+        after == before || after == before + 1,
+        "the shared client may initialize once, never once per TeiClient::new call"
+    );
+    for i in 5..10 {
+        TeiClient::new(TeiClientParams {
+            endpoint: "http://127.0.0.1:1".to_string(),
+            provider_id: format!("tei-{i}"),
+            max_batch_inputs: 8,
+            max_attempts: 1,
+            request_timeout: Duration::from_millis(10),
+            retry_backoff_base_ms: 500,
+        })
+        .expect("client construction performs no I/O");
+    }
+    assert_eq!(
+        shared_client_build_count(),
+        after,
+        "later TeiClient::new calls must keep reusing the same client"
+    );
+}
+
+#[test]
 fn exhausted_cooling_attaches_provider_cooling_metadata_and_marks_retryable() {
     let client = TeiClient::new(TeiClientParams {
         endpoint: "http://127.0.0.1:1".to_string(),
