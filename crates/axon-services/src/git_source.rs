@@ -16,6 +16,7 @@ mod git_source_vectorize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axon_adapters::SourceEnricher;
 use axon_api::source::*;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::reservation::ProviderReservationManager;
@@ -47,7 +48,11 @@ const GIT_LEASE_TTL_SECONDS: u64 = 30 * 60;
 /// Inputs for indexing one git repository generation. `repo_root` is a
 /// checked-out clone prepared by the caller; `target_url` is the original
 /// `https` repository URL (used for identity + provider/owner/repo metadata).
-#[derive(Debug, Clone)]
+///
+/// Does not derive `Debug` — `Arc<dyn SourceEnricher>` is a trait object with
+/// no `Debug` bound (mirrors `WebSourceIndexInput`'s `fetch_provider`/
+/// `render_provider`).
+#[derive(Clone)]
 pub struct GitSourceIndexInput {
     pub target_url: String,
     pub repo_root: PathBuf,
@@ -76,6 +81,17 @@ pub struct GitSourceIndexInput {
     /// callers that bypass the `index_source` orchestrator (tests, direct
     /// bridge callers).
     pub route: Option<RoutePlan>,
+    /// Enrichment-stage boundary (source-pipeline.md: `enriching`, between
+    /// `fetching`/`acquire` and `normalizing`/`normalize`). Threaded from
+    /// `TargetLocalSourceRuntime::enricher` by `source::dispatch::dispatch_git`,
+    /// mirroring how `fetch_provider`/`render_provider` are threaded into
+    /// `WebSourceIndexInput`. Called once per acquired item in
+    /// `git_source_adapter::normalize_changed_documents`, between `acquire`
+    /// and `normalize`; its `parse_hints`/`graph_candidates` flow into the
+    /// corresponding document's `prepare` call in
+    /// `git_source_vectorize::prepare_changed_documents`. `NoopSourceEnricher`
+    /// is the production default and a no-op passthrough.
+    pub enricher: Arc<dyn SourceEnricher>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

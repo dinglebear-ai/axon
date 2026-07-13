@@ -9,6 +9,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axon_adapters::NoopSourceEnricher;
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
 use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
@@ -237,6 +238,7 @@ impl TargetLocalSourceRuntime {
             embedding_dimensions: identity.dimensions,
             fetch_provider: Arc::new(fetch_provider),
             render_provider: Arc::new(render_provider),
+            enricher: Arc::new(NoopSourceEnricher::new()),
         })
     }
 }

@@ -120,6 +120,7 @@ pub async fn dispatch_git(
         auth_snapshot: auth_snapshot.cloned(),
         embed,
         route: Some(route.clone()),
+        enricher: runtime.enricher.clone(),
     };
     let output = index_git_source_with_job(
         index_input,
