@@ -1,7 +1,8 @@
 use super::*;
 use crate::runtime::ServiceJobRuntime;
+use crate::search_source_index::enqueue_web_source_auto_index;
 use crate::types::ResearchHit;
-use axon_api::source::{JobId, LifecycleStatus, PipelinePhase};
+use axon_api::source::{JobId, LifecycleStatus, PipelinePhase, SourceScope};
 use axon_core::config::CommandKind;
 use std::error::Error as StdError;
 use std::sync::Arc;
@@ -18,7 +19,7 @@ fn with_isolated_sqlite_path(mut cfg: Config) -> Config {
 
 /// Real in-memory `ServiceContext` with unified-store-backed workers, mirroring
 /// `crawl_tests.rs::test_ctx_with_workers`. Crawl now enqueues onto the
-/// unified job store (see `crawl_start_with_context`), so `search_crawl`'s
+/// unified job store, so `search_crawl`'s
 /// tests need a real store to enqueue against and (for the wait-mode tests)
 /// to drive terminal status transitions on directly. Takes `cfg` by value
 /// (isolating only `sqlite_path`) so `service_context.cfg.job_wait_timeout_secs`
@@ -43,8 +44,8 @@ async fn test_ctx_no_workers(cfg: Config) -> ServiceContext {
 
 /// A `ServiceContext` whose `unified_job_store()` returns `None` — simulates
 /// an enqueue-only runtime with no in-process workers attached, so
-/// `crawl_start_with_context` fails with "unified job store is not
-/// available", reproducing the queue-full/enqueue-failure family of tests.
+/// source enqueue fails with "unified job store is not available",
+/// reproducing the queue-full/enqueue-failure family of tests.
 struct NoStoreRuntime;
 
 #[async_trait::async_trait]
@@ -216,7 +217,7 @@ async fn enqueue_failure_is_rejected_not_fatal() {
 }
 
 #[tokio::test]
-async fn uses_hardened_bounded_crawl_config() {
+async fn uses_hardened_bounded_source_request() {
     let mut cfg = make_cfg("rust");
     cfg.max_pages = 500;
     cfg.max_depth = 12;
@@ -249,13 +250,21 @@ async fn uses_hardened_bounded_crawl_config() {
         source_request
             .pointer("/limits/max_pages")
             .and_then(serde_json::Value::as_u64),
-        Some(200)
+        Some(1)
     );
     assert_eq!(
         source_request
             .pointer("/limits/max_depth")
             .and_then(serde_json::Value::as_u64),
-        Some(10)
+        Some(0)
+    );
+    assert_eq!(
+        source_request.get("intent").and_then(|v| v.as_str()),
+        Some("acquire")
+    );
+    assert_eq!(
+        source_request.get("scope").and_then(|v| v.as_str()),
+        Some("page")
     );
     assert_eq!(
         source_request
@@ -346,21 +355,24 @@ async fn wait_mode_reports_mixed_wait_outcomes_after_queueing_all_results() {
 
     // Enqueue directly (bypassing wait mode) so this test can force each
     // job's terminal status before `enqueue_search_crawls`'s wait loop
-    // observes it, rather than racing a real crawl.
-    let crawl_cfg = crawl_config(&cfg);
+    // observes it, rather than racing a real source job.
+    let auto_index_cfg = auto_index_config(&cfg);
     let mut jobs = Vec::new();
     for result in &results {
         let url = result["url"].as_str().unwrap();
-        let outcome = crawl_service::crawl_start_with_context(
-            &crawl_cfg,
-            &[url.to_string()],
+        let job = enqueue_web_source_auto_index(
+            &auto_index_cfg,
             &ctx,
-            None,
-            None,
+            url,
+            SourceScope::Page,
+            1,
+            0,
+            auto_index_cfg.embed,
+            "search",
         )
         .await
         .expect("enqueue");
-        jobs.push(outcome.result.jobs[0].job_id.clone());
+        jobs.push(job.id.0.to_string());
     }
     force_terminal_status(&ctx, &jobs[0], LifecycleStatus::Completed).await;
     force_terminal_status(&ctx, &jobs[1], LifecycleStatus::Failed).await;
@@ -420,13 +432,13 @@ async fn rejects_invalid_missing_and_duplicate_urls() {
 }
 
 #[tokio::test]
-async fn crawl_config_disables_wait_during_enqueue_phase() {
+async fn auto_index_config_disables_wait_during_enqueue_phase() {
     let mut cfg = make_cfg("rust");
     cfg.wait = true;
-    let c = crawl_config(&cfg);
+    let c = auto_index_config(&cfg);
     assert!(!c.wait);
-    assert_eq!(c.max_pages, 200);
-    assert_eq!(c.max_depth, 10);
+    assert_eq!(c.max_pages, 1);
+    assert_eq!(c.max_depth, 0);
 }
 
 #[test]
@@ -498,7 +510,7 @@ async fn enqueue_research_crawls_embeds_by_default_and_honors_skip_embed() {
             .get("embed")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false),
-        "research crawl should embed by default"
+        "research auto-index should embed by default"
     );
 
     cfg.embed = false;
@@ -512,7 +524,7 @@ async fn enqueue_research_crawls_embeds_by_default_and_honors_skip_embed() {
             .get("embed")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(true),
-        "--skip-embed should carry into research crawl jobs"
+        "--skip-embed should carry into research source jobs"
     );
 }
 

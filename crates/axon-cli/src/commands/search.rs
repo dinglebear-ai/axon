@@ -72,7 +72,7 @@ pub async fn run_search(
             .map(|r| r.reason.as_str())
             .unwrap_or("unknown rejection");
         return Err(anyhow::anyhow!(
-            "search completed, but no result URLs were queued for crawl; first failure: {reason}"
+            "search completed, but no result URLs were queued for source auto-index; first failure: {reason}"
         )
         .into());
     }
@@ -90,7 +90,7 @@ pub async fn run_search(
 fn log_crawl_summary(cfg: &Config, jobs: &[SearchCrawlJob], rejected: &[SearchCrawlRejection]) {
     if !jobs.is_empty() && !cfg.quiet {
         log_info(&format!(
-            "search auto-index: queued {} crawl job(s). Run 'axon serve' or 'axon crawl worker' if workers are not running.",
+            "search auto-index: queued {} source job(s). Run 'axon serve' if workers are not running.",
             jobs.len()
         ));
     }

@@ -93,7 +93,7 @@ pub(super) fn router(
 /// Routes reachable with `axon:read` — metadata and pure retrieval, plus the
 /// query-shaped surfaces from U2-20/C6-20 (ask/chat/search/research/
 /// summarize/suggest/evaluate, and memory search/context) that default to
-/// `axon:read` even though some may enqueue a background index/crawl job as
+/// `axon:read` even though some may enqueue a background source/index job as
 /// a side effect. There is no `required_scope_if`/`mutates_if` conditional-
 /// upgrade metadata yet (tracked as a follow-up); until it lands these stay
 /// permanently read-gated rather than write-gated, matching the contract's
