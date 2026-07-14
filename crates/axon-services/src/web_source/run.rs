@@ -98,6 +98,8 @@ pub(super) async fn unchanged_refresh_output(
         removed_pages: 0,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     }))
 }
 

@@ -13,6 +13,7 @@ use axon_adapters::NoopSourceEnricher;
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
 use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
+use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
@@ -217,6 +218,7 @@ impl TargetLocalSourceRuntime {
             chrome_remote_url: cfg.chrome_remote_url.clone(),
             default_timeout_ms: cfg.request_timeout_ms,
         });
+        let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
 
         Ok(Self {
             jobs,
@@ -242,6 +244,7 @@ impl TargetLocalSourceRuntime {
             embedding_dimensions: identity.dimensions,
             fetch_provider: Arc::new(fetch_provider),
             render_provider: Arc::new(render_provider),
+            artifact_store: Arc::new(artifact_store),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
     }

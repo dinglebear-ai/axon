@@ -417,6 +417,99 @@ async fn sqlite_publish_creates_cleanup_debt_for_modified_items() {
 }
 
 #[tokio::test]
+async fn sqlite_publish_creates_artifact_and_cache_cleanup_debt_from_manifest_metadata() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen1");
+    let mut old_item = manifest_item("src/lib.rs", "old");
+    let clean_artifact = artifact_ref("art_clean", ArtifactKind::NormalizedContent);
+    old_item.metadata.insert(
+        "_axon_artifacts".to_string(),
+        serde_json::json!([clean_artifact.clone()]),
+    );
+    let cache_key = DocumentCacheKey {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: Some(gen1.generation.clone()),
+    };
+    old_item.metadata.insert(
+        "_axon_document_cache_key".to_string(),
+        serde_json::to_value(&cache_key).unwrap(),
+    );
+    let warc_artifact = artifact_ref("art_warc", ArtifactKind::Warc);
+    let mut gen1_manifest = manifest_with_items(&gen1.generation.0, vec![old_item]);
+    gen1_manifest.metadata.insert(
+        "_axon_artifacts".to_string(),
+        serde_json::json!([warc_artifact.clone()]),
+    );
+    store.put_manifest(gen1_manifest).await.expect("put gen1");
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
+
+    let gen2 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen2");
+    store
+        .put_manifest(manifest_with_items(
+            &gen2.generation.0,
+            vec![manifest_item("src/lib.rs", "new")],
+        ))
+        .await
+        .expect("put gen2");
+    complete_and_publish(&store, completed_generation_from(&gen2)).await;
+
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 4);
+    let debt_rows: Vec<String> = sqlx::query_scalar("SELECT debt_json FROM cleanup_debt")
+        .fetch_all(&store.pool)
+        .await
+        .expect("read cleanup debt");
+    let debts: Vec<CleanupDebt> = debt_rows
+        .iter()
+        .map(|json| serde_json::from_str(json).expect("parse cleanup debt"))
+        .collect();
+    assert!(
+        debts
+            .iter()
+            .any(|debt| debt.kind == CleanupDebtKind::ArtifactDelete
+                && debt.generation == Some(gen1.generation.clone())
+                && matches!(
+                    &debt.selector,
+                    CleanupSelector::Artifact { artifact_id }
+                        if artifact_id == &warc_artifact.artifact_id
+                )),
+        "manifest-level WARC artifact should get cleanup debt"
+    );
+    assert!(
+        debts
+            .iter()
+            .any(|debt| debt.kind == CleanupDebtKind::ArtifactDelete
+                && debt.generation == Some(gen1.generation.clone())
+                && matches!(
+                    &debt.selector,
+                    CleanupSelector::Artifact { artifact_id }
+                        if artifact_id == &clean_artifact.artifact_id
+                )),
+        "item-level clean artifact should get cleanup debt"
+    );
+    assert!(
+        debts.iter().any(|debt| {
+            debt.kind == CleanupDebtKind::CachePrune
+                && debt.generation == Some(gen1.generation.clone())
+                && matches!(
+                    &debt.selector,
+                    CleanupSelector::CacheKeys { keys }
+                        if keys.contains(&serde_json::to_string(&cache_key).unwrap())
+                )
+        }),
+        "item cache key should get cache-prune cleanup debt"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");

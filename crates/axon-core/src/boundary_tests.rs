@@ -127,6 +127,49 @@ async fn fake_core_boundaries_cover_artifact_config_cache_rate_and_health() {
 }
 
 #[tokio::test]
+async fn file_artifact_store_ids_are_owner_unique_for_identical_content() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let store = FileArtifactStore::new(temp.path());
+    let first = ArtifactStore::put(
+        &store,
+        ArtifactWriteRequest {
+            kind: ArtifactKind::NormalizedContent,
+            content_type: "text/markdown".to_string(),
+            content: ContentRef::InlineText {
+                text: "same bytes".to_string(),
+            },
+            source_id: Some(SourceId::new("src_one")),
+            job_id: Some(JobId::new(uuid::Uuid::from_u128(1))),
+            metadata: MetadataMap::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let second = ArtifactStore::put(
+        &store,
+        ArtifactWriteRequest {
+            kind: ArtifactKind::NormalizedContent,
+            content_type: "text/markdown".to_string(),
+            content: ContentRef::InlineText {
+                text: "same bytes".to_string(),
+            },
+            source_id: Some(SourceId::new("src_two")),
+            job_id: Some(JobId::new(uuid::Uuid::from_u128(2))),
+            metadata: MetadataMap::new(),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_ne!(first.artifact_id, second.artifact_id);
+    ArtifactStore::delete(&store, first).await.unwrap();
+    assert!(
+        ArtifactStore::get(&store, second).await.is_ok(),
+        "deleting one owner artifact must not remove identical bytes from another owner"
+    );
+}
+
+#[tokio::test]
 async fn fake_core_boundaries_report_health_override() {
     let fake = FakeCoreBoundaries::new().with_health(HealthStatus::Cooling);
 

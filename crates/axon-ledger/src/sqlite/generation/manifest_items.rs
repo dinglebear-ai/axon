@@ -34,3 +34,28 @@ pub(super) async fn manifest_items_in_tx(
         })
         .collect()
 }
+
+pub(super) async fn manifest_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<Option<SourceManifest>> {
+    let row = sqlx::query(
+        r#"
+        SELECT manifest_json
+        FROM source_manifests
+        WHERE source_id = ?1 AND generation = ?2
+        "#,
+    )
+    .bind(&source_id.0)
+    .bind(&generation.0)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(sqlite_error)?;
+
+    row.map(|row| {
+        let manifest_json: String = row.get("manifest_json");
+        serde_json::from_str(&manifest_json).map_err(json_error)
+    })
+    .transpose()
+}

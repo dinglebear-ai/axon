@@ -259,6 +259,7 @@ async fn index_source_inner(
         owner_id,
         execution.auth_snapshot.as_ref(),
         request.embed,
+        &request.output,
         &request.limits,
         &route,
         &execution,
@@ -300,16 +301,7 @@ async fn index_source_inner(
     // index is already published, so a cleanup problem must not fail
     // acquisition; a store that fails to open just leaves its debt kind
     // pending (see `open_cleanup_debt_stores`).
-    let (graph_store, memory_store) = open_cleanup_debt_stores(ctx).await;
-    let drain = prune::drain_cleanup_debt_full(
-        runtime.ledger.as_ref(),
-        runtime.vector_store.as_ref(),
-        graph_store.as_deref(),
-        memory_store.as_deref(),
-        &collection,
-        &counts,
-    )
-    .await;
+    let drain = drain_source_cleanup_debt(ctx, runtime, &collection, &counts).await;
 
     // Record the drain as a child `prune` job of the parent source job, when
     // it touched at least one pending debt entry.
@@ -332,6 +324,28 @@ async fn index_source_inner(
         counts,
         graph,
     ))
+}
+
+async fn drain_source_cleanup_debt(
+    ctx: &ServiceContext,
+    runtime: &TargetLocalSourceRuntime,
+    collection: &str,
+    counts: &IndexCounts,
+) -> prune::DebtDrainSummary {
+    let (graph_store, memory_store) = open_cleanup_debt_stores(ctx).await;
+    let document_cache = crate::web_source::document_cache_boundary();
+    prune::drain_cleanup_debt_full_with_boundaries(
+        runtime.ledger.as_ref(),
+        runtime.vector_store.as_ref(),
+        graph_store.as_deref(),
+        memory_store.as_deref(),
+        None,
+        Some(runtime.artifact_store.as_ref()),
+        Some(document_cache.as_ref()),
+        collection,
+        counts,
+    )
+    .await
 }
 
 fn source_security_api_error(err: SourceSecurityError) -> ApiError {
@@ -418,6 +432,7 @@ async fn dispatch_kind(
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
+    output: &axon_api::source::OutputPolicy,
     limits: &axon_api::source::SourceLimits,
     route: &axon_api::source::RoutePlan,
     execution: &SourceExecutionContext,
@@ -494,6 +509,8 @@ async fn dispatch_kind(
                 auth_snapshot,
                 embed,
                 limits.max_pages,
+                output,
+                route,
                 execution,
             )
             .await

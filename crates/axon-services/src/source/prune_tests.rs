@@ -161,6 +161,8 @@ fn index_counts(committed: &SourceGenerationId) -> IndexCounts {
         removed: 1,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     }
 }
 

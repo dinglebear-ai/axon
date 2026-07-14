@@ -91,6 +91,17 @@ fn manifest_item(path: &str, hash: &str) -> ManifestItem {
     }
 }
 
+fn artifact_ref(id: &str, kind: ArtifactKind) -> ArtifactRef {
+    ArtifactRef {
+        artifact_id: ArtifactId::new(id),
+        artifact_kind: kind,
+        uri: format!("artifact://test/{id}"),
+        size_bytes: Some(12),
+        content_hash: Some(format!("sha256:{id}")),
+        created_at: ts(),
+    }
+}
+
 fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGeneration {
     SourceGeneration {
         source_id: manifest.source_id.clone(),

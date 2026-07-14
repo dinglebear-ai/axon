@@ -155,6 +155,7 @@ fn web_input(
         scope: SourceScope::Page,
         map_urls: Vec::new(),
         crawl_options,
+        output: OutputPolicy::default(),
         collection: "axon-web-304-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: JobId::new(uuid::Uuid::from_u128(0x304)),
@@ -166,6 +167,7 @@ fn web_input(
         embed: true,
         fetch_provider: provider.clone(),
         render_provider: provider,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
     }
 }
 

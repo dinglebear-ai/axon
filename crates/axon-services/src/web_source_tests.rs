@@ -39,6 +39,7 @@ fn input() -> WebSourceIndexInput {
         scope: SourceScope::Page,
         map_urls: Vec::new(),
         crawl_options: MetadataMap::new(),
+        output: OutputPolicy::default(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -50,6 +51,7 @@ fn input() -> WebSourceIndexInput {
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
     }
 }
 
@@ -175,6 +177,7 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
             "https://example.com/docs/api".to_string(),
         ],
         crawl_options: MetadataMap::new(),
+        output: OutputPolicy::default(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -186,6 +189,7 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
     };
 
     let output = index_web_source(map_input, &ledger, &embedder, &vectors)
