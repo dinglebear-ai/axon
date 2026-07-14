@@ -5,8 +5,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 const ANDROID_ROUTE_SOURCES: &[&str] = &[
-    "apps/android/app/src/main/java/com/axon/app/data/remote/AxonClient.kt",
-    "apps/android/app/src/main/java/com/axon/app/data/remote/GeneratedAxonApi.kt",
+    "apps/android/app/src/main/java/com/axon/app/core/api/AxonClient.kt",
+    "apps/android/app/src/main/java/com/axon/app/core/api/AxonClientMemory.kt",
+    "apps/android/app/src/main/java/com/axon/app/core/api/AxonClientPanel.kt",
+    "apps/android/app/src/main/java/com/axon/app/core/api/AxonClientStreaming.kt",
+    "apps/android/app/src/main/java/com/axon/app/core/api/GeneratedAxonApi.kt",
     "apps/android/app/src/main/java/com/axon/app/ui/operations/OperationMode.kt",
 ];
 
@@ -278,9 +281,11 @@ mod tests {
 
     #[test]
     fn route_sources_include_generated_adapter() {
-        assert!(ANDROID_ROUTE_SOURCES.contains(
-            &"apps/android/app/src/main/java/com/axon/app/data/remote/GeneratedAxonApi.kt"
-        ));
+        assert!(
+            ANDROID_ROUTE_SOURCES.contains(
+                &"apps/android/app/src/main/java/com/axon/app/core/api/GeneratedAxonApi.kt"
+            )
+        );
     }
 
     #[test]

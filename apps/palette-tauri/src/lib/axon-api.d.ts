@@ -1248,22 +1248,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/watch/{id}/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["run_watch"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/watches": {
         parameters: {
             query?: never;
@@ -1294,6 +1278,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_watch"];
+        trace?: never;
+    };
+    "/v1/watches/{watch_id}/exec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["exec_watch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/watches/{watch_id}/pause": {
@@ -2180,6 +2180,14 @@ export interface components {
             json: boolean;
             response_mode: components["schemas"]["ResponseMode"];
         };
+        Page: {
+            items: components["schemas"]["JobSummary"][];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
         PageInfo: {
             /** Format: int32 */
             limit: number;
@@ -2812,8 +2820,10 @@ export interface components {
         };
         SourceResult: {
             adapter: components["schemas"]["AdapterRef"];
+            artifacts?: components["schemas"]["ArtifactRef"][];
             canonical_uri: string;
             counts: components["schemas"]["SourceCounts"];
+            errors?: components["schemas"]["SourceError"][];
             graph: components["schemas"]["GraphWriteSummary"];
             inline?: null | components["schemas"]["InlineSourceResult"];
             job?: null | components["schemas"]["JobDescriptor"];
@@ -2967,6 +2977,10 @@ export interface components {
             source_id: components["schemas"]["SourceId"];
         } | {
             collection: string;
+            /** @enum {string} */
+            kind: "collection";
+        } | {
+            collection: string;
             document_id: components["schemas"]["DocumentId"];
             generation?: null | components["schemas"]["SourceGenerationId"];
             /** @enum {string} */
@@ -3005,6 +3019,11 @@ export interface components {
             next_run_at?: string | null;
             task_payload: unknown;
             task_type: string;
+        };
+        WatchExecRequest: {
+            reason?: string | null;
+            refresh?: null | components["schemas"]["SourceRefreshPolicy"];
+            wait?: boolean | null;
         };
         WatchId: string;
         WatchRequest: {
@@ -4546,7 +4565,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobSummary"];
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -7011,7 +7030,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Search results and queued crawl jobs */
+            /** @description Search results and queued source auto-index jobs */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7612,65 +7631,6 @@ export interface operations {
             };
         };
     };
-    run_watch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Watch definition ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Watch run result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Watch not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Watch execution failed */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     list_watches: {
         parameters: {
             query?: {
@@ -7946,6 +7906,69 @@ export interface operations {
                 };
             };
             /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    exec_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchExecRequest"];
+            };
+        };
+        responses: {
+            /** @description Watch execution job descriptor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch execution failed */
             502: {
                 headers: {
                     [name: string]: unknown;

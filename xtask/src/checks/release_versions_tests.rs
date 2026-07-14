@@ -933,7 +933,7 @@ fn release_please_fixup_plan_uses_component_manifest() {
     let fixture = Fixture::new();
     let items = release_please_fixup_plan(
         fixture.root(),
-        "apps/palette-tauri/CHANGELOG.md\napps/android/app/build.gradle.kts\n",
+        "apps/palette-tauri/CHANGELOG.md\napps/android/app/build.gradle.kts\napps/chrome-extension/CHANGELOG.md\n",
     )
     .unwrap();
     assert_eq!(
@@ -947,7 +947,29 @@ fn release_please_fixup_plan_uses_component_manifest() {
                 id: "android".to_owned(),
                 version: "1.3.2".to_owned(),
             },
+            release_please::ReleasePleaseFixupItem {
+                id: "chrome".to_owned(),
+                version: "0.2.0".to_owned(),
+            },
         ]
+    );
+}
+
+#[test]
+fn chrome_fixup_updates_manifest_and_package_versions() {
+    let fixture = Fixture::new();
+    release_please_fixups(fixture.root(), "chrome", "0.3.0").unwrap();
+
+    let manifest = fs::read_to_string(fixture.path("apps/chrome-extension/manifest.json")).unwrap();
+    let package = fs::read_to_string(fixture.path("apps/chrome-extension/package.json")).unwrap();
+
+    assert_eq!(
+        read_json_version(&manifest, Some("/version")).unwrap(),
+        "0.3.0"
+    );
+    assert_eq!(
+        read_json_version(&package, Some("/version")).unwrap(),
+        "0.3.0"
     );
 }
 
@@ -1197,6 +1219,10 @@ version = "5.10.2"
         write(
             &self.path("apps/chrome-extension/manifest.json"),
             r#"{"manifest_version":3,"version":"0.2.0"}"#,
+        );
+        write(
+            &self.path("apps/chrome-extension/package.json"),
+            r#"{"name":"axon-chrome-extension","version":"0.2.0"}"#,
         );
         // Per-component changelogs (headings match each version_source above) so
         // the copied manifest's changelog_heading entries validate and pass parity.

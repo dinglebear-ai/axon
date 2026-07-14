@@ -228,7 +228,7 @@ pub(crate) async fn recover_jobs(
     get,
     path = "/v1/jobs",
     params(UnifiedJobListQuery),
-    responses((status = 200, description = "Unified jobs", body = axon_api::source::JobSummary)),
+    responses((status = 200, description = "Unified jobs", body = axon_api::source::JobSummaryPage)),
     tag = "jobs"
 )]
 pub(crate) async fn list_unified_jobs(

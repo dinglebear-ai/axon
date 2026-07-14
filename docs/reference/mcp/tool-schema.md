@@ -39,7 +39,7 @@ See also:
 - [MCP overview](overview.md#task-augmented-calls) for normal versus task-augmented workflow guidance.
 - [Configuration guide](../../guides/configuration.md) for server auth and async job runtime settings.
 - [Architecture overview](../../architecture/stack/arch.md) for MCP, service, and job-runtime boundaries.
-- [Repository guide](../../contributing/repo/repo.md) for source layout and testing policy.
+- [Repository guide](../../development/repo/repo.md) for source layout and testing policy.
 - [This tool-schema reference](tool-schema.md#task-augmented-calls) for `tasks/get`, `tasks/cancel`, `tasks/result`, `_meta.progressToken`, and `axon:<kind>:<job_uuid>` wire details.
 
 ## Canonical Success Envelope

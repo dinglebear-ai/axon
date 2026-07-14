@@ -107,6 +107,11 @@
           "type": "json",
           "path": "apps/chrome-extension/manifest.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/chrome-extension/package.json",
+          "jsonpath": "$.version"
         }
       ]
     }

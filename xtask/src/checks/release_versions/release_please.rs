@@ -3,7 +3,9 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 
-use super::{Component, ReleaseContext, ReleaseResult, VersionKind, read_version};
+use super::{
+    Component, ReleaseContext, ReleaseResult, VersionKind, read_version, write_version_file,
+};
 use crate::checks::release_versions::files::{
     increment_gradle_version_code, read_gradle_version_name, replace_gradle_version_name,
 };
@@ -104,15 +106,35 @@ pub(super) fn fixups(
 
     match component.id.as_str() {
         "cli" => run_cargo_update(root, "axon", version),
-        "palette" => run_cargo_update(
-            &root.join("apps/palette-tauri/src-tauri"),
-            "axon-palette-tauri",
-            version,
-        ),
+        "palette" => {
+            write_release_version_files(root, component, version)?;
+            run_cargo_update(
+                &root.join("apps/palette-tauri/src-tauri"),
+                "axon-palette-tauri",
+                version,
+            )
+        }
         "android" => android_fixup(root, component, version),
-        "chrome" => Ok(()),
+        "chrome" => write_release_version_files(root, component, version),
         other => release_bail!("unsupported release-please fixup component {other}"),
     }
+}
+
+fn write_release_version_files(
+    root: &Path,
+    component: &Component,
+    version: &str,
+) -> ReleaseResult<()> {
+    for file in &component.version_files {
+        match file.kind {
+            VersionKind::CargoLockPackage
+            | VersionKind::ChangelogHeading
+            | VersionKind::GradleVersionCode
+            | VersionKind::JsonNoVersion => continue,
+            _ => write_version_file(root, file, version)?,
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn fixup_items(
