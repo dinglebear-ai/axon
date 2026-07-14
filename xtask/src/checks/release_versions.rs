@@ -1,5 +1,6 @@
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 type ReleaseResult<T> = std::result::Result<T, ReleaseVersionError>;
@@ -30,8 +31,8 @@ use files::{
     check_component_parity, read_version, read_workspace_package_version, write_version_file,
 };
 use git::{
-    check_gradle_version_code_increased, compare_ref_for_component, component_changed_since_ref,
-    latest_tag, merge_base, tag_exists,
+    changed_paths_since_ref, check_gradle_version_code_increased, compare_ref_for_component,
+    component_changed_since_ref, latest_tag, merge_base, tag_exists,
 };
 
 #[cfg(test)]
@@ -467,26 +468,38 @@ fn collect_changed_component_errors(
     })?;
 
     let latest = latest_version_from_plan(component, plan)?;
-    if let Some(latest) = latest
-        && candidate <= latest
-    {
-        errors.push(format!(
-            "{} code changed but version {} is not greater than latest {} tag version {}. Let release-please bump {} before merging.",
-            component.id,
-            plan.version,
-            component.tag_prefix,
-            latest,
-            bump_hint(component)
-        ));
-    }
+    let existing_candidate_tag = tag_exists(root, &plan.candidate_tag)?;
+    let release_fixup_only = release_fixup_only_pr_change(
+        root,
+        component,
+        &candidate,
+        latest.as_ref(),
+        base,
+        head,
+        mode,
+    )?;
+    if !release_fixup_only {
+        if let Some(latest) = latest
+            && candidate <= latest
+        {
+            errors.push(format!(
+                "{} code changed but version {} is not greater than latest {} tag version {}. Let release-please bump {} before merging.",
+                component.id,
+                plan.version,
+                component.tag_prefix,
+                latest,
+                bump_hint(component)
+            ));
+        }
 
-    if tag_exists(root, &plan.candidate_tag)? {
-        errors.push(format!(
-            "{} code changed but tag {} already exists. Let release-please bump {} before merging.",
-            component.id,
-            plan.candidate_tag,
-            bump_hint(component)
-        ));
+        if existing_candidate_tag {
+            errors.push(format!(
+                "{} code changed but tag {} already exists. Let release-please bump {} before merging.",
+                component.id,
+                plan.candidate_tag,
+                bump_hint(component)
+            ));
+        }
     }
 
     if component_has_kind(component, VersionKind::GradleVersionCode)
@@ -497,6 +510,36 @@ fn collect_changed_component_errors(
     }
 
     Ok(())
+}
+
+fn release_fixup_only_pr_change(
+    root: &Path,
+    component: &Component,
+    candidate: &Version,
+    latest: Option<&Version>,
+    base: Option<&str>,
+    head: &str,
+    mode: GateMode,
+) -> ReleaseResult<bool> {
+    if mode != GateMode::Pr || !component.release_please_managed {
+        return Ok(false);
+    }
+    if latest != Some(candidate) {
+        return Ok(false);
+    }
+    let Some(compare_ref) = compare_ref_for_component(root, component, base, head, mode)? else {
+        return Ok(false);
+    };
+    let changed = changed_paths_since_ref(root, &compare_ref, head, &component.shipping_paths)?;
+    if changed.is_empty() {
+        return Ok(false);
+    }
+    let allowed = component
+        .version_files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect::<BTreeSet<_>>();
+    Ok(changed.iter().all(|path| allowed.contains(path.as_str())))
 }
 
 fn latest_version_from_plan(

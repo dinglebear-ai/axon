@@ -793,6 +793,46 @@ fn main_mode_skips_changed_component_when_candidate_tag_already_exists() {
 }
 
 #[test]
+fn pr_mode_allows_release_please_source_fixup_after_tag_exists() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  ".": "1.0.0",
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.1"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/CHANGELOG.md"),
+        "# Changelog\n\n## [0.2.1]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/chrome-extension/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release chrome-ext 0.2.1"]);
+    fixture.git(&["tag", "chrome-ext-v0.2.1"]);
+
+    release_please_fixups(fixture.root(), "chrome", "0.2.1").unwrap();
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+    ]);
+    fixture.git(&["commit", "-m", "chore: apply release-please fixups"]);
+
+    check(fixture.root(), Some("HEAD~1"), "HEAD", GateMode::Pr, false)
+        .expect("source-only release fixups are allowed after release-please tags");
+}
+
+#[test]
 fn main_mode_marks_unchanged_when_latest_tag_points_at_head() {
     let fixture = Fixture::new();
     fixture.init_repo();

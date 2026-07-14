@@ -187,7 +187,7 @@ fn is_non_shipping_documentation_path(path: &str) -> bool {
         || path.starts_with("docs/")
 }
 
-fn changed_paths_since_ref(
+pub(super) fn changed_paths_since_ref(
     root: &Path,
     base: &str,
     head: &str,
