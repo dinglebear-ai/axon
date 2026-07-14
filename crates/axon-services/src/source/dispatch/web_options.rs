@@ -8,18 +8,20 @@ use axon_core::config::Config;
 
 /// Build the web adapter's `validated_options` map
 /// (`crates/axon-route/src/web_options.rs`) from the ambient CLI-resolved
-/// `Config`. `max_pages_override` (the caller's own `SourceRequest.limits.
-/// max_pages`) wins over `cfg.max_pages` when set — matching the pre-Wave-1b
-/// behavior where `crawl_for_source`'s `max_pages` parameter overrode the
-/// crawl config the same way.
-pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -> MetadataMap {
+/// `Config`. `max_pages_override`/`max_depth_override` (the caller's own
+/// `SourceRequest.limits`) win over config when set — matching the
+/// pre-Wave-1b behavior where `crawl_for_source`'s per-call bounds overrode
+/// the crawl config the same way.
+pub(crate) fn web_crawl_options(
+    cfg: &Config,
+    max_pages_override: Option<u64>,
+    max_depth_override: Option<u32>,
+) -> MetadataMap {
     let mut options = MetadataMap::new();
     let max_pages = max_pages_override.unwrap_or(cfg.max_pages as u64);
+    let max_depth = max_depth_override.unwrap_or(cfg.max_depth as u32);
     options.insert("max_pages".to_string(), serde_json::json!(max_pages));
-    options.insert(
-        "max_depth".to_string(),
-        serde_json::json!(cfg.max_depth as u64),
-    );
+    options.insert("max_depth".to_string(), serde_json::json!(max_depth));
     options.insert(
         "include_subdomains".to_string(),
         serde_json::json!(cfg.include_subdomains),

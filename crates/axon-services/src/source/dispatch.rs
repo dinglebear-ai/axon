@@ -8,7 +8,7 @@
 //! per-family orchestration that previously lived in the CLI.
 
 mod index_inputs;
-mod web_options;
+pub(crate) mod web_options;
 
 use anyhow::Context as _;
 use axon_api::source::{AuthScope, AuthSnapshot, JobId, MetadataMap, SourceScope};
@@ -436,8 +436,8 @@ pub async fn dispatch_session(
 /// `manifest.jsonl`/`markdown_root` disk handoff. `dispatch_web` translates
 /// the ambient CLI-resolved `cfg: &Config` into the web adapter's
 /// `validated_options` shape so existing `--render-mode`/`--max-depth`/
-/// `--url-whitelist`/etc. flags keep working; `max_pages` (already this
-/// function's own parameter) overrides `cfg.max_pages` when set, matching the
+/// `--url-whitelist`/etc. flags keep working; `max_pages`/`max_depth` (from the
+/// caller's `SourceRequest.limits`) override config when set, matching the
 /// pre-Wave-1b behavior.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_web(
@@ -450,17 +450,21 @@ pub(crate) async fn dispatch_web(
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
     max_pages: Option<u64>,
+    max_depth: Option<u32>,
     output: &axon_api::source::OutputPolicy,
     route: &axon_api::source::RoutePlan,
     source_execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
-        "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?}"
+        "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?} max_depth={max_depth:?}"
     ));
-    let mut crawl_options = web_crawl_options(cfg, max_pages);
+    let mut crawl_options = web_crawl_options(cfg, max_pages, max_depth);
     for (key, value) in route.validated_options.values.iter() {
         crawl_options.insert(key.clone(), value.clone());
     }
+    let execution_job_id = source_execution
+        .existing_job_id
+        .unwrap_or_else(placeholder_job_id);
     let index_input = WebSourceIndexInput {
         source: input.to_string(),
         scope,
@@ -469,7 +473,7 @@ pub(crate) async fn dispatch_web(
         output: output.clone(),
         collection: collection.to_string(),
         owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
+        job_id: execution_job_id,
         embedding_provider_id: runtime.embedding_provider_id.clone(),
         vector_provider_id: runtime.vector_provider_id.clone(),
         embedding_model: runtime.embedding_model.clone(),

@@ -180,9 +180,10 @@ pub fn validate_resolved_ips(
     Ok(())
 }
 
-/// SSRF IP validation — checks loopback, link-local, RFC-1918 private, and
-/// IPv4-mapped IPv6 addresses. Extracted as a named function (not a closure)
-/// so the IPv4-mapped branch can recurse into the IPv4 checks.
+/// SSRF IP validation — checks loopback, link-local, RFC-1918 private,
+/// carrier-grade NAT (100.64.0.0/10), and IPv4-mapped IPv6 addresses.
+/// Extracted as a named function (not a closure) so the IPv4-mapped branch can
+/// recurse into the IPv4 checks.
 fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
     #[cfg(any(test, feature = "test-util"))]
     {
@@ -197,9 +198,10 @@ fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
         IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
             let is_link_local = a == 169 && b == 254;
+            let is_carrier_grade_nat = a == 100 && (64..=127).contains(&b);
             let is_private =
                 a == 10 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168);
-            if is_link_local || is_private {
+            if is_link_local || is_carrier_grade_nat || is_private {
                 return Err(HttpError::BlockedIpRange(IpAddr::V4(v4)));
             }
         }
@@ -225,12 +227,14 @@ fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
 
 /// SSRF defence-in-depth patterns for spider.rs `with_blacklist_url()`.
 ///
-/// Covers RFC-1918 private ranges, loopback, link-local, and IPv6 private addresses.
+/// Covers RFC-1918 private ranges, carrier-grade NAT, loopback, link-local, and
+/// IPv6 private addresses.
 /// Use alongside `validate_url()` on the seed URL so discovered URLs are also blocked.
 pub fn ssrf_blacklist_patterns() -> &'static [&'static str] {
     &[
         r"^https?://127\.",
         r"^https?://10\.",
+        r"^https?://100\.(6[4-9]|[78][0-9]|9[0-9]|1[01][0-9]|12[0-7])\.",
         r"^https?://192\.168\.",
         r"^https?://172\.(1[6-9]|2[0-9]|3[01])\.",
         r"^https?://169\.254\.",
