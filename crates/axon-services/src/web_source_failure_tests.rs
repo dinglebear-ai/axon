@@ -45,6 +45,7 @@ fn input() -> WebSourceIndexInput {
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
     }
 }
 

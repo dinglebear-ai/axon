@@ -52,6 +52,7 @@ fn input() -> WebSourceIndexInput {
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
     }
 }
 
@@ -190,6 +191,7 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
     };
 
     let output = index_web_source(map_input, &ledger, &embedder, &vectors)

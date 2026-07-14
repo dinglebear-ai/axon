@@ -483,6 +483,7 @@ pub(crate) async fn dispatch_web(
         fetch_provider: runtime.fetch_provider.clone(),
         render_provider: runtime.render_provider.clone(),
         artifact_store: runtime.artifact_store.clone(),
+        event_store: Some(runtime.jobs.clone()),
     };
     let output = if let Some(job_id) = source_execution.existing_job_id.clone() {
         let execution = WebSourceJobExecution {
