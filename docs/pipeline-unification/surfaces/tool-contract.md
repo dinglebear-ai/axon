@@ -3,8 +3,8 @@ Last Modified: 2026-06-30
 
 ## Contract
 
-This is the target clean-break MCP contract. The current MCP server already uses
-one `axon` tool, but it still advertises the older action set.
+This is the clean-break MCP contract. The current MCP server uses one `axon`
+tool and publishes the live action allowlist from `MCP_ACTION_SPECS`.
 
 MCP is a first-class transport over the same Axon service contracts as CLI and
 REST. It must not invent alternate command names, alternate request shapes, or
@@ -53,10 +53,9 @@ Implemented today:
 - Current MCP also exposes an `axon_status_dashboard` MCP Apps/widget tool for
   dashboard rendering. This is a presentation helper, not a second operation
   surface.
-- The active action registry still includes older families such as `crawl`,
-  `extract`, `embed`, `ingest`, `scrape`, `purge`, `code_search`,
-  `vertical_scrape`, system operations, screenshot, query, retrieve, ask,
-  search, research, memory, and task/job helpers.
+- The active action registry no longer includes removed indexing families such
+  as `crawl`, `embed`, `ingest`, `scrape`, `code_search`, or
+  `vertical_scrape`; indexing is under `action=source`.
 - The current MCP response envelope is shaped around `ok`, `action`,
   `subaction`, optional `warnings`, and `data`.
 - Current MCP scopes are broad `axon:read` / `axon:write` checks.

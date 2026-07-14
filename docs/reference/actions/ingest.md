@@ -6,7 +6,7 @@ Last Modified: 2026-03-25
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon ingest ...` |
+| CLI | Removed; use `axon <source>` |
 | REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
 | Service | `Not inventoried` |

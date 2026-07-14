@@ -21,7 +21,7 @@ Semantic vector search against the local Qdrant collection. The command embeds t
 
 | Command | Meaning |
 |---|---|
-| `search` | External web discovery; current runtime also auto-queues bounded crawl/index jobs for results. |
+| `search` | External web discovery; current runtime also auto-queues bounded Source jobs for results. |
 | `query` | Ranked semantic search over content already indexed in Qdrant. |
 | `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
 | `ask` | RAG synthesis over indexed context with an LLM answer. |

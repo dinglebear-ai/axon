@@ -21,7 +21,7 @@ RAG-powered Q&A. Retrieves relevant chunks from the local Qdrant knowledge base,
 
 | Command | Meaning |
 |---|---|
-| `search` | External web discovery; current runtime also auto-queues bounded crawl/index jobs for results. |
+| `search` | External web discovery; current runtime also auto-queues bounded Source jobs for results. |
 | `query` | Ranked semantic search over content already indexed in Qdrant. |
 | `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
 | `ask` | RAG synthesis over indexed context with an LLM answer. |
@@ -129,7 +129,7 @@ axon ask --list-sessions --json
 axon ask "claude marketplace plugins" --explain --json
 
 # JSON output
-axon ask "what is the max crawl depth?" --json
+axon ask "what are the source acquisition limits?" --json
 
 # Ask the local knowledge base with buffered output
 axon ask --no-stream "what changed in server mode?"
@@ -236,7 +236,7 @@ ask --explain retrieval harness
   |
   +--> ranking bug? tune scoring/filtering
   +--> selection bug? tune context selection
-  +--> corpus gap? crawl/index better docs
+  +--> corpus gap? source/index better docs
   +--> fixture mismatch? update tracked fixture notes
 ```
 
@@ -311,7 +311,7 @@ Additional ask controls:
 
 - LLM answer generation goes through the configured backend. By default this is Gemini headless; `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` is the preferred Gemini model override, with `AXON_HEADLESS_GEMINI_MODEL` kept as a legacy alias.
 - The generic CLI forwarding mode was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon ask` through HTTP; use `axon serve` directly for external REST/MCP clients.
-- If you get "No candidates met relevance threshold", lower `ask.min-relevance-score` in `~/.axon/config.toml` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
+- If you get "No candidates met relevance threshold", lower `ask.min-relevance-score` in `~/.axon/config.toml` or run `axon <source>` / `axon scrape <url>` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.
 - `ask` enforces citation-quality gates:

@@ -15,7 +15,9 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-Re-enqueue crawl/ingest jobs for previously indexed origins — a full docs refresh.
+Re-enqueue Source jobs for previously indexed web origins and remaining legacy
+ingest jobs for source families that have not completed the SourceLedger
+cutover.
 
 ## Synopsis
 
@@ -47,7 +49,7 @@ note). `refresh`:
 
 1. Facets the collection on `seed_url`, scoped per `source_type`.
 2. Classifies each distinct origin:
-   - web URL (`http(s)://…`) → **crawl** (re-enqueue a crawl job seeded from the URL)
+   - web URL (`http(s)://…`) → **source** (re-enqueue a Source job seeded from the URL)
    - ingest target (github/gitlab/gitea/git/reddit/youtube) → **ingest** (re-enqueue via `classify_target`)
    - sessions or non-URL origin → **skip** (not re-runnable from an origin marker)
 3. Prints the plan and confirms (`confirm_destructive`, respects `--yes` / non-TTY).
@@ -66,7 +68,7 @@ axon refresh
 # Only re-ingest GitHub origins
 axon refresh github
 
-# Only re-crawl origins under a domain
+# Only refresh web origins under a domain
 axon refresh docs.rs
 
 # Non-interactive, machine-readable
@@ -89,5 +91,5 @@ JSON mode returns:
 ## Notes
 
 - Facet breadth is bounded by `AXON_REFRESH_FACET_LIMIT` (default `10000`).
-- Re-enqueued crawl/ingest jobs re-stamp `seed_url`, so refreshed content stays consistent.
-- The crawl queue cap (`AXON_MAX_PENDING_CRAWL_JOBS`) still applies; origins beyond the cap are reported as failures rather than silently dropped.
+- Re-enqueued Source/ingest jobs re-stamp `seed_url`, so refreshed content stays consistent.
+- Historical JSON fields such as `crawl_enqueued` remain for compatibility; web refreshes counted there are Source jobs.

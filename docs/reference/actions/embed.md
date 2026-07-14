@@ -6,7 +6,7 @@ Last Modified: 2026-06-07
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon embed ...` |
+| CLI | Removed; use `axon <path-or-source>` |
 | REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
 | Service | `Not inventoried` |

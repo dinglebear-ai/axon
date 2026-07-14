@@ -1,362 +1,95 @@
 # Axon MCP Server Guide
-Last Modified: 2026-06-04
+Last Modified: 2026-07-14
 
-## Purpose
 `axon mcp` exposes Axon through one MCP tool named `axon`.
 
-- Transport: RMCP `stdio`, streamable HTTP (`/mcp`), or both simultaneously
-- Tool count: 1
-- Tool name: `axon`
-- Routing fields: `action` + `subaction` for lifecycle families
-- Response behavior field: `response_mode` (`path|inline|both|auto_inline`, default `path`; `auto_inline`/`auto-inline` selects threshold-based automatic inlining)
-- Resources: `axon://schema/mcp-tool`, `ui://axon/status-dashboard`
-- MCP Apps capability is enabled so compatible hosts can render the status dashboard widget
+- Transport: stdio, streamable HTTP (`/mcp`), or both.
+- Tool count: 1.
+- Tool name: `axon`.
+- Routing fields: `action` plus optional `subaction`.
+- Schema resource: `axon://schema/mcp-tool`.
+- MCP Apps resource: `ui://axon/status-dashboard`.
 
-Current generated schema snapshot:
-- `docs/reference/mcp/tool-schema.md`
+The live machine-readable schema is generated at
+`docs/reference/mcp/tool-schema.json`; the markdown reference is
+`docs/reference/mcp/pipeline-tool-schema.md`.
 
-Pipeline-unification target contract:
-- `docs/pipeline-unification/surfaces/tool-contract.md`
-- `docs/pipeline-unification/schemas/mcp-tool-schema.md`
+## Source Indexing
 
-Implementation:
-- `src/mcp/schema.rs`
-- `src/mcp/server.rs`
-- `src/mcp/auth.rs`
-- `src/mcp/cors.rs`
-- `src/mcp/server/handlers_*.rs`
+All MCP indexing goes through `action=source`.
 
-## Runtime Model
-`axon mcp` is expected to run in the same environment as Axon workers.
+```json
+{ "action": "source", "source": "https://example.com", "scope": "page", "embed": true }
+{ "action": "source", "source": "https://example.com", "scope": "site", "embed": true }
+```
 
-Core stack env vars are reused:
-- `QDRANT_URL`
-- `TEI_URL`
-- `TAVILY_API_KEY`
+`scope=page` is the single-page scrape shape. `scope=site` or `scope=docs` is
+the crawl-like site acquisition shape. The removed MCP actions `scrape`,
+`crawl`, `embed`, `ingest`, `code_search`, `vertical_scrape`, `purge`, and
+`dedupe` are not valid action enum values and are rejected before dispatch.
 
-LLM synthesis uses Gemini headless by default:
-- `AXON_HEADLESS_GEMINI_CMD`
-- `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` (optional override; `AXON_HEADLESS_GEMINI_MODEL` is a legacy alias)
-- `AXON_LLM_COMPLETION_CONCURRENCY`
-- `AXON_LLM_COMPLETION_TIMEOUT_SECS`
-
-OpenAI-compatible chat-completions endpoints are also supported:
-- `AXON_LLM_BACKEND=openai-compat`
-- `AXON_OPENAI_BASE_URL` (for example, a llama.cpp `/v1` endpoint)
-- `AXON_SYNTHESIS_OPENAI_MODEL` (legacy alias: `AXON_OPENAI_MODEL`)
-- `AXON_OPENAI_API_KEY` (optional for local endpoints)
-
-The legacy `OPENAI_*` env vars were removed in 3.0.0; use the `AXON_*`
-OpenAI-compatible keys above instead.
-
-MCP HTTP env vars:
-- `AXON_HTTP_HOST` (default `127.0.0.1`)
-- `AXON_HTTP_PORT` (default `8001`)
-- `AXON_HTTP_TOKEN` (static bearer token; required for non-loopback binds unless OAuth mode is enabled)
-- `AXON_AUTH_MODE=oauth` (optional lab-auth Google OAuth/JWT mode)
-- `AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`, `AXON_GOOGLE_CLIENT_SECRET`, `AXON_AUTH_ADMIN_EMAIL` for OAuth mode. The admin email receives full Axon OAuth scopes.
-
-## Authentication
-
-HTTP transport installs one auth policy at startup:
-
-- OAuth mode (`AXON_AUTH_MODE=oauth`) uses lab-auth Google OAuth/JWT validation and mounts OAuth metadata/token/registration routes. Allowed OAuth users receive full Axon server access: newly issued tokens default to both `axon:read` and `axon:write`, and either Axon scope is accepted for all Axon read/write actions for compatibility with existing tokens.
-- Bearer-only mode uses `AXON_HTTP_TOKEN`.
-- Tokenless HTTP is allowed only on loopback binds (`127.0.0.1`, `::1`, or `localhost`).
-
-Binding the MCP HTTP server to a non-loopback address such as `0.0.0.0` requires OAuth mode or `AXON_HTTP_TOKEN`; otherwise startup is rejected.
-
-Clients can authenticate with either header:
+## Transport
 
 ```bash
-curl -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
-  http://127.0.0.1:8001/mcp
-curl -H "x-api-key: $AXON_HTTP_TOKEN" \
-  http://127.0.0.1:8001/mcp
+axon mcp                 # stdio
+axon serve mcp           # unified HTTP server with /mcp mounted
+axon mcp --transport both
 ```
 
-## Transport Notes
-`axon mcp` supports three transport modes:
+HTTP transport shares the same listener as `axon serve`.
 
-- `axon mcp`
-  Starts stdio transport only. Use this for local MCP clients such as Claude Desktop.
-- `axon serve mcp`
-  Starts the unified HTTP server with MCP mounted at `/mcp`.
-- `axon mcp --transport both`
-  Starts stdio and the unified HTTP server concurrently.
+| Variable | Default | Description |
+|---|---|---|
+| `AXON_HTTP_HOST` | `127.0.0.1` | Unified HTTP bind host; non-loopback requires auth. |
+| `AXON_HTTP_PORT` | `8001` | Unified HTTP bind port. |
+| `AXON_HTTP_TOKEN` | unset | Static bearer or `x-api-key` token. |
+| `AXON_AUTH_MODE` | bearer/static mode | Set `oauth` for lab-auth Google OAuth/JWT. |
 
-HTTP transport uses:
-- `AXON_HTTP_HOST` (default `127.0.0.1`)
-- `AXON_HTTP_PORT` (default `8001`)
-
-- `AXON_HTTP_TOKEN` (static bearer token; generated by `axon setup init` for local bearer mode)
-
-HTTP MCP transport shares the same listener as the web panel and first-party
-HTTP APIs. By default, web and MCP both run on port `8001`.
-
-## MCP Server Store
-
-The Web UI MCP settings page writes MCP server definitions to `${AXON_DATA_DIR}/mcp.json` when `AXON_DATA_DIR` is set (default: `~/.axon/mcp.json`) and falls back to `~/.config/axon/mcp.json` when unset. These definitions are used by MCP clients and server configuration flows.
-
-### Config File Examples
-
-Stdio MCP server example:
-
-```json
-{
-  "mcpServers": {
-    "axon-stdio": {
-      "command": "axon",
-      "args": ["mcp", "--transport", "stdio"]
-    }
-  }
-}
-```
-
-HTTP MCP server example:
-
-```json
-{
-  "mcpServers": {
-    "axon-http": {
-      "url": "https://axon.example.com/mcp"
-    }
-  }
-}
-```
-
-### Claude Desktop Example
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "command": "axon",
-      "args": ["mcp", "--transport", "stdio"],
-      "env": {
-        "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://YOUR_TEI_HOST:52000"
-      }
-    }
-  }
-}
-```
+Tokenless HTTP is allowed only on loopback binds. Non-loopback binds require
+OAuth mode or `AXON_HTTP_TOKEN`.
 
 ## Request Pattern
-Primary pattern:
 
 ```json
 {
-  "action": "<operation>",
-  "...": "operation fields"
+  "action": "query",
+  "query": "embedding pipeline architecture",
+  "limit": 10,
+  "response_mode": "inline"
 }
 ```
 
-Lifecycle pattern when needed:
+Grouped actions use `subaction`, for example:
 
 ```json
-{
-  "action": "ingest|extract|embed|crawl",
-  "subaction": "<action-specific subaction>",
-  "...": "subaction fields"
-}
+{ "action": "jobs", "subaction": "events", "job_id": "..." }
+{ "action": "extract", "subaction": "start", "urls": ["https://example.com"] }
+{ "action": "watch", "subaction": "list" }
+{ "action": "prune", "subaction": "plan", "source": "https://example.com" }
 ```
 
-## Preferred Action Names (Top-Level)
-Use CLI-identical action names:
-- `ingest`, `extract`, `embed`, `crawl`
-- `query`, `retrieve`, `endpoints`
-- `doctor`, `domains`, `sources`, `stats`
-- `search`, `map`
-- `scrape`, `summarize`, `research`, `ask`, `evaluate`, `suggest`, `screenshot`, `help`, `status`, `elicit_demo`
+## Response Modes
 
-Examples:
-- `action: "ingest", subaction: "start"`
-- `action: "extract", subaction: "list"`
-- `action: "query"`
-- `action: "evaluate"`
-- `action: "suggest"`
-- `action: "doctor"`
+| Mode | Behavior |
+|---|---|
+| `path` | Write result to an artifact and return metadata. |
+| `inline` | Return content inline when allowed by size and visibility policy. |
+| `both` | Write an artifact and include inline content. |
+| `auto_inline` | Inline small payloads; use artifact metadata for larger payloads. |
 
-## Endpoint Discovery
+`retrieve` is inline-first for document reading. Source indexing and heavier
+operations default to artifact/path-style responses.
 
-Endpoint discovery is a transient read-scoped action:
+## Smoke Examples
 
-```json
-{
-  "action": "endpoints",
-  "url": "https://example.com",
-  "include_bundles": true,
-  "first_party_only": false,
-  "unique_only": true,
-  "max_scripts": 40,
-  "max_scan_bytes": 8388608,
-  "verify": false,
-  "capture_network": false
-}
-```
-
-Static discovery does not execute JavaScript, store reports, embed documents, or
-enqueue jobs. `verify` performs unauthenticated safe probes without cookies or
-user-supplied auth headers. `capture_network` is opt-in because it executes page
-code and can trigger real network calls.
-
-## Parser Rules
-The server uses strict deserialization:
-- `action` is required and must match canonical schema names exactly
-- `subaction` is optional for lifecycle families (`crawl|extract|embed|ingest`); when omitted, handlers default to `start`
-- No fallback fields (`command|op|operation`)
-- No action alias remapping
-- No token normalization (`-`/spaces/case are not rewritten)
-
-## Published Input Schema Shape
-The `tools/list` `inputSchema` carries the per-action contract twice, on purpose:
-- A top-level `oneOf` with one strict branch per action (`additionalProperties: false`,
-  per-action `required`) — the validation contract, mirrored by serde parsing.
-- A flattened superset of every per-action field in top-level `properties`
-  (all optional except `action`), each annotated with a
-  `"Applies to action(s): …"` description prefix and an `x-axon-actions` array.
-  Fields whose shape differs across actions (e.g. `limit`) publish an `anyOf`
-  union of the distinct shapes.
-
-The flattening exists because many MCP clients (Codex, mcporter signatures,
-Labby Code Mode `.d.ts` consumers) render callable parameters from top-level
-`properties` only and ignore `oneOf`; without it they see just
-`{action, subaction}`. Implemented in `src/mcp/server/tool_schema.rs`
-(`collect_lifted_fields`/`insert_lifted_fields`).
-
-## Online Operations
-Direct actions:
-- `help`
-- `scrape`
-- `summarize`
-- `research`
-- `ask`
-- `evaluate`
-- `suggest`
-- `screenshot`
-- `elicit_demo`
-
-Lifecycle families:
-- `crawl`: `start|status|cancel|list|cleanup|clear|recover`
-- `extract`: `start|status|cancel|list|cleanup|clear|recover`
-- `embed`: `start|status|cancel|list|cleanup|clear|recover`
-- `ingest`: `start|status|cancel|list|cleanup|clear|recover`
-
-No top-level aliases are supported.
-
-`embed.start` has one transport-specific behavior. On a normal (non-task)
-`embed.start` call, when `input` is a local filesystem path the server can see,
-the embed runs **in-process** and the response carries
-`{ "status": "completed", "input", "collection", "docs_embedded", "docs_failed",
-"chunks_embedded" }` instead of a `job_id`. A host path must be embedded by a
-process that shares its filesystem; enqueuing it onto the shared jobs DB would let
-a worker that cannot see the path (for example the container) claim it. URL and
-free-text inputs are enqueued as a job and return a `job_id`. This matches the
-intent of the CLI `embed` guard.
-
-Task-augmented `embed.start` (a task-call start) always returns a queued
-`job_id`, so it **rejects** a local-path `input` with an `invalid_params` error —
-use a normal `embed.start` tool call for local paths.
-
-## Response Pattern
-Success responses are normalized:
-
-```json
-{
-  "ok": true,
-  "action": "...",
-  "subaction": "...",
-  "data": { "...": "..." }
-}
-```
-
-## Task-Augmented Calls
-
-Axon supports RMCP task-augmented `tools/call` for durable async jobs while preserving the normal Axon response envelope for ordinary calls.
-
-Normal calls:
-- Use the same `axon` tool argument map as before.
-- Return Axon's JSON envelope with `ok`, `action`, `subaction`, and `data`.
-- Async starts return existing `job_id` or `job_ids` values and can be polled with normal `status` subactions.
-- Multi-URL `crawl.start` remains a normal-call workflow.
-
-Task-augmented calls:
-- Use protocol-level RMCP task metadata, not extra fields inside the Axon argument map.
-- Are supported for `crawl.start`, `extract.start`, `embed.start`, and `ingest.start`.
-- Return `CreateTaskResult` with a Task whose ID is `axon:<kind>:<job_uuid>`.
-- Use `tasks/get` for non-blocking status, `tasks/result` to wait for terminal completion, and `tasks/cancel` against the same SQLite job rows.
-- Return compact sanitized terminal task results, not raw `ServiceJob`, raw `result_json`, raw `config_json`, targets, paths, or worker errors.
-- Include `pollInterval >= 5000` ms; clients should not hot-poll.
-
-`execution.taskSupport` is `optional` on the routed `axon` tool because the same tool handles both immediate actions and long-running job starts. `axon_status_dashboard` does not advertise task support because it is an MCP Apps widget tool.
-
-Task-mode `crawl.start` accepts exactly one URL. If a client sends two or more URLs in a task-augmented crawl call, Axon returns `invalid_params`; use one task call per URL or use normal non-task `crawl.start` for multi-URL submissions.
-
-When `_meta.progressToken` is present on a task call, Axon sends allowlisted `notifications/progress` updates from persisted job progress. These notifications use numeric progress, real totals only when known, and coarse messages such as `queued`, `crawling`, `embedding`, `ingesting`, `finalizing`, `completed`, `failed`, or `cancelled`.
-
-Authorization is server-scoped. Valid Axon OAuth/static credentials grant access to the Axon server; job and task IDs are server-bound references, not per-user ACL objects. Task lifecycle methods repeat Axon's MCP auth checks before parsing task IDs or reading job state.
-
-## mcporter Smoke Tests
 ```bash
-# Primary MCP smoke path.
-bash ./scripts/test-mcp-tools-mcporter.sh
-
-# Local introspection against the repo's mcporter config
-mcporter --config config/mcporter.json list axon --schema
-mcporter --config config/mcporter.json call axon.axon action:help response_mode:inline --output json
 mcporter --config config/mcporter.json call axon.axon action:doctor --output json
-mcporter --config config/mcporter.json call axon.axon action:scrape url:https://www.rust-lang.org/learn/get-started --output json
-mcporter --config config/mcporter.json call axon.axon action:query query:'rust mcp sdk' --output json
-mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
+mcporter --config config/mcporter.json call axon.axon action:source source:https://example.com scope:page embed:true --output json
+mcporter --config config/mcporter.json call axon.axon action:jobs subaction:list limit:5 --output json
 ```
 
-What the smoke harness enforces:
-- `mcporter list --schema` exposes the `axon` tool and the expected top-level actions.
-- `action:help` exposes the full routed surface, including all lifecycle subactions.
-- Every exposed route has a real smoke case.
-- Suite logs and generated configs live under `.cache/mcporter-test/`.
+## Auth
 
-## Reading Path-Mode Artifacts
-
-Artifact responses written in path mode are pretty-printed JSON. Path-mode responses also include a `shape` field summarising key/value types, and a `preview`, so you can often understand a result without opening the file.
-
-There is no `artifacts` MCP action (removed in 5.0.0). How to access the `path` field in artifact metadata depends on transport:
-
-- **stdio / local MCP** (the default for the bundled CLI and local clients): the server runs in your process/host, so `path` is a real local filesystem path — open it directly with your normal file tooling.
-- **`axon serve` (MCP-over-HTTP)**: `path` is **server-side** and generally not reachable from a remote client. Request `response_mode=inline` (or rely on `auto_inline` for small payloads) to get the payload back in-band instead.
-
-### `response_mode` on All Actions
-
-All actions support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
-
-Valid `response_mode` values: `path|inline|both|auto_inline`. The hyphenated `auto-inline` spelling is accepted for `auto_inline`. See [`MCP-TOOL-SCHEMA.md`](tool-schema.md) for the full enum definition.
-
-**Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
-
-- **`ask`** and **`research`**: Always write the full payload to an artifact AND include `key_fields.answer` / `key_fields.summary` directly in the path-mode response. This means the LLM answer is always immediately readable, regardless of its length.
-- **`scrape`** and **`retrieve`**: Default to inline-first paged document responses. Use `cursor` to continue reading large documents, or `response_mode=path|both` when you want an artifact copy for inspection/debugging.
-
-### Auto-inline for Small Payloads
-
-When `response_mode` is omitted or set to `auto_inline`, any payload serializing to ≤ `AXON_INLINE_BYTES_THRESHOLD` bytes (default 8 192) is returned inline without requiring a follow-up read. The response includes `"response_mode": "auto-inline"` and the full `data` object. Larger auto-mode payloads fall back to path metadata. Set `AXON_INLINE_BYTES_THRESHOLD=0` to disable automatic inlining.
-
-Document-reading actions are an exception: `scrape` and `retrieve` default to inline paged responses even when `response_mode` is omitted. Both actions share the same continuation contract:
-
-- `content` — current slice of the document
-- `truncated` — whether more content remains or the reconstructed source was incomplete
-- `token_estimate` — conservative token estimate for this slice
-- `next_cursor` — opaque cursor for the next slice
-- `remaining_tokens_estimate` — conservative estimate of unread content
-- `backend` — `qdrant`, `stored_source`, or `live_scrape`
-
-`retrieve` also returns `requested_url`, `matched_url`, `warnings`, `variant_errors`, and `refresh_status` so callers can see whether the content came from indexed chunks, a stored source file, or an on-demand live refresh.
-
-### Shape Preview Improvements
-
-Path-mode responses include a `shape` field summarizing the payload structure:
-- **Strings ≤ 100 chars**: returned verbatim so Claude reads real values without a follow-up read.
-- **Strings > 100 chars**: summarized as `"<string N>"`.
-- **Arrays of objects with a `status`, `phase`, or `state` field**: summarized as `{"total": N, "by_status": {"completed": N, "running": N, ...}}`. Claude can answer status questions from the shape alone — no follow-up read needed.
-- **Other arrays**: `{"total": N, "sample": [<first 2 items, shape-previewed>]}`. The sample items let you understand the data structure without reading the file.
-- **Primitives**: verbatim.
+MCP HTTP auth uses the same Axon OAuth/static bearer policy as the unified HTTP
+server. Valid OAuth users receive Axon read/write scopes; admin-scoped actions
+such as destructive prune execution still require the admin scope.

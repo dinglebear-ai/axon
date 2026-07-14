@@ -1,10 +1,10 @@
 # Command Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-14
 
 ## Contract
 
-This is the target clean-break CLI contract. The current implementation still
-exposes the older command-first surface described below.
+This is the clean-break CLI contract. The current implementation has cut over
+the web source surface; remaining gaps are tracked explicitly below.
 
 The CLI is a first-class transport over the same Axon service contracts as MCP
 and REST. It must not invent alternate semantics, hidden compatibility aliases,
@@ -50,23 +50,21 @@ Verified against the live binary (`cargo build --bin axon`, `axon --help`,
 Implemented today:
 
 - `embed`, `ingest`, `crawl`, `code-search`, and `code-search-watch` are
-  already **removed** as `clap` subcommands — they do
-  not appear in the `Command` enum (`crates/axon-core/src/config/cli.rs`).
-  `scrape` is also absent from the live clap tree in this snapshot, but that is
-  now a gap against the updated contract: it should be restored as the
-  canonical one-page SourceRequest projection described below, not as a legacy
-  scrape pipeline.
+  **removed** as `clap` subcommands and do not appear in the `Command` enum
+  (`crates/axon-core/src/config/cli.rs`). `crawl` is reserved before clap
+  dispatch and exits with replacement guidance: use
+  `axon <url> --scope site` or `axon <url> --scope docs`.
+- `scrape` is restored as a real subcommand, but only as the canonical
+  one-page SourceRequest projection: `scope=page`, `embed=true` by default,
+  `limits.max_pages=1`, clean content output, and no crawl fanout.
 - A default `axon <source>` parser path already exists: `route_bare_source`
   in `crates/axon-core/src/config/source_routing.rs` rewrites argv before
   clap parsing so leading tokens such as `axon https://x`, `axon ./dir`,
   `axon r/rust`, and `axon pkg:npm/foo` route to the `source` subcommand.
-  The current implementation still treats removed command names as ordinary
-  bare-source tokens; under this updated contract, reserved removed command
-  names should fail before service dispatch with replacement guidance, while
-  `scrape` should become a real canonical subcommand.
+  Removed command names fail before service dispatch with replacement guidance.
 - The target grammar's implicit-`<source>`-as-first-positional shape is not yet
   literal (there is still a real `source` subcommand under the hood).
-- Current subcommands (from `axon --help`) are: `map`, `endpoints`, `search`,
+- Current subcommands (from `axon --help`) are: `scrape`, `map`, `endpoints`, `search`,
   `research`, `extract`, `screenshot`, `diff`, `brand`, `query`, `retrieve`,
   `ask`, `evaluate`, `train`, `summarize`, `suggest`, `memory`, `sources`,
   `domains`, `stats`, `migrate`, `status`, `source`,
@@ -142,17 +140,13 @@ axon --help
 axon --version
 ```
 
-Parser rule (resolved, U1-25, 2026-07-09 audit): if the first positional
-token is not a canonical (registered) command or a global flag, treat it as
-`<source>` and route to `SourceRequest`. Removed-command tokens are **not**
-special-cased or excluded — since they are not registered `clap` subcommands,
-they fall through to the same bare-source routing as any other unrecognized
-token, per the live implementation in `route_bare_source`
-(`crates/axon-core/src/config/source_routing.rs`): `axon embed <path>`
-resolves to `axon source embed <path>` (literal token `embed` becomes the
-source target string), not exit code 8 ("removed command invoked"). This is
-the current, intentional behavior — the "excluded from routing" phrasing
-this section previously used contradicted it and has been removed.
+Parser rule (resolved, U1-25, refreshed 2026-07-14): if the first positional
+token is not a canonical registered command, a reserved removed command, or a
+global flag, treat it as `<source>` and route to `SourceRequest`. Reserved
+removed-command tokens such as `crawl`, `embed`, `ingest`, `code-search`, and
+`code-search-watch` fail before service dispatch with replacement guidance.
+This behavior is implemented in
+`crates/axon-core/src/config/source_routing.rs`.
 
 ## Canonical Command Registry
 

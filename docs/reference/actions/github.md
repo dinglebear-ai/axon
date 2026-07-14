@@ -1,24 +1,25 @@
-# axon github (removed — use `axon ingest`)
+# axon github (removed — use `axon <source>`)
 
-Last Modified: 2026-03-10
+Last Modified: 2026-07-14
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon ingest <target>` |
-| REST | `POST /v1/ingest` |
-| MCP | `ingest.start` with `source_type: "github"` |
-| Service | `services::ingest::* via source_type=github` |
+| CLI | `axon <source>` |
+| REST | `POST /v1/sources` |
+| MCP | `{ "action": "source" }` |
+| Service | `services::source::* via SourceRequest` |
 
-Parity notes: Compatibility source page. Use the unified ingest action for CLI, REST, and MCP.
+Parity notes: Compatibility source page. Use the unified source action for CLI, REST, and MCP.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-> **This command has been replaced.** Use [`axon ingest`](ingest.md) instead.
+> **This command has been replaced.** Use the unified source command instead.
 >
-> `axon ingest` auto-detects the source type. GitHub slugs and URLs are recognized automatically.
+> `axon <source>` auto-detects the source type. GitHub slugs and URLs are
+> recognized automatically.
 
 ## Migration
 
@@ -29,12 +30,14 @@ axon github rust-lang/rust --wait true
 axon github tokio-rs/tokio --include-source true
 
 # After (source code is now included by default)
-axon ingest rust-lang/rust
-axon ingest rust-lang/rust --wait true
-axon ingest tokio-rs/tokio                          # source included by default
-axon ingest tokio-rs/tokio --no-source              # to skip source code
+axon rust-lang/rust
+axon rust-lang/rust --wait true
+axon tokio-rs/tokio                          # source included by default
+axon tokio-rs/tokio --no-source              # to skip source code
 ```
 
-See [`docs/reference/actions/ingest.md`](ingest.md) for full reference.
+See [`docs/reference/actions/crawl.md`](crawl.md) for the source-cutover web
+shape and [`docs/pipeline-unification/foundation/source-pipeline.md`](../../pipeline-unification/foundation/source-pipeline.md)
+for the shared SourceRequest contract.
 
 > For implementation details and troubleshooting see [`docs/guides/ingest/github.md`](../../guides/ingest/github.md).

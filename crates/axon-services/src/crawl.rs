@@ -26,10 +26,10 @@ pub use axon_jobs::crawl::CrawlJob;
 // ── Crawl bounds: the ONE place crawl page-cap policy lives ───────────────────
 //
 // Default page cap *and* hard ceiling, applied here in the services layer so
-// every transport (CLI, MCP, HTTP) gets identical behavior. Transports are thin
-// shims: they pass the raw requested value (`max_pages == 0` means "unspecified",
-// the `Config` default) and never resolve defaults or caps themselves. This is
-// why `axon crawl <url>` and the MCP `crawl` action now behave identically.
+// every legacy/internal caller gets identical behavior. Callers pass the raw
+// requested value (`max_pages == 0` means "unspecified", the `Config` default)
+// and never resolve defaults or caps themselves. Public crawl-shaped work now
+// enqueues SourceRequest jobs; the old MCP `crawl` action is removed.
 pub const DEFAULT_CRAWL_MAX_PAGES: u32 = 5_000;
 
 /// Resolve the effective crawl page cap from a raw requested value.
