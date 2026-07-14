@@ -1239,9 +1239,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_watch"];
+        get: operations["watch_list"];
         put?: never;
-        post: operations["create_watch"];
+        post: operations["watch_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1255,9 +1255,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_watches"];
+        get: operations["watches_list"];
         put?: never;
-        post: operations["create_watch"];
+        post: operations["watches_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1271,13 +1271,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_watch"];
+        get: operations["watches_get"];
         put?: never;
         post?: never;
-        delete: operations["delete_watch"];
+        delete: operations["watches_delete"];
         options?: never;
         head?: never;
-        patch: operations["update_watch"];
+        patch: operations["watches_update"];
         trace?: never;
     };
     "/v1/watches/{watch_id}/exec": {
@@ -1289,7 +1289,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["exec_watch"];
+        post: operations["watches_exec"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1305,7 +1305,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["pause_watch"];
+        post: operations["watches_pause"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1321,7 +1321,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["resume_watch"];
+        post: operations["watches_resume"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7522,7 +7522,7 @@ export interface operations {
             };
         };
     };
-    list_watch: {
+    watch_list: {
         parameters: {
             query?: {
                 limit?: number | null;
@@ -7571,7 +7571,7 @@ export interface operations {
             };
         };
     };
-    create_watch: {
+    watch_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -7631,7 +7631,7 @@ export interface operations {
             };
         };
     };
-    list_watches: {
+    watches_list: {
         parameters: {
             query?: {
                 enabled?: boolean | null;
@@ -7684,7 +7684,7 @@ export interface operations {
             };
         };
     };
-    create_watch: {
+    watches_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -7735,7 +7735,7 @@ export interface operations {
             };
         };
     };
-    get_watch: {
+    watches_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7794,7 +7794,7 @@ export interface operations {
             };
         };
     };
-    delete_watch: {
+    watches_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -7853,7 +7853,7 @@ export interface operations {
             };
         };
     };
-    update_watch: {
+    watches_update: {
         parameters: {
             query?: never;
             header?: never;
@@ -7916,7 +7916,7 @@ export interface operations {
             };
         };
     };
-    exec_watch: {
+    watches_exec: {
         parameters: {
             query?: never;
             header?: never;
@@ -7979,7 +7979,7 @@ export interface operations {
             };
         };
     };
-    pause_watch: {
+    watches_pause: {
         parameters: {
             query?: never;
             header?: never;
@@ -8038,7 +8038,7 @@ export interface operations {
             };
         };
     };
-    resume_watch: {
+    watches_resume: {
         parameters: {
             query?: never;
             header?: never;
