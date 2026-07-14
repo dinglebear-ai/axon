@@ -83,6 +83,7 @@ jobs:
           inputs.publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           ZIP_PATH: ${{ steps.build.outputs.zip }}
         run: |
           set -euo pipefail

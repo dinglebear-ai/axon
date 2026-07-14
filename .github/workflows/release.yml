@@ -174,6 +174,7 @@ jobs:
         if: ${{ hashFiles('dist/axon-linux-x86_64.tar.gz.minisig') != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
@@ -182,6 +183,7 @@ jobs:
       - name: Attach artifacts to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
