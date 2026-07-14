@@ -35,6 +35,6 @@ current generated `tool-schema.md` is no longer the future source of truth.
 
 - [../CONFIG.md](../../guides/configuration.md) -- full environment variable reference
 - [../stack/ARCH.md](../../architecture/stack/arch.md) -- trimodal architecture overview
-- [../repo/REPO.md](../../contributing/repo/repo.md) -- repository structure
+- [../repo/REPO.md](../../development/repo/repo.md) -- repository structure
 - [../MCP.md](overview.md) -- MCP runtime internals
 - [../MCP-TOOL-SCHEMA.md](tool-schema.md) -- current generated runtime snapshot

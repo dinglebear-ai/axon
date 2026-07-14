@@ -150,7 +150,7 @@ def _emit_task_augmented_calls(emit) -> None:
         "- [Architecture overview](../../architecture/stack/arch.md) for MCP, service, and job-runtime boundaries."
     )
     emit(
-        "- [Repository guide](../../contributing/repo/repo.md) for source layout and testing policy."
+        "- [Repository guide](../../development/repo/repo.md) for source layout and testing policy."
     )
     emit(
         "- [This tool-schema reference](tool-schema.md#task-augmented-calls) for `tasks/get`, `tasks/cancel`, `tasks/result`, `_meta.progressToken`, and `axon:<kind>:<job_uuid>` wire details."

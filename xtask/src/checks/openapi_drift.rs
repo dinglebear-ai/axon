@@ -17,7 +17,7 @@ mod enabled {
 
     const GENERATED_ARTIFACTS: &[&str] = &[
         "apps/web/openapi/axon.json",
-        "apps/web/lib/generated/axon-api.ts",
+        "apps/web/src/api/generated/axon-api.ts",
         "apps/palette-tauri/src/lib/axon-api.d.ts",
         "apps/android/app/src/test/resources/openapi/android-route-contracts.json",
     ];
