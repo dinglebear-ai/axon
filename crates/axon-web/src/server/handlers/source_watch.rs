@@ -61,6 +61,7 @@ pub(crate) struct WatchListQuery {
 #[utoipa::path(
     post,
     path = "/v1/watches",
+    operation_id = "watches_create",
     request_body = WatchRequest,
     responses(
         (status = 200, description = "Created (or dual-write-ensured) watch detail", body = serde_json::Value),
@@ -82,6 +83,7 @@ pub(crate) async fn create_watch(
 #[utoipa::path(
     get,
     path = "/v1/watches",
+    operation_id = "watches_list",
     params(WatchListQuery),
     responses(
         (status = 200, description = "Paged watch summaries", body = serde_json::Value),
@@ -110,6 +112,7 @@ pub(crate) async fn list_watches(
 #[utoipa::path(
     get,
     path = "/v1/watches/{watch_id}",
+    operation_id = "watches_get",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
         (status = 200, description = "Watch detail", body = serde_json::Value),
@@ -139,6 +142,7 @@ pub(crate) async fn get_watch(
 #[utoipa::path(
     post,
     path = "/v1/watches/{watch_id}/exec",
+    operation_id = "watches_exec",
     params(("watch_id" = String, Path, description = "Watch ID")),
     request_body = WatchExecRequest,
     responses(
@@ -181,6 +185,7 @@ pub(crate) async fn exec_watch(
 #[utoipa::path(
     patch,
     path = "/v1/watches/{watch_id}",
+    operation_id = "watches_update",
     params(("watch_id" = String, Path, description = "Watch ID")),
     request_body = WatchUpdateRequest,
     responses(
@@ -205,6 +210,7 @@ pub(crate) async fn update_watch(
 #[utoipa::path(
     post,
     path = "/v1/watches/{watch_id}/pause",
+    operation_id = "watches_pause",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
         (status = 200, description = "Updated watch detail", body = serde_json::Value),
@@ -235,6 +241,7 @@ pub(crate) async fn pause_watch(
 #[utoipa::path(
     post,
     path = "/v1/watches/{watch_id}/resume",
+    operation_id = "watches_resume",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
         (status = 200, description = "Updated watch detail", body = serde_json::Value),
@@ -265,6 +272,7 @@ pub(crate) async fn resume_watch(
 #[utoipa::path(
     delete,
     path = "/v1/watches/{watch_id}",
+    operation_id = "watches_delete",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
         (status = 200, description = "Deletion result", body = serde_json::Value),

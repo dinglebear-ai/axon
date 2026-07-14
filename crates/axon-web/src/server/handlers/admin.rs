@@ -282,6 +282,7 @@ fn has_json_content_type(headers: &HeaderMap) -> bool {
 #[utoipa::path(
     get,
     path = "/v1/watch",
+    operation_id = "watch_list",
     params(WatchListQuery),
     responses(
         (status = 200, description = "Watch definitions", body = serde_json::Value),
@@ -303,6 +304,7 @@ pub(crate) async fn list_watch(
 #[utoipa::path(
     post,
     path = "/v1/watch",
+    operation_id = "watch_create",
     request_body = WatchCreateRequest,
     responses(
         (status = 200, description = "Created watch definition", body = serde_json::Value),
