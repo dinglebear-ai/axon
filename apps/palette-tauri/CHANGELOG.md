@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.0](https://github.com/jmagar/axon/compare/palette-v5.13.0...palette-v5.14.0) (2026-07-14)
+
+
+### Added
+
+* **#298:** post-smoke followups — scope=page, watch create, mutates_if, presentation tokens ([e01592f](https://github.com/jmagar/axon/commit/e01592ff278bcd5543924a9e87c2072d346d7878))
+* **apps:** web token hardening, palette unified job polling, android memory/session client ([a17dc86](https://github.com/jmagar/axon/commit/a17dc864dafb67064819ea12c2ccdc004d01eec4))
+* **mobile:** MobileSession status/source_refs/draft/sync_version + Android entity ([#298](https://github.com/jmagar/axon/issues/298) WS-I, bead .13) ([f3cbf9e](https://github.com/jmagar/axon/commit/f3cbf9eac6298df523da13142ad92102e47e920f))
+
+
+### Fixed
+
+* **palette:** migrate scrape/crawl/embed/ingest onto POST /v1/sources ([d74ed35](https://github.com/jmagar/axon/commit/d74ed35089a488ba9ccee72e934ebd89c0e5ce7a))
+* **web:** distinct operation_id for POST /v1/graph/query ([#298](https://github.com/jmagar/axon/issues/298)) ([a379a59](https://github.com/jmagar/axon/commit/a379a598ec75dc2f93de90db64ac586fc570fcdf))
+
 ## [5.13.0](https://github.com/jmagar/axon/compare/palette-v5.12.4...palette-v5.13.0) (2026-07-09)
 
 
