@@ -31,6 +31,8 @@ use crate::capability::AdapterCapability;
 use self::manifest_items::{map_manifest_items, page_manifest_item};
 use self::metadata::{manifest_metadata, web_source_document};
 
+pub use self::warc::{WarcArchive, build_archive as build_warc_archive};
+
 pub const MODULE_NAME: &str = "web";
 
 const ADAPTER_NAME: &str = "web";
@@ -129,7 +131,7 @@ impl SourceAdapter for WebSourceAdapter {
             scope: plan.route.scope,
             manifest: diff_manifest(plan, diff, manifest_items),
             fetched_items: outcome.items,
-            artifacts: outcome.artifacts,
+            artifacts: Vec::new(),
         })
     }
 

@@ -32,6 +32,7 @@ fn input() -> WebSourceIndexInput {
         scope: SourceScope::Page,
         map_urls: Vec::new(),
         crawl_options: MetadataMap::new(),
+        output: OutputPolicy::default(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -43,6 +44,7 @@ fn input() -> WebSourceIndexInput {
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
     }
 }
 

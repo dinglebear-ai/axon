@@ -15,16 +15,8 @@ use uuid::Uuid;
 /// the pruning contract's "Cleanup Debt Execution" section and don't drift
 /// into a vague "not wired" blanket excuse.
 ///
-/// Only `ArtifactDelete`/`CachePrune` reach the skip path in `drain_one_debt`
-/// today — `VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`/
-/// `JobRetention` all drain via [`super::drain_via_executor`].
-///
-/// Followups (tracked against out-of-territory crates, not yet beaded
-/// individually):
-/// - `ArtifactDelete`: no durable `ArtifactStore` exists in this codebase yet
-///   (see `docs/pipeline-unification/runtime/pruning-contract.md`'s "artifact
-///   deletes" ownership row) — there is nothing to call.
-/// - `CachePrune`: no `CacheStore` boundary exists in this codebase.
+/// `ArtifactDelete`/`CachePrune` only reach the skip path when their
+/// corresponding boundary was not supplied to the drain.
 pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
     match kind {
         CleanupDebtKind::VectorDelete
@@ -32,8 +24,8 @@ pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
         | CleanupDebtKind::GraphPrune
         | CleanupDebtKind::MemoryPrune
         | CleanupDebtKind::JobRetention => "drained (should not reach the skip path)",
-        CleanupDebtKind::ArtifactDelete => "no ArtifactStore exists yet",
-        CleanupDebtKind::CachePrune => "no CacheStore boundary exists yet",
+        CleanupDebtKind::ArtifactDelete => "no ArtifactStore wired for this drain",
+        CleanupDebtKind::CachePrune => "no DocumentCache wired for this drain",
     }
 }
 

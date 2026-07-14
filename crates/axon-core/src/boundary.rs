@@ -6,6 +6,9 @@ use async_trait::async_trait;
 use axon_api::source::*;
 use tokio::sync::Mutex;
 
+mod file_artifact_store;
+pub use file_artifact_store::FileArtifactStore;
+
 pub type Result<T> = std::result::Result<T, ApiError>;
 
 #[async_trait]

@@ -38,18 +38,12 @@
 //! (see [`resolve_item_outcome`]) rather than propagated with `?` — one bad
 //! item must not discard every already-succeeded sibling in the batch.
 //!
-//! When `warc_path` is configured, every successfully acquired item (HTTP or
-//! Chrome) is archived as a WARC 1.1 `response` record — see [`super::warc`]
-//! for the writer and its documented `ArtifactStore` follow-up. WARC archival
-//! is a genuine serial dependency (one ordered on-disk log of records), so a
-//! configured WARC sink falls back to the original one-item-at-a-time
-//! acquisition path (see [`acquire_sequential`]) instead of the concurrent
-//! path. Without a WARC sink, returned item order is **not** guaranteed to
-//! match the input `manifest_items` order — safe today because every
-//! consumer of `fetched_items` keys off each item's own embedded
-//! `manifest_item`, never positional correspondence.
-
-use std::path::Path;
+//! When `warc_path` is configured, acquisition preserves input order so the
+//! services layer can build a deterministic WARC archive from the returned
+//! items and store it through `ArtifactStore`. Without a WARC sink, returned
+//! item order is **not** guaranteed to match the input `manifest_items` order —
+//! safe today because every consumer of `fetched_items` keys off each item's
+//! own embedded `manifest_item`, never positional correspondence.
 
 use axon_api::source::*;
 use axon_core::logging::{log_info, log_warn};
@@ -84,13 +78,11 @@ struct AcquireOptions {
     vertical: VerticalOptions,
 }
 
-/// Acquired items plus any side-effect artifacts produced by this run (today,
-/// at most one WARC archive — see [`super::warc`]) and any non-fatal
-/// per-item warnings (isolated failures, Chrome-fallback degradations).
+/// Acquired items plus any non-fatal per-item warnings (isolated failures,
+/// Chrome-fallback degradations).
 pub(super) struct AcquireOutcome {
     pub(super) items: Vec<AcquiredSourceItem>,
     pub(super) warnings: Vec<SourceWarning>,
-    pub(super) artifacts: Vec<ArtifactRef>,
 }
 
 /// One item's acquisition outcome. `item` is `None` for a conditional-fetch
@@ -125,22 +117,11 @@ pub(super) async fn acquire_changed_items(
     let warc_path = warc_path(values);
 
     let (items, warnings) = match warc_path.as_deref() {
-        Some(path) => {
-            let mut warc_file = open_warc_archive(Some(path)).await?;
-            acquire_sequential(fetch, render, manifest_items, &opts, &mut warc_file).await
-        }
+        Some(_) => acquire_sequential(fetch, render, manifest_items, &opts).await,
         None => acquire_concurrent(fetch, render, manifest_items, &opts).await,
     };
 
-    let artifacts = match warc_path {
-        Some(path) => vec![super::warc::artifact_ref(&path).await],
-        None => Vec::new(),
-    };
-    Ok(AcquireOutcome {
-        items,
-        warnings,
-        artifacts,
-    })
+    Ok(AcquireOutcome { items, warnings })
 }
 
 /// One-at-a-time acquisition, used only when a WARC sink is configured (WARC
@@ -153,7 +134,6 @@ async fn acquire_sequential(
     render: &dyn RenderProvider,
     manifest_items: &[ManifestItem],
     opts: &AcquireOptions,
-    warc_file: &mut Option<tokio::fs::File>,
 ) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
     let mut items = Vec::with_capacity(manifest_items.len());
     let mut warnings = Vec::new();
@@ -165,7 +145,6 @@ async fn acquire_sequential(
             &item.canonical_uri,
             &mut warnings,
         ) {
-            archive_to_warc(warc_file, &acquired).await;
             items.push(acquired);
         }
     }
@@ -241,34 +220,6 @@ fn resolve_item_outcome(
             });
             None
         }
-    }
-}
-
-async fn open_warc_archive(warc_path: Option<&Path>) -> Result<Option<tokio::fs::File>> {
-    let Some(path) = warc_path else {
-        return Ok(None);
-    };
-    super::warc::open(path).await.map(Some).map_err(|err| {
-        ApiError::new(
-            "web.warc.open_failed",
-            axon_error::ErrorStage::Fetching,
-            format!("failed to open WARC archive at {}: {err}", path.display()),
-        )
-    })
-}
-
-/// Append `acquired` to the WARC archive when one is open. A write failure is
-/// logged, not propagated — archival is a best-effort side effect and must
-/// not fail the acquisition of otherwise-good content.
-async fn archive_to_warc(warc_file: &mut Option<tokio::fs::File>, acquired: &AcquiredSourceItem) {
-    let Some(file) = warc_file.as_mut() else {
-        return;
-    };
-    if let Err(err) = super::warc::append_item(file, acquired).await {
-        log_warn(&format!(
-            "warc: failed to append record for {}: {err}",
-            acquired.manifest_item.canonical_uri
-        ));
     }
 }
 

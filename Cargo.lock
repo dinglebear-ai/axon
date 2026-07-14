@@ -530,6 +530,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axon-api",
+ "base64",
  "chrono",
  "clap",
  "comfy-table",

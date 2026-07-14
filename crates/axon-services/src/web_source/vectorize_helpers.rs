@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
 
 const VERTICAL_PARSE_FACTS_KEY: &str = "_axon_vertical_parse_facts";
 const VERTICAL_GRAPH_CANDIDATES_KEY: &str = "_axon_vertical_graph_candidates";
@@ -36,7 +37,12 @@ pub(super) fn sanitize_web_payload_metadata(document: &mut PreparedDocument) {
 }
 
 fn sanitize_metadata(metadata: &mut MetadataMap) {
-    for field in ["web_render_mode", "web_status", "web_etag"] {
+    for field in [
+        "web_render_mode",
+        "web_status",
+        "web_etag",
+        "web_prior_etag",
+    ] {
         metadata.remove(field);
     }
 }
@@ -152,4 +158,71 @@ pub(super) fn document_status(
         error: None,
         cleanup_status: None,
     }
+}
+
+pub(super) fn vector_point_batch_for_documents(
+    collection: CollectionSpec,
+    documents: &[PreparedDocument],
+    embeddings: &EmbeddingResult,
+) -> anyhow::Result<VectorPointBatch> {
+    let vectors_by_chunk = embeddings
+        .vectors
+        .iter()
+        .cloned()
+        .map(|vector| (vector.chunk_id.clone(), vector))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut points = Vec::new();
+    for document in documents {
+        let document_embeddings =
+            embedding_result_for_document(embeddings, document, &vectors_by_chunk)?;
+        let batch = VectorPointBatchBuilder::new(
+            collection.clone(),
+            document.clone(),
+            document_embeddings,
+            VectorPointBatchBuildContext {
+                embedded_at: Timestamp(chrono::Utc::now().to_rfc3339()),
+            },
+        )
+        .build()?;
+        points.extend(batch.points);
+    }
+    Ok(VectorPointBatch {
+        batch_id: embeddings.batch_id.clone(),
+        collection: collection.collection,
+        points,
+        model: embeddings.model.clone(),
+        dimensions: embeddings.dimensions,
+        sparse_vectors: None,
+        payload_indexes: collection.payload_indexes,
+    })
+}
+
+fn embedding_result_for_document(
+    embeddings: &EmbeddingResult,
+    document: &PreparedDocument,
+    vectors_by_chunk: &std::collections::BTreeMap<ChunkId, EmbeddingVector>,
+) -> anyhow::Result<EmbeddingResult> {
+    let mut vectors = Vec::with_capacity(document.chunks.len());
+    for chunk in &document.chunks {
+        let vector = vectors_by_chunk
+            .get(&chunk.chunk_id)
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "embedding result missing vector for web chunk {}",
+                    chunk.chunk_id.0
+                )
+            })?;
+        vectors.push(vector);
+    }
+    Ok(EmbeddingResult {
+        batch_id: embeddings.batch_id.clone(),
+        job_id: embeddings.job_id,
+        provider_id: embeddings.provider_id.clone(),
+        model: embeddings.model.clone(),
+        dimensions: embeddings.dimensions,
+        vectors,
+        usage: embeddings.usage.clone(),
+        warnings: embeddings.warnings.clone(),
+    })
 }

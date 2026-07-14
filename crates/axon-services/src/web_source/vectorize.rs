@@ -1,19 +1,19 @@
-use axon_adapters::{SourceAdapter, web::WebSourceAdapter};
+use axon_adapters::{SourceAdapter, web};
 use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_ledger::store::LedgerStore;
-use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
 use super::WebSourceIndexInput;
+use super::artifacts::{WebArtifactIndex, store_clean_outputs, store_warc_artifact};
 use super::reuse;
 use super::run::{WebAdapterRun, timestamp};
 use super::vectorize_helpers::{
     changed_diff_batches, document_status, payload_index, prepared_document_batches,
-    sanitize_web_payload_metadata, take_vertical_parse_artifacts,
+    sanitize_web_payload_metadata, take_vertical_parse_artifacts, vector_point_batch_for_documents,
 };
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
@@ -32,6 +32,9 @@ pub(super) struct VectorizeResult {
     /// silently dropping them after vectorization.
     pub(super) graph_candidates: Vec<GraphCandidate>,
     pub(super) warnings: Vec<SourceWarning>,
+    pub(super) artifacts: Vec<ArtifactRef>,
+    pub(super) inline: Option<InlineSourceResult>,
+    pub(super) artifact_index: WebArtifactIndex,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -52,6 +55,9 @@ pub(super) struct NormalizedWebDocuments {
     pub(super) documents: Vec<SourceDocument>,
     pub(super) warnings: Vec<SourceWarning>,
     pub(super) reused_item_keys: Vec<SourceItemKey>,
+    pub(super) artifacts: Vec<ArtifactRef>,
+    pub(super) inline: Option<InlineSourceResult>,
+    pub(super) artifact_index: WebArtifactIndex,
 }
 
 pub(super) async fn vectorize_changed_documents(
@@ -69,6 +75,11 @@ pub(super) async fn vectorize_changed_documents(
         let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
         result.warnings.extend(normalized.warnings);
         result.reused_item_keys.extend(normalized.reused_item_keys);
+        result.artifacts.extend(normalized.artifacts);
+        result.artifact_index.merge(normalized.artifact_index);
+        if result.inline.is_none() {
+            result.inline = normalized.inline;
+        }
         let prepared = prepare_source_documents(normalized.documents, generation)?;
         for prepared_batch in prepared_document_batches(prepared, WEB_CHANGED_CHUNK_BATCH_SIZE) {
             let batch_result = vectorize_documents(
@@ -106,6 +117,11 @@ pub(super) async fn prepare_changed_documents_without_vectors(
         let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
         result.warnings.extend(normalized.warnings);
         result.reused_item_keys.extend(normalized.reused_item_keys);
+        result.artifacts.extend(normalized.artifacts);
+        result.artifact_index.merge(normalized.artifact_index);
+        if result.inline.is_none() {
+            result.inline = normalized.inline;
+        }
         let prepared = prepare_source_documents(normalized.documents, generation)?;
         for document in prepared {
             result.documents_prepared += 1;
@@ -165,12 +181,18 @@ pub(super) async fn normalize_changed_documents(
     run: &WebAdapterRun,
     diff: &SourceManifestDiff,
 ) -> anyhow::Result<NormalizedWebDocuments> {
-    let adapter = WebSourceAdapter::new(
+    let adapter = web::WebSourceAdapter::new(
         std::sync::Arc::clone(&input.fetch_provider),
         std::sync::Arc::clone(&input.render_provider),
     );
     let mut acquisition = adapter.acquire(&run.plan, diff).await?;
     let mut warnings = acquisition.header.warnings.clone();
+    let mut artifact_index = WebArtifactIndex::default();
+    let mut artifacts = Vec::new();
+    for artifact in store_warc_artifact(input, run, &acquisition.fetched_items).await? {
+        artifact_index.push_generation(artifact.clone());
+        artifacts.push(artifact);
+    }
     let mut documents = Vec::new();
     let mut documents_to_cache = Vec::new();
     let mut fetched_items = Vec::new();
@@ -215,8 +237,21 @@ pub(super) async fn normalize_changed_documents(
     if !fetched_items.is_empty() {
         acquisition.fetched_items = fetched_items;
         let normalized = adapter.normalize(&run.plan, acquisition).await?.data;
+        let clean_output = store_clean_outputs(input, &normalized).await?;
+        artifacts.extend(clean_output.artifacts);
+        artifact_index.merge(clean_output.artifact_index);
+        let inline = clean_output.inline;
         documents_to_cache.extend(normalized.clone());
         documents.extend(normalized);
+        reuse::cache_documents(&run.source_id, &diff.next_generation, &documents_to_cache);
+        return Ok(NormalizedWebDocuments {
+            documents,
+            warnings,
+            reused_item_keys,
+            artifacts,
+            inline,
+            artifact_index,
+        });
     }
 
     reuse::cache_documents(&run.source_id, &diff.next_generation, &documents_to_cache);
@@ -224,6 +259,9 @@ pub(super) async fn normalize_changed_documents(
         documents,
         warnings,
         reused_item_keys,
+        artifacts,
+        inline: None,
+        artifact_index,
     })
 }
 
@@ -238,7 +276,7 @@ async fn refetch_without_conditional(
         .validated_options
         .values
         .insert("etag_conditional".to_string(), serde_json::json!(false));
-    let adapter = WebSourceAdapter::new(
+    let adapter = web::WebSourceAdapter::new(
         std::sync::Arc::clone(&input.fetch_provider),
         std::sync::Arc::clone(&input.render_provider),
     );
@@ -410,73 +448,6 @@ fn embedding_batch_for_documents(
         }
     }
     Ok(builder.build()?)
-}
-
-fn vector_point_batch_for_documents(
-    collection: CollectionSpec,
-    documents: &[PreparedDocument],
-    embeddings: &EmbeddingResult,
-) -> anyhow::Result<VectorPointBatch> {
-    let vectors_by_chunk = embeddings
-        .vectors
-        .iter()
-        .cloned()
-        .map(|vector| (vector.chunk_id.clone(), vector))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let mut points = Vec::new();
-    for document in documents {
-        let document_embeddings =
-            embedding_result_for_document(embeddings, document, &vectors_by_chunk)?;
-        let batch = VectorPointBatchBuilder::new(
-            collection.clone(),
-            document.clone(),
-            document_embeddings,
-            VectorPointBatchBuildContext {
-                embedded_at: timestamp(),
-            },
-        )
-        .build()?;
-        points.extend(batch.points);
-    }
-    Ok(VectorPointBatch {
-        batch_id: embeddings.batch_id.clone(),
-        collection: collection.collection,
-        points,
-        model: embeddings.model.clone(),
-        dimensions: embeddings.dimensions,
-        sparse_vectors: None,
-        payload_indexes: collection.payload_indexes,
-    })
-}
-
-fn embedding_result_for_document(
-    embeddings: &EmbeddingResult,
-    document: &PreparedDocument,
-    vectors_by_chunk: &std::collections::BTreeMap<ChunkId, EmbeddingVector>,
-) -> anyhow::Result<EmbeddingResult> {
-    let mut vectors = Vec::with_capacity(document.chunks.len());
-    for chunk in &document.chunks {
-        let vector = vectors_by_chunk
-            .get(&chunk.chunk_id)
-            .cloned()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "embedding result missing vector for web chunk {}",
-                    chunk.chunk_id.0
-                )
-            })?;
-        vectors.push(vector);
-    }
-    Ok(EmbeddingResult {
-        batch_id: embeddings.batch_id.clone(),
-        job_id: embeddings.job_id,
-        provider_id: embeddings.provider_id.clone(),
-        model: embeddings.model.clone(),
-        dimensions: embeddings.dimensions,
-        vectors,
-        usage: embeddings.usage.clone(),
-        warnings: embeddings.warnings.clone(),
-    })
 }
 
 #[cfg(test)]

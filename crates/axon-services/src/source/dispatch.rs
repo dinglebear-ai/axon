@@ -92,6 +92,8 @@ pub async fn dispatch_local(
         removed: output.removed_files,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -151,6 +153,8 @@ pub async fn dispatch_git(
         removed: output.removed_files,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -202,6 +206,8 @@ pub async fn dispatch_feed(
         removed: output.removed_entries,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -254,6 +260,8 @@ pub async fn dispatch_reddit(
         removed: output.removed_items,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -306,6 +314,8 @@ pub async fn dispatch_youtube(
         removed: output.removed_videos,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -359,6 +369,8 @@ pub async fn dispatch_registry(
         removed: output.removed_versions,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -413,6 +425,8 @@ pub async fn dispatch_session(
         removed: output.removed_files,
         graph_candidates: output.graph_candidates,
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -436,16 +450,23 @@ pub(crate) async fn dispatch_web(
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
     max_pages: Option<u64>,
+    output: &axon_api::source::OutputPolicy,
+    route: &axon_api::source::RoutePlan,
     source_execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?}"
     ));
+    let mut crawl_options = web_crawl_options(cfg, max_pages);
+    for (key, value) in route.validated_options.values.iter() {
+        crawl_options.insert(key.clone(), value.clone());
+    }
     let index_input = WebSourceIndexInput {
         source: input.to_string(),
         scope,
         map_urls: Vec::new(),
-        crawl_options: web_crawl_options(cfg, max_pages),
+        crawl_options,
+        output: output.clone(),
         collection: collection.to_string(),
         owner_id: owner_id.to_string(),
         job_id: placeholder_job_id(),
@@ -457,6 +478,7 @@ pub(crate) async fn dispatch_web(
         embed,
         fetch_provider: runtime.fetch_provider.clone(),
         render_provider: runtime.render_provider.clone(),
+        artifact_store: runtime.artifact_store.clone(),
     };
     let output = if let Some(job_id) = source_execution.existing_job_id.clone() {
         let execution = WebSourceJobExecution {
@@ -508,6 +530,8 @@ pub(crate) async fn dispatch_web(
         removed: output.removed_pages,
         graph_candidates: output.graph_candidates,
         warnings: output.warnings,
+        artifacts: output.artifacts,
+        inline: output.inline,
     })
 }
 
