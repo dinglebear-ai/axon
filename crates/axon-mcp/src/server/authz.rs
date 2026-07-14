@@ -113,7 +113,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "search",
         scope: ActionScope::Read,
-        description: "Run SearXNG/Tavily web search and optionally queue crawls for results",
+        description: "Run SearXNG/Tavily web search and optionally queue source auto-index jobs for results",
         cost: "moderate",
     },
     McpActionSpec {
@@ -130,7 +130,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     },
     // U2-20/C6-20: ask/evaluate/suggest/research/summarize default to
     // `axon:read` — they're query-shaped surfaces, even though research (and
-    // occasionally ask/summarize) may enqueue a background crawl/index job as
+    // occasionally ask/summarize) may enqueue a background source/index job as
     // a side effect. No `mutates_if`/conditional-upgrade metadata exists yet
     // (tracked as a follow-up); until it lands these stay read-gated rather
     // than write-gated, matching the contract's stated default.
@@ -347,10 +347,10 @@ pub(super) fn required_scope_for_tool(
 /// But two of them do NOT have a non-mutating default form today: `search`
 /// (`handle_search` in `handlers_query.rs` always calls
 /// `axon_services::search_crawl::search_and_crawl`, which unconditionally
-/// enqueues one bounded crawl job per result URL) and `research`
+/// enqueues one bounded Source job per result URL) and `research`
 /// (`handle_research` always calls
 /// `axon_services::search::synthesis::research_with_context`, same
-/// unconditional auto-crawl). Neither request DTO (`SearchRequest`,
+/// unconditional source auto-index). Neither request DTO (`SearchRequest`,
 /// `ResearchRequest` in `axon-api::mcp_schema`) exposes an opt-out field, so
 /// the predicate is unconditionally true for these two actions today. This
 /// function is the dispatch-time authority actually consulted by

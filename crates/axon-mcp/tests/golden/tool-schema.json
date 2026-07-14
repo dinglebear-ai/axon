@@ -1787,33 +1787,22 @@
       "type": "object"
     },
     "JobsRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobsRequest_JobRetryMode": {
       "enum": [
@@ -3824,7 +3813,7 @@
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:68f50617fb2536b6e2e1b99c68caa434067da3eac287d32fb0a627de6951b71d",
+        "checksum": "sha256:d6ce9011c6b8933a6d6893eb0f096d8bd906dd25fb387490718deae588ff3573",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },

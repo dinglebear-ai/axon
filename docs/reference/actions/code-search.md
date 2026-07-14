@@ -5,7 +5,7 @@
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon code-search ...` |
+| CLI | Removed; use `axon <path> --scope directory` |
 | REST | Not inventoried |
 | MCP | Not exposed as a dedicated MCP action. |
 | Service | `Not inventoried` |

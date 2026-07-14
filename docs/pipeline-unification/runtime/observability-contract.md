@@ -84,7 +84,7 @@ Rules:
 
 ## Current Implementation Snapshot
 
-Refreshed 2026-07-10 against HEAD `5a4558cc7`:
+Refreshed 2026-07-14 after the crawl SourceRequest cutover:
 
 Implemented today:
 
@@ -92,7 +92,7 @@ Implemented today:
 - Current statuses include `pending`, `running`, `completed`, `failed`, and
   `canceled`.
 - Generic progress exists for some family jobs such as embed, extract, and
-  ingest; crawl remains more specialized.
+  ingest; legacy crawl rows are migration-only.
 - Code-search reindexing has its own progress events such as started, batch
   finished, cleanup started, commit started, and finished.
 - Heartbeat/worker freshness is implemented today by refreshing job row
@@ -106,9 +106,8 @@ Implemented today:
 
 Planned by this contract:
 
-- Wire `SourceProgressEvent` emission into every long-running operation
-  uniformly (today's coverage matches the family-specific progress state
-  above, not yet a single event model across crawl/embed/ingest/code-search).
+- Continue extending `SourceProgressEvent` emission across non-web source
+  families. Web source jobs now emit ordered public source events.
 - `job_id` is propagated into ledger rows, graph updates, artifacts, vector
   payloads, traces, logs, and watch/status output.
 

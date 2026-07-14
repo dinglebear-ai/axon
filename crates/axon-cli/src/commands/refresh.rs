@@ -7,7 +7,7 @@ use axon_services::context::ServiceContext;
 use axon_services::refresh::{self, RefreshPlan};
 use std::error::Error;
 
-/// `axon refresh [FILTER]` — re-enqueue crawl/ingest jobs for previously indexed
+/// `axon refresh [FILTER]` — re-enqueue source/ingest jobs for previously indexed
 /// origins. Confirms before enqueuing (respects `--yes` / non-TTY).
 pub async fn run_refresh(
     cfg: &Config,
@@ -31,7 +31,7 @@ pub async fn run_refresh(
     }
 
     let prompt = format!(
-        "Re-enqueue {crawl} crawl + {ingest} ingest job(s)? \
+        "Re-enqueue {crawl} source refresh + {ingest} ingest job(s)? \
          ({skip} non-re-runnable origin(s) will be skipped)"
     );
     if !confirm_destructive(cfg, &prompt)? {
@@ -136,7 +136,7 @@ fn report_outcome(cfg: &Config, outcome: &refresh::RefreshOutcome) -> Result<(),
         String::new()
     };
     println!(
-        "{} {} crawl + {} ingest job(s) enqueued{skipped}",
+        "{} {} source refresh + {} ingest job(s) enqueued{skipped}",
         symbol_for_status("completed"),
         accent(&outcome.crawl_enqueued.to_string()),
         accent(&outcome.ingest_enqueued.to_string()),

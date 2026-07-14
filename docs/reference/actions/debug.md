@@ -54,7 +54,7 @@ All global flags apply. Key flag:
 axon debug
 
 # Include symptom context for better guidance
-axon debug "crawl jobs stuck in pending for 30m"
+axon debug "source jobs stuck in pending for 30m"
 
 # Structured output
 axon debug "qdrant timeout after restart" --json

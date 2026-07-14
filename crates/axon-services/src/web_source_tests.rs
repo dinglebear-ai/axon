@@ -39,6 +39,7 @@ fn input() -> WebSourceIndexInput {
         scope: SourceScope::Page,
         map_urls: Vec::new(),
         crawl_options: MetadataMap::new(),
+        output: OutputPolicy::default(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -47,9 +48,13 @@ fn input() -> WebSourceIndexInput {
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        attempt: 1,
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
     }
 }
 
@@ -175,6 +180,7 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
             "https://example.com/docs/api".to_string(),
         ],
         crawl_options: MetadataMap::new(),
+        output: OutputPolicy::default(),
         collection: "axon-web-test".to_string(),
         owner_id: "test-owner".to_string(),
         job_id: job_id(),
@@ -183,9 +189,13 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        attempt: 1,
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
     };
 
     let output = index_web_source(map_input, &ledger, &embedder, &vectors)

@@ -4,13 +4,41 @@ use std::sync::Mutex as StdMutex;
 
 use async_trait::async_trait;
 use axon_api::source::*;
+use base64::Engine as _;
 use tokio::sync::Mutex;
 
+mod file_artifact_store;
+pub use file_artifact_store::FileArtifactStore;
+
 pub type Result<T> = std::result::Result<T, ApiError>;
+
+#[derive(Debug, Clone)]
+pub struct ArtifactBytesWriteRequest {
+    pub kind: ArtifactKind,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+    pub source_id: Option<SourceId>,
+    pub job_id: Option<JobId>,
+    pub metadata: MetadataMap,
+}
 
 #[async_trait]
 pub trait ArtifactStore: Send + Sync {
     async fn put(&self, artifact: ArtifactWriteRequest) -> Result<ArtifactHandle>;
+    async fn put_bytes(&self, artifact: ArtifactBytesWriteRequest) -> Result<ArtifactHandle> {
+        self.put(ArtifactWriteRequest {
+            kind: artifact.kind,
+            content_type: artifact.content_type.clone(),
+            content: ContentRef::InlineBytes {
+                bytes_base64: base64::engine::general_purpose::STANDARD.encode(artifact.bytes),
+                mime_type: artifact.content_type,
+            },
+            source_id: artifact.source_id,
+            job_id: artifact.job_id,
+            metadata: artifact.metadata,
+        })
+        .await
+    }
     async fn get(&self, handle: ArtifactHandle) -> Result<ArtifactReadResult>;
     async fn delete(&self, handle: ArtifactHandle) -> Result<()>;
     async fn reset(&self) -> Result<()>;

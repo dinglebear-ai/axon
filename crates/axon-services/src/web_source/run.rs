@@ -1,6 +1,7 @@
 use axon_api::source::*;
 use axon_ledger::store::LedgerStore;
 use axon_route::{AdapterRegistry, InMemoryAuthorityRegistry, SourceResolver, SourceRouter};
+use serde_json::Value;
 
 use super::WebSourceIndexInput;
 use super::WebSourceIndexOutput;
@@ -97,7 +98,33 @@ pub(super) async fn unchanged_refresh_output(
         removed_pages: 0,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     }))
+}
+
+pub(super) async fn overlay_previous_web_etags(
+    ledger: &dyn LedgerStore,
+    diff: &SourceManifestDiff,
+) -> anyhow::Result<SourceManifestDiff> {
+    let Some(previous_generation) = diff.previous_generation.clone() else {
+        return Ok(diff.clone());
+    };
+    let Some(previous_manifest) = ledger
+        .get_manifest(diff.source_id.clone(), previous_generation)
+        .await?
+    else {
+        return Ok(diff.clone());
+    };
+
+    let previous_items = previous_manifest
+        .items
+        .into_iter()
+        .map(|item| (item.source_item_key.clone(), item))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut adjusted = diff.clone();
+    overlay_prior_web_etag(&mut adjusted.modified, &previous_items);
+    Ok(adjusted)
 }
 
 fn manifest_diff_has_changes(diff: &SourceManifestDiff) -> bool {
@@ -133,6 +160,48 @@ pub(super) fn source_summary(input: &WebSourceIndexInput, run: &WebAdapterRun) -
         tags: vec![format!("{:?}", run.scope).to_ascii_lowercase()],
         watch_id: None,
         last_job_id: Some(input.job_id),
+    }
+}
+
+pub(super) fn apply_reused_item_keys(
+    diff: &SourceManifestDiff,
+    reused_item_keys: &[SourceItemKey],
+) -> SourceManifestDiff {
+    if reused_item_keys.is_empty() {
+        return diff.clone();
+    }
+    let reused = reused_item_keys
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut adjusted = diff.clone();
+    let mut still_modified = Vec::with_capacity(adjusted.modified.len());
+    for item in adjusted.modified.drain(..) {
+        if reused.contains(&item.source_item_key) {
+            adjusted.unchanged.push(item);
+        } else {
+            still_modified.push(item);
+        }
+    }
+    adjusted.modified = still_modified;
+    adjusted.counts.modified = adjusted.modified.len() as u64;
+    adjusted.counts.unchanged = adjusted.unchanged.len() as u64;
+    adjusted
+}
+
+fn overlay_prior_web_etag(
+    items: &mut [ManifestItem],
+    previous_items: &std::collections::BTreeMap<SourceItemKey, ManifestItem>,
+) {
+    for item in items {
+        let Some(previous) = previous_items.get(&item.source_item_key) else {
+            continue;
+        };
+        let Some(etag) = previous.metadata.get("web_etag").and_then(Value::as_str) else {
+            continue;
+        };
+        item.metadata
+            .insert("web_prior_etag".to_string(), serde_json::json!(etag));
     }
 }
 

@@ -3,23 +3,26 @@
 //! honoring existing `--render-mode`/`--max-depth`/`--url-whitelist`/etc.
 //! flags without a `crawl_for_source` acquisition pre-pass.
 
-use axon_api::source::MetadataMap;
+use axon_api::source::{AuthScope, AuthSnapshot, MetadataMap};
 use axon_core::config::Config;
+use axon_error::{ApiError, ErrorStage};
 
 /// Build the web adapter's `validated_options` map
 /// (`crates/axon-route/src/web_options.rs`) from the ambient CLI-resolved
-/// `Config`. `max_pages_override` (the caller's own `SourceRequest.limits.
-/// max_pages`) wins over `cfg.max_pages` when set — matching the pre-Wave-1b
-/// behavior where `crawl_for_source`'s `max_pages` parameter overrode the
-/// crawl config the same way.
-pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -> MetadataMap {
+/// `Config`. `max_pages_override`/`max_depth_override` (the caller's own
+/// `SourceRequest.limits`) win over config when set — matching the
+/// pre-Wave-1b behavior where `crawl_for_source`'s per-call bounds overrode
+/// the crawl config the same way.
+pub(crate) fn web_crawl_options(
+    cfg: &Config,
+    max_pages_override: Option<u64>,
+    max_depth_override: Option<u32>,
+) -> MetadataMap {
     let mut options = MetadataMap::new();
     let max_pages = max_pages_override.unwrap_or(cfg.max_pages as u64);
+    let max_depth = max_depth_override.unwrap_or(cfg.max_depth as u32);
     options.insert("max_pages".to_string(), serde_json::json!(max_pages));
-    options.insert(
-        "max_depth".to_string(),
-        serde_json::json!(cfg.max_depth as u64),
-    );
+    options.insert("max_depth".to_string(), serde_json::json!(max_depth));
     options.insert(
         "include_subdomains".to_string(),
         serde_json::json!(cfg.include_subdomains),
@@ -45,6 +48,10 @@ pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -
         serde_json::json!(cfg.drop_thin_markdown),
     );
     options.insert(
+        "etag_conditional".to_string(),
+        serde_json::json!(cfg.etag_conditional),
+    );
+    options.insert(
         "render_mode".to_string(),
         serde_json::json!(api_render_mode(cfg.render_mode)),
     );
@@ -61,6 +68,24 @@ pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -
     if let Some(user_agent) = cfg.user_agent.as_deref().filter(|value| !value.is_empty()) {
         options.insert("user_agent".to_string(), serde_json::json!(user_agent));
     }
+    if let Some(path) = cfg.warc_output.as_ref() {
+        options.insert(
+            "warc_path".to_string(),
+            serde_json::json!(path.to_string_lossy()),
+        );
+    }
+    if let Some(path) = cfg.automation_script.as_ref() {
+        options.insert(
+            "automation_script".to_string(),
+            serde_json::json!(path.to_string_lossy()),
+        );
+    }
+    if !cfg.custom_headers.is_empty() {
+        options.insert(
+            "custom_headers".to_string(),
+            serde_json::json!(cfg.custom_headers),
+        );
+    }
     if !cfg.url_whitelist.is_empty() {
         options.insert(
             "url_whitelist".to_string(),
@@ -74,6 +99,38 @@ pub(super) fn web_crawl_options(cfg: &Config, max_pages_override: Option<u64>) -
         );
     }
     options
+}
+
+/// Merge caller-provided web adapter options into trusted config-derived
+/// options. Most options are ordinary crawl knobs, but `automation_script`
+/// points at a local JSON program that Chrome may execute; remote callers need
+/// explicit local+execute scope for that key.
+pub(crate) fn merge_caller_web_options(
+    options: &mut MetadataMap,
+    caller_options: &MetadataMap,
+    auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<(), ApiError> {
+    for (key, value) in caller_options.0.iter() {
+        if key == "automation_script" && !caller_can_set_automation_script(auth_snapshot) {
+            return Err(ApiError::new(
+                "auth.scope_required",
+                ErrorStage::Authorizing,
+                "web option automation_script requires axon:local and axon:execute",
+            )
+            .with_context("option", "automation_script")
+            .with_context("required_scope", "axon:local,axon:execute"));
+        }
+        options.insert(key.clone(), value.clone());
+    }
+    Ok(())
+}
+
+fn caller_can_set_automation_script(auth_snapshot: Option<&AuthSnapshot>) -> bool {
+    let Some(snapshot) = auth_snapshot else {
+        return true;
+    };
+    crate::source::authorize::snapshot_allows_scope(snapshot, AuthScope::Local)
+        && crate::source::authorize::snapshot_allows_scope(snapshot, AuthScope::Execute)
 }
 
 /// `axon_core::config::RenderMode` (kebab-case CLI representation) ->

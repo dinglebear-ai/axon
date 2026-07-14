@@ -19,7 +19,7 @@ use std::collections::BTreeSet;
 
 use axon_api::source::*;
 
-use crate::sqlite::util::timestamp;
+use crate::cleanup_debt::graph_prune_debt;
 use crate::store::Result;
 
 use super::manifest_items::manifest_items_in_tx;
@@ -55,37 +55,4 @@ pub(super) async fn graph_prune_cleanup_debt_in_tx(
         ));
     }
     Ok(cleanup_debt)
-}
-
-fn graph_prune_debt(
-    source_id: &SourceId,
-    previous_generation: &SourceGenerationId,
-    source_item_key: &SourceItemKey,
-) -> CleanupDebt {
-    CleanupDebt {
-        debt_id: CleanupDebtId::new(format!(
-            "debt_{}",
-            uuid::Uuid::new_v5(
-                &uuid::Uuid::NAMESPACE_URL,
-                format!(
-                    "graph:{}:{}:{}",
-                    source_id.0, previous_generation.0, source_item_key.0
-                )
-                .as_bytes(),
-            )
-        )),
-        job_id: JobId::new(uuid::Uuid::from_u128(0)),
-        source_id: source_id.clone(),
-        generation: Some(previous_generation.clone()),
-        kind: CleanupDebtKind::GraphPrune,
-        selector: CleanupSelector::GraphNodes {
-            stable_keys: vec![source_item_key.0.clone()],
-        },
-        status: LifecycleStatus::Pending,
-        created_at: timestamp(),
-        attempts: 0,
-        last_error: None,
-        next_retry_at: None,
-        completed_at: None,
-    }
 }

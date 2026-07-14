@@ -36,12 +36,13 @@ async fn run_once(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     match cfg.command {
-        CommandKind::Map => run_map(cfg, start_url).await?,
+        CommandKind::Map => run_map(cfg, start_url, service_context).await?,
         CommandKind::Endpoints => run_endpoints(cfg).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Monitor => run_monitor(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg, service_context).await?,
+        CommandKind::Scrape => run_source(cfg, service_context).await?,
         CommandKind::Brand => run_brand(cfg).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Diff => run_diff(cfg).await?,
@@ -107,6 +108,21 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
     })
 }
 
+fn command_needs_workers(cfg: &Config, command_mode: Option<JobCommandMode<'_>>) -> bool {
+    cfg.wait
+        || matches!(
+            cfg.command,
+            CommandKind::Source | CommandKind::Scrape | CommandKind::Map
+        )
+        || matches!(
+            command_mode,
+            Some(JobCommandMode::Subcommand {
+                needs_workers: true,
+                ..
+            })
+        )
+}
+
 /// Returns true if the process argv is the `setup plugin-hook` (or `setup hook`)
 /// invocation. Inspected from raw argv before the Config is built so the plugin
 /// env-var mapping can run before `parse_args()` reads the AXON_* env vars.
@@ -139,6 +155,21 @@ where
     false
 }
 
+fn exit_if_reserved_source_command() {
+    let command = axon_core::config::build_cli_command();
+    if let Err(err) = axon_core::config::source_routing::route_bare_source_or_error(
+        std::env::args().collect(),
+        &command,
+    ) {
+        eprintln!(
+            "`axon {}` has been removed from the unified source surface. {}",
+            err.token(),
+            err.replacement()
+        );
+        std::process::exit(8);
+    }
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
     // CRITICAL ORDERING: the `setup plugin-hook` invocation must apply the
     // Claude Code plugin-option → AXON_* env-var mapping BEFORE parse_args()
@@ -150,6 +181,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     if is_plugin_hook_invocation(std::env::args_os()) {
         commands::apply_plugin_options();
     }
+
+    exit_if_reserved_source_command();
 
     // Parse CLI args first so the user's --color choice is installed before
     // anything (including the tracing-subscriber writer) reads it. clap exits
@@ -211,19 +244,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     // intentionally needs in-process workers. Fire-and-forget submits enqueue
     // and exit; operator `worker` subcommands spawn workers in this process.
     let command_mode = job_command_mode(&cfg_arc);
-    let needs_workers = cfg_arc.wait
-        // `source` indexes synchronously in the foreground but needs the
-        // data-plane runtime (ledger/embedding/vector stores), which is only
-        // attached to a worker-bearing ServiceContext. Always build one so
-        // `axon source <path>` works without an explicit `--wait`.
-        || cfg_arc.command == CommandKind::Source
-        || matches!(
-            command_mode,
-            Some(JobCommandMode::Subcommand {
-                needs_workers: true,
-                ..
-            })
-        );
+    // `source` and retained `scrape` index synchronously in the foreground but
+    // need the data-plane runtime (ledger/embedding/vector stores), which is
+    // only attached to a worker-bearing ServiceContext.
+    let needs_workers = command_needs_workers(cfg_arc.as_ref(), command_mode);
     let service_context = if needs_workers {
         ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await
     } else {
@@ -282,6 +306,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "scrape_map_source_projection_tests.rs"]
+mod scrape_map_source_projection_tests;
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]

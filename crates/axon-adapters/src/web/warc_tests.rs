@@ -127,40 +127,29 @@ fn response_record_decodes_inline_bytes() {
     assert!(content.contains("Content-Length: 9\r\n"));
 }
 
-#[tokio::test]
-async fn open_and_append_produce_a_valid_multi_record_file() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("nested").join("archive.warc");
-
-    let mut file = open(&path).await.expect("open must create parent dirs");
+#[test]
+fn build_archive_produces_a_valid_multi_record_payload() {
     let item_a = item("https://example.com/a", Some(200), ContentKind::Html, "a");
     let item_b = item("https://example.com/b", Some(200), ContentKind::Html, "b");
-    append_item(&mut file, &item_a).await.expect("append a");
-    append_item(&mut file, &item_b).await.expect("append b");
-    file.flush().await.expect("flush");
-    drop(file);
 
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .expect("read warc file");
+    let archive = build_archive(&[item_a, item_b]);
+
+    let content = String::from_utf8_lossy(&archive.bytes);
     assert_eq!(content.matches("WARC/1.1\r\n").count(), 3); // warcinfo + 2 responses
     assert!(content.contains("WARC-Type: warcinfo"));
     assert!(content.contains("https://example.com/a"));
     assert!(content.contains("https://example.com/b"));
+    assert_eq!(archive.size_bytes, archive.bytes.len() as u64);
+    assert!(archive.sha256.starts_with("sha256:"));
 }
 
-#[tokio::test]
-async fn artifact_ref_reports_kind_warc_and_size() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("archive.warc");
-    let mut file = open(&path).await.expect("open");
+#[test]
+fn build_archive_digest_changes_with_content() {
     let acquired = item("https://example.com/a", Some(200), ContentKind::Html, "a");
-    append_item(&mut file, &acquired).await.expect("append");
-    file.flush().await.expect("flush");
-    drop(file);
+    let changed = item("https://example.com/a", Some(200), ContentKind::Html, "b");
 
-    let artifact = artifact_ref(&path).await;
-    assert_eq!(artifact.artifact_kind, ArtifactKind::Warc);
-    assert_eq!(artifact.uri, path.display().to_string());
-    assert!(artifact.size_bytes.unwrap_or(0) > 0);
+    let first = build_archive(&[acquired]);
+    let second = build_archive(&[changed]);
+
+    assert_ne!(first.sha256, second.sha256);
 }

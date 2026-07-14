@@ -1,9 +1,9 @@
 use super::*;
 use crate::runtime::ServiceJobRuntime;
+use crate::search_source_index::enqueue_web_source_auto_index;
 use crate::types::ResearchHit;
-use axon_api::source::{JobId, LifecycleStatus, PipelinePhase};
+use axon_api::source::{JobId, LifecycleStatus, PipelinePhase, SourceScope};
 use axon_core::config::CommandKind;
-use axon_jobs::config_snapshot::apply_config_snapshot;
 use std::error::Error as StdError;
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ fn with_isolated_sqlite_path(mut cfg: Config) -> Config {
 
 /// Real in-memory `ServiceContext` with unified-store-backed workers, mirroring
 /// `crawl_tests.rs::test_ctx_with_workers`. Crawl now enqueues onto the
-/// unified job store (see `crawl_start_with_context`), so `search_crawl`'s
+/// unified job store, so `search_crawl`'s
 /// tests need a real store to enqueue against and (for the wait-mode tests)
 /// to drive terminal status transitions on directly. Takes `cfg` by value
 /// (isolating only `sqlite_path`) so `service_context.cfg.job_wait_timeout_secs`
@@ -44,8 +44,8 @@ async fn test_ctx_no_workers(cfg: Config) -> ServiceContext {
 
 /// A `ServiceContext` whose `unified_job_store()` returns `None` — simulates
 /// an enqueue-only runtime with no in-process workers attached, so
-/// `crawl_start_with_context` fails with "unified job store is not
-/// available", reproducing the queue-full/enqueue-failure family of tests.
+/// source enqueue fails with "unified job store is not available",
+/// reproducing the queue-full/enqueue-failure family of tests.
 struct NoStoreRuntime;
 
 #[async_trait::async_trait]
@@ -217,7 +217,7 @@ async fn enqueue_failure_is_rejected_not_fatal() {
 }
 
 #[tokio::test]
-async fn uses_hardened_bounded_crawl_config() {
+async fn uses_hardened_bounded_source_request() {
     let mut cfg = make_cfg("rust");
     cfg.max_pages = 500;
     cfg.max_depth = 12;
@@ -243,17 +243,51 @@ async fn uses_hardened_bounded_crawl_config() {
         .await
         .expect("request_json")
         .expect("request json stored");
-    let config_json = request_json
-        .get("config_json")
-        .and_then(|v| v.as_str())
-        .expect("config_json field present");
-    let effective = apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
-    assert_eq!(effective.max_pages, 200);
-    assert_eq!(effective.max_depth, 10);
-    assert!(!effective.discover_sitemaps);
-    assert_eq!(effective.max_sitemaps, 0);
-    assert!(effective.custom_headers.is_empty());
-    assert!(effective.url_whitelist.is_empty());
+    let source_request = request_json
+        .get("source_request")
+        .expect("source_request field present");
+    assert_eq!(
+        source_request
+            .pointer("/limits/max_pages")
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        source_request
+            .pointer("/limits/max_depth")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        source_request.get("intent").and_then(|v| v.as_str()),
+        Some("acquire")
+    );
+    assert_eq!(
+        source_request.get("scope").and_then(|v| v.as_str()),
+        Some("page")
+    );
+    assert_eq!(
+        source_request
+            .pointer("/options/values/discover_sitemaps")
+            .and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        source_request
+            .pointer("/options/values/max_sitemaps")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        source_request.pointer("/options/values/url_whitelist"),
+        Some(&serde_json::json!([]))
+    );
+    assert!(
+        source_request
+            .pointer("/options/values/custom_headers")
+            .is_none(),
+        "web SourceRequest options must not carry search caller headers"
+    );
 }
 
 #[tokio::test]
@@ -321,21 +355,24 @@ async fn wait_mode_reports_mixed_wait_outcomes_after_queueing_all_results() {
 
     // Enqueue directly (bypassing wait mode) so this test can force each
     // job's terminal status before `enqueue_search_crawls`'s wait loop
-    // observes it, rather than racing a real crawl.
-    let crawl_cfg = crawl_config(&cfg);
+    // observes it, rather than racing a real source job.
+    let auto_index_cfg = auto_index_config(&cfg);
     let mut jobs = Vec::new();
     for result in &results {
         let url = result["url"].as_str().unwrap();
-        let outcome = crawl_service::crawl_start_with_context(
-            &crawl_cfg,
-            &[url.to_string()],
+        let job = enqueue_web_source_auto_index(
+            &auto_index_cfg,
             &ctx,
-            None,
-            None,
+            url,
+            SourceScope::Page,
+            1,
+            0,
+            auto_index_cfg.embed,
+            "search",
         )
         .await
         .expect("enqueue");
-        jobs.push(outcome.result.jobs[0].job_id.clone());
+        jobs.push(job.id.0.to_string());
     }
     force_terminal_status(&ctx, &jobs[0], LifecycleStatus::Completed).await;
     force_terminal_status(&ctx, &jobs[1], LifecycleStatus::Failed).await;
@@ -395,13 +432,13 @@ async fn rejects_invalid_missing_and_duplicate_urls() {
 }
 
 #[tokio::test]
-async fn crawl_config_disables_wait_during_enqueue_phase() {
+async fn auto_index_config_disables_wait_during_enqueue_phase() {
     let mut cfg = make_cfg("rust");
     cfg.wait = true;
-    let c = crawl_config(&cfg);
+    let c = auto_index_config(&cfg);
     assert!(!c.wait);
-    assert_eq!(c.max_pages, 200);
-    assert_eq!(c.max_depth, 10);
+    assert_eq!(c.max_pages, 1);
+    assert_eq!(c.max_depth, 0);
 }
 
 #[test]
@@ -467,22 +504,31 @@ async fn enqueue_research_crawls_embeds_by_default_and_honors_skip_embed() {
     let output = enqueue_research_crawls(&cfg, &ctx, &hits).await;
 
     assert_eq!(output.jobs.len(), 1);
-    let effective = crawl_job_config_snapshot(&ctx, &output.jobs[0].job_id).await;
-    assert!(effective.embed, "research crawl should embed by default");
+    let source_request = crawl_job_source_request_json(&ctx, &output.jobs[0].job_id).await;
+    assert!(
+        source_request
+            .get("embed")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        "research auto-index should embed by default"
+    );
 
     cfg.embed = false;
     let ctx = test_ctx_with_workers(cfg.clone()).await;
     let output = enqueue_research_crawls(&cfg, &ctx, &hits).await;
 
     assert_eq!(output.jobs.len(), 1);
-    let effective = crawl_job_config_snapshot(&ctx, &output.jobs[0].job_id).await;
+    let source_request = crawl_job_source_request_json(&ctx, &output.jobs[0].job_id).await;
     assert!(
-        !effective.embed,
-        "--skip-embed should carry into research crawl jobs"
+        !source_request
+            .get("embed")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true),
+        "--skip-embed should carry into research source jobs"
     );
 }
 
-async fn crawl_job_config_snapshot(ctx: &ServiceContext, job_id: &str) -> Config {
+async fn crawl_job_source_request_json(ctx: &ServiceContext, job_id: &str) -> serde_json::Value {
     let store = ctx.job_store().expect("unified job store must be attached");
     let job_id = JobId(uuid::Uuid::parse_str(job_id).unwrap());
     let request_json = store
@@ -490,9 +536,8 @@ async fn crawl_job_config_snapshot(ctx: &ServiceContext, job_id: &str) -> Config
         .await
         .expect("request_json")
         .expect("request json stored");
-    let config_json = request_json
-        .get("config_json")
-        .and_then(|v| v.as_str())
-        .expect("config_json field present");
-    apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot")
+    request_json
+        .get("source_request")
+        .expect("source_request field present")
+        .clone()
 }

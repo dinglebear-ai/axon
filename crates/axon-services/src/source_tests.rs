@@ -4,6 +4,7 @@ use crate::source::classify::SourceInputKind;
 use crate::types::ServiceJob;
 use axon_api::source::{AuthScope, AuthSnapshot, LifecycleStatus, SourceKind};
 use axon_core::config::Config;
+use axon_error::ErrorStage;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
 use std::error::Error as StdError;
 use std::sync::Arc;

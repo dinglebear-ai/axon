@@ -3,10 +3,8 @@ use crate::context::ServiceContext;
 use crate::types::{ExecutionMode, StartDisposition};
 use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_core::config::Config;
-use axon_jobs::backend::JobKind as LegacyJobKind;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 fn test_config(start_url: &str) -> Config {
     let mut cfg = Config::default_minimal();
@@ -180,11 +178,13 @@ async fn crawl_start_with_context_rejects_empty_urls() {
     assert!(err.to_string().contains("No URLs provided"));
 }
 
-/// Crawl now enqueues onto the unified `JobStore` with real caller auth
-/// (mirroring Task 1's embed cutover), one unified job per URL.
+/// Crawl is a compatibility shim over detached Source jobs: one URL creates
+/// one `JobKind::Source` row carrying `SourceRequest { scope: site }`.
 #[tokio::test]
-async fn crawl_start_with_context_enqueues_on_unified_job_store_with_caller_auth() {
-    let (cfg, ctx) = test_ctx_with_workers("https://docs.rs").await;
+async fn crawl_start_with_context_enqueues_source_request_with_caller_auth() {
+    let (mut cfg, ctx) = test_ctx_with_workers("https://docs.rs").await;
+    cfg.max_pages = 321;
+    cfg.max_depth = 4;
     let caller = AuthSnapshot::from_caller(
         &CallerContext {
             caller_id: Some("user_1".to_string()),
@@ -222,7 +222,48 @@ async fn crawl_start_with_context_enqueues_on_unified_job_store_with_caller_auth
         .await
         .unwrap()
         .expect("job row must exist");
-    assert_eq!(job.kind, axon_api::source::JobKind::Crawl);
+    assert_eq!(job.kind, axon_api::source::JobKind::Source);
+
+    let request_json = store
+        .request_json(axon_api::source::JobId(job_id))
+        .await
+        .unwrap()
+        .expect("request_json must be stored");
+    let source_request = request_json
+        .get("source_request")
+        .expect("source_request field present");
+    assert_eq!(
+        source_request.get("source").and_then(|v| v.as_str()),
+        Some(cfg.start_url.as_str())
+    );
+    assert_eq!(
+        source_request.get("intent").and_then(|v| v.as_str()),
+        Some("acquire")
+    );
+    assert_eq!(
+        source_request.get("scope").and_then(|v| v.as_str()),
+        Some("site")
+    );
+    assert_eq!(
+        source_request.get("embed").and_then(|v| v.as_bool()),
+        Some(cfg.embed)
+    );
+    assert_eq!(
+        source_request.get("collection").and_then(|v| v.as_str()),
+        Some(cfg.collection.as_str())
+    );
+    assert_eq!(
+        source_request
+            .pointer("/limits/max_pages")
+            .and_then(serde_json::Value::as_u64),
+        Some(321)
+    );
+    assert_eq!(
+        source_request
+            .pointer("/limits/max_depth")
+            .and_then(serde_json::Value::as_u64),
+        Some(4)
+    );
 }
 
 /// Multiple URLs enqueue one unified job each.
@@ -241,59 +282,6 @@ async fn crawl_start_with_context_enqueues_one_job_per_url() {
     assert_eq!(outcome.result.jobs.len(), 2);
     assert_eq!(outcome.result.job_ids.len(), 2);
     assert_ne!(outcome.result.job_ids[0], outcome.result.job_ids[1]);
-}
-
-/// Crawl now runs on the real unified worker (see `CrawlRunner` in
-/// `runtime/job_runners/crawl_runner.rs`) via `job_service::job_status`/
-/// `list_jobs`/etc. bridging onto the same store (see
-/// `runtime/sqlite/crawl_bridge.rs`). A `.invalid` TLD (RFC 2606 — guaranteed
-/// never to resolve) keeps this test network-free and fast: DNS resolution
-/// fails with NXDOMAIN immediately rather than the connection-level timeout
-/// an unroutable IP would incur, while still proving the unified worker
-/// dispatches to the real `CrawlRunner`, not the `job_runner.unsupported_stage`
-/// catch-all.
-#[tokio::test]
-async fn crawl_job_runs_end_to_end_and_is_claimed_promptly() {
-    let (cfg, ctx) =
-        test_ctx_with_workers("https://nonexistent-domain-test-axon.invalid/page").await;
-    let started = std::time::Instant::now();
-    let outcome =
-        crawl_start_with_context(&cfg, std::slice::from_ref(&cfg.start_url), &ctx, None, None)
-            .await
-            .expect("enqueue");
-    let job_id = uuid::Uuid::parse_str(&outcome.result.jobs[0].job_id).expect("job id");
-
-    let mut status = None;
-    for _ in 0..200 {
-        let job = crate::jobs::job_status(&ctx, LegacyJobKind::Crawl, job_id)
-            .await
-            .expect("job_status")
-            .expect("job exists");
-        if job.status != "pending" && job.status != "running" {
-            status = Some(job);
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let job = status.expect("crawl job should reach a terminal status within timeout");
-    let unsupported_stage = job
-        .error_text
-        .as_deref()
-        .is_some_and(|text| text.contains("not wired yet"));
-    assert!(
-        !unsupported_stage,
-        "crawl must dispatch to the real runner, not the catch-all: {:?}",
-        job.error_text
-    );
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(5),
-        "crawl job took longer than a poll-interval-free path should — notify_unified() regression?"
-    );
-
-    let jobs = crate::jobs::list_jobs(&ctx, LegacyJobKind::Crawl, 10, 0)
-        .await
-        .expect("list_jobs");
-    assert!(jobs.iter().any(|j| j.id == job_id));
 }
 
 #[tokio::test]
@@ -318,16 +306,10 @@ async fn crawl_start_snapshots_effective_max_pages_at_enqueue_boundary()
             .await
             .map_err(|e| e.message)?
             .expect("request_json must be stored");
-        let config_json = request_json
-            .get("config_json")
-            .and_then(|v| v.as_str())
-            .expect("config_json field present");
-        let snapshot: serde_json::Value =
-            serde_json::from_str(config_json).expect("config_json is valid JSON");
-        Ok(snapshot
-            .pointer("/config/max_pages")
+        Ok(request_json
+            .pointer("/source_request/limits/max_pages")
             .and_then(serde_json::Value::as_u64)
-            .expect("crawl snapshot has max_pages") as u32)
+            .expect("source request has max_pages") as u32)
     }
 
     assert_eq!(captured_max_pages(0, false).await?, 5_000);

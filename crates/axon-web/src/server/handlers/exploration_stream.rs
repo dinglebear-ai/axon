@@ -215,7 +215,7 @@ pub(crate) async fn research_stream(
     auth: Option<axum::Extension<lab_auth::AuthContext>>,
     Json(req): Json<ResearchRequest>,
 ) -> Response {
-    // mutates_if (axon #298 follow-up): same unconditional auto-crawl as
+    // mutates_if (axon #298 follow-up): same unconditional source auto-index as
     // `research` above — see `super::require_mutates_if_write_scope`'s doc
     // comment.
     if let Err(err) = super::require_mutates_if_write_scope(auth.as_ref()) {

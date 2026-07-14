@@ -236,6 +236,9 @@ pub struct Config {
     /// Flag: `--scope <page|site|...>`. `None` uses the adapter's default scope.
     pub source_scope: Option<String>,
 
+    /// Request inline cleaned-page output for retained `axon scrape`.
+    pub scrape_inline: bool,
+
     /// Stores selected for `axon reset` (`jobs`/`ledger`/`graph`/`memory`/
     /// `vectors`/`artifacts`). Empty = every store. Flag: `reset --stores a,b`.
     pub reset_stores: Vec<String>,

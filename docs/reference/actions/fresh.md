@@ -17,8 +17,8 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 
 Manage CLI-created freshness schedules for embedding-producing commands.
 
-> Current runtime only. The #298 target replaces this old `--fresh` schedule
-> model with source-backed freshness via `axon <source> --watch`,
+> Current runtime only. The SourceRequest target replaces this old `--fresh`
+> schedule model with source-backed freshness via `axon <source> --watch`,
 > `axon watch <source>`, and `axon watch exec <source>` where applicable.
 
 ## Surfaces
@@ -37,9 +37,8 @@ surfaces are deferred follow-up work.
 
 ```bash
 axon scrape <url> --fresh 1d
-axon crawl <url> --fresh 1d
-axon embed <input> --fresh 7d
-axon ingest <target> --fresh 7d
+axon <url> --scope site --watch
+axon <path-or-source> --watch
 
 axon fresh list [--json]
 axon fresh run-now <id> [--json]
@@ -63,11 +62,11 @@ fractional, zero, and sub-day values are rejected.
 # Keep a documentation page fresh daily
 axon scrape https://modelcontextprotocol.io/specification --fresh 1d
 
-# Keep a bounded docs crawl fresh daily
-axon crawl https://modelcontextprotocol.io/docs/getting-started/intro --fresh 1d
+# Keep a bounded docs source fresh
+axon https://modelcontextprotocol.io/docs/getting-started/intro --scope docs --watch
 
-# Keep a GitHub/RSS/reddit/etc. ingest fresh weekly
-axon ingest unraid/api --fresh 7d
+# Keep a GitHub/RSS/reddit/etc. source fresh
+axon unraid/api --watch
 
 # Inspect and manually trigger
 axon fresh list --json
@@ -81,10 +80,8 @@ axon fresh history <id> --json
 - `axon serve` and `axon mcp` start the in-process freshness scheduler.
 - One-shot CLI creation only writes the schedule unless `--wait true` is also
   supplied, in which case Axon creates the schedule and immediately runs it once.
-- Scheduled `crawl`, `embed`, and `ingest` runs enqueue normal jobs and preserve
-  existing queue caps and worker behavior.
-- Scheduled `scrape` runs inline inside the bounded freshness executor because
-  scrape has no dedicated job family in v1.
+- Legacy schedule rows may still replay through compatibility code, but new
+  source freshness should use `SourceRequest`/watch surfaces.
 - Replay payloads are versioned and revalidated before dispatch. Secret-bearing
   headers such as `Authorization`, `Cookie`, and `X-API-Key` are rejected at
   schedule creation and are not persisted in SQLite history.

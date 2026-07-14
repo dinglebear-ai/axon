@@ -215,9 +215,9 @@ pub struct SourceResult {
     pub job: Option<JobDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchResult>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<ArtifactRef>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<SourceError>,
 }
 

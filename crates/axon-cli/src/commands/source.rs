@@ -8,8 +8,11 @@
 //! acquisition, and per-family bridge dispatch live in `axon-services` so CLI,
 //! MCP, and REST share one entrypoint.
 
-use axon_api::source::{LifecycleStatus, SourceRequest, SourceResult, SourceScope};
-use axon_core::config::Config;
+use axon_api::source::{
+    ContentRef, LifecycleStatus, ResponseMode, SourceIntent, SourceLimits, SourceRequest,
+    SourceResult, SourceScope,
+};
+use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
 use axon_services::context::ServiceContext;
 use axon_services::index_source;
@@ -21,12 +24,16 @@ pub async fn run_source(
 ) -> Result<(), Box<dyn Error>> {
     let input = resolve_source_input(cfg)?;
 
-    let mut request = SourceRequest::new(input);
-    request.collection = Some(cfg.collection.clone());
-    if let Some(scope) = cfg.source_scope.as_deref() {
-        request.scope = Some(parse_scope(scope)?);
-    }
+    let request = build_source_request(cfg, input)?;
 
+    run_source_request(cfg, service_context, request).await
+}
+
+pub(crate) async fn run_source_request(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    request: SourceRequest,
+) -> Result<(), Box<dyn Error>> {
     let result = index_source(request, service_context)
         .await
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
@@ -55,6 +62,31 @@ pub async fn run_source(
 fn parse_scope(scope: &str) -> Result<SourceScope, Box<dyn Error>> {
     serde_json::from_value::<SourceScope>(serde_json::Value::String(scope.to_string()))
         .map_err(|_| format!("unknown --scope value: {scope}").into())
+}
+
+pub(crate) fn build_source_request(
+    cfg: &Config,
+    input: String,
+) -> Result<SourceRequest, Box<dyn Error>> {
+    let mut request = SourceRequest::new(input);
+    request.collection = Some(cfg.collection.clone());
+    request.embed = cfg.embed;
+    if cfg.scrape_inline {
+        request.output.response_mode = ResponseMode::Inline;
+    }
+    if cfg.command == CommandKind::Scrape {
+        request.intent = SourceIntent::Acquire;
+        request.scope = Some(SourceScope::Page);
+        request.limits = SourceLimits {
+            max_items: Some(1),
+            max_pages: Some(1),
+            max_depth: Some(0),
+            ..SourceLimits::default()
+        };
+    } else if let Some(scope) = cfg.source_scope.as_deref() {
+        request.scope = Some(parse_scope(scope)?);
+    }
+    Ok(request)
 }
 
 /// Read the positional argument as the source input to index.
@@ -89,8 +121,13 @@ fn render_source_result(cfg: &Config, result: &SourceResult) {
                 "collection": cfg.collection,
                 "graph": result.graph,
                 "warnings": result.warnings,
+                "inline": &result.inline,
             })
         );
+        return;
+    }
+
+    if cfg.scrape_inline && render_inline_source_content(result) {
         return;
     }
 
@@ -122,6 +159,23 @@ fn render_source_result(cfg: &Config, result: &SourceResult) {
     );
     for warning in &result.warnings {
         println!("  {}", muted(&format!("Warning: {}", warning.message)));
+    }
+}
+
+fn render_inline_source_content(result: &SourceResult) -> bool {
+    let Some(inline) = &result.inline else {
+        return false;
+    };
+    match inline.content.as_ref() {
+        Some(ContentRef::InlineText { text }) => {
+            println!("{text}");
+            true
+        }
+        Some(ContentRef::InlineBytes { bytes_base64, .. }) => {
+            println!("{bytes_base64}");
+            true
+        }
+        _ => false,
     }
 }
 

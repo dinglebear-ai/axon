@@ -1,9 +1,11 @@
 # Source Pipeline Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-14
 
 ## Contract
 
-This is the target clean-break contract. It is not fully implemented today.
+This is the clean-break contract. The web acquisition slice is now implemented
+through SourceRequest; other source families still have follow-up work called
+out below.
 
 All source acquisition, refresh, watch, indexing, graph extraction, embedding,
 publishing, and cleanup flow through one pipeline.
@@ -70,17 +72,23 @@ Partially implemented:
 
 - Local code indexing shares `SourceDocument -> PreparedDoc -> embed_prepared_docs`,
   but its ledger/generation/cleanup model is not the general source pipeline yet.
-- Generic `embed`, `crawl`, `ingest`, sessions, search, and research still
-  enter through command/service-specific paths and job payloads.
-- The `scrape` command is intentionally retained, but its target shape is not a
-  separate legacy pipeline: `axon scrape <url>` is a thin SourceRequest
-  projection with `scope=page`, `embed=true`, and clean-content output.
-- Refresh currently facets Qdrant payloads by `source_type`/`seed_url` and
-  re-enqueues crawl/ingest jobs from stored snapshots; it does not use a
-  universal SourceLedger.
+- Web page/site/docs acquisition now enters through `SourceRequest` and Source
+  jobs. `axon scrape <url>` is retained as a one-page projection with
+  `scope=page`, `embed=true`, `limits.max_pages=1`, clean content output, and
+  no crawl fanout. Bare web sources with `--scope site|docs`, search/research
+  auto-index, refresh, and URL watch enqueue Source jobs rather than legacy
+  Crawl jobs or child Embed jobs.
+- `axon crawl <url>` is reserved at CLI routing time with replacement guidance
+  to use `axon <url> --scope site|docs`. The old MCP `crawl` action and REST
+  `/v1/crawl` route are removed from public surfaces. Legacy `JobKind::Crawl`
+  rows are migration-only and are dead-lettered instead of recovered/requeued.
+- Refresh still facets Qdrant payloads by `source_type`/`seed_url`; web origins
+  re-enter through Source jobs, while non-web legacy snapshot handling remains
+  follow-up until all source families share the universal SourceLedger.
 - URL watch and code-search watch are separate systems today. URL watch is a
-  SQLite URL change detector; `code-search-watch` is a filesystem watcher over
-  local Git checkouts.
+  SQLite URL change detector that dispatches web refreshes as Source jobs;
+  `code-search-watch` is reserved/removed from the public command surface and
+  local-code watch behavior remains follow-up.
 - `graphing` currently runs **after** `publishing`, not before it as the Stage
   Registry order below implies. `axon-services::source::index_source_with_auth`
   dispatches acquire+prepare+embed+publish through the family bridge first,
@@ -101,6 +109,9 @@ Planned by this contract:
   over the same request shape.
 - `axon scrape <url>` is a CLI convenience projection over the same request
   shape for exactly one web page; it embeds by default and must not crawl.
+- Site/docs crawl behavior is the source surface: `axon <url> --scope site` or
+  `axon <url> --scope docs`, REST `/v1/sources` with the same scope, or MCP
+  `action=source`.
 - Graph extraction, source ledger rows, document status rows, progress events,
   and vector payloads all share the same `job_id`, source identifiers, and
   generation identifiers.

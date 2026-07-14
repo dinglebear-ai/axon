@@ -35,25 +35,33 @@ class Surface:
 SOURCE_REDIRECTS = {
     "github": Surface(
         name="github",
-        service="services::ingest::* via source_type=github",
-        mcp='`ingest.start` with `source_type: "github"`',
-        rest="`POST /v1/ingest`",
-        notes="Compatibility source page. Use the unified ingest action for CLI, REST, and MCP.",
+        service="services::source::* via SourceRequest",
+        mcp="`source`",
+        rest="`POST /v1/sources`",
+        notes="Compatibility source page. Use the unified source action for CLI, REST, and MCP.",
     ),
     "reddit": Surface(
         name="reddit",
-        service="services::ingest::* via source_type=reddit",
-        mcp='`ingest.start` with `source_type: "reddit"`',
-        rest="`POST /v1/ingest`",
-        notes="Compatibility source page. Use the unified ingest action for CLI, REST, and MCP.",
+        service="services::source::* via SourceRequest",
+        mcp="`source`",
+        rest="`POST /v1/sources`",
+        notes="Compatibility source page. Use the unified source action for CLI, REST, and MCP.",
     ),
     "youtube": Surface(
         name="youtube",
-        service="services::ingest::* via source_type=youtube",
-        mcp='`ingest.start` with `source_type: "youtube"`',
-        rest="`POST /v1/ingest`",
-        notes="Compatibility source page. Use the unified ingest action for CLI, REST, and MCP.",
+        service="services::source::* via SourceRequest",
+        mcp="`source`",
+        rest="`POST /v1/sources`",
+        notes="Compatibility source page. Use the unified source action for CLI, REST, and MCP.",
     ),
+}
+
+REMOVED_CLI_ENTRIES = {
+    "crawl": "`axon crawl` reserved; use `axon <url> --scope site|docs`",
+    "embed": "Removed; use `axon <path-or-source>`",
+    "ingest": "Removed; use `axon <source>`",
+    "code-search": "Removed; use `axon <path> --scope directory`",
+    "code-search-watch": "Removed; use `axon <path> --watch`",
 }
 
 
@@ -98,16 +106,16 @@ def parse_api_parity(path: Path) -> dict[str, Surface]:
 
 
 def cli_entry(action: str, surface: Surface) -> str:
+    if action in REMOVED_CLI_ENTRIES:
+        return REMOVED_CLI_ENTRIES[action]
     if action in {"github", "reddit", "youtube"}:
-        return "`axon ingest <target>`"
+        return "`axon <source>`"
     return f"`axon {action} ...`"
 
 
 def mcp_entry(surface: Surface) -> str:
     if surface.mcp in {"no action", "no dedicated action"}:
         return "Not exposed as a dedicated MCP action."
-    if surface.name in {"github", "reddit", "youtube"}:
-        return surface.mcp
     if "." in surface.mcp and "," in surface.mcp:
         return f"`{{ \"action\": \"{surface.name}\", \"subaction\": \"...\" }}` ({surface.mcp})"
     if "." in surface.mcp:
@@ -197,7 +205,14 @@ def generate_index(actions_dir: Path, surfaces: dict[str, Surface]) -> str:
         surface = surfaces.get(action)
         title = html.escape(page_title(page))
         if surface is None:
-            cli = f"`axon {action} ...`"
+            surface = Surface(
+                name=action,
+                service="Not inventoried",
+                mcp="no dedicated action",
+                rest="Not inventoried",
+                notes="",
+            )
+            cli = cli_entry(action, surface)
             rest = "Not inventoried"
             mcp = "Not inventoried"
         else:

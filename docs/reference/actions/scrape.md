@@ -1,5 +1,5 @@
 # axon scrape
-Last Modified: 2026-06-07
+Last Modified: 2026-07-14
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
@@ -18,26 +18,30 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 Version: 1.0.0
 Last Updated: 20:29:46 | 03/03/2026 EST
 
-Scrape one or more URLs and return page content as markdown, HTML, raw HTML, or JSON. Runs inline (no queue), validates URLs before network access, and can embed scraped markdown into Qdrant in a single batch.
+Fetch, render, normalize, embed, and return or save exactly one web page. `axon scrape` is a CLI convenience projection over the unified source pipeline:
+
+```text
+SourceRequest { source: url, scope: page, embed: true }
+```
+
+It does not crawl links. Use `axon <url> --scope site` or `--scope docs` for multi-page acquisition.
 
 ## Synopsis
 
 ```bash
-axon scrape <url>... [FLAGS]
-axon scrape --urls "<url1>,<url2>" [FLAGS]
-axon scrape --url-glob "https://docs.example.com/{1..10}" [FLAGS]
+axon scrape <url> [FLAGS]
 ```
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `<url>...` | One or more URLs to scrape |
+| `<url>` | One URL to fetch/render/normalize as exactly one page |
 
 ## URL Input Rules
 
-- At least one URL is required via positional args, `--urls`, or `--url-glob`.
-- URL inputs are normalized and deduplicated before execution.
+- Exactly one URL is required.
+- The URL is resolved through the same source router and web adapter used by other unified source requests.
 
 ## Flags
 
@@ -45,56 +49,36 @@ All global flags apply. Key flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--format <fmt>` | `markdown` | Output format: `markdown`, `html`, `rawHtml`, `json`. |
-| `--render-mode <mode>` | `auto-switch` | Fetch mode: `http`, `chrome`, `auto-switch` (`auto-switch` behaves like HTTP for scrape). |
-| `--skip-embed` | `false` | Fetch/save only; do not batch-embed scraped markdown into Qdrant. |
-| `--output <path>` | — | Write output to a file (single URL only). |
-| `--output-dir <dir>` | `.cache/axon-rust/output` | Base output directory used by embed flow. |
-| `--header "Key: Value"` | — | Repeatable custom HTTP headers for scrape requests. |
-| `--fresh <Nd>` | — | CLI-only: create or update a recurring freshness schedule, for example `--fresh 1d`. |
-| `--json` | `false` | Emit structured JSON per URL on stdout. |
+| `--no-embed` | `false` | Fetch/render/normalize and return or save clean content without publishing vectors. |
+| `--inline` | `false` | Return the cleaned page body inline when it fits the output policy. |
+| `--json` | `false` | Emit the unified source result as structured JSON. |
 
 ## Related Config
 
 | Config | Default | Description |
 |--------|---------|-------------|
-| `scrape.batch-timeout-secs` / `AXON_SCRAPE_BATCH_TIMEOUT_SECS` | `120` | End-to-end timeout for one service-level scrape batch. Applies to CLI, REST, and MCP service paths. |
+| Web source config | varies | Render mode, page limits, headers, artifact output, and embed behavior resolve through the unified source/web adapter configuration. |
 
 ## Examples
 
 ```bash
-# Single URL (default markdown output)
+# Fetch one page and embed it
 axon scrape https://example.com
-
-# Multiple URLs from CSV
-axon scrape --urls "https://a.dev,https://b.dev"
-
-# URL glob expansion with numeric range
-axon scrape --url-glob "https://docs.example.com/v{1..3}/intro"
-
-# HTML output to file
-axon scrape https://example.com --format html --output page.html
 
 # JSON output
 axon scrape https://example.com --json
 
-# Disable embedding
-axon scrape https://example.com --skip-embed
+# Return clean content inline when policy allows it
+axon scrape https://example.com --inline
 
-# Keep a page fresh daily
-axon scrape https://modelcontextprotocol.io/specification --fresh 1d
-
-# JSON output from the local in-process CLI path
-axon scrape https://example.com --json
+# Fetch/normalize without publishing vectors
+axon scrape https://example.com --no-embed
 ```
 
 ## Behavior Notes
 
-- Non-2xx responses fail that URL with `scrape failed: HTTP <code>`.
-- `--output` with multiple URLs is rejected to prevent overwrite.
-- Scrape errors are reported per URL; other URLs continue.
-- By default, scrape writes markdown under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embeds once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs. Pass `--skip-embed` to fetch/save without indexing.
-- `--fresh` is CLI-only in v1. It stores a safe replay snapshot and schedules this scrape to run inside the bounded freshness executor started by `axon serve`/`axon mcp`; REST/MCP freshness management is not exposed yet.
-- Freshness schedule creation rejects secret-bearing custom headers such as `Authorization`, `Cookie`, and `X-API-Key` so secrets are not persisted in SQLite history.
-- Scrape artifacts are written through the shared service artifact writer, which rejects paths outside the output root and uses a temporary file plus rename to avoid partial final files.
-- Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon scrape` through HTTP; call the `/v1/scrape` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.
+- `scrape` is page-scoped: it fetches/renders/normalizes exactly the requested page and does not follow links.
+- Embedding is on by default because single pages can be valuable source material. Use `--no-embed` only for content-output-only workflows.
+- Under the hood, scrape writes through the same ledger, artifact, prepare, embed, and publish stages as other web source requests.
+- Scrape is retained as a CLI convenience command only. REST and MCP callers use `POST /v1/sources` or MCP `action=source` with `scope=page`.
+- No legacy scrape engine, legacy `/v1/scrape` route, or dedicated MCP `scrape` action is part of the end-state contract.

@@ -4,6 +4,10 @@ use axon_api::source::*;
 use tokio::sync::Mutex;
 
 use super::FakeLedgerState;
+use crate::cleanup_debt::{
+    artifact_delete_debt_for_metadata, cache_prune_debt_for_metadata, graph_prune_debt,
+    ledger_prune_debt, vector_delete_debt,
+};
 use crate::store::Result;
 use crate::store::util::{keyed_manifest_items, manifest_item_changed, timestamp};
 
@@ -81,12 +85,14 @@ pub(in crate::store) async fn delete_generation(
     Ok(deleted)
 }
 
-/// Record (idempotently) the `VectorDelete` debt for every item that was
-/// removed or modified between the previous committed generation and
-/// `generation`. Returns the full set of debt rows relevant to this publish
-/// — freshly inserted or already present at the same natural key — so the
-/// caller can fold it into `SourceGeneration.cleanup_debt` without re-scanning
-/// the whole store.
+/// Record (idempotently) stale-item debt for every item that was removed or
+/// modified between the previous committed generation and `generation`.
+///
+/// This includes the vector delete plus any artifact/cache cleanup identities
+/// recorded in the previous manifest metadata. Returns the full set of debt
+/// rows relevant to this publish — freshly inserted or already present at the
+/// same natural key — so the caller can fold it into
+/// `SourceGeneration.cleanup_debt` without re-scanning the whole store.
 pub(super) fn record_removed_item_cleanup_debt(
     state: &mut FakeLedgerState,
     generation: &SourceGeneration,
@@ -94,9 +100,12 @@ pub(super) fn record_removed_item_cleanup_debt(
     let Some(previous_generation) = generation.previous_generation.as_ref() else {
         return Vec::new();
     };
-    let previous_items = state
+    let previous_manifest = state
         .manifests
         .get(&(generation.source_id.clone(), previous_generation.clone()))
+        .cloned();
+    let previous_items = previous_manifest
+        .as_ref()
         .map(|manifest| manifest.items.clone())
         .unwrap_or_default();
     let next_by_key = state
@@ -105,47 +114,71 @@ pub(super) fn record_removed_item_cleanup_debt(
         .map(|manifest| keyed_manifest_items(manifest.items.clone()))
         .unwrap_or_default();
     let mut debts = Vec::new();
+    let mut artifact_ids = std::collections::BTreeSet::new();
+    if let Some(previous_manifest) = previous_manifest.as_ref() {
+        for debt in artifact_delete_debt_for_metadata(
+            &generation.source_id,
+            previous_generation,
+            &previous_manifest.metadata,
+            "manifest",
+            &mut artifact_ids,
+        )
+        .unwrap_or_default()
+        {
+            insert_or_get_debt(state, &mut debts, debt);
+        }
+    }
     for item in previous_items {
         if let Some(next) = next_by_key.get(&item.source_item_key)
             && !manifest_item_changed(&item, next)
         {
             continue;
         }
-        let debt = CleanupDebt {
-            debt_id: CleanupDebtId::new(format!(
-                "debt_{}",
-                uuid::Uuid::new_v5(
-                    &uuid::Uuid::NAMESPACE_URL,
-                    format!(
-                        "{}:{}:{}",
-                        generation.source_id.0, previous_generation.0, item.source_item_key.0
-                    )
-                    .as_bytes(),
-                )
-            )),
-            job_id: JobId::new(uuid::Uuid::from_u128(0)),
-            source_id: generation.source_id.clone(),
-            generation: Some(previous_generation.clone()),
-            kind: CleanupDebtKind::VectorDelete,
-            selector: CleanupSelector::SourceItem {
-                source_id: generation.source_id.clone(),
-                source_item_key: item.source_item_key,
-                generation: previous_generation.clone(),
-            },
-            status: LifecycleStatus::Pending,
-            created_at: timestamp(),
-            attempts: 0,
-            last_error: None,
-            next_retry_at: None,
-            completed_at: None,
-        };
-        let stored = state
-            .cleanup_debt
-            .entry(debt.debt_id.clone())
-            .or_insert(debt);
-        debts.push(stored.clone());
+        insert_or_get_debt(
+            state,
+            &mut debts,
+            vector_delete_debt(
+                &generation.source_id,
+                previous_generation,
+                &item.source_item_key,
+            ),
+        );
+        for debt in artifact_delete_debt_for_metadata(
+            &generation.source_id,
+            previous_generation,
+            &item.metadata,
+            &item.source_item_key.0,
+            &mut artifact_ids,
+        )
+        .unwrap_or_default()
+        {
+            insert_or_get_debt(state, &mut debts, debt);
+        }
+        if let Some(debt) = cache_prune_debt_for_metadata(
+            &generation.source_id,
+            previous_generation,
+            &item.metadata,
+            &item.source_item_key,
+        )
+        .ok()
+        .flatten()
+        {
+            insert_or_get_debt(state, &mut debts, debt);
+        }
     }
     debts
+}
+
+fn insert_or_get_debt(
+    state: &mut FakeLedgerState,
+    debts: &mut Vec<CleanupDebt>,
+    debt: CleanupDebt,
+) {
+    let stored = state
+        .cleanup_debt
+        .entry(debt.debt_id.clone())
+        .or_insert(debt);
+    debts.push(stored.clone());
 }
 
 /// Record (idempotently) `GraphPrune` debt for every item genuinely absent
@@ -175,32 +208,11 @@ pub(super) fn record_graph_prune_cleanup_debt(
         if next_by_key.contains_key(&item.source_item_key) {
             continue; // still present (unchanged or modified) — graph node stays
         }
-        let debt = CleanupDebt {
-            debt_id: CleanupDebtId::new(format!(
-                "debt_{}",
-                uuid::Uuid::new_v5(
-                    &uuid::Uuid::NAMESPACE_URL,
-                    format!(
-                        "graph:{}:{}:{}",
-                        generation.source_id.0, previous_generation.0, item.source_item_key.0
-                    )
-                    .as_bytes(),
-                )
-            )),
-            job_id: JobId::new(uuid::Uuid::from_u128(0)),
-            source_id: generation.source_id.clone(),
-            generation: Some(previous_generation.clone()),
-            kind: CleanupDebtKind::GraphPrune,
-            selector: CleanupSelector::GraphNodes {
-                stable_keys: vec![item.source_item_key.0.clone()],
-            },
-            status: LifecycleStatus::Pending,
-            created_at: timestamp(),
-            attempts: 0,
-            last_error: None,
-            next_retry_at: None,
-            completed_at: None,
-        };
+        let debt = graph_prune_debt(
+            &generation.source_id,
+            previous_generation,
+            &item.source_item_key,
+        );
         let stored = state
             .cleanup_debt
             .entry(debt.debt_id.clone())
@@ -252,29 +264,7 @@ pub(super) fn record_ledger_prune_cleanup_debt(
                 && debt.kind != CleanupDebtKind::LedgerPrune
         });
         if !has_unresolved_non_ledger_debt {
-            let debt = CleanupDebt {
-                debt_id: CleanupDebtId::new(format!(
-                    "debt_{}",
-                    uuid::Uuid::new_v5(
-                        &uuid::Uuid::NAMESPACE_URL,
-                        format!("ledger:{}:{}", generation.source_id.0, candidate.0).as_bytes(),
-                    )
-                )),
-                job_id: JobId::new(uuid::Uuid::from_u128(0)),
-                source_id: generation.source_id.clone(),
-                generation: Some(candidate.clone()),
-                kind: CleanupDebtKind::LedgerPrune,
-                selector: CleanupSelector::LedgerGenerations {
-                    source_id: generation.source_id.clone(),
-                    up_to_generation: candidate.clone(),
-                },
-                status: LifecycleStatus::Pending,
-                created_at: timestamp(),
-                attempts: 0,
-                last_error: None,
-                next_retry_at: None,
-                completed_at: None,
-            };
+            let debt = ledger_prune_debt(&generation.source_id, &candidate);
             let stored = state
                 .cleanup_debt
                 .entry(debt.debt_id.clone())

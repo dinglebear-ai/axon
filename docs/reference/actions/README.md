@@ -20,29 +20,29 @@ Axon exposes one logical action layer through three adapters: local CLI commands
 |---|---|---|---|---|
 | `ask` | `axon ask ...` | Not inventoried | Not inventoried | [axon ask](ask.md) |
 | `brand` | `axon brand ...` | Not inventoried | Not inventoried | [brand](brand.md) |
-| `code-search` | `axon code-search ...` | Not inventoried | Not inventoried | [code-search](code-search.md) |
+| `code-search` | Removed; use `axon <path> --scope directory` | Not inventoried | Not inventoried | [code-search](code-search.md) |
 | `completions` | `axon completions ...` | Not inventoried | Not inventoried | [axon completions](completions.md) |
 | `config` | `axon config ...` | Not inventoried | Not inventoried | [config](config.md) |
-| `crawl` | `axon crawl ...` | Not inventoried | Not inventoried | [axon crawl](crawl.md) |
+| `crawl` | `axon crawl` reserved; use `axon <url> --scope site|docs` | Not inventoried | Not inventoried | [axon crawl](crawl.md) |
 | `debug` | `axon debug ...` | Not inventoried | Not inventoried | [axon debug](debug.md) |
 | `dedupe` | `axon dedupe ...` | Not inventoried | Not inventoried | [axon dedupe](dedupe.md) |
 | `diff` | `axon diff ...` | Not inventoried | Not inventoried | [diff](diff.md) |
 | `doctor` | `axon doctor ...` | Not inventoried | Not inventoried | [axon doctor](doctor.md) |
 | `domains` | `axon domains ...` | Not inventoried | Not inventoried | [axon domains](domains.md) |
-| `embed` | `axon embed ...` | Not inventoried | Not inventoried | [axon embed](embed.md) |
+| `embed` | Removed; use `axon <path-or-source>` | Not inventoried | Not inventoried | [axon embed](embed.md) |
 | `endpoints` | `axon endpoints ...` | Not inventoried | Not inventoried | [endpoints](endpoints.md) |
 | `evaluate` | `axon evaluate ...` | Not inventoried | Not inventoried | [axon evaluate](evaluate.md) |
 | `extract` | `axon extract ...` | Not inventoried | Not inventoried | [axon extract](extract.md) |
 | `fresh` | `axon fresh ...` | Not inventoried | Not inventoried | [axon fresh](fresh.md) |
-| `github` | `axon ingest <target>` | `POST /v1/ingest` | `ingest.start` with `source_type: "github"` | [axon github (removed — use `axon ingest`)](github.md) |
-| `ingest` | `axon ingest ...` | Not inventoried | Not inventoried | [axon ingest](ingest.md) |
+| `github` | `axon <source>` | `POST /v1/sources` | `source` | [axon github (removed — use `axon &lt;source&gt;`)](github.md) |
+| `ingest` | Removed; use `axon <source>` | Not inventoried | Not inventoried | [axon ingest](ingest.md) |
 | `map` | `axon map ...` | Not inventoried | Not inventoried | [axon map](map.md) |
 | `mcp` | `axon mcp ...` | Not inventoried | Not inventoried | [axon mcp](mcp.md) |
 | `memory` | `axon memory ...` | Not inventoried | Not inventoried | [axon memory](memory.md) |
 | `migrate` | `axon migrate ...` | Not inventoried | Not inventoried | [migrate](migrate.md) |
 | `monitor` | `axon monitor ...` | Not inventoried | Not inventoried | [monitor](monitor.md) |
 | `query` | `axon query ...` | Not inventoried | Not inventoried | [axon query](query.md) |
-| `reddit` | `axon ingest <target>` | `POST /v1/ingest` | `ingest.start` with `source_type: "reddit"` | [axon reddit (removed — use `axon ingest`)](reddit.md) |
+| `reddit` | `axon <source>` | `POST /v1/sources` | `source` | [axon reddit (removed — use `axon &lt;source&gt;`)](reddit.md) |
 | `refresh` | `axon refresh ...` | Not inventoried | Not inventoried | [axon refresh](refresh.md) |
 | `research` | `axon research ...` | Not inventoried | Not inventoried | [axon research](research.md) |
 | `retrieve` | `axon retrieve ...` | Not inventoried | Not inventoried | [axon retrieve](retrieve.md) |
@@ -60,7 +60,7 @@ Axon exposes one logical action layer through three adapters: local CLI commands
 | `sync` | `axon sync ...` | Not inventoried | Not inventoried | [sync](sync.md) |
 | `train` | `axon train ...` | Not inventoried | Not inventoried | [train](train.md) |
 | `watch` | `axon watch ...` | Not inventoried | Not inventoried | [axon watch](watch.md) |
-| `youtube` | `axon ingest <target>` | `POST /v1/ingest` | `ingest.start` with `source_type: "youtube"` | [axon youtube (removed — use `axon ingest`)](youtube.md) |
+| `youtube` | `axon <source>` | `POST /v1/sources` | `source` | [axon youtube (removed — use `axon &lt;source&gt;`)](youtube.md) |
 
 ## Generation
 
