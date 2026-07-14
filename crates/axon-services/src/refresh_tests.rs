@@ -138,6 +138,50 @@ fn plan_counts_by_action() {
     assert_eq!(plan.skip_count(), 1);
 }
 
+#[tokio::test]
+async fn execute_refresh_fails_legacy_web_origin_without_crawl_enqueue() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(NoopServiceRuntime));
+    let plan = RefreshPlan {
+        origins: vec![origin("embed", "https://docs.example.com")],
+    };
+
+    let outcome = execute_refresh(&cfg, &ctx, &plan).await.expect("refresh");
+
+    assert_eq!(outcome.crawl_enqueued, 0);
+    assert_eq!(outcome.ingest_enqueued, 0);
+    assert_eq!(outcome.failures.len(), 1);
+    assert_eq!(outcome.failures[0].0, "https://docs.example.com");
+    assert!(
+        outcome.failures[0].1.contains("ledger registration"),
+        "expected migration-required failure, got: {:?}",
+        outcome.failures
+    );
+}
+
+#[tokio::test]
+async fn execute_refresh_fails_ledger_web_origin_without_unified_job_store() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(NoopServiceRuntime));
+    let mut web = origin("embed", "https://docs.example.com");
+    web.ledger_source_id = Some("src_web".to_string());
+    let plan = RefreshPlan { origins: vec![web] };
+
+    let outcome = execute_refresh(&cfg, &ctx, &plan).await.expect("refresh");
+
+    assert_eq!(outcome.crawl_enqueued, 0);
+    assert_eq!(outcome.failures.len(), 1);
+    assert!(
+        outcome.failures[0].1.contains("unified job store"),
+        "expected unified-store failure, got: {:?}",
+        outcome.failures
+    );
+}
+
 // --- Ledger-driven discovery (issue #298 WS-B) ---------------------------
 
 fn ledger_source(id: &str, kind: SourceKind, uri: &str, chunks: u64) -> SourceSummary {

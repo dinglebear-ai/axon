@@ -77,6 +77,7 @@ impl Default for Config {
             yes: false,
             setup_method: None,
             source_scope: None,
+            scrape_inline: false,
             reset_stores: Vec::new(),
             reset_dry_run: false,
             prune_target: None,

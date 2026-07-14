@@ -15,9 +15,9 @@ Complete listing of all Axon components.
 
 Axon exposes one MCP tool with the full operation space routed via the `action` parameter.
 
-The full current action set is defined by the generated MCP schema in
-`crates/axon-api/src/mcp_schema.rs`; see `docs/reference/mcp/tool-schema.md`
-for the current generated runtime snapshot.
+The full current action set is defined by `MCP_ACTION_SPECS` in
+`crates/axon-mcp/src/server/authz.rs`; see
+`docs/reference/mcp/tool-schema.md` for the current generated runtime snapshot.
 
 ### Direct actions (no subaction required)
 
@@ -27,11 +27,11 @@ for the current generated runtime snapshot.
 | `map` | Discover all URLs at a domain without scraping |
 | `endpoints` | Discover API endpoints from page HTML and JS bundles |
 | `query` | Semantic vector search |
-| `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing |
+| `research` | Web research via SearXNG/Tavily with LLM synthesis and Source auto-indexing |
 | `retrieve` | Fetch stored document chunks from Qdrant |
-| `scrape` | Scrape URLs to markdown |
 | `screenshot` | Capture page screenshot via Chrome |
-| `search` | Web search via SearXNG/Tavily, auto-queues crawl jobs |
+| `search` | Web search via SearXNG/Tavily, auto-queues Source jobs |
+| `source` | Unified source acquisition/indexing |
 | `summarize` | Scrape and summarize one or more URLs |
 | `brand` | Analyze a URL's brand identity |
 | `diff` | Diff two URLs |
@@ -43,10 +43,8 @@ for the current generated runtime snapshot.
 
 | Action | Subactions | Description |
 |--------|-----------|-------------|
-| `crawl` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | Full site crawling |
 | `extract` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | LLM-powered structured extraction |
-| `embed` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | Vector embedding into Qdrant |
-| `ingest` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | External source ingestion (GitHub, GitLab, Gitea, Git, Reddit, YouTube) |
+| `memory` | `remember`, `search`, `show`, `link`, `supersede`, `context`, ... | Persistent memory lifecycle |
 
 ### Info actions
 
@@ -61,7 +59,10 @@ for the current generated runtime snapshot.
 
 ### REST-only or CLI-only operations
 
-`dedupe`, `debug`, `migrate`, `setup`, `watch`, and artifact file serving are
+Removed source-family MCP actions (`scrape`, `crawl`, `embed`, `ingest`,
+`code_search`, `vertical_scrape`) are not exposed. Use `action=source`.
+
+`debug`, `migrate`, `setup`, and artifact file serving are
 documented in `docs/reference/api-parity.md`. They are not dedicated MCP action
 routes in the generated `docs/reference/mcp/tool-schema.md` contract.
 
@@ -79,11 +80,11 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 
 | Command | Async | Description |
 |---------|-------|-------------|
-| `scrape <url>...` | No | Scrape URLs to markdown |
-| `crawl <url>...` | Yes | Full site crawl for one or more start URLs |
+| `source <target>` / bare `<target>` | Yes | Acquire, normalize, embed, refresh, and optionally watch any supported source |
+| `scrape <url>...` | Yes | One-page SourceRequest projection with clean content output and embedding by default |
 | `map <url>` | No | URL discovery without scraping |
 | `endpoints <url>...` | No | Discover API endpoints from page HTML and JavaScript bundles |
-| `search <query>` | No | Web search via SearXNG/Tavily, auto-queues crawl jobs |
+| `search <query>` | No | Web search via SearXNG/Tavily, auto-queues Source jobs |
 | `research <query>` | No | Web research with LLM synthesis |
 | `extract <urls...>` | Yes | LLM-powered structured extraction |
 | `screenshot <url>...` | No | Capture a full-page screenshot via headless Chrome |
@@ -94,9 +95,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 
 | Command | Async | Description |
 |---------|-------|-------------|
-| `embed [input]` | Yes | Embed file/dir/URL into Qdrant |
 | `query <text>` | No | Semantic vector search over indexed knowledge; excludes local `code-search` vectors |
-| `code-search <text>` | No | Local Git checkout semantic code search with freshness and committed-generation fencing |
 | `retrieve <url>` | No | Fetch stored chunks from Qdrant by URL |
 | `ask <question>` | No | RAG search + LLM answer |
 | `evaluate <question>` | No | RAG vs baseline with independent LLM judge |
@@ -114,7 +113,6 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | Command | Async | Description |
 |---------|-------|-------------|
 | `status` | No | Async job queue status |
-| `ingest <target>` | Yes | Ingest GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, or YouTube |
 | `sessions [format]` | No | Index AI session exports (Claude/Codex/Gemini) |
 | `watch <sub>` | Depends | Manage recurring watch definitions and runs |
 | `monitor` | No | Monitor job lifecycle events as a line-oriented stream |

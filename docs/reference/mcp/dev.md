@@ -2,199 +2,94 @@
 
 Day-to-day development guide for the Axon MCP server.
 
-## Quick start
+## Quick Start
 
 ```bash
 git clone https://github.com/jmagar/axon.git
 cd axon
 mkdir -m 700 -p ~/.axon
-cp .env.example ~/.axon/.env && chmod 600 ~/.axon/.env
-# Edit ~/.axon/.env with your credentials
+cp .env.example ~/.axon/.env
+# Edit ~/.axon/.env with service URLs/secrets.
 
-just dev          # Starts infrastructure + axon serve (includes MCP HTTP on port 8001)
+just dev
 ```
 
-## MCP source structure
+`just dev` starts infrastructure and `axon serve`, including MCP HTTP on the
+unified listener.
 
-```
-src/
-├── mcp.rs                           # Crate-root re-exports
-├── mcp/
-│   ├── schema.rs                    # AxonRequest / AxonToolResponse + action/subaction enums
-│   ├── server.rs                    # AxonMcpServer + tool dispatch + stdio entry point
-│   ├── auth.rs                      # AuthPolicy, lab-auth OAuth/JWT, static bearer/x-api-key
-│   ├── cors.rs                      # AXON_ALLOWED_ORIGINS CORS middleware
-│   └── server/
-│       ├── http.rs                  # Streamable HTTP server + auth + host allowlist
-│       ├── common.rs                # Shared handler utilities
-│       ├── handlers_crawl_extract.rs
-│       ├── handlers_embed_ingest.rs
-│       ├── handlers_query.rs        # query/retrieve/search/map/scrape/ask/summarize/research/screenshot
-│       ├── handlers_system.rs       # doctor/domains/sources/stats/status/artifacts/help
-│       ├── handlers_elicit.rs       # elicit_demo handler
-│       ├── artifacts/               # Artifact storage helpers
-│       └── handlers_system/         # Sub-handlers (e.g. screenshot.rs)
-├── services.rs                      # Service-layer module root
-├── services/
-│   ├── context.rs                   # ServiceContext { cfg, jobs }
-│   ├── runtime.rs                   # Job runtime traits + SqliteServiceRuntime
-│   ├── types/service.rs             # Re-exports domain-specific result structs
-│   ├── types/service/               # Typed result structs by domain
-│   └── ...                          # query, ask, summarize, system, crawl, embed, ingest, etc.
+## Source Layout
+
+```text
+crates/axon-mcp/src/
+  server.rs                  # AxonMcpServer, single-tool dispatch
+  server/authz.rs            # live MCP_ACTION_SPECS allowlist and scopes
+  server/tool_schema.rs      # live input schema generation
+  server/handlers_source.rs  # action=source
+  server/handlers_jobs.rs    # action=jobs
+  server/handlers_query.rs   # query/search/research/ask/retrieve/etc.
+  server/handlers_watch.rs   # action=watch
+  server/handlers_graph.rs   # action=graph
+  server/handlers_extract.rs # action=extract
 ```
 
-The MCP server calls the services layer, which is the same layer used by CLI
-handlers and web routes. MCP handlers map typed service results to MCP wire
-format.
+The shared MCP request DTOs live in `crates/axon-api/src/mcp_schema/`.
 
-> Current pre-#298 development guide. New source acquisition/indexing behavior
-> should be designed in `axon-api` DTOs and `axon-services`/domain crates first,
-> then exposed through CLI/MCP/REST adapters. Do not start source work by adding
-> a bespoke MCP action.
+## Development Cycle
 
-## Development cycle
-
-1. **Edit source** -- modify handlers in `crates/axon-mcp/src/` or service functions in `crates/axon-services/src/`
-2. **Build** -- `cargo check` or `just check` for fast feedback
-3. **Test** -- `cargo test` or `just test`
-4. **Run** -- `just dev` starts the full stack including MCP HTTP
-5. **Verify** -- `just mcp-smoke` runs the MCP smoke test suite
-
-## Adding a new current-runtime action
-
-For source-pipeline work, follow `docs/pipeline-unification/` instead. MCP is a
-transport over shared DTOs/services, not the owner of source routing.
-
-### Direct action (no subaction)
-
-1. **Add enum/schema variant** in `crates/axon-api/src/mcp_schema.rs`:
-   - Add to the action enum
-   - Define required and optional parameters
-
-2. **Implement service function** in `crates/axon-services/src/`:
-   - Create a function that returns a typed result struct
-   - Define transport-neutral DTOs in `axon-api` when the shape crosses CLI/MCP/REST boundaries
-
-3. **Add CLI handler** in `crates/axon-cli/src/commands/`:
-   - Create a new command file
-   - Call the service function, format output for stdout
-
-4. **Wire MCP dispatch** in `crates/axon-mcp/src/`:
-   - Add match arm for the new action
-   - Call the service function
-   - Map the typed result to MCP response format
-
-5. **Regenerate schema doc**:
-   ```bash
-   just gen-mcp-schema
-   ```
-
-6. **Add tests**:
-   - Unit test for the service function
-   - Add to `scripts/test-mcp-tools-mcporter.sh` smoke test
-
-### Lifecycle action (with subactions)
-
-Lifecycle actions (crawl, extract, embed, ingest) follow a common pattern with
-`start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` subactions.
-
-1. Use the existing `crates/axon-jobs/` framework
-2. Implement a `Processor` trait for the new job type
-3. Wire the in-process worker into `SqliteJobBackend::new_with_workers`
-4. Wire into MCP dispatch with subaction routing
-
-## Testing
-
-### Unit tests
+1. Edit the shared DTO/service first when behavior crosses transports.
+2. Add or update the MCP handler adapter.
+3. Add the action to `MCP_ACTION_SPECS` only when it is a real live MCP action.
+4. Regenerate/check schemas:
 
 ```bash
-cargo test                    # All tests
-cargo test mcp                # MCP-specific tests
+cargo xtask schemas generate --update-fixtures
+cargo xtask schemas generate --check
 ```
 
-### MCP smoke tests
+5. Run focused MCP tests:
 
 ```bash
-just mcp-smoke
-# or directly:
-./scripts/test-mcp-tools-mcporter.sh
+cargo test -p axon-mcp tool_schema -- --nocapture
+cargo test -p axon-mcp authz -- --nocapture
 ```
 
-The smoke test starts an MCP server, sends tool calls, and verifies responses.
+## Adding A Live Action
 
-### curl testing (HTTP transport)
+- Define or reuse an `axon-api` request/result DTO.
+- Implement the service entrypoint in `axon-services` or the owning domain
+  crate.
+- Add the MCP request variant only when the shared DTO must deserialize that
+  action.
+- Add the action name, scope, description, and cost to `MCP_ACTION_SPECS`.
+- Add schema/auth tests proving the action is advertised and scoped.
+
+Do not add source-family one-off actions. Source acquisition/indexing belongs
+under `action=source`.
+
+## Removed Action Guard
+
+These names must stay absent from the live MCP schema and action allowlist:
+
+- `scrape`
+- `crawl`
+- `embed`
+- `ingest`
+- `code_search`
+- `code_search_watch`
+- `vertical_scrape`
+- `purge`
+- `dedupe`
+
+Use `action=source` for indexing and `action=prune` for cleanup.
+
+## HTTP Testing
 
 ```bash
-# Tool call (loopback bind without a token works; non-loopback requires
-# AXON_HTTP_TOKEN — pass it via Authorization or x-api-key)
 curl -X POST http://localhost:8001/mcp \
   -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"axon","arguments":{"action":"doctor"}}}'
-
-# List tools
-curl -X POST http://localhost:8001/mcp \
-  -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-The unified HTTP server exposes `/healthz` for process health. A successful
-`tools/list` response on `/mcp` is the canonical MCP protocol liveness check.
-
-### MCP Inspector
-
-```bash
-npx @modelcontextprotocol/inspector
-```
-
-Connect to `http://localhost:8001/mcp`.
-
-## Code style
-
-| Tool | Command | Purpose |
-|------|---------|---------|
-| clippy | `cargo clippy --all-targets` | Lint |
-| rustfmt | `cargo fmt` | Format |
-| cargo check | `cargo check` | Type check |
-| cargo test | `cargo test` | Run tests |
-
-Run all checks:
-
-```bash
-just verify      # fmt-check + clippy + check + test
-just fix         # auto-fix: fmt + clippy --fix
-```
-
-## Debugging
-
-### Log levels
-
-Set `RUST_LOG` for MCP-specific filtering:
-
-```bash
-RUST_LOG=info,axon::mcp=debug axon mcp
-```
-
-### Response artifacts
-
-When a response is written in `path` mode, the artifact file lives under `~/.axon/artifacts/<context>/` (override the root with `AXON_MCP_ARTIFACT_DIR`; resolution is `AXON_MCP_ARTIFACT_DIR` → `AXON_DATA_DIR/artifacts` → `$HOME/.axon/artifacts`, with `/tmp/axon-mcp/<context>` as a fallback). Files are named `<action>/<slug>.<ext>`. Inspect them:
-
-```bash
-ls -la ~/.axon/artifacts/*/
-cat ~/.axon/artifacts/*/search/*.json | jq .
-```
-
-### Service context
-
-The `ServiceContext` in `src/services/context.rs` carries `cfg` and `jobs`
-fields only. There is no `ServiceCapabilities` struct on the context. The
-SQLite/in-process job runtime is always available. Operations that
-were previously gated (graph, refresh, watch scheduler) have either been
-removed or now return runtime errors when their backing service is missing.
-
-## See also
-
-- [TOOLS.md](tools.md) -- action/subaction reference
-- [PATTERNS.md](patterns.md) -- code patterns
-- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes
+Loopback development binds may omit the token. Non-loopback binds require OAuth
+or `AXON_HTTP_TOKEN`.

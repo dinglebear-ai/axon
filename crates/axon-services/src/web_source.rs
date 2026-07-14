@@ -1,32 +1,52 @@
+mod artifacts;
+mod job_execution;
 mod publish;
+mod reuse;
 mod run;
+mod vector_publish;
 mod vectorize;
+mod vectorize_helpers;
 mod web_source_job;
 
+pub(crate) use self::job_execution::WebSourceJobExecution;
+pub(crate) use self::reuse::InProcessWebDocumentCache;
+pub(crate) use self::web_source_job::index_web_source_with_execution;
 pub use self::web_source_job::index_web_source_with_job;
+pub(crate) use self::web_source_job::job_create_request as web_source_job_create_request;
 
 use std::sync::Arc;
 
 use axon_adapters::boundary::{FetchProvider, RenderProvider};
 use axon_adapters::{SourceAdapter, web::WebSourceAdapter};
 use axon_api::source::*;
+use axon_core::boundary::ArtifactStore;
+use axon_core::boundary::DocumentCache;
 use axon_embedding::provider::EmbeddingProvider;
+use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
+use self::artifacts::{cleanup_artifacts_after_error, record_artifacts_on_manifest};
 use self::publish::{
     GenerationDocumentCounts, complete_generation, completed_source_summary,
-    ensure_lease_before_publish, fail_generation, fail_generation_and_rollback_vectors,
-    mark_vectors_for_completed_generation, publish_generation_and_rollback_vectors,
-    publish_generation_without_vectors,
+    ensure_lease_before_publish, fail_generation, publish_generation_without_vectors,
 };
-use self::run::{WebAdapterRun, resolve_web_run, source_summary, unchanged_refresh_output};
-use self::vectorize::{
-    VectorizeResult, collection_spec, prepare_changed_documents_without_vectors, published_status,
-    vectorize_changed_documents,
+use self::run::apply_reused_item_keys;
+use self::run::{
+    WebAdapterRun, overlay_previous_web_etags, resolve_web_run, source_summary,
+    unchanged_refresh_output,
 };
+use self::vector_publish::{VectorGenerationRequest, publish_vector_generation};
+use self::vectorize::{prepare_changed_documents_without_vectors, published_status};
 
 pub(super) const WEB_LEASE_TTL_SECONDS: u64 = 30 * 60;
+
+#[cfg(test)]
+#[path = "source_web_304_reuse_tests.rs"]
+mod source_web_304_reuse_tests;
+#[cfg(test)]
+#[path = "source_web_artifacts_tests.rs"]
+mod source_web_artifacts_tests;
 
 /// Real-acquisition (issue #298 Wave 1b) input for `WebSourceAdapter`: no more
 /// `manifest_path`/`markdown_root` disk handoff from a `crawl_for_source`
@@ -44,6 +64,7 @@ pub struct WebSourceIndexInput {
     pub scope: SourceScope,
     pub map_urls: Vec<String>,
     pub crawl_options: MetadataMap,
+    pub output: OutputPolicy,
     pub collection: String,
     pub owner_id: String,
     pub job_id: JobId,
@@ -52,6 +73,7 @@ pub struct WebSourceIndexInput {
     pub embedding_model: String,
     pub embedding_dimensions: u32,
     pub auth_snapshot: Option<AuthSnapshot>,
+    pub attempt: u32,
     /// `SourceRequest.embed` (source-pipeline.md, Validation Checklist:
     /// "`embed=false` never writes vectors"). When `false`, discovery,
     /// acquire, normalize, prepare, ledger publish, and graph-candidate
@@ -60,6 +82,9 @@ pub struct WebSourceIndexInput {
     pub embed: bool,
     pub fetch_provider: Arc<dyn FetchProvider>,
     pub render_provider: Arc<dyn RenderProvider>,
+    pub artifact_store: Arc<dyn ArtifactStore>,
+    pub document_cache: Arc<dyn DocumentCache>,
+    pub event_store: Option<Arc<dyn JobStore>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +102,8 @@ pub struct WebSourceIndexOutput {
     /// unchanged-refresh and map-only paths, since neither prepares documents.
     pub graph_candidates: Vec<GraphCandidate>,
     pub warnings: Vec<SourceWarning>,
+    pub artifacts: Vec<ArtifactRef>,
+    pub inline: Option<InlineSourceResult>,
 }
 
 pub async fn index_web_source(
@@ -132,20 +159,43 @@ async fn index_web_source_with_lease(
     run: WebAdapterRun,
     lease: &LeaseGuard,
 ) -> anyhow::Result<WebSourceIndexOutput> {
+    let events = crate::source::events::SourceEventEmitter::for_web(
+        input.event_store.clone(),
+        input.job_id,
+        input.scope,
+    )
+    .with_attempt(input.attempt);
     let adapter = WebSourceAdapter::new(
         Arc::clone(&input.fetch_provider),
         Arc::clone(&input.render_provider),
     );
+    events
+        .running(PipelinePhase::Discovering, "discovering web source items")
+        .await;
     let mut manifest = adapter.discover(&run.plan).await?;
+    events
+        .running(PipelinePhase::Diffing, "diffing web source manifest")
+        .await;
     let diff = ledger.diff_manifest(manifest.clone()).await?;
     if let Some(output) =
         unchanged_refresh_output(input, ledger, previous_source, &run, &manifest, &diff).await?
     {
+        events
+            .running(
+                PipelinePhase::Publishing,
+                "publishing unchanged web source generation",
+            )
+            .await;
         return Ok(output);
     }
+    let diff = overlay_previous_web_etags(ledger, &diff).await?;
 
+    events
+        .running(PipelinePhase::Fetching, "fetching changed web source items")
+        .await;
     let generation = ledger.create_generation(run.source_id.clone()).await?;
     manifest.generation = generation.generation.clone();
+    let diff = retarget_diff_generation(diff, &generation.generation);
     ledger.put_manifest(manifest.clone()).await?;
     // `scope = Map` is discover-only. `embed=false` is not discover-only: the
     // source contract requires acquire/normalize/prepare/graph to still run
@@ -154,6 +204,15 @@ async fn index_web_source_with_lease(
         return publish_map_generation(input, ledger, run, generation, manifest, diff).await;
     }
     if !input.embed {
+        events
+            .running(
+                PipelinePhase::Normalizing,
+                "normalizing web source documents",
+            )
+            .await;
+        events
+            .running(PipelinePhase::Preparing, "preparing web source documents")
+            .await;
         return publish_prepared_generation_without_vectors(NoVectorGenerationRequest {
             input,
             ledger,
@@ -166,6 +225,27 @@ async fn index_web_source_with_lease(
         .await;
     }
 
+    events
+        .running(
+            PipelinePhase::Normalizing,
+            "normalizing web source documents",
+        )
+        .await;
+    events
+        .running(PipelinePhase::Preparing, "preparing web source documents")
+        .await;
+    events
+        .running(PipelinePhase::Embedding, "embedding web source chunks")
+        .await;
+    events
+        .running(PipelinePhase::Upserting, "upserting web source vectors")
+        .await;
+    events
+        .running(
+            PipelinePhase::Publishing,
+            "publishing web source generation",
+        )
+        .await;
     publish_vector_generation(VectorGenerationRequest {
         input,
         ledger,
@@ -178,6 +258,14 @@ async fn index_web_source_with_lease(
         diff,
     })
     .await
+}
+
+fn retarget_diff_generation(
+    mut diff: SourceManifestDiff,
+    generation: &SourceGenerationId,
+) -> SourceManifestDiff {
+    diff.next_generation = generation.clone();
+    diff
 }
 
 async fn publish_map_generation(
@@ -218,6 +306,8 @@ async fn publish_map_generation(
         removed_pages: diff.counts.removed,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
     })
 }
 
@@ -240,7 +330,7 @@ async fn publish_prepared_generation_without_vectors(
         run,
         lease,
         generation,
-        manifest,
+        mut manifest,
         diff,
     } = request;
     let prepared = prepare_changed_documents_without_vectors(
@@ -256,13 +346,36 @@ async fn publish_prepared_generation_without_vectors(
         Ok(prepared) => prepared,
         Err(err) => return Err(fail_generation(ledger, generation, err).await),
     };
+    let effective_diff = apply_reused_item_keys(&diff, &prepared.reused_item_keys);
     if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
-        return Err(fail_generation(ledger, generation, err).await);
+        let err = fail_generation(ledger, generation, err).await;
+        return Err(cleanup_artifacts_after_error(
+            input.artifact_store.as_ref(),
+            &prepared.artifacts,
+            err,
+        )
+        .await);
+    }
+    if let Err(err) = record_artifacts_on_manifest(
+        ledger,
+        &mut manifest,
+        &effective_diff,
+        &prepared.artifact_index,
+    )
+    .await
+    {
+        let err = fail_generation(ledger, generation, err).await;
+        return Err(cleanup_artifacts_after_error(
+            input.artifact_store.as_ref(),
+            &prepared.artifacts,
+            err,
+        )
+        .await);
     }
     let completed = match complete_generation(
         ledger,
         generation.clone(),
-        &diff,
+        &effective_diff,
         GenerationDocumentCounts {
             discovered: manifest.items.len() as u64,
             prepared: prepared.documents_prepared,
@@ -274,9 +387,27 @@ async fn publish_prepared_generation_without_vectors(
     .await
     {
         Ok(completed) => completed,
-        Err(err) => return Err(fail_generation(ledger, generation, err).await),
+        Err(err) => {
+            let err = fail_generation(ledger, generation, err).await;
+            return Err(cleanup_artifacts_after_error(
+                input.artifact_store.as_ref(),
+                &prepared.artifacts,
+                err,
+            )
+            .await);
+        }
     };
-    let published = publish_generation_without_vectors(ledger, &completed).await?;
+    let published = match publish_generation_without_vectors(ledger, &completed).await {
+        Ok(published) => published,
+        Err(err) => {
+            return Err(cleanup_artifacts_after_error(
+                input.artifact_store.as_ref(),
+                &prepared.artifacts,
+                err,
+            )
+            .await);
+        }
+    };
     for status in &prepared.document_statuses {
         ledger
             .update_document_status(published_status(status))
@@ -287,7 +418,7 @@ async fn publish_prepared_generation_without_vectors(
             input,
             &run,
             manifest.items.len() as u64,
-            &diff,
+            &effective_diff,
             0,
         ))
         .await?;
@@ -298,189 +429,11 @@ async fn publish_prepared_generation_without_vectors(
         documents_prepared: prepared.documents_prepared,
         chunks_prepared: prepared.chunks_prepared,
         vector_points_written: 0,
-        removed_pages: diff.counts.removed,
+        removed_pages: effective_diff.counts.removed,
         graph_candidates: prepared.graph_candidates,
         warnings: prepared.warnings,
-    })
-}
-
-struct VectorGenerationRequest<'a> {
-    input: &'a WebSourceIndexInput,
-    ledger: &'a dyn LedgerStore,
-    embedding_provider: &'a dyn EmbeddingProvider,
-    vector_store: &'a dyn VectorStore,
-    run: WebAdapterRun,
-    lease: &'a LeaseGuard,
-    generation: SourceGeneration,
-    manifest: SourceManifest,
-    diff: SourceManifestDiff,
-}
-
-async fn publish_vector_generation(
-    request: VectorGenerationRequest<'_>,
-) -> anyhow::Result<WebSourceIndexOutput> {
-    let VectorGenerationRequest {
-        input,
-        ledger,
-        embedding_provider,
-        vector_store,
-        run,
-        lease,
-        generation,
-        manifest,
-        diff,
-    } = request;
-    let collection = collection_spec(input);
-    if let Err(err) = vector_store.ensure_collection(collection.clone()).await {
-        return Err(fail_generation(ledger, generation, anyhow::Error::new(err)).await);
-    }
-    let vectorized = vectorize_changed_documents(
-        input,
-        &run,
-        &diff,
-        &generation.generation,
-        ledger,
-        embedding_provider,
-        vector_store,
-        collection.clone(),
-    )
-    .await
-    .map_err(|err| err.context("failed to vectorize web source generation"));
-    let vectorized = match vectorized {
-        Ok(vectorized) => vectorized,
-        Err(err) => {
-            return Err(fail_generation_and_rollback_vectors(
-                ledger,
-                vector_store,
-                &collection,
-                generation,
-                err,
-            )
-            .await);
-        }
-    };
-    if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
-        return Err(fail_generation_and_rollback_vectors(
-            ledger,
-            vector_store,
-            &collection,
-            generation,
-            err,
-        )
-        .await);
-    }
-    let completed = match complete_generation(
-        ledger,
-        generation.clone(),
-        &diff,
-        GenerationDocumentCounts {
-            discovered: manifest.items.len() as u64,
-            prepared: vectorized.documents_prepared,
-            embedded: vectorized.documents_prepared,
-            published: vectorized.documents_prepared,
-            failed: 0,
-        },
-    )
-    .await
-    {
-        Ok(completed) => completed,
-        Err(err) => {
-            return Err(fail_generation_and_rollback_vectors(
-                ledger,
-                vector_store,
-                &collection,
-                generation,
-                err,
-            )
-            .await);
-        }
-    };
-    let publish_stats = match mark_vectors_for_completed_generation(
-        vector_store,
-        &collection,
-        &run.source_id,
-        &completed,
-        &diff,
-        vectorized.chunks_prepared,
-    )
-    .await
-    {
-        Ok(stats) => stats,
-        Err(err) => {
-            return Err(fail_generation_and_rollback_vectors(
-                ledger,
-                vector_store,
-                &collection,
-                completed,
-                err,
-            )
-            .await);
-        }
-    };
-    let published =
-        publish_generation_and_rollback_vectors(ledger, vector_store, &collection, &completed)
-            .await?;
-    record_published_vector_generation(PublishedVectorRecord {
-        input,
-        ledger,
-        run: &run,
-        manifest: &manifest,
-        diff: &diff,
-        vectorized,
-        published,
-        points_written: publish_stats.total_points_written(),
-    })
-    .await
-}
-
-struct PublishedVectorRecord<'a> {
-    input: &'a WebSourceIndexInput,
-    ledger: &'a dyn LedgerStore,
-    run: &'a WebAdapterRun,
-    manifest: &'a SourceManifest,
-    diff: &'a SourceManifestDiff,
-    vectorized: VectorizeResult,
-    published: SourceGeneration,
-    points_written: u64,
-}
-
-async fn record_published_vector_generation(
-    record: PublishedVectorRecord<'_>,
-) -> anyhow::Result<WebSourceIndexOutput> {
-    let PublishedVectorRecord {
-        input,
-        ledger,
-        run,
-        manifest,
-        diff,
-        vectorized,
-        published,
-        points_written,
-    } = record;
-    for status in &vectorized.document_statuses {
-        ledger
-            .update_document_status(published_status(status))
-            .await?;
-    }
-    ledger
-        .upsert_source(completed_source_summary(
-            input,
-            run,
-            manifest.items.len() as u64,
-            diff,
-            points_written,
-        ))
-        .await?;
-    Ok(WebSourceIndexOutput {
-        job_id: input.job_id,
-        source_id: run.source_id.clone(),
-        generation: published.generation,
-        documents_prepared: vectorized.documents_prepared,
-        chunks_prepared: vectorized.chunks_prepared,
-        vector_points_written: points_written,
-        removed_pages: diff.counts.removed,
-        graph_candidates: vectorized.graph_candidates,
-        warnings: vectorized.warnings,
+        artifacts: prepared.artifacts,
+        inline: prepared.inline,
     })
 }
 

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use axon_api::schema_registry::prune_public_job_kind_schemas;
 use serde_json::{Map, Value};
 
 pub(super) fn json_string(value: &Value) -> Result<String> {
@@ -25,10 +26,12 @@ fn add_schema_def(defs: &mut Map<String, Value>, name: &str, mut schema: Value) 
         .and_then(|defs| defs.as_object().cloned())
         .unwrap_or_default();
     rewrite_refs(&mut schema, name);
+    prune_public_job_kind_schemas(&mut schema);
     defs.insert(name.to_string(), schema);
 
     for (inner_name, mut inner_schema) in inner_defs {
         rewrite_refs(&mut inner_schema, name);
+        prune_public_job_kind_schemas(&mut inner_schema);
         defs.insert(format!("{name}_{inner_name}"), inner_schema);
     }
 }

@@ -318,7 +318,7 @@ pub async fn research(
     Ok(ResearchResult { payload })
 }
 
-/// Run research and enqueue bounded crawl/index jobs for the result sources.
+/// Run research and enqueue bounded Source auto-index jobs for the result sources.
 #[must_use = "research_with_context returns a Result that should be handled"]
 pub async fn research_with_context(
     cfg: &Config,

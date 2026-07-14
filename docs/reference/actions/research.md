@@ -18,7 +18,9 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 Version: 1.0.0
 Last Updated: 2026-06-03
 
-Web research pipeline: SearXNG search when `AXON_SEARXNG_URL` is set, otherwise Tavily; full-page evidence extraction; one configured-LLM synthesis call; and bounded crawl/index job enqueueing for result URLs.
+Web research pipeline: SearXNG search when `AXON_SEARXNG_URL` is set,
+otherwise Tavily; full-page evidence extraction; one configured-LLM synthesis
+call; and bounded Source job enqueueing for result URLs.
 
 ## Synopsis
 
@@ -73,7 +75,7 @@ axon research --query "Qdrant HNSW tuning" --limit 5
 AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL=gemini-3.1-pro-preview \
   axon research "Spider.rs rendering tradeoffs"
 
-# Queue crawl jobs but skip embedding their output
+# Queue Source jobs but skip embedding their output
 axon research "Claude Code hooks" --skip-embed
 ```
 
@@ -83,13 +85,13 @@ axon research "Claude Code hooks" --skip-embed
 2. Research fetches full page markdown for top sources when `AXON_RESEARCH_FULL_CONTENT=true`; failed fetches fall back to snippets.
 3. Sources are wrapped as `evidence_source` blocks with source type/reputation metadata and `instruction_trust=evidence_only`.
 4. A single configured-LLM completion synthesizes the evidence into a summary.
-5. Research queues one bounded crawl job per result URL so those sources are indexed asynchronously.
+5. Research queues one bounded Source job per result URL so those sources are indexed asynchronously.
 
 ## Behavior Notes
 
 - Configure either `AXON_SEARXNG_URL` or `TAVILY_API_KEY`.
 - `--search-time-range` is applied to the search step before synthesis.
 - The synthesis prompt asks for plain text, not JSON. The service still accepts legacy `{"summary":"..."}` model responses and unwraps the `summary` field for compatibility.
-- With `--json`, stdout is strict command JSON. The payload includes `auto_crawl_status`, `crawl_jobs`, and `crawl_jobs_rejected` in addition to `summary`, `search_results`, and `extractions`.
-- Research crawl jobs inherit the global embed setting: embedding is on by default and disabled only with `--skip-embed`.
+- With `--json`, stdout is strict command JSON. The payload includes `auto_crawl_status`, `crawl_jobs`, and `crawl_jobs_rejected` in addition to `summary`, `search_results`, and `extractions`. The historical JSON field names are retained for compatibility; the queued work is Source jobs.
+- Research Source jobs inherit the global embed setting: embedding is on by default and disabled only with `--skip-embed`.
 - Progress logs redact the full user query by default and identify it by length/hash. Set `AXON_LOG_FULL_QUERIES=1` or `AXON_LOG_LEVEL=debug` only when full-query logging is intentional.

@@ -18,8 +18,9 @@
 use axon_api::source::*;
 
 use crate::LEDGER_GENERATION_RETENTION_COMMITTED;
+use crate::cleanup_debt::ledger_prune_debt;
 use crate::migration::sqlite_error;
-use crate::sqlite::util::{json_error, timestamp};
+use crate::sqlite::util::json_error;
 use crate::store::Result;
 
 pub(super) async fn ledger_prune_cleanup_debt_in_tx(
@@ -107,30 +108,4 @@ async fn has_unresolved_non_ledger_debt_in_tx(
     .await
     .map_err(sqlite_error)?;
     Ok(exists.is_some())
-}
-
-fn ledger_prune_debt(source_id: &SourceId, generation: &SourceGenerationId) -> CleanupDebt {
-    CleanupDebt {
-        debt_id: CleanupDebtId::new(format!(
-            "debt_{}",
-            uuid::Uuid::new_v5(
-                &uuid::Uuid::NAMESPACE_URL,
-                format!("ledger:{}:{}", source_id.0, generation.0).as_bytes(),
-            )
-        )),
-        job_id: JobId::new(uuid::Uuid::from_u128(0)),
-        source_id: source_id.clone(),
-        generation: Some(generation.clone()),
-        kind: CleanupDebtKind::LedgerPrune,
-        selector: CleanupSelector::LedgerGenerations {
-            source_id: source_id.clone(),
-            up_to_generation: generation.clone(),
-        },
-        status: LifecycleStatus::Pending,
-        created_at: timestamp(),
-        attempts: 0,
-        last_error: None,
-        next_retry_at: None,
-        completed_at: None,
-    }
 }

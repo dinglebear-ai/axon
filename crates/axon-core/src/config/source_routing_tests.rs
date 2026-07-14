@@ -33,27 +33,41 @@ fn bare_registry_target_routes_to_source() {
     );
 }
 
-/// Removed source-family command names (`embed`, `ingest`, `scrape`, `crawl`,
-/// `code-search`, `code-search-watch`) are not registered clap subcommands
-/// after the Phase 10 clean break, so they fall through the same bare-source
-/// routing as any other unrecognized first token: `axon embed <path>` behaves
-/// like `axon <path>` with `embed` treated as (the start of) the source value,
-/// never dispatching to a removed command. There are no compatibility aliases.
 #[test]
-fn removed_command_names_route_to_source_not_dispatch() {
-    for removed in [
-        "embed",
-        "ingest",
-        "scrape",
-        "crawl",
-        "code-search",
-        "code-search-watch",
-    ] {
-        assert_eq!(
-            route(&["axon", removed, "https://example.com"]),
-            vec!["axon", "source", removed, "https://example.com"],
-            "removed command `{removed}` must route through `source`, not dispatch directly"
-        );
+fn crawl_is_reserved_and_does_not_route_as_source() {
+    let command = build_cli_command();
+    let args = vec![
+        "axon".to_string(),
+        "crawl".to_string(),
+        "https://example.com".to_string(),
+    ];
+    let err = route_bare_source_or_error(args, &command).expect_err("crawl is reserved");
+    assert_eq!(err.token(), "crawl");
+    assert_eq!(
+        err.replacement(),
+        "Use `axon <url> --scope site` or `axon <url> --scope docs`."
+    );
+}
+
+#[test]
+fn retained_scrape_is_a_real_subcommand() {
+    assert_eq!(
+        route(&["axon", "scrape", "https://example.com"]),
+        vec!["axon", "scrape", "https://example.com"]
+    );
+}
+
+#[test]
+fn removed_embed_ingest_code_search_are_reserved() {
+    let command = build_cli_command();
+    for removed in ["embed", "ingest", "code-search", "code-search-watch"] {
+        let args = vec![
+            "axon".to_string(),
+            removed.to_string(),
+            "https://example.com".to_string(),
+        ];
+        let err = route_bare_source_or_error(args, &command).expect_err("reserved command");
+        assert_eq!(err.token(), removed);
     }
 }
 

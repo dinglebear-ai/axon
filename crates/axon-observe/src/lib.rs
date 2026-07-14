@@ -14,6 +14,7 @@ pub mod schema_registry;
 pub mod security_audit;
 pub mod sequence;
 pub mod sink;
+pub mod source_metrics;
 pub mod span;
 pub mod testing;
 

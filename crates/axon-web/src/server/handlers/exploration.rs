@@ -28,7 +28,7 @@ use super::rag::required_text;
 /// neither has a non-mutating default form today: [`search`] always calls
 /// `services::search_crawl::search_and_crawl`, and [`research`] /
 /// `research_stream` always call `services::search::research_with_context` —
-/// both unconditionally enqueue one bounded crawl job per result URL, with no
+/// both unconditionally enqueue one bounded Source job per result URL, with no
 /// request-level opt-out on `SearchRequest`/`ResearchRequest`. Enforced
 /// in-handler (mirroring `memory_routes::import_memories`'s `replace_scope`
 /// elevation) so the router group's declared `axon:read` class stays intact
@@ -266,7 +266,7 @@ pub(crate) async fn screenshot(
     path = "/v1/search",
     request_body = SearchRequest,
     responses(
-        (status = 200, description = "Search results and queued crawl jobs", body = serde_json::Value),
+        (status = 200, description = "Search results and queued source auto-index jobs", body = serde_json::Value),
         (status = 400, description = "Invalid search request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream search service unavailable", body = crate::server::error::ErrorBody)
     ),

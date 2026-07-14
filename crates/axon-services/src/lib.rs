@@ -84,6 +84,7 @@ pub mod scrape;
 pub mod screenshot;
 pub mod search;
 pub mod search_crawl;
+pub mod search_source_index;
 pub mod service_traits;
 pub mod sessions;
 pub mod sessions_legacy;
@@ -117,6 +118,10 @@ pub use youtube_source::{
     YoutubeSourceIndexInput, YoutubeSourceIndexOutput, index_youtube_source_with_job,
 };
 pub mod youtube_target;
+
+#[cfg(test)]
+#[path = "legacy_crawl_unreachable_tests.rs"]
+mod legacy_crawl_unreachable_tests;
 pub use youtube_target::is_youtube_target;
 
 #[cfg(test)]
@@ -125,6 +130,15 @@ mod client_contract_tests;
 #[cfg(test)]
 #[path = "freshness_tests.rs"]
 mod freshness_tests;
+#[cfg(test)]
+#[path = "source_auto_index_cutover_tests.rs"]
+mod source_auto_index_cutover_tests;
+#[cfg(test)]
+#[path = "source_observability_tests.rs"]
+mod source_observability_tests;
+#[cfg(test)]
+#[path = "source_web_job_identity_tests.rs"]
+mod source_web_job_identity_tests;
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod sync_tests;

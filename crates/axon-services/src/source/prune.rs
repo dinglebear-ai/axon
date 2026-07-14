@@ -48,9 +48,11 @@
 
 use async_trait::async_trait;
 use axon_api::source::{
-    CleanupDebt, CleanupDebtKind, JobId, MemoryForgetRequest, SourceGenerationId, SourceId,
-    Timestamp, VectorDeleteSelector,
+    ArtifactHandle, ArtifactKind, CleanupDebt, CleanupDebtKind, CleanupSelector,
+    DocumentCacheInvalidation, DocumentCacheKey, JobId, MemoryForgetRequest, SourceGenerationId,
+    SourceId, Timestamp, VectorDeleteSelector,
 };
+use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_graph::store::GraphStore;
 use axon_jobs::boundary::{JobDeleteResult, JobStore};
 use axon_ledger::store::LedgerStore;
@@ -96,7 +98,18 @@ pub async fn drain_cleanup_debt(
     collection: &str,
     counts: &IndexCounts,
 ) -> DebtDrainSummary {
-    drain_cleanup_debt_full(ledger, vector_store, None, None, collection, counts).await
+    drain_cleanup_debt_full_with_boundaries(
+        ledger,
+        vector_store,
+        None,
+        None,
+        None,
+        None,
+        None,
+        collection,
+        counts,
+    )
+    .await
 }
 
 /// Full cleanup-debt drain: vector, ledger, graph, and memory boundaries.
@@ -119,11 +132,13 @@ pub async fn drain_cleanup_debt_full(
     collection: &str,
     counts: &IndexCounts,
 ) -> DebtDrainSummary {
-    drain_cleanup_debt_full_with_jobs(
+    drain_cleanup_debt_full_with_boundaries(
         ledger,
         vector_store,
         graph_store,
         memory_store,
+        None,
+        None,
         None,
         collection,
         counts,
@@ -152,6 +167,37 @@ pub async fn drain_cleanup_debt_full_with_jobs(
     graph_store: Option<&dyn GraphStore>,
     memory_store: Option<&dyn MemoryStore>,
     job_store: Option<&dyn JobStore>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger,
+        vector_store,
+        graph_store,
+        memory_store,
+        job_store,
+        None,
+        None,
+        collection,
+        counts,
+    )
+    .await
+}
+
+/// Full cleanup-debt drain plus direct core boundaries for artifact/cache debt.
+///
+/// `ArtifactDelete` and `CachePrune` do not currently have `PruneStep` identity
+/// fields, so they drain directly against `ArtifactStore` / `DocumentCache`
+/// when supplied. If the relevant boundary is absent, the debt stays pending.
+#[allow(clippy::too_many_arguments)]
+pub async fn drain_cleanup_debt_full_with_boundaries(
+    ledger: &dyn LedgerStore,
+    vector_store: &dyn VectorStore,
+    graph_store: Option<&dyn GraphStore>,
+    memory_store: Option<&dyn MemoryStore>,
+    job_store: Option<&dyn JobStore>,
+    artifact_store: Option<&dyn ArtifactStore>,
+    document_cache: Option<&dyn DocumentCache>,
     collection: &str,
     counts: &IndexCounts,
 ) -> DebtDrainSummary {
@@ -193,7 +239,17 @@ pub async fn drain_cleanup_debt_full_with_jobs(
             job_ids: job_ids_for_debt(&debt),
         };
         let executor = PruneExecutor::new(target);
-        drain_one_debt(ledger, &executor, &authz, &debt, collection, &mut summary).await;
+        drain_one_debt(
+            ledger,
+            &executor,
+            &authz,
+            &debt,
+            collection,
+            artifact_store,
+            document_cache,
+            &mut summary,
+        )
+        .await;
     }
 
     tracing::debug!(
@@ -215,6 +271,8 @@ async fn drain_one_debt(
     authz: &PruneAuthz,
     debt: &CleanupDebt,
     collection: &str,
+    artifact_store: Option<&dyn ArtifactStore>,
+    document_cache: Option<&dyn DocumentCache>,
     summary: &mut DebtDrainSummary,
 ) {
     match debt.kind {
@@ -225,23 +283,116 @@ async fn drain_one_debt(
         | CleanupDebtKind::JobRetention => {
             drain_via_executor(ledger, executor, authz, debt, collection, summary).await;
         }
-        CleanupDebtKind::ArtifactDelete | CleanupDebtKind::CachePrune => {
-            // No real drain available for this kind yet. This is not a
-            // "not wired" placeholder — it is a documented gap per kind (see
-            // `skip_reason_for_kind`): either the store boundary has no real
-            // per-item deletion API, or (for cache) the owning crate is out
-            // of this module's territory. Faking a drain for either of these
-            // would violate the pruning contract's "no fake drains"
-            // requirement, so they are left pending for their owning
-            // executor until the prerequisite lands.
-            tracing::debug!(
-                debt_id = %debt.debt_id.0,
-                kind = ?debt.kind,
-                reason = skip_reason_for_kind(debt.kind),
-                "skipping cleanup debt: no real drain available for this kind"
-            );
+        CleanupDebtKind::ArtifactDelete => {
+            drain_artifact_delete(ledger, artifact_store, debt, summary).await;
+        }
+        CleanupDebtKind::CachePrune => {
+            drain_cache_prune(ledger, document_cache, debt, summary).await;
         }
     }
+}
+
+async fn drain_artifact_delete(
+    ledger: &dyn LedgerStore,
+    artifact_store: Option<&dyn ArtifactStore>,
+    debt: &CleanupDebt,
+    summary: &mut DebtDrainSummary,
+) {
+    let Some(artifact_store) = artifact_store else {
+        trace_unwired(debt);
+        return;
+    };
+    let CleanupSelector::Artifact { artifact_id } = &debt.selector else {
+        trace_unwired(debt);
+        return;
+    };
+    let delete = artifact_store
+        .delete(ArtifactHandle {
+            artifact_id: artifact_id.clone(),
+            artifact_kind: ArtifactKind::RawContent,
+            uri: None,
+        })
+        .await;
+    if let Err(err) = delete {
+        tracing::warn!(
+            error = %err.message,
+            debt_id = %debt.debt_id.0,
+            "artifact cleanup debt delete failed; leaving pending"
+        );
+        summary.failed += 1;
+        return;
+    }
+    resolve_debt(ledger, debt, summary).await;
+}
+
+async fn drain_cache_prune(
+    ledger: &dyn LedgerStore,
+    document_cache: Option<&dyn DocumentCache>,
+    debt: &CleanupDebt,
+    summary: &mut DebtDrainSummary,
+) {
+    let Some(document_cache) = document_cache else {
+        trace_unwired(debt);
+        return;
+    };
+    let CleanupSelector::CacheKeys { keys } = &debt.selector else {
+        trace_unwired(debt);
+        return;
+    };
+    for key in keys {
+        let parsed: DocumentCacheKey = match serde_json::from_str(key) {
+            Ok(key) => key,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    debt_id = %debt.debt_id.0,
+                    cache_key = %key,
+                    "cache cleanup debt key is not a DocumentCacheKey; leaving pending"
+                );
+                summary.failed += 1;
+                return;
+            }
+        };
+        if let Err(err) = document_cache
+            .invalidate(DocumentCacheInvalidation::Key { key: parsed })
+            .await
+        {
+            tracing::warn!(
+                error = %err.message,
+                debt_id = %debt.debt_id.0,
+                "cache cleanup debt invalidate failed; leaving pending"
+            );
+            summary.failed += 1;
+            return;
+        }
+    }
+    resolve_debt(ledger, debt, summary).await;
+}
+
+async fn resolve_debt(
+    ledger: &dyn LedgerStore,
+    debt: &CleanupDebt,
+    summary: &mut DebtDrainSummary,
+) {
+    if let Err(err) = ledger.resolve_cleanup_debt(debt.debt_id.clone()).await {
+        tracing::warn!(
+            error = %err.message,
+            debt_id = %debt.debt_id.0,
+            "delete succeeded but failed to mark debt resolved; leaving pending"
+        );
+        summary.failed += 1;
+        return;
+    }
+    summary.resolved += 1;
+}
+
+fn trace_unwired(debt: &CleanupDebt) {
+    tracing::debug!(
+        debt_id = %debt.debt_id.0,
+        kind = ?debt.kind,
+        reason = skip_reason_for_kind(debt.kind),
+        "skipping cleanup debt: no real drain available for this kind"
+    );
 }
 
 /// Drive the `axon-prune` executor for a debt kind that maps onto a

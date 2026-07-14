@@ -1,26 +1,37 @@
-//! Crawl-only bridge from the unified `JobStore` onto the legacy `ServiceJob`
-//! shape.
+//! Historical crawl bridge from the unified `JobStore` onto the legacy
+//! `ServiceJob` shape.
 //!
-//! `JobKind::Crawl` now enqueues and executes on the unified job store (see
-//! `CrawlRunner` in `crates/axon-services/src/runtime/job_runners/
-//! crawl_runner.rs`), but every CLI/MCP/REST caller still renders through
-//! `ServiceJob` (shared with Ingest, which remains on the legacy per-family
-//! backend until its own cutover). This module mirrors `extract_bridge.rs`/
-//! `embed_bridge.rs`: it converts unified `JobSummary`/result DTOs into
-//! `ServiceJob` so those shared renderers keep working unchanged for Crawl.
+//! Web acquisition now submits detached `JobKind::Source` rows carrying
+//! `SourceRequest { scope: site }`. This module remains only to render,
+//! cancel, cleanup, and dead-letter legacy `JobKind::Crawl` rows that may
+//! already exist in a jobs database.
 
 use std::error::Error;
 use std::sync::Arc;
 
 use axon_api::source::{
-    JobCancelRequest, JobCleanupRequest, JobId, JobKind as UnifiedJobKind, JobListRequest,
-    JobRecoveryRequest, JobSummary, LifecycleStatus,
+    ApiError, JobCancelRequest, JobCleanupRequest, JobId, JobKind as UnifiedJobKind,
+    JobListRequest, JobStatusUpdate, JobSummary, LifecycleStatus, PipelinePhase, Severity,
+    SourceError,
 };
 use axon_jobs::boundary::JobStore;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::types::ServiceJob;
+
+const LEGACY_CRAWL_REMOVED_CODE: &str = "legacy.crawl.removed";
+const LEGACY_CRAWL_REMOVED_RETRY: &str =
+    "legacy crawl jobs were removed; re-run as `axon <url> --scope site`";
+
+const ACTIVE_LEGACY_CRAWL_STATUSES: &[LifecycleStatus] = &[
+    LifecycleStatus::Queued,
+    LifecycleStatus::Pending,
+    LifecycleStatus::Blocked,
+    LifecycleStatus::Running,
+    LifecycleStatus::Waiting,
+    LifecycleStatus::Canceling,
+];
 
 fn parse_timestamp(value: &axon_api::source::Timestamp) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(&value.0)
@@ -44,11 +55,9 @@ fn legacy_status(status: LifecycleStatus) -> String {
     .to_string()
 }
 
-/// Crawl's stored `request` payload shape: `{"urls": [<one url>],
-/// "config_json": "..."}` (see `crawl_start_with_context` in
-/// `crates/axon-services/src/crawl.rs`). Pulls the URL back out so the
-/// bridge can populate `ServiceJob.url`/`urls_json`/`target` for CLI/MCP/REST
-/// rendering.
+/// Legacy crawl's stored `request` payload shape: `{"urls": [<one url>],
+/// "config_json": "..."}`. Pulls the URL back out so the bridge can populate
+/// `ServiceJob.url`/`urls_json`/`target` for CLI/MCP/REST rendering.
 fn url_from_request_json(request_json: &serde_json::Value) -> Option<(String, serde_json::Value)> {
     let urls_json = request_json.get("urls").cloned()?;
     let url = urls_json
@@ -195,21 +204,94 @@ pub(super) async fn clear(store: &Arc<dyn JobStore>) -> Result<u64, Box<dyn Erro
 
 pub(super) async fn recover(
     store: &Arc<dyn JobStore>,
-    stale_threshold_ms: i64,
+    _stale_threshold_ms: i64,
 ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-    let stale_before = axon_api::source::Timestamp::from(
-        Utc::now() - chrono::Duration::milliseconds(stale_threshold_ms.max(0)),
-    );
-    let result = store
-        .recover(JobRecoveryRequest {
-            kind: Some(UnifiedJobKind::Crawl),
-            stale_before: Some(stale_before),
-            limit: None,
-            older_than_seconds: None,
-            dry_run: false,
-            allow_without_cutoff: false,
+    let mut failed = 0_u64;
+    for status in ACTIVE_LEGACY_CRAWL_STATUSES {
+        let mut cursor = None;
+        loop {
+            let page = store
+                .list(JobListRequest {
+                    status: Some(*status),
+                    kind: Some(UnifiedJobKind::Crawl),
+                    source_id: None,
+                    watch_id: None,
+                    limit: Some(1000),
+                    cursor: cursor.take(),
+                })
+                .await
+                .map_err(|e| Box::<dyn Error + Send + Sync>::from(e.message))?;
+            for summary in page.items {
+                if mark_legacy_crawl_removed(store.as_ref(), summary.job_id)
+                    .await
+                    .map_err(|e| Box::<dyn Error + Send + Sync>::from(e.message))?
+                {
+                    failed += 1;
+                }
+            }
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+    }
+    Ok(failed)
+}
+
+pub(super) async fn mark_legacy_crawl_removed(
+    store: &dyn JobStore,
+    job_id: JobId,
+) -> Result<bool, ApiError> {
+    let Some(summary) = store.get(job_id).await? else {
+        return Ok(false);
+    };
+    if !ACTIVE_LEGACY_CRAWL_STATUSES.contains(&summary.status) {
+        return Ok(false);
+    }
+
+    if matches!(
+        summary.status,
+        LifecycleStatus::Queued | LifecycleStatus::Pending
+    ) {
+        store
+            .update_status(JobStatusUpdate {
+                job_id,
+                source_id: None,
+                status: LifecycleStatus::Running,
+                phase: PipelinePhase::Planning,
+                stage_id: None,
+                counts: None,
+                current: None,
+                message: Some(LEGACY_CRAWL_REMOVED_RETRY.to_string()),
+                error: None,
+            })
+            .await?;
+    }
+
+    store
+        .update_status(JobStatusUpdate {
+            job_id,
+            source_id: None,
+            status: LifecycleStatus::Failed,
+            phase: PipelinePhase::Complete,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: Some(LEGACY_CRAWL_REMOVED_RETRY.to_string()),
+            error: Some(legacy_crawl_removed_error()),
         })
-        .await
-        .map_err(|e| Box::<dyn Error + Send + Sync>::from(e.message))?;
-    Ok(result.recovered)
+        .await?;
+    Ok(true)
+}
+
+fn legacy_crawl_removed_error() -> SourceError {
+    SourceError {
+        code: LEGACY_CRAWL_REMOVED_CODE.to_string(),
+        severity: Severity::Failed,
+        message: "legacy crawl jobs were removed; re-run as a SourceRequest".to_string(),
+        source_item_key: None,
+        retryable: false,
+        provider_id: None,
+        cause: Some(LEGACY_CRAWL_REMOVED_RETRY.to_string()),
+    }
 }

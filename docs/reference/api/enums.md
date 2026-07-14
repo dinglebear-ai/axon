@@ -33,7 +33,7 @@ Not applicable to enum-only projection.
 | `SourceIntent` | `acquire`, `refresh`, `watch`, `map` |
 | `SourceKind` | `web`, `local`, `git`, `registry`, `feed`, `reddit`, `youtube`, `session`, `cli_tool`, `mcp_tool`, `memory`, `upload` |
 | `PipelinePhase` | `queued`, `requested`, `resolving`, `routing`, `authorizing`, `planning`, `leasing`, `discovering`, `diffing`, `fetching`, `rendering`, `enriching`, `normalizing`, `parsing`, `graphing`, `preparing`, `batching`, `embedding`, `vectorizing`, `upserting`, `retrieving`, `synthesizing`, `evaluating`, `publishing`, `cleaning`, `complete`, `canceled` |
-| `JobKind` | `source`, `watch`, `map`, `extract`, `research`, `ask`, `query`, `retrieve`, `memory`, `graph`, `prune`, `provider_probe`, `reset`, `crawl`, `ingest`, `embed` |
+| `JobKind` | `source`, `watch`, `map`, `extract`, `research`, `ask`, `query`, `retrieve`, `memory`, `graph`, `prune`, `provider_probe`, `reset` |
 | `LifecycleStatus` | `queued`, `pending`, `running`, `waiting`, `blocked`, `canceling`, `completed`, `completed_degraded`, `failed`, `canceled`, `expired`, `skipped` |
 | `PublishState` | `planning`, `writing`, `publishing`, `committed`, `cleanup_pending`, `cleaning`, `cleaned` |
 | `DocumentLifecycleStatus` | `discovered`, `fetched`, `normalized`, `enriched`, `parsed`, `prepared`, `embedded`, `vectorized`, `published`, `cleaned`, `degraded`, `failed`, `skipped` |

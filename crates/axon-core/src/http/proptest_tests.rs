@@ -109,6 +109,42 @@ proptest! {
     }
 }
 
+proptest! {
+    /// Carrier-grade NAT 100.64.0.0/10 must be rejected.
+    #[test]
+    fn validate_url_rejects_all_carrier_grade_nat(
+        b in 64u8..=127,
+        c in 0u8..=255,
+        d in 0u8..=255,
+    ) {
+        let url = format!("http://100.{b}.{c}.{d}/");
+        prop_assert!(
+            validate_url(&url).is_err(),
+            "100.64-127.x.x carrier-grade NAT must be rejected: {url}"
+        );
+    }
+}
+
+proptest! {
+    /// Addresses just outside 100.64.0.0/10 must be allowed.
+    #[test]
+    fn validate_url_allows_100_outside_carrier_grade_nat(
+        c in 0u8..=255,
+        d in 0u8..=255,
+    ) {
+        let below = format!("http://100.63.{c}.{d}/");
+        let above = format!("http://100.128.{c}.{d}/");
+        prop_assert!(
+            validate_url(&below).is_ok(),
+            "100.63.x.x is outside CGNAT and must be allowed: {below}"
+        );
+        prop_assert!(
+            validate_url(&above).is_ok(),
+            "100.128.x.x is outside CGNAT and must be allowed: {above}"
+        );
+    }
+}
+
 // ── Non-HTTP/HTTPS schemes ───────────────────────────────────────────────────
 
 proptest! {
@@ -207,6 +243,22 @@ proptest! {
         prop_assert!(
             validate_url(&url).is_err(),
             "::ffff:127.x.x.x must be rejected as loopback: {url}"
+        );
+    }
+}
+
+proptest! {
+    /// Every ::ffff: address embedding a 100.64.0.0/10 CGNAT IPv4 must be rejected.
+    #[test]
+    fn validate_url_rejects_ipv4_mapped_carrier_grade_nat(
+        b in 64u8..=127,
+        c in 0u8..=255,
+        d in 0u8..=255,
+    ) {
+        let url = format!("http://[::ffff:100.{b}.{c}.{d}]/");
+        prop_assert!(
+            validate_url(&url).is_err(),
+            "::ffff:100.64-127.x.x must be rejected as CGNAT: {url}"
         );
     }
 }

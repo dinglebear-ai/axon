@@ -200,6 +200,56 @@ fn mcp_schema_omits_removed_indexing_surface() {
 }
 
 #[test]
+fn mcp_schema_job_kind_filters_migration_only_families() {
+    let schema = axon_input_schema();
+    let defs = schema
+        .pointer("/$defs")
+        .and_then(serde_json::Value::as_object)
+        .expect("schema defs are present");
+    let mut found_job_kind_def = false;
+    for (name, value) in defs {
+        if !name.contains("JobKind") {
+            continue;
+        }
+        found_job_kind_def = true;
+        let serialized = serde_json::to_string(value).expect("serialize JobKind def");
+        for removed in ["\"crawl\"", "\"embed\"", "\"ingest\""] {
+            assert!(
+                !serialized.contains(removed),
+                "{name} must not advertise migration-only job kind {removed}"
+            );
+        }
+    }
+    assert!(
+        found_job_kind_def,
+        "schema should include a jobs.kind definition"
+    );
+}
+
+#[test]
+fn removed_crawl_fixture_is_outside_mcp_action_enum() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/schema/removed_crawl.invalid.json"
+    ))
+    .expect("fixture json");
+    let action = fixture
+        .get("action")
+        .and_then(serde_json::Value::as_str)
+        .expect("fixture has action");
+    let schema = axon_input_schema();
+    let action_enum = schema
+        .pointer("/properties/action/enum")
+        .and_then(serde_json::Value::as_array)
+        .expect("tools/list inputSchema publishes properties.action.enum");
+    assert!(
+        !action_enum
+            .iter()
+            .any(|value| value.as_str() == Some(action)),
+        "removed crawl action must be rejected before handler dispatch"
+    );
+}
+
+#[test]
 fn axon_tool_input_schema_flattens_per_action_fields_to_top_level() {
     let schema = axon_input_schema();
     let properties = schema

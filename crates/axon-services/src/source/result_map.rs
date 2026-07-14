@@ -36,6 +36,8 @@ pub struct IndexCounts {
     /// Non-fatal adapter/service degradations collected during acquisition or
     /// preparation and surfaced on the transport-neutral result.
     pub warnings: Vec<SourceWarning>,
+    pub artifacts: Vec<axon_api::source::ArtifactRef>,
+    pub inline: Option<axon_api::source::InlineSourceResult>,
 }
 
 /// Build a [`SourceResult`] from a family's normalized index output.
@@ -82,10 +84,10 @@ pub fn to_source_result(
         graph,
         counts: source_counts,
         warnings: counts.warnings,
-        inline: None,
+        inline: counts.inline,
         job: None,
         watch: None,
-        artifacts: Vec::new(),
+        artifacts: counts.artifacts,
         errors: Vec::new(),
     }
 }

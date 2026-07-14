@@ -1819,10 +1819,7 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset",
-          "crawl",
-          "ingest",
-          "embed"
+          "reset"
         ],
         "type": "string",
         "x-axon": {
@@ -2126,7 +2123,7 @@
         "path": "crates/axon-adapters/src/boundary.rs"
       },
       {
-        "checksum": "sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5",
+        "checksum": "sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
@@ -2141,7 +2138,7 @@
         "path": "crates/axon-authz/src/policy.rs"
       },
       {
-        "checksum": "sha256:cdf5d490a8b2eb0d697fbad7e1b3ed6d0da128c7ad433fd133ef98f83f01bd9f",
+        "checksum": "sha256:ac9a29bb0d9f5a8fd681ee9a1cd0d55f0a4de89cb12664b89e7e684107a2f1aa",
         "kind": "rust_module",
         "path": "crates/axon-core/src/boundary.rs"
       },

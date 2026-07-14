@@ -296,7 +296,7 @@
         "search"
       ],
       "requires_auth_scope": "read",
-      "summary": "Web search via SearXNG/Tavily, auto-queues crawl jobs for results"
+      "summary": "Web search via SearXNG/Tavily, auto-queues Source jobs for results"
     },
     {
       "async": false,
@@ -309,6 +309,18 @@
       ],
       "requires_auth_scope": "read",
       "summary": "Web research via SearXNG/Tavily with LLM synthesis and auto-indexing"
+    },
+    {
+      "async": false,
+      "group": "scrape",
+      "maps_to_dto": "SourceRequest",
+      "mutates": true,
+      "name": "scrape",
+      "path": [
+        "scrape"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Fetch, normalize, and embed exactly one web page through SourceRequest"
     },
     {
       "async": false,
@@ -1332,12 +1344,12 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:8a8d4ca409519cc040ba251fd5dd7106477024797ba074b719d6681256d7b060",
+        "checksum": "sha256:422c774240cf67e6b52cac57b5f75f5c97a58c536a13a72e1b62e6379d9f8f7b",
         "kind": "rust_module",
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:d1a35a1faf46350686aaf11d8674c2b9955c15483bc2c10776cef2d526f06197",
+        "checksum": "sha256:817c2f9b6fa9a3d91331a3d37db94f8250b0e04d21a44c42428ee2e5ae3d3842",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1352,17 +1364,17 @@
         "path": "crates/axon-core/src/config/cli/setup_args.rs"
       },
       {
-        "checksum": "sha256:ad7c2b39eb9c0bde4bfb138554506c874ef4e4cb610bd33e0180cc7468a26069",
+        "checksum": "sha256:e542f512c3329c4f102fc3b93f57415906a00de3b302d1d836b5d9131e5d1a08",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
       {
-        "checksum": "sha256:27f28e9b91bae673646b2ae77dde96784b06ea142a81b8fda67f363ef14d043a",
+        "checksum": "sha256:1e37cdea9758c9f8942a408284997372a5e6230367ac97e5b9ce7cd60c5fc2c2",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry.rs"
       },
       {
-        "checksum": "sha256:cb15aac18b19f1a1bbbb2f19a7efc519647f3dc458d13f1b8906339a12a1dcac",
+        "checksum": "sha256:870e09e77af6d08c9509e076f8c5b3725d35f7a9481ae0f5071a7c03f92dcaa0",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part1.rs"
       },

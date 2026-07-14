@@ -65,9 +65,18 @@ server. By default that is `http://127.0.0.1:8001/mcp`.
 
 - Tool count: 1
 - Tool name: `axon`
-- Routing: `action` + `subaction` (for lifecycle families)
+- Routing: `action` + optional `subaction` for grouped actions such as
+  `jobs`, `extract`, `memory`, `watch`, `graph`, and `prune`.
 
-Supported top-level action families include: `status`, `help`, `crawl`, `extract`, `embed`, `ingest`, `query`, `retrieve`, `search`, `map`, `doctor`, `domains`, `sources`, `stats`, `artifacts`, `scrape`, `research`, `ask`, `screenshot`, `elicit_demo`.
+Supported top-level action families include: `status`, `help`, `jobs`,
+`source`, `extract`, `memory`, `query`, `retrieve`, `resolve`, `capabilities`,
+`providers`, `search`, `map`, `endpoints`, `evaluate`, `suggest`, `doctor`,
+`research`, `ask`, `summarize`, `screenshot`, `brand`, `diff`, `prune`,
+`watch`, and `graph`.
+
+Removed legacy action names such as `crawl`, `scrape`, `embed`, `ingest`,
+`code_search`, `vertical_scrape`, `purge`, and `dedupe` are not valid MCP
+actions. Use `action=source` for indexing and `action=prune` for cleanup.
 
 ## Examples
 

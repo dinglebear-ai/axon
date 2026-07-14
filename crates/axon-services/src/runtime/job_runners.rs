@@ -9,8 +9,9 @@
 //! [`super::resolve_runtime_with_workers`] hands the registry to
 //! `SqliteJobBackend::new_with_workers_and_registry` at composition time.
 //!
-//! Registered here today: `ProviderProbe`, `Extract`, `Embed`, `Crawl`,
-//! `Ingest`, `Source`, and `Memory`. `GraphMutation`/`Prune`/`Watch` are
+//! Registered here today: `ProviderProbe`, `Extract`, `Embed`, `Ingest`,
+//! `Source`, and `Memory`. `Crawl` is represented as detached `Source` jobs at
+//! enqueue time; `GraphMutation`/`Prune`/`Watch` are
 //! intentionally left unregistered: they run as sub-steps of a parent operation
 //! or have their own scheduler, and forcing them through this seam here risks a
 //! rushed, wrong implementation of the trickiest cases.
@@ -33,12 +34,11 @@ use axon_memory::sqlite::SqliteMemoryStore;
 use axon_memory::store::MemoryStore;
 use tokio_util::sync::CancellationToken;
 
-mod crawl_runner;
 mod ingest_runner;
 mod source_runner;
-use crawl_runner::CrawlRunner;
 use ingest_runner::IngestRunner;
 use source_runner::SourceRunner;
+pub(crate) use source_runner::run_source_request_with_context;
 
 /// Build the [`JobRunnerRegistry`] handed to the unified worker at
 /// composition time. Additive by design — any kind not registered here keeps
@@ -65,12 +65,6 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
     registry.register(
         JobKind::Embed,
         Arc::new(EmbedRunner {
-            cfg: Arc::clone(cfg),
-        }),
-    );
-    registry.register(
-        JobKind::Crawl,
-        Arc::new(CrawlRunner {
             cfg: Arc::clone(cfg),
         }),
     );

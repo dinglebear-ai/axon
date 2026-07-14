@@ -33,8 +33,8 @@ async fn make_watch(pool: &SqlitePool) -> Uuid {
 }
 
 /// Core single-flight guarantee, offline: when a changed cluster's member already
-/// references an active (pending) crawl, the cluster is reported skipped and NO
-/// new crawl is enqueued.
+/// references an active (pending) source crawl, the cluster is reported skipped
+/// and NO new crawl is enqueued.
 #[tokio::test]
 async fn in_flight_cluster_is_skipped_no_new_crawl() {
     let temp = NamedTempFile::new().unwrap();
@@ -46,9 +46,8 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
     let watch_id = make_watch(&pool).await;
     let url = "https://example.com/docs/page";
 
-    // Enqueue a crawl job via the unified store; queued/pending counts as
-    // active for the in-flight guard (crawl_job_active checks the unified
-    // store's LifecycleStatus, not the legacy axon_crawl_jobs table).
+    // Enqueue a source crawl job via the unified store; queued/pending counts
+    // as active for the in-flight guard.
     let active_job = enqueue_change_crawl(&pool, &cfg, "https://example.com/docs/", 2)
         .await
         .unwrap();
@@ -62,7 +61,7 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
         .await
         .unwrap();
 
-    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'source'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -71,7 +70,7 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
     let (clusters, dispatched, errors) =
         dispatch_clusters(&pool, &cfg, watch_id, &changed, 2).await;
 
-    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'source'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -92,7 +91,7 @@ async fn in_flight_cluster_is_skipped_no_new_crawl() {
 }
 
 /// Counterpart: with no in-flight crawl referenced, the changed cluster enqueues
-/// exactly one new crawl and reports its job id.
+/// exactly one new source crawl and reports its job id.
 #[tokio::test]
 async fn idle_cluster_enqueues_one_crawl() {
     let temp = NamedTempFile::new().unwrap();
@@ -110,7 +109,7 @@ async fn idle_cluster_enqueues_one_crawl() {
         .await
         .unwrap();
 
-    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'source'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -119,7 +118,7 @@ async fn idle_cluster_enqueues_one_crawl() {
     let (clusters, dispatched, errors) =
         dispatch_clusters(&pool, &cfg, watch_id, &changed, 2).await;
 
-    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'crawl'")
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = 'source'")
         .fetch_one(&pool)
         .await
         .unwrap();

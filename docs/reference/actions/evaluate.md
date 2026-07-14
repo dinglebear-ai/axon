@@ -87,8 +87,8 @@ With `--json`, output is a pretty-printed JSON object containing:
 - `baseline_answer`
 - `analysis_answer`
 - `scores` (`status`, per-axis `axes`, totals, and `winner`; `parse_failed` is explicit)
-- `crawl_suggestions` (present when judge scoring indicates RAG underperformed baseline)
-- `crawl_enqueue_outcomes` (url + job_id or enqueue error, when suggestions are generated)
+- `crawl_suggestions` (historical field name; source suggestions present when judge scoring indicates RAG underperformed baseline)
+- `crawl_enqueue_outcomes` (historical field name; currently empty because evaluate reports suggestions rather than auto-enqueueing them)
 - `timing_ms` (retrieval/context/rag_llm/baseline_llm/research/judge/total)
 
 ## Notes
@@ -96,4 +96,4 @@ With `--json`, output is a pretty-printed JSON object containing:
 - Without `--json`, evaluate prints a human-readable answer comparison whose layout is controlled by `--responses-mode` (`side-by-side` by default; `inline` for stacked output; `events` for a single `evaluate_complete` JSON event line).
 - If streaming fails for any LLM phase, evaluate falls back to non-streaming for that phase.
 - Judge reference retrieval is best-effort; evaluate continues even if reference gathering fails.
-- When judge scoring indicates RAG underperformed baseline, suggested crawl sources are auto-enqueued as crawl jobs immediately after generation.
+- When judge scoring indicates RAG underperformed baseline, evaluate reports suggested source targets. It does not auto-enqueue jobs.

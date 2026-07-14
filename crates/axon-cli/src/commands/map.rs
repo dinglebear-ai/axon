@@ -1,9 +1,13 @@
+use axon_api::source::{ResponseMode, SourceIntent, SourceRequest, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_done;
-use axon_core::ui::{Spinner, muted, primary, print_option, print_phase};
+use axon_core::ui::{Spinner, primary, print_option, print_phase};
+use axon_services::context::ServiceContext;
 use axon_services::map::discover as map_discover;
 use axon_services::types::MapOptions;
 use std::error::Error;
+
+use crate::commands::source::run_source_request;
 
 /// Return the map result as a raw JSON value.
 ///
@@ -26,7 +30,31 @@ pub async fn map_payload(
     Ok(serde_json::to_value(&result)?)
 }
 
-pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
+pub(crate) fn build_map_source_request(
+    cfg: &Config,
+    start_url: &str,
+    urls: &[String],
+) -> SourceRequest {
+    let mut request = SourceRequest::new(start_url.to_string());
+    request.intent = SourceIntent::Map;
+    request.scope = Some(SourceScope::Map);
+    request.embed = false;
+    request.collection = Some(cfg.collection.clone());
+    request.output.json = cfg.json_output;
+    request.output.response_mode = ResponseMode::Auto;
+    request
+        .options
+        .values
+        .insert("map_urls".to_string(), serde_json::json!(urls));
+    request.limits.max_pages = Some(urls.len() as u64);
+    request
+}
+
+pub async fn run_map(
+    cfg: &Config,
+    start_url: &str,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     if !cfg.json_output {
         print_phase("◐", "Mapping", start_url);
         println!("  {}", primary("Options:"));
@@ -58,7 +86,6 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
     let thin_pages = result.thin_pages;
     let elapsed_ms = result.elapsed_ms;
     let map_source = result.map_source.as_str();
-    let warning = result.warning.as_deref();
 
     if let Some(s) = map_spinner {
         s.finish(&format!(
@@ -66,30 +93,12 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
         ));
     }
 
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("{}", primary(&format!("Map Results for {start_url}")));
-        println!(
-            "{} {} (source: {})",
-            muted("Showing"),
-            mapped_urls,
-            map_source
-        );
-        if let Some(w) = warning {
-            println!("{} {}", muted("Warning:"), w);
-        }
-        println!();
-        for url in &result.urls {
-            println!("  {} {}", muted("•"), primary(url));
-        }
-    }
-
     log_done(&format!(
         "command=map mapped_urls={mapped_urls} map_source={map_source} sitemap_urls={sitemap_urls} pages_seen={pages_seen} thin_pages={thin_pages} elapsed_ms={elapsed_ms}"
     ));
 
-    Ok(())
+    let request = build_map_source_request(cfg, start_url, &result.urls);
+    run_source_request(cfg, service_context, request).await
 }
 
 #[cfg(test)]

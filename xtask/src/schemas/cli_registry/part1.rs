@@ -204,7 +204,7 @@ fn commands_search_brand_debug_doctor() -> Vec<CliRegistryCommand> {
         // search / research
         c(
             &["search"],
-            "Web search via SearXNG/Tavily, auto-queues crawl jobs for results",
+            "Web search via SearXNG/Tavily, auto-queues Source jobs for results",
             Some("SearchRequest"),
             true,
             false,
@@ -217,6 +217,14 @@ fn commands_search_brand_debug_doctor() -> Vec<CliRegistryCommand> {
             true,
             false,
             "read",
+        ),
+        c(
+            &["scrape"],
+            "Fetch, normalize, and embed exactly one web page through SourceRequest",
+            Some("SourceRequest"),
+            true,
+            false,
+            "write",
         ),
         // brand / debug / diff / doctor
         c(

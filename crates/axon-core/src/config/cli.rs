@@ -35,10 +35,12 @@ pub(super) enum CliCommand {
     Endpoints(EndpointArgs),
     /// LLM-powered structured data extraction from URLs
     Extract(ExtractArgs),
-    /// Web search via SearXNG/Tavily, auto-queues crawl jobs for results
+    /// Web search via SearXNG/Tavily, auto-queues Source jobs for results
     Search(TextArg),
     /// Web research via SearXNG/Tavily with LLM synthesis and auto-indexing
     Research(TextArg),
+    /// Fetch/render/normalize exactly one web page and embed it by default
+    Scrape(ScrapeSourceArgs),
     /// Analyze a URL's brand identity: colors, fonts, logos, favicon
     Brand(ScrapeArgs),
     /// Run doctor diagnostics plus LLM-assisted troubleshooting
@@ -380,6 +382,19 @@ pub(super) struct SourceArgs {
     /// omitted the adapter's default scope is used.
     #[arg(long, value_name = "SCOPE")]
     pub(super) scope: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct ScrapeSourceArgs {
+    /// URL to scrape as exactly one page.
+    #[arg(value_name = "URL")]
+    pub(super) url: String,
+    /// Skip vector embedding while still returning or saving clean content.
+    #[arg(long = "no-embed", action = ArgAction::SetTrue)]
+    pub(super) no_embed: bool,
+    /// Return the cleaned page body inline when it fits the output policy.
+    #[arg(long = "inline", action = ArgAction::SetTrue)]
+    pub(super) inline: bool,
 }
 
 #[derive(Debug, Args)]

@@ -1,4 +1,5 @@
 use super::*;
+use axon_api::source::{ResponseMode, SourceScope};
 use axon_core::config::CommandKind;
 use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
 use axon_services::runtime::ServiceJobRuntime;
@@ -99,6 +100,22 @@ fn source_cfg(path: &str) -> Config {
     cfg.command = CommandKind::Source;
     cfg.positional = vec![path.to_string()];
     cfg
+}
+
+#[test]
+fn build_source_request_projects_retained_scrape_flags() {
+    let mut cfg = source_cfg("https://example.com/article");
+    cfg.command = CommandKind::Scrape;
+    cfg.source_scope = Some("page".to_string());
+    cfg.embed = false;
+    cfg.scrape_inline = true;
+
+    let request =
+        build_source_request(&cfg, cfg.positional[0].clone()).expect("source request builds");
+
+    assert_eq!(request.scope, Some(SourceScope::Page));
+    assert!(!request.embed);
+    assert_eq!(request.output.response_mode, ResponseMode::Inline);
 }
 
 #[tokio::test]

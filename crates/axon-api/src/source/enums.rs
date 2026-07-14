@@ -178,8 +178,42 @@ pub enum JobKind {
     /// enqueue paths in `axon-services`. Requires the `jobs.kind` CHECK
     /// widened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.
     Embed,
+    /// Legacy migration-only row kind. Normal web acquisition must not create
+    /// this kind after the `SourceRequest` cutover; site/docs/page web work is
+    /// represented as `JobKind::Source`.
     Crawl,
     Ingest,
+}
+
+impl JobKind {
+    pub const fn all() -> &'static [Self] {
+        &[
+            Self::Source,
+            Self::Watch,
+            Self::Map,
+            Self::Extract,
+            Self::Research,
+            Self::Ask,
+            Self::Query,
+            Self::Retrieve,
+            Self::Memory,
+            Self::Graph,
+            Self::Prune,
+            Self::ProviderProbe,
+            Self::Reset,
+            Self::Embed,
+            Self::Crawl,
+            Self::Ingest,
+        ]
+    }
+
+    /// Public Source-pipeline job kinds advertised in REST/MCP/generated
+    /// schemas. `Embed`, `Crawl`, and `Ingest` remain deserializable for old
+    /// rows and migration readers, but new public indexing flows use Source
+    /// jobs instead.
+    pub const fn is_public_source_surface(self) -> bool {
+        !matches!(self, Self::Crawl | Self::Embed | Self::Ingest)
+    }
 }
 
 #[derive(

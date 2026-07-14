@@ -1,5 +1,6 @@
 use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
 use crate::schema::{AxonRequest, ExtractSubaction, JobsSubaction, MemorySubaction};
+use axon_api::schema_registry::prune_public_job_kind_schemas;
 use rmcp::schemars::JsonSchema;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -40,6 +41,7 @@ fn build_axon_tool_input_schema() -> rmcp::model::JsonObject {
         );
     }
     filter_schema_to_supported_actions(&mut schema, &supported_set);
+    prune_public_job_kind_schemas(&mut schema);
     enrich_tool_input_schema(&mut schema, &supported_actions);
 
     match schema {
