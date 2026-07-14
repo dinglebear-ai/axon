@@ -2,19 +2,18 @@ use crate::context::ServiceContext;
 use crate::events::ServiceEvent;
 use crate::jobs as job_service;
 use crate::runtime::WorkerMode;
+use crate::source::dispatch::web_options::web_crawl_options;
 use crate::types::{
     ArtifactHandle, CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode,
     JobStartOutcome, StartDisposition,
 };
 use axon_adapters::web_engine::engine::{SitemapDiscovery, discover_sitemap_urls};
 use axon_api::source::{
-    AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
-    JobStagePlan, MetadataMap, PipelinePhase,
+    AuthSnapshot, JobPriority, SourceIntent, SourceLimits, SourceRequest, SourceScope,
 };
 use axon_core::config::Config;
 use axon_core::http::validate_url;
 use axon_jobs::backend::JobKind;
-use axon_jobs::config_snapshot::config_snapshot_json;
 use serde::{Deserialize, Serialize};
 use spider::url::Url;
 use std::error::Error;
@@ -300,52 +299,28 @@ pub async fn crawl_start_with_context(
     // Resolve crawl page-cap policy HERE (services layer) so the enqueued job
     // snapshot carries the effective cap regardless of which transport called us.
     let effective = apply_crawl_defaults(cfg);
-    let config_json = config_snapshot_json(&effective)?;
-
     let store = service_context
         .job_store()
         .ok_or("unified job store is not available for this runtime")?;
 
-    // One unified job per URL, matching the legacy per-URL job granularity.
+    // One detached Source job per URL, matching the legacy per-URL crawl
+    // granularity while routing execution through SourceRequest -> web adapter
+    // -> ledger/prepare/embed/publish.
     let mut jobs = Vec::with_capacity(urls.len());
     for url in urls {
         validate_url(url).map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
-        let descriptor = store
-            .create(JobCreateRequest {
-                request_id: None,
-                job_kind: UnifiedJobKind::Crawl,
-                job_intent: JobIntent::Index,
-                source_id: None,
-                watch_id: None,
-                parent_job_id: None,
-                root_job_id: None,
-                attempt: 1,
-                priority: JobPriority::Normal,
-                idempotency_key: None,
-                stage_plan: vec![JobStagePlan {
-                    phase: PipelinePhase::Fetching,
-                    required: true,
-                    provider_requirements: Vec::new(),
-                    estimated_items: None,
-                }],
-                request: Some(serde_json::json!({
-                    "urls": [url],
-                    "config_json": config_json,
-                })),
-                auth_snapshot: caller
-                    .cloned()
-                    .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
-                config_snapshot_id: None,
-                requirements: MetadataMap::new(),
-                result_schema: Some("crawl_result".to_string()),
-                warnings: Vec::new(),
-                error: None,
-                metadata: MetadataMap::new(),
-                deadline_at: None,
-            })
-            .await
-            .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
-        jobs.push((url.clone(), descriptor.job_id.0.to_string()));
+        let source_result = crate::source::enqueue::enqueue_source(
+            crawl_source_request(url, &effective),
+            store.as_ref(),
+            caller.cloned(),
+        )
+        .await
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+        let descriptor = source_result
+            .job
+            .as_ref()
+            .ok_or_else(|| source_enqueue_error(url, &source_result))?;
+        jobs.push((url.clone(), descriptor.id.0.to_string()));
     }
     service_context.notify_unified();
 
@@ -355,6 +330,52 @@ pub async fn crawl_start_with_context(
         execution_mode: ExecutionMode::InProcess,
         result,
     })
+}
+
+fn crawl_source_request(url: &str, cfg: &Config) -> SourceRequest {
+    let mut request = SourceRequest::new(url.to_string());
+    request.intent = SourceIntent::Acquire;
+    request.scope = Some(SourceScope::Site);
+    request.embed = cfg.embed;
+    request.collection = Some(cfg.collection.clone());
+    request.execution.priority = JobPriority::Normal;
+    request.limits = SourceLimits {
+        max_pages: Some(cfg.max_pages as u64),
+        max_depth: Some(cfg.max_depth as u32),
+        ..SourceLimits::default()
+    };
+    request.options.values = web_crawl_options(cfg, None, None);
+    request
+        .options
+        .values
+        .entry("url_whitelist".to_string())
+        .or_insert_with(|| serde_json::json!([]));
+    request
+        .options
+        .values
+        .entry("url_blacklist".to_string())
+        .or_insert_with(|| serde_json::json!([]));
+    request
+        .options
+        .values
+        .entry("auto_dispatch_skip".to_string())
+        .or_insert_with(|| serde_json::json!([]));
+    request
+}
+
+fn source_enqueue_error(url: &str, result: &axon_api::source::SourceResult) -> Box<dyn Error> {
+    result
+        .errors
+        .first()
+        .map(|error| format!("failed to enqueue crawl source {url}: {}", error.message))
+        .or_else(|| {
+            result
+                .warnings
+                .first()
+                .map(|warning| format!("failed to enqueue crawl source {url}: {}", warning.message))
+        })
+        .unwrap_or_else(|| format!("failed to enqueue crawl source {url}: no job descriptor"))
+        .into()
 }
 
 /// Look up the current state of a crawl job by its UUID.

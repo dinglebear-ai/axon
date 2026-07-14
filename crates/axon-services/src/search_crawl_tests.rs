@@ -3,7 +3,6 @@ use crate::runtime::ServiceJobRuntime;
 use crate::types::ResearchHit;
 use axon_api::source::{JobId, LifecycleStatus, PipelinePhase};
 use axon_core::config::CommandKind;
-use axon_jobs::config_snapshot::apply_config_snapshot;
 use std::error::Error as StdError;
 use std::sync::Arc;
 
@@ -243,17 +242,43 @@ async fn uses_hardened_bounded_crawl_config() {
         .await
         .expect("request_json")
         .expect("request json stored");
-    let config_json = request_json
-        .get("config_json")
-        .and_then(|v| v.as_str())
-        .expect("config_json field present");
-    let effective = apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
-    assert_eq!(effective.max_pages, 200);
-    assert_eq!(effective.max_depth, 10);
-    assert!(!effective.discover_sitemaps);
-    assert_eq!(effective.max_sitemaps, 0);
-    assert!(effective.custom_headers.is_empty());
-    assert!(effective.url_whitelist.is_empty());
+    let source_request = request_json
+        .get("source_request")
+        .expect("source_request field present");
+    assert_eq!(
+        source_request
+            .pointer("/limits/max_pages")
+            .and_then(serde_json::Value::as_u64),
+        Some(200)
+    );
+    assert_eq!(
+        source_request
+            .pointer("/limits/max_depth")
+            .and_then(serde_json::Value::as_u64),
+        Some(10)
+    );
+    assert_eq!(
+        source_request
+            .pointer("/options/values/discover_sitemaps")
+            .and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        source_request
+            .pointer("/options/values/max_sitemaps")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        source_request.pointer("/options/values/url_whitelist"),
+        Some(&serde_json::json!([]))
+    );
+    assert!(
+        source_request
+            .pointer("/options/values/custom_headers")
+            .is_none(),
+        "web SourceRequest options must not carry search caller headers"
+    );
 }
 
 #[tokio::test]
@@ -467,22 +492,31 @@ async fn enqueue_research_crawls_embeds_by_default_and_honors_skip_embed() {
     let output = enqueue_research_crawls(&cfg, &ctx, &hits).await;
 
     assert_eq!(output.jobs.len(), 1);
-    let effective = crawl_job_config_snapshot(&ctx, &output.jobs[0].job_id).await;
-    assert!(effective.embed, "research crawl should embed by default");
+    let source_request = crawl_job_source_request_json(&ctx, &output.jobs[0].job_id).await;
+    assert!(
+        source_request
+            .get("embed")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        "research crawl should embed by default"
+    );
 
     cfg.embed = false;
     let ctx = test_ctx_with_workers(cfg.clone()).await;
     let output = enqueue_research_crawls(&cfg, &ctx, &hits).await;
 
     assert_eq!(output.jobs.len(), 1);
-    let effective = crawl_job_config_snapshot(&ctx, &output.jobs[0].job_id).await;
+    let source_request = crawl_job_source_request_json(&ctx, &output.jobs[0].job_id).await;
     assert!(
-        !effective.embed,
+        !source_request
+            .get("embed")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true),
         "--skip-embed should carry into research crawl jobs"
     );
 }
 
-async fn crawl_job_config_snapshot(ctx: &ServiceContext, job_id: &str) -> Config {
+async fn crawl_job_source_request_json(ctx: &ServiceContext, job_id: &str) -> serde_json::Value {
     let store = ctx.job_store().expect("unified job store must be attached");
     let job_id = JobId(uuid::Uuid::parse_str(job_id).unwrap());
     let request_json = store
@@ -490,9 +524,8 @@ async fn crawl_job_config_snapshot(ctx: &ServiceContext, job_id: &str) -> Config
         .await
         .expect("request_json")
         .expect("request json stored");
-    let config_json = request_json
-        .get("config_json")
-        .and_then(|v| v.as_str())
-        .expect("config_json field present");
-    apply_config_snapshot(&Config::test_default(), config_json).expect("snapshot")
+    request_json
+        .get("source_request")
+        .expect("source_request field present")
+        .clone()
 }

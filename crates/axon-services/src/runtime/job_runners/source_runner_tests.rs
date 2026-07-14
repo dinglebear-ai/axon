@@ -222,10 +222,13 @@ async fn source_runner_honors_cancellation_before_running() {
     );
 }
 
-/// `build_registry` now wires `Source` alongside the existing kinds.
+/// `build_registry` wires Source and intentionally leaves Crawl unregistered:
+/// `axon crawl <url>` is now a SourceRequest enqueue shim, not a separate
+/// execution family.
 #[tokio::test]
-async fn build_registry_registers_source() {
+async fn build_registry_registers_source_not_crawl() {
     let (_tmp, cfg) = test_cfg().await;
     let registry = build_registry(&cfg).expect("build registry");
     assert!(registry.contains(UnifiedJobKind::Source));
+    assert!(!registry.contains(UnifiedJobKind::Crawl));
 }

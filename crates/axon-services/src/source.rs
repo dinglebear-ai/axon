@@ -416,11 +416,12 @@ async fn open_cleanup_debt_stores(
 /// [`SourceRequest`] — see `docs/pipeline-unification/foundation/source-pipeline.md`
 /// (`SourceRequest` + Validation Checklist: "`embed=false` never writes
 /// vectors"). Every family bridge receives the real `request.embed` instead of
-/// an implicit `true`. `limits.max_pages` is honored by `web` (the only family
-/// whose acquisition path supports a page cap); `limits.max_items` is honored
-/// by `feed`/`youtube`/`reddit`/`session`/`registry`, which each cap their
-/// discovered-manifest item count before diffing. `local`/`git` do not take a
-/// `max_items` cap today, so it is not threaded to them.
+/// an implicit `true`. `limits.max_pages` and `limits.max_depth` are honored by
+/// `web` (the only family whose acquisition path supports page/depth bounds);
+/// `limits.max_items` is honored by `feed`/`youtube`/`reddit`/`session`/
+/// `registry`, which each cap their discovered-manifest item count before
+/// diffing. `local`/`git` do not take a `max_items` cap today, so it is not
+/// threaded to them.
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_kind(
     kind: SourceInputKind,
@@ -499,7 +500,7 @@ async fn dispatch_kind(
             .await
         }
         SourceInputKind::Web => {
-            dispatch::dispatch_web(
+            dispatch_web_kind(
                 cfg,
                 runtime,
                 input,
@@ -508,8 +509,8 @@ async fn dispatch_kind(
                 scope,
                 auth_snapshot,
                 embed,
-                limits.max_pages,
                 output,
+                limits,
                 route,
                 execution,
             )
@@ -542,6 +543,39 @@ async fn dispatch_kind(
         // Unsupported is handled by the caller before dispatch.
         SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_web_kind(
+    cfg: &axon_core::config::Config,
+    runtime: &TargetLocalSourceRuntime,
+    input: &str,
+    collection: &str,
+    owner_id: &str,
+    scope: SourceScope,
+    auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    output: &axon_api::source::OutputPolicy,
+    limits: &axon_api::source::SourceLimits,
+    route: &axon_api::source::RoutePlan,
+    execution: &SourceExecutionContext,
+) -> anyhow::Result<IndexCounts> {
+    dispatch::dispatch_web(
+        cfg,
+        runtime,
+        input,
+        collection,
+        owner_id,
+        scope,
+        auth_snapshot,
+        embed,
+        limits.max_pages,
+        limits.max_depth,
+        output,
+        route,
+        execution,
+    )
+    .await
 }
 
 /// Adapter name reported on the result for each family.

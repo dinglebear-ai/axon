@@ -121,6 +121,28 @@ fn validate_url_blocks_link_local_boundary() {
     assert!(validate_url("http://169.254.169.253/").is_err());
 }
 
+// --- RFC-6598 carrier-grade NAT range ---
+
+#[test]
+fn validate_url_blocks_100_64_carrier_grade_nat_lower_boundary() {
+    assert!(validate_url("http://100.64.0.0/").is_err());
+}
+
+#[test]
+fn validate_url_blocks_100_127_carrier_grade_nat_upper_boundary() {
+    assert!(validate_url("http://100.127.255.255/").is_err());
+}
+
+#[test]
+fn validate_url_allows_100_63_below_carrier_grade_nat() {
+    assert!(validate_url("http://100.63.255.255/").is_ok());
+}
+
+#[test]
+fn validate_url_allows_100_128_above_carrier_grade_nat() {
+    assert!(validate_url("http://100.128.0.0/").is_ok());
+}
+
 // --- RFC-1918 private ranges ---
 
 #[test]
@@ -409,6 +431,10 @@ fn validate_url_rejects_ipv4_mapped_ipv6_private() {
     assert!(
         validate_url("http://[::ffff:172.16.0.1]/").is_err(),
         "::ffff:172.16.0.1 must be blocked as private"
+    );
+    assert!(
+        validate_url("http://[::ffff:100.64.0.1]/").is_err(),
+        "::ffff:100.64.0.1 must be blocked as carrier-grade NAT"
     );
 }
 

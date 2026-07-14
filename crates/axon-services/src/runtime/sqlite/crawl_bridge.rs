@@ -1,13 +1,10 @@
-//! Crawl-only bridge from the unified `JobStore` onto the legacy `ServiceJob`
-//! shape.
+//! Historical crawl bridge from the unified `JobStore` onto the legacy
+//! `ServiceJob` shape.
 //!
-//! `JobKind::Crawl` now enqueues and executes on the unified job store (see
-//! `CrawlRunner` in `crates/axon-services/src/runtime/job_runners/
-//! crawl_runner.rs`), but every CLI/MCP/REST caller still renders through
-//! `ServiceJob` (shared with Ingest, which remains on the legacy per-family
-//! backend until its own cutover). This module mirrors `extract_bridge.rs`/
-//! `embed_bridge.rs`: it converts unified `JobSummary`/result DTOs into
-//! `ServiceJob` so those shared renderers keep working unchanged for Crawl.
+//! New `axon crawl <url>` submissions enqueue detached `JobKind::Source` rows
+//! carrying `SourceRequest { scope: site }`. This module remains for legacy
+//! `JobKind::Crawl` rows and the old crawl status/list/cancel/cleanup commands
+//! until those surfaces are moved to source-aware job lookups.
 
 use std::error::Error;
 use std::sync::Arc;
@@ -44,11 +41,9 @@ fn legacy_status(status: LifecycleStatus) -> String {
     .to_string()
 }
 
-/// Crawl's stored `request` payload shape: `{"urls": [<one url>],
-/// "config_json": "..."}` (see `crawl_start_with_context` in
-/// `crates/axon-services/src/crawl.rs`). Pulls the URL back out so the
-/// bridge can populate `ServiceJob.url`/`urls_json`/`target` for CLI/MCP/REST
-/// rendering.
+/// Legacy crawl's stored `request` payload shape: `{"urls": [<one url>],
+/// "config_json": "..."}`. Pulls the URL back out so the bridge can populate
+/// `ServiceJob.url`/`urls_json`/`target` for CLI/MCP/REST rendering.
 fn url_from_request_json(request_json: &serde_json::Value) -> Option<(String, serde_json::Value)> {
     let urls_json = request_json.get("urls").cloned()?;
     let url = urls_json

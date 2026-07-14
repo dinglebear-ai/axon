@@ -1,16 +1,14 @@
-//! Enqueue change-triggered crawls; guard against piling up.
+//! Enqueue change-triggered source crawls; guard against piling up.
 //!
-//! Crawl jobs are claimed exclusively from the **unified** job store (the
-//! legacy `axon_crawl_jobs` per-family worker lane was retired in
-//! `ca7ea71d1`), so watch-triggered re-crawls must enqueue there too — not
-//! into `axon_crawl_jobs`, which nothing claims anymore.
+//! Crawl execution now flows through detached `JobKind::Source` rows carrying
+//! `SourceRequest { scope: site }`, so watch-triggered re-crawls must enqueue
+//! that same contract instead of a legacy `JobKind::Crawl` payload.
 
 use crate::boundary::JobStore;
-use crate::config_snapshot::config_snapshot_json;
 use crate::unified::SqliteUnifiedJobStore;
 use axon_api::source::{
     AuthSnapshot, JobCreateRequest, JobId, JobIntent, JobKind as UnifiedJobKind, JobPriority,
-    JobStagePlan, LifecycleStatus, MetadataMap, PipelinePhase,
+    LifecycleStatus, MetadataMap, SourceIntent, SourceLimits, SourceRequest, SourceScope,
 };
 use axon_core::config::Config;
 use sqlx::SqlitePool;
@@ -30,8 +28,8 @@ fn lifecycle_status_active(status: LifecycleStatus) -> bool {
     )
 }
 
-/// Whether a previously-dispatched crawl is still active. Used by the in-flight
-/// guard to skip re-enqueuing a crawl for a cluster whose prior crawl hasn't
+/// Whether a previously-dispatched source crawl is still active. Used by the
+/// in-flight guard to skip re-enqueuing a crawl for a cluster whose prior job hasn't
 /// finished.
 ///
 /// A query error is treated as ACTIVE (returns `true`), not inactive: a
@@ -44,7 +42,7 @@ pub async fn crawl_job_active(pool: &SqlitePool, job_id: Uuid) -> bool {
         Ok(Some(summary)) => lifecycle_status_active(summary.status),
         Ok(None) => false,
         Err(e) => {
-            tracing::warn!(%job_id, error = %e, "watch: crawl_job_active query failed; treating as active to avoid duplicate crawl");
+            tracing::warn!(%job_id, error = %e, "watch: crawl_job_active query failed; treating as active to avoid duplicate source crawl");
             true
         }
     }
@@ -61,16 +59,24 @@ pub async fn enqueue_change_crawl(
     // validation already covers watched URLs, but cluster seeds are derived
     // (common-prefix) and may not be one of the originally-validated URLs.
     axon_core::http::validate_url(seed_url)?;
-    let mut crawl_cfg = cfg.clone();
-    crawl_cfg.max_depth = max_depth;
-    let config_json = config_snapshot_json(&crawl_cfg)?;
+    let mut source_request = SourceRequest::new(seed_url.to_string());
+    source_request.intent = SourceIntent::Refresh;
+    source_request.scope = Some(SourceScope::Site);
+    source_request.embed = cfg.embed;
+    source_request.collection = Some(cfg.collection.clone());
+    source_request.execution.priority = JobPriority::Normal;
+    source_request.limits = SourceLimits {
+        max_pages: Some(cfg.max_pages as u64),
+        max_depth: Some(max_depth as u32),
+        ..SourceLimits::default()
+    };
 
     let store = SqliteUnifiedJobStore::new(pool.clone());
     let descriptor = store
         .create(JobCreateRequest {
             request_id: None,
-            job_kind: UnifiedJobKind::Crawl,
-            job_intent: JobIntent::Run,
+            job_kind: UnifiedJobKind::Source,
+            job_intent: JobIntent::Refresh,
             source_id: None,
             watch_id: None,
             parent_job_id: None,
@@ -78,23 +84,15 @@ pub async fn enqueue_change_crawl(
             attempt: 1,
             priority: JobPriority::Normal,
             idempotency_key: None,
-            stage_plan: vec![JobStagePlan {
-                phase: PipelinePhase::Fetching,
-                required: true,
-                provider_requirements: Vec::new(),
-                estimated_items: None,
-            }],
-            request: Some(serde_json::json!({
-                "urls": [seed_url],
-                "config_json": config_json,
-            })),
+            stage_plan: Vec::new(),
+            request: Some(serde_json::json!({ "source_request": source_request })),
             // Watch-triggered re-crawls are system-triggered — no per-caller
             // auth identity is available at this call site (mirrors the
             // system-triggered search/research auto-crawl path).
             auth_snapshot: AuthSnapshot::trusted_system("watch-scheduler"),
             config_snapshot_id: None,
             requirements: MetadataMap::new(),
-            result_schema: Some("crawl_result".to_string()),
+            result_schema: Some("source_result".to_string()),
             warnings: Vec::new(),
             error: None,
             metadata: MetadataMap::new(),
