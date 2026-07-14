@@ -1,15 +1,15 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use axon_api::source::*;
 use tokio::sync::Mutex;
 
 use super::FakeLedgerState;
+use crate::cleanup_debt::{
+    artifact_delete_debt_for_metadata, cache_prune_debt_for_metadata, graph_prune_debt,
+    ledger_prune_debt, vector_delete_debt,
+};
 use crate::store::Result;
 use crate::store::util::{keyed_manifest_items, manifest_item_changed, timestamp};
-
-const ARTIFACT_METADATA_KEY: &str = "_axon_artifacts";
-const CACHE_KEY_METADATA_KEY: &str = "_axon_document_cache_key";
 
 /// Pending (unresolved) cleanup debt for a source, oldest first. A debt is
 /// pending while `completed_at` is unset. Mirrors the SQLite ordering.
@@ -114,15 +114,17 @@ pub(super) fn record_removed_item_cleanup_debt(
         .map(|manifest| keyed_manifest_items(manifest.items.clone()))
         .unwrap_or_default();
     let mut debts = Vec::new();
-    let mut artifact_ids = BTreeSet::new();
+    let mut artifact_ids = std::collections::BTreeSet::new();
     if let Some(previous_manifest) = previous_manifest.as_ref() {
-        for debt in artifact_cleanup_debt_for_metadata(
+        for debt in artifact_delete_debt_for_metadata(
             &generation.source_id,
             previous_generation,
             &previous_manifest.metadata,
             "manifest",
             &mut artifact_ids,
-        ) {
+        )
+        .unwrap_or_default()
+        {
             insert_or_get_debt(state, &mut debts, debt);
         }
     }
@@ -135,27 +137,32 @@ pub(super) fn record_removed_item_cleanup_debt(
         insert_or_get_debt(
             state,
             &mut debts,
-            vector_cleanup_debt(
+            vector_delete_debt(
                 &generation.source_id,
                 previous_generation,
                 &item.source_item_key,
             ),
         );
-        for debt in artifact_cleanup_debt_for_metadata(
+        for debt in artifact_delete_debt_for_metadata(
             &generation.source_id,
             previous_generation,
             &item.metadata,
             &item.source_item_key.0,
             &mut artifact_ids,
-        ) {
+        )
+        .unwrap_or_default()
+        {
             insert_or_get_debt(state, &mut debts, debt);
         }
-        if let Some(debt) = cache_cleanup_debt_for_metadata(
+        if let Some(debt) = cache_prune_debt_for_metadata(
             &generation.source_id,
             previous_generation,
             &item.metadata,
             &item.source_item_key,
-        ) {
+        )
+        .ok()
+        .flatten()
+        {
             insert_or_get_debt(state, &mut debts, debt);
         }
     }
@@ -172,124 +179,6 @@ fn insert_or_get_debt(
         .entry(debt.debt_id.clone())
         .or_insert(debt);
     debts.push(stored.clone());
-}
-
-fn vector_cleanup_debt(
-    source_id: &SourceId,
-    previous_generation: &SourceGenerationId,
-    source_item_key: &SourceItemKey,
-) -> CleanupDebt {
-    CleanupDebt {
-        debt_id: CleanupDebtId::new(format!(
-            "debt_{}",
-            uuid::Uuid::new_v5(
-                &uuid::Uuid::NAMESPACE_URL,
-                format!(
-                    "{}:{}:{}",
-                    source_id.0, previous_generation.0, source_item_key.0
-                )
-                .as_bytes(),
-            )
-        )),
-        job_id: JobId::new(uuid::Uuid::from_u128(0)),
-        source_id: source_id.clone(),
-        generation: Some(previous_generation.clone()),
-        kind: CleanupDebtKind::VectorDelete,
-        selector: CleanupSelector::SourceItem {
-            source_id: source_id.clone(),
-            source_item_key: source_item_key.clone(),
-            generation: previous_generation.clone(),
-        },
-        status: LifecycleStatus::Pending,
-        created_at: timestamp(),
-        attempts: 0,
-        last_error: None,
-        next_retry_at: None,
-        completed_at: None,
-    }
-}
-
-fn artifact_cleanup_debt_for_metadata(
-    source_id: &SourceId,
-    previous_generation: &SourceGenerationId,
-    metadata: &MetadataMap,
-    owner_key: &str,
-    seen: &mut BTreeSet<ArtifactId>,
-) -> Vec<CleanupDebt> {
-    artifact_refs_from_metadata(metadata)
-        .into_iter()
-        .filter(|artifact| seen.insert(artifact.artifact_id.clone()))
-        .map(|artifact| CleanupDebt {
-            debt_id: cleanup_debt_id(
-                "artifact",
-                source_id,
-                previous_generation,
-                &format!("{owner_key}:{}", artifact.artifact_id.0),
-            ),
-            job_id: JobId::new(uuid::Uuid::from_u128(0)),
-            source_id: source_id.clone(),
-            generation: Some(previous_generation.clone()),
-            kind: CleanupDebtKind::ArtifactDelete,
-            selector: CleanupSelector::Artifact {
-                artifact_id: artifact.artifact_id,
-            },
-            status: LifecycleStatus::Pending,
-            created_at: timestamp(),
-            attempts: 0,
-            last_error: None,
-            next_retry_at: None,
-            completed_at: None,
-        })
-        .collect()
-}
-
-fn cache_cleanup_debt_for_metadata(
-    source_id: &SourceId,
-    previous_generation: &SourceGenerationId,
-    metadata: &MetadataMap,
-    source_item_key: &SourceItemKey,
-) -> Option<CleanupDebt> {
-    let value = metadata.get(CACHE_KEY_METADATA_KEY)?;
-    let key: DocumentCacheKey = serde_json::from_value(value.clone()).ok()?;
-    let key_json = serde_json::to_string(&key).ok()?;
-    Some(CleanupDebt {
-        debt_id: cleanup_debt_id("cache", source_id, previous_generation, &source_item_key.0),
-        job_id: JobId::new(uuid::Uuid::from_u128(0)),
-        source_id: source_id.clone(),
-        generation: Some(previous_generation.clone()),
-        kind: CleanupDebtKind::CachePrune,
-        selector: CleanupSelector::CacheKeys {
-            keys: vec![key_json],
-        },
-        status: LifecycleStatus::Pending,
-        created_at: timestamp(),
-        attempts: 0,
-        last_error: None,
-        next_retry_at: None,
-        completed_at: None,
-    })
-}
-
-fn artifact_refs_from_metadata(metadata: &MetadataMap) -> Vec<ArtifactRef> {
-    metadata
-        .get(ARTIFACT_METADATA_KEY)
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
-        .unwrap_or_default()
-}
-
-fn cleanup_debt_id(
-    prefix: &str,
-    source_id: &SourceId,
-    generation: &SourceGenerationId,
-    identity: &str,
-) -> CleanupDebtId {
-    CleanupDebtId::new(format!(
-        "debt_{}",
-        uuid::Uuid::new_v5(
-            &uuid::Uuid::NAMESPACE_URL,
-            format!("{prefix}:{}:{}:{identity}", source_id.0, generation.0).as_bytes(),
-        )
-    ))
 }
 
 /// Record (idempotently) `GraphPrune` debt for every item genuinely absent
@@ -319,32 +208,11 @@ pub(super) fn record_graph_prune_cleanup_debt(
         if next_by_key.contains_key(&item.source_item_key) {
             continue; // still present (unchanged or modified) — graph node stays
         }
-        let debt = CleanupDebt {
-            debt_id: CleanupDebtId::new(format!(
-                "debt_{}",
-                uuid::Uuid::new_v5(
-                    &uuid::Uuid::NAMESPACE_URL,
-                    format!(
-                        "graph:{}:{}:{}",
-                        generation.source_id.0, previous_generation.0, item.source_item_key.0
-                    )
-                    .as_bytes(),
-                )
-            )),
-            job_id: JobId::new(uuid::Uuid::from_u128(0)),
-            source_id: generation.source_id.clone(),
-            generation: Some(previous_generation.clone()),
-            kind: CleanupDebtKind::GraphPrune,
-            selector: CleanupSelector::GraphNodes {
-                stable_keys: vec![item.source_item_key.0.clone()],
-            },
-            status: LifecycleStatus::Pending,
-            created_at: timestamp(),
-            attempts: 0,
-            last_error: None,
-            next_retry_at: None,
-            completed_at: None,
-        };
+        let debt = graph_prune_debt(
+            &generation.source_id,
+            previous_generation,
+            &item.source_item_key,
+        );
         let stored = state
             .cleanup_debt
             .entry(debt.debt_id.clone())
@@ -396,29 +264,7 @@ pub(super) fn record_ledger_prune_cleanup_debt(
                 && debt.kind != CleanupDebtKind::LedgerPrune
         });
         if !has_unresolved_non_ledger_debt {
-            let debt = CleanupDebt {
-                debt_id: CleanupDebtId::new(format!(
-                    "debt_{}",
-                    uuid::Uuid::new_v5(
-                        &uuid::Uuid::NAMESPACE_URL,
-                        format!("ledger:{}:{}", generation.source_id.0, candidate.0).as_bytes(),
-                    )
-                )),
-                job_id: JobId::new(uuid::Uuid::from_u128(0)),
-                source_id: generation.source_id.clone(),
-                generation: Some(candidate.clone()),
-                kind: CleanupDebtKind::LedgerPrune,
-                selector: CleanupSelector::LedgerGenerations {
-                    source_id: generation.source_id.clone(),
-                    up_to_generation: candidate.clone(),
-                },
-                status: LifecycleStatus::Pending,
-                created_at: timestamp(),
-                attempts: 0,
-                last_error: None,
-                next_retry_at: None,
-                completed_at: None,
-            };
+            let debt = ledger_prune_debt(&generation.source_id, &candidate);
             let stored = state
                 .cleanup_debt
                 .entry(debt.debt_id.clone())

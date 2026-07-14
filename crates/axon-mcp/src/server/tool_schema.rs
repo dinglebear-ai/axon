@@ -1,5 +1,6 @@
 use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
 use crate::schema::{AxonRequest, ExtractSubaction, JobsSubaction, MemorySubaction};
+use axon_api::schema_registry::prune_public_job_kind_schemas;
 use rmcp::schemars::JsonSchema;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -47,99 +48,6 @@ fn build_axon_tool_input_schema() -> rmcp::model::JsonObject {
         Value::Object(object) => object,
         _ => serde_json::Map::new(),
     }
-}
-
-fn prune_public_job_kind_schemas(value: &mut Value) {
-    let public_values = public_job_kind_values();
-    let all_values = all_job_kind_values();
-    prune_public_job_kind_schemas_inner(value, &public_values, &all_values);
-}
-
-fn prune_public_job_kind_schemas_inner(
-    value: &mut Value,
-    public_values: &[String],
-    all_values: &[String],
-) {
-    if is_job_kind_schema(value, all_values) {
-        *value = json!({
-            "type": "string",
-            "enum": public_values,
-        });
-        return;
-    }
-
-    match value {
-        Value::Object(map) => {
-            for value in map.values_mut() {
-                prune_public_job_kind_schemas_inner(value, public_values, all_values);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                prune_public_job_kind_schemas_inner(value, public_values, all_values);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn is_job_kind_schema(value: &Value, all_values: &[String]) -> bool {
-    let mut values = Vec::new();
-    collect_schema_string_values(value, &mut values);
-    if values.len() < 4 {
-        return false;
-    }
-    values.iter().all(|value| all_values.contains(value))
-        && values.iter().any(|value| value == "source")
-        && values.iter().any(|value| value == "provider_probe")
-}
-
-fn collect_schema_string_values(value: &Value, out: &mut Vec<String>) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
-    if let Some(values) = object.get("enum").and_then(Value::as_array) {
-        out.extend(
-            values
-                .iter()
-                .filter_map(|value| value.as_str().map(str::to_string)),
-        );
-    }
-    if let Some(value) = object.get("const").and_then(Value::as_str) {
-        out.push(value.to_string());
-    }
-    for key in ["oneOf", "anyOf", "allOf"] {
-        if let Some(values) = object.get(key).and_then(Value::as_array) {
-            for value in values {
-                collect_schema_string_values(value, out);
-            }
-        }
-    }
-}
-
-fn all_job_kind_values() -> Vec<String> {
-    axon_api::source::JobKind::all()
-        .iter()
-        .copied()
-        .map(job_kind_wire_value)
-        .collect()
-}
-
-fn public_job_kind_values() -> Vec<String> {
-    axon_api::source::JobKind::all()
-        .iter()
-        .copied()
-        .filter(|kind| kind.is_public_source_surface())
-        .map(job_kind_wire_value)
-        .collect()
-}
-
-fn job_kind_wire_value(kind: axon_api::source::JobKind) -> String {
-    serde_json::to_value(kind)
-        .expect("JobKind serializes")
-        .as_str()
-        .expect("JobKind serializes to string")
-        .to_string()
 }
 
 fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static str]) {
