@@ -168,6 +168,7 @@ fn web_input(
         fetch_provider: provider.clone(),
         render_provider: provider,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
     }
 }
 

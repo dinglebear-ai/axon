@@ -784,11 +784,13 @@ dependencies = [
 name = "axon-observe"
 version = "6.2.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axon-api",
  "axon-core",
  "axon-error",
  "chrono",
+ "metrics",
  "schemars",
  "serde",
  "serde_json",

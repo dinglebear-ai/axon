@@ -49,6 +49,7 @@ fn web_input_with_text(
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(core),
+        event_store: None,
     }
 }
 

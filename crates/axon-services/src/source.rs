@@ -21,23 +21,26 @@
 //! eight `index_*_source_with_job` bridges are unchanged.
 
 pub mod authorize;
+pub mod batch;
 pub mod classify;
 pub mod dispatch;
 pub mod enqueue;
+pub(crate) mod events;
 pub(crate) mod execution;
 pub mod graph;
 pub mod job_tracking;
 pub mod prune;
 pub mod result_map;
 pub mod routing;
+pub mod security;
 pub mod tool_policy;
-
-use axon_api::source::{
-    AdapterRef, AuthScope, AuthSnapshot, SourceRequest, SourceResult, SourceScope,
+pub use batch::{SourcePipelineBatch, plan_source_pipeline_batches};
+pub use security::{
+    SourceSecurityError, enforce_local_source_policy, enforce_network_source_policy,
+    redact_local_path_for_public_payload,
 };
-use axon_core::http::validate_url;
-use axon_error::{ApiError, ErrorStage};
-use std::fmt;
+
+use axon_api::source::{AuthSnapshot, PipelinePhase, SourceRequest, SourceResult, SourceScope};
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use classify::SourceInputKind;
@@ -47,111 +50,6 @@ use result_map::{IndexCounts, to_source_result};
 /// Stable owner id used to lease sources indexed through this orchestrator when
 /// the request does not carry its own. Matches the CLI's historical owner id.
 const DEFAULT_OWNER_ID: &str = "cli";
-
-/// One bounded batch boundary in the source pipeline.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourcePipelineBatch {
-    pub batch_id: usize,
-    pub item_count: usize,
-    pub chunk_count: usize,
-    pub byte_count: usize,
-    pub provider_reservation_id: Option<String>,
-    pub elapsed_ms: u64,
-}
-
-/// Build the canonical bounded batch plan shared by source-family ports.
-///
-/// Source adapters stream item/document candidates. The service layer applies
-/// this boundary before prepare, embedding, vector upsert, and graph writes so
-/// no public source path needs to collect the whole source before downstream
-/// stages can make progress.
-pub fn plan_source_pipeline_batches(
-    item_count: usize,
-    batch_size: usize,
-) -> anyhow::Result<Vec<SourcePipelineBatch>> {
-    if batch_size == 0 {
-        anyhow::bail!("source pipeline batch size must be greater than zero");
-    }
-
-    Ok((0..item_count)
-        .collect::<Vec<_>>()
-        .chunks(batch_size)
-        .enumerate()
-        .map(|(batch_id, chunk)| SourcePipelineBatch {
-            batch_id,
-            item_count: chunk.len(),
-            chunk_count: chunk.len(),
-            byte_count: 0,
-            provider_reservation_id: None,
-            elapsed_ms: 0,
-        })
-        .collect())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceSecurityError {
-    pub code: &'static str,
-    pub message: String,
-}
-
-impl fmt::Display for SourceSecurityError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for SourceSecurityError {}
-
-/// Enforce SSRF policy before HTTP fetch, Chrome render, artifact writes, jobs,
-/// graph writes, or vector writes can be created for network sources.
-pub fn enforce_network_source_policy(urls: &[&str]) -> Result<(), SourceSecurityError> {
-    for url in urls {
-        validate_url(url).map_err(|err| SourceSecurityError {
-            code: "security.ssrf_denied",
-            message: format!("network source denied before side effects: {err}"),
-        })?;
-    }
-    Ok(())
-}
-
-/// Enforce local-source scope and high-risk path policy before filesystem reads.
-pub fn enforce_local_source_policy(
-    path: &str,
-    has_local_scope: bool,
-) -> Result<(), SourceSecurityError> {
-    if !has_local_scope {
-        return Err(SourceSecurityError {
-            code: "auth.scope_required",
-            message: "local source requires axon:local or trusted local context".to_string(),
-        });
-    }
-    if is_secret_like_local_path(path) {
-        return Err(SourceSecurityError {
-            code: "security.local_secret_denied",
-            message: "secret-like local path denied before side effects".to_string(),
-        });
-    }
-    Ok(())
-}
-
-pub fn redact_local_path_for_public_payload(path: &str) -> String {
-    if path.starts_with('/') || path.starts_with("~/") {
-        "[redacted-local-path]".to_string()
-    } else {
-        path.to_string()
-    }
-}
-
-fn is_secret_like_local_path(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower == ".env"
-        || lower.ends_with("/.env")
-        || lower.contains("/.ssh/")
-        || lower.contains("/.codex/")
-        || lower.contains("/.gemini/")
-        || lower.contains("browser-profile")
-        || lower.contains("cloud")
-}
 
 /// Acquire, normalize, embed, and publish one source through the unified
 /// pipeline.
@@ -198,47 +96,33 @@ async fn index_source_inner(
         ));
     }
 
-    let routed = match routing::resolve_source_route(&request) {
+    let routed = match routing::resolve_authorized_source_route(
+        &request,
+        &input,
+        execution.auth_snapshot.as_ref(),
+        events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id),
+    )
+    .await
+    {
         Ok(routed) => routed,
         Err(err) => return Ok(result_map::route_error_result(&input, err)),
     };
     let kind = routed.kind;
     let route = routed.route;
-    // Authorizing stage (source-pipeline.md Stage Registry): the route plan's
-    // declared credential requirements must be satisfied before any
-    // discovering/fetching side effect. Does not degrade or mutate.
-    if let Err(err) = authorize::authorize_route(&route) {
-        return Ok(result_map::route_error_result(&input, err));
-    }
-    if let Err(err) =
-        authorize::authorize_safety_class(route.safety_class, execution.auth_snapshot.as_ref())
-    {
-        return Ok(result_map::route_error_result(&input, err));
-    }
-    if let Err(err) = authorize_local_source_policy(&input, kind, execution.auth_snapshot.as_ref())
-    {
-        return Ok(result_map::route_error_result(&input, err));
-    }
-    if kind == SourceInputKind::Unsupported {
-        return Ok(result_map::route_error_result(
-            &input,
-            ApiError::new(
-                "source.route.unsupported_dispatch",
-                ErrorStage::Routing,
-                "resolved source kind does not have a source dispatch implementation yet",
-            )
-            .with_context("source_kind", format!("{:?}", route.source.source_kind)),
-        ));
-    }
+    let adapter = routed.adapter;
+    let event_emitter = routed.event_emitter;
 
     let Some(runtime) = ctx.target_local_source_runtime() else {
+        event_emitter
+            .failed(
+                PipelinePhase::Authorizing,
+                "source data plane is unavailable",
+            )
+            .await;
         return Ok(result_map::degraded_no_data_plane(
             &route.source.canonical_uri,
             route.source.source_kind,
-            AdapterRef {
-                name: route.adapter.name,
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            },
+            adapter,
             route.scope,
         ));
     };
@@ -301,6 +185,9 @@ async fn index_source_inner(
     // index is already published, so a cleanup problem must not fail
     // acquisition; a store that fails to open just leaves its debt kind
     // pending (see `open_cleanup_debt_stores`).
+    event_emitter
+        .running(PipelinePhase::Cleaning, "cleaning source generation debt")
+        .await;
     let drain = drain_source_cleanup_debt(ctx, runtime, &collection, &counts).await;
 
     // Record the drain as a child `prune` job of the parent source job, when
@@ -313,12 +200,13 @@ async fn index_source_inner(
     )
     .await;
 
+    event_emitter
+        .completed(PipelinePhase::Complete, "source indexing complete")
+        .await;
+
     Ok(to_source_result(
         route.source.source_kind,
-        AdapterRef {
-            name: route.adapter.name,
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        },
+        adapter,
         route.scope,
         route.source.canonical_uri,
         counts,
@@ -346,24 +234,6 @@ async fn drain_source_cleanup_debt(
         counts,
     )
     .await
-}
-
-fn source_security_api_error(err: SourceSecurityError) -> ApiError {
-    ApiError::new(err.code, ErrorStage::Authorizing, err.message)
-}
-
-fn authorize_local_source_policy(
-    input: &str,
-    kind: SourceInputKind,
-    auth_snapshot: Option<&AuthSnapshot>,
-) -> Result<(), ApiError> {
-    if kind != SourceInputKind::Local {
-        return Ok(());
-    }
-    let has_local_scope = auth_snapshot
-        .map(|snapshot| authorize::snapshot_allows_scope(snapshot, AuthScope::Local))
-        .unwrap_or(true);
-    enforce_local_source_policy(input, has_local_scope).map_err(source_security_api_error)
 }
 
 /// Open the `GraphStore`/`MemoryStore` handles the cleanup-debt drain uses to
@@ -596,11 +466,3 @@ fn adapter_name_for(kind: SourceInputKind) -> &'static str {
 #[cfg(test)]
 #[path = "source_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "source_batch_tests.rs"]
-mod source_batch_tests;
-
-#[cfg(test)]
-#[path = "source_security_tests.rs"]
-mod source_security_tests;

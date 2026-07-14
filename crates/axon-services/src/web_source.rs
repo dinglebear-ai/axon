@@ -21,6 +21,7 @@ use axon_adapters::{SourceAdapter, web::WebSourceAdapter};
 use axon_api::source::*;
 use axon_core::boundary::ArtifactStore;
 use axon_embedding::provider::EmbeddingProvider;
+use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
@@ -80,6 +81,7 @@ pub struct WebSourceIndexInput {
     pub fetch_provider: Arc<dyn FetchProvider>,
     pub render_provider: Arc<dyn RenderProvider>,
     pub artifact_store: Arc<dyn ArtifactStore>,
+    pub event_store: Option<Arc<dyn JobStore>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -154,19 +156,39 @@ async fn index_web_source_with_lease(
     run: WebAdapterRun,
     lease: &LeaseGuard,
 ) -> anyhow::Result<WebSourceIndexOutput> {
+    let events = crate::source::events::SourceEventEmitter::for_web(
+        input.event_store.clone(),
+        input.job_id,
+        input.scope,
+    );
     let adapter = WebSourceAdapter::new(
         Arc::clone(&input.fetch_provider),
         Arc::clone(&input.render_provider),
     );
+    events
+        .running(PipelinePhase::Discovering, "discovering web source items")
+        .await;
     let mut manifest = adapter.discover(&run.plan).await?;
+    events
+        .running(PipelinePhase::Diffing, "diffing web source manifest")
+        .await;
     let diff = ledger.diff_manifest(manifest.clone()).await?;
     if let Some(output) =
         unchanged_refresh_output(input, ledger, previous_source, &run, &manifest, &diff).await?
     {
+        events
+            .running(
+                PipelinePhase::Publishing,
+                "publishing unchanged web source generation",
+            )
+            .await;
         return Ok(output);
     }
     let diff = overlay_previous_web_etags(ledger, &diff).await?;
 
+    events
+        .running(PipelinePhase::Fetching, "fetching changed web source items")
+        .await;
     let generation = ledger.create_generation(run.source_id.clone()).await?;
     manifest.generation = generation.generation.clone();
     let diff = retarget_diff_generation(diff, &generation.generation);
@@ -178,6 +200,15 @@ async fn index_web_source_with_lease(
         return publish_map_generation(input, ledger, run, generation, manifest, diff).await;
     }
     if !input.embed {
+        events
+            .running(
+                PipelinePhase::Normalizing,
+                "normalizing web source documents",
+            )
+            .await;
+        events
+            .running(PipelinePhase::Preparing, "preparing web source documents")
+            .await;
         return publish_prepared_generation_without_vectors(NoVectorGenerationRequest {
             input,
             ledger,
@@ -190,6 +221,27 @@ async fn index_web_source_with_lease(
         .await;
     }
 
+    events
+        .running(
+            PipelinePhase::Normalizing,
+            "normalizing web source documents",
+        )
+        .await;
+    events
+        .running(PipelinePhase::Preparing, "preparing web source documents")
+        .await;
+    events
+        .running(PipelinePhase::Embedding, "embedding web source chunks")
+        .await;
+    events
+        .running(PipelinePhase::Upserting, "upserting web source vectors")
+        .await;
+    events
+        .running(
+            PipelinePhase::Publishing,
+            "publishing web source generation",
+        )
+        .await;
     publish_vector_generation(VectorGenerationRequest {
         input,
         ledger,

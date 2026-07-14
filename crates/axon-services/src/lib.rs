@@ -130,6 +130,9 @@ mod freshness_tests;
 #[path = "source_auto_index_cutover_tests.rs"]
 mod source_auto_index_cutover_tests;
 #[cfg(test)]
+#[path = "source_observability_tests.rs"]
+mod source_observability_tests;
+#[cfg(test)]
 #[path = "source_web_job_identity_tests.rs"]
 mod source_web_job_identity_tests;
 #[cfg(test)]
