@@ -6559,7 +6559,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "list_watch",
+        "operationId": "watch_list",
         "parameters": [
           {
             "name": "limit",
@@ -6634,7 +6634,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "create_watch",
+        "operationId": "watch_create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6717,7 +6717,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "list_watches",
+        "operationId": "watches_list",
         "parameters": [
           {
             "name": "enabled",
@@ -6837,7 +6837,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "create_watch",
+        "operationId": "watches_create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6910,7 +6910,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "get_watch",
+        "operationId": "watches_get",
         "parameters": [
           {
             "name": "watch_id",
@@ -6992,7 +6992,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "delete_watch",
+        "operationId": "watches_delete",
         "parameters": [
           {
             "name": "watch_id",
@@ -7074,7 +7074,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "update_watch",
+        "operationId": "watches_update",
         "parameters": [
           {
             "name": "watch_id",
@@ -7168,7 +7168,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "exec_watch",
+        "operationId": "watches_exec",
         "parameters": [
           {
             "name": "watch_id",
@@ -7262,7 +7262,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "pause_watch",
+        "operationId": "watches_pause",
         "parameters": [
           {
             "name": "watch_id",
@@ -7346,7 +7346,7 @@
         "tags": [
           "watch"
         ],
-        "operationId": "resume_watch",
+        "operationId": "watches_resume",
         "parameters": [
           {
             "name": "watch_id",
