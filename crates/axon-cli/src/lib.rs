@@ -36,7 +36,7 @@ async fn run_once(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     match cfg.command {
-        CommandKind::Map => run_map(cfg, start_url).await?,
+        CommandKind::Map => run_map(cfg, start_url, service_context).await?,
         CommandKind::Endpoints => run_endpoints(cfg).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Monitor => run_monitor(cfg, service_context).await?,
@@ -110,7 +110,10 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
 
 fn command_needs_workers(cfg: &Config, command_mode: Option<JobCommandMode<'_>>) -> bool {
     cfg.wait
-        || matches!(cfg.command, CommandKind::Source | CommandKind::Scrape)
+        || matches!(
+            cfg.command,
+            CommandKind::Source | CommandKind::Scrape | CommandKind::Map
+        )
         || matches!(
             command_mode,
             Some(JobCommandMode::Subcommand {
