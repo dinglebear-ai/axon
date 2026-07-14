@@ -61,6 +61,7 @@ REMOVED_CLI_ENTRIES = {
     "embed": "Removed; use `axon <path-or-source>`",
     "ingest": "Removed; use `axon <source>`",
     "code-search": "Removed; use `axon <path> --scope directory`",
+    "code-search-watch": "Removed; use `axon <path> --watch`",
 }
 
 

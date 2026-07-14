@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_api::source::*;
+use axon_core::boundary::{ArtifactStore, FakeCoreBoundaries};
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_ledger::store::FakeLedgerStore;
@@ -41,11 +42,22 @@ fn input() -> WebSourceIndexInput {
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        attempt: 1,
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: None,
+    }
+}
+
+fn input_with_core(core: FakeCoreBoundaries, output: OutputPolicy) -> WebSourceIndexInput {
+    WebSourceIndexInput {
+        output,
+        artifact_store: Arc::new(core.clone()),
+        document_cache: Arc::new(core),
+        ..input()
     }
 }
 
@@ -86,6 +98,43 @@ async fn lost_lease_before_publish_rolls_back_web_generation_vectors() {
     assert!(vectors.calls().await.contains(&"delete"));
     assert!(vectors.points("axon-web-test").await.is_empty());
     assert_eq!(ledger.generation_count().await, 1);
+}
+
+#[tokio::test]
+async fn lost_lease_before_publish_deletes_new_artifacts() {
+    let core = FakeCoreBoundaries::new();
+    let mut output = OutputPolicy::default();
+    output.artifact_mode = ArtifactMode::Always;
+    let ledger = FakeLedgerStore::new().with_heartbeat_lost();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+
+    let err = index_web_source(
+        input_with_core(core.clone(), output),
+        &ledger,
+        &embedder,
+        &vectors,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("lost lease"),
+        "unexpected error: {err:#}"
+    );
+    let deleted = ArtifactStore::get(
+        &core,
+        ArtifactHandle {
+            artifact_id: ArtifactId::new("artifact_text_markdown_1"),
+            artifact_kind: ArtifactKind::NormalizedContent,
+            uri: Some("fake://artifact/artifact_text_markdown_1".to_string()),
+        },
+    )
+    .await;
+    assert!(
+        deleted.is_err(),
+        "failed generation artifact should be deleted"
+    );
 }
 
 #[tokio::test]

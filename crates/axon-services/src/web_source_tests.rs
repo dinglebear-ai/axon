@@ -48,10 +48,12 @@ fn input() -> WebSourceIndexInput {
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        attempt: 1,
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: None,
     }
 }
@@ -187,10 +189,12 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         vector_provider_id: ProviderId::new("fake-vector"),
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
+        attempt: 1,
         embed: true,
         fetch_provider: providers.clone(),
         render_provider: providers,
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: None,
     };
 

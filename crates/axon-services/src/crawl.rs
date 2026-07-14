@@ -9,7 +9,8 @@ use crate::types::{
 };
 use axon_adapters::web_engine::engine::{SitemapDiscovery, discover_sitemap_urls};
 use axon_api::source::{
-    AuthSnapshot, JobPriority, SourceIntent, SourceLimits, SourceRequest, SourceScope,
+    AuthSnapshot, JobCancelRequest, JobPriority, LifecycleStatus, SourceIntent, SourceLimits,
+    SourceRequest, SourceScope,
 };
 use axon_core::config::Config;
 use axon_core::http::validate_url;
@@ -383,9 +384,26 @@ pub async fn crawl_status(
     service_context: &ServiceContext,
     job_id: Uuid,
 ) -> Result<Option<CrawlJobResult>, Box<dyn Error>> {
-    let job = job_service::job_status(service_context, JobKind::Crawl, job_id).await?;
-    let Some(job) = job else { return Ok(None) };
-    let payload = serde_json::to_value(job)?;
+    match job_service::job_status(service_context, JobKind::Crawl, job_id).await {
+        Ok(Some(job)) => {
+            let payload = serde_json::to_value(job)?;
+            return Ok(Some(map_crawl_job_result_with_root(
+                payload,
+                Some(&service_context.cfg.output_dir),
+            )));
+        }
+        Ok(None) => {}
+        Err(err) => return Err(err),
+    }
+
+    let unified =
+        job_service::unified_job_status(service_context, axon_api::source::JobId::new(job_id))
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+    let Some(unified) = unified else {
+        return Ok(None);
+    };
+    let payload = serde_json::to_value(unified)?;
     Ok(Some(map_crawl_job_result_with_root(
         payload,
         Some(&service_context.cfg.output_dir),
@@ -408,7 +426,26 @@ pub async fn crawl_cancel(
     service_context: &ServiceContext,
     job_id: Uuid,
 ) -> Result<bool, Box<dyn Error>> {
-    job_service::cancel_job(service_context, JobKind::Crawl, job_id).await
+    match job_service::cancel_job(service_context, JobKind::Crawl, job_id).await {
+        Ok(true) => return Ok(true),
+        Ok(false) => {}
+        Err(err) => return Err(err),
+    }
+    let result = job_service::cancel_unified_job(
+        service_context,
+        axon_api::source::JobId::new(job_id),
+        JobCancelRequest {
+            reason: Some("crawl compatibility cancel".to_string()),
+            force_after_ms: None,
+            actor: None,
+        },
+    )
+    .await
+    .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+    Ok(matches!(
+        result.status,
+        LifecycleStatus::Canceling | LifecycleStatus::Canceled
+    ))
 }
 
 pub async fn crawl_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {

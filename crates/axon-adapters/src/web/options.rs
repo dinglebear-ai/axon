@@ -63,6 +63,27 @@ pub(super) fn user_agent(values: &MetadataMap) -> Option<String> {
         .map(str::to_string)
 }
 
+pub(super) fn custom_headers(values: &MetadataMap) -> Vec<RedactedHeader> {
+    string_array_option(values, "custom_headers")
+        .into_iter()
+        .filter_map(|raw| parse_header(&raw))
+        .collect()
+}
+
+fn parse_header(raw: &str) -> Option<RedactedHeader> {
+    let (name, value) = raw.split_once(':')?;
+    let name = name.trim();
+    let value = value.trim();
+    if name.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some(RedactedHeader {
+        name: name.to_string(),
+        value: value.to_string(),
+        redacted: false,
+    })
+}
+
 /// `--automation-script <PATH>` / `validated_options.automation_script`
 /// (issue #298 Wave 2b regression 1): wraps the validated non-empty file-path
 /// string (see `axon-route::web_options::validate_option`) into an

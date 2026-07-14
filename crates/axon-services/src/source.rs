@@ -100,7 +100,8 @@ async fn index_source_inner(
         &request,
         &input,
         execution.auth_snapshot.as_ref(),
-        events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id),
+        events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id)
+            .with_attempt(execution.attempt),
     )
     .await
     {
@@ -221,7 +222,6 @@ async fn drain_source_cleanup_debt(
     counts: &IndexCounts,
 ) -> prune::DebtDrainSummary {
     let (graph_store, memory_store) = open_cleanup_debt_stores(ctx).await;
-    let document_cache = crate::web_source::document_cache_boundary();
     prune::drain_cleanup_debt_full_with_boundaries(
         runtime.ledger.as_ref(),
         runtime.vector_store.as_ref(),
@@ -229,7 +229,7 @@ async fn drain_source_cleanup_debt(
         memory_store.as_deref(),
         None,
         Some(runtime.artifact_store.as_ref()),
-        Some(document_cache.as_ref()),
+        Some(runtime.document_cache.as_ref()),
         collection,
         counts,
     )

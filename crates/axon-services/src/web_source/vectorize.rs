@@ -8,7 +8,9 @@ use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
 use super::WebSourceIndexInput;
-use super::artifacts::{WebArtifactIndex, store_clean_outputs, store_warc_artifact};
+use super::artifacts::{
+    WebArtifactIndex, cleanup_artifacts_after_error, store_clean_outputs, store_warc_artifact,
+};
 use super::reuse;
 use super::run::{WebAdapterRun, timestamp};
 use super::vectorize_helpers::{
@@ -80,9 +82,19 @@ pub(super) async fn vectorize_changed_documents(
         if result.inline.is_none() {
             result.inline = normalized.inline;
         }
-        let prepared = prepare_source_documents(normalized.documents, generation)?;
+        let prepared = match prepare_source_documents(normalized.documents, generation) {
+            Ok(prepared) => prepared,
+            Err(err) => {
+                return Err(cleanup_artifacts_after_error(
+                    input.artifact_store.as_ref(),
+                    &result.artifacts,
+                    err,
+                )
+                .await);
+            }
+        };
         for prepared_batch in prepared_document_batches(prepared, WEB_CHANGED_CHUNK_BATCH_SIZE) {
-            let batch_result = vectorize_documents(
+            let batch_result = match vectorize_documents(
                 input,
                 ledger,
                 embedding_provider,
@@ -90,7 +102,18 @@ pub(super) async fn vectorize_changed_documents(
                 collection.clone(),
                 prepared_batch,
             )
-            .await?;
+            .await
+            {
+                Ok(batch_result) => batch_result,
+                Err(err) => {
+                    return Err(cleanup_artifacts_after_error(
+                        input.artifact_store.as_ref(),
+                        &result.artifacts,
+                        err,
+                    )
+                    .await);
+                }
+            };
             result.documents_prepared += batch_result.stats.documents_prepared;
             result.chunks_prepared += batch_result.stats.chunks_prepared;
             result
@@ -122,7 +145,17 @@ pub(super) async fn prepare_changed_documents_without_vectors(
         if result.inline.is_none() {
             result.inline = normalized.inline;
         }
-        let prepared = prepare_source_documents(normalized.documents, generation)?;
+        let prepared = match prepare_source_documents(normalized.documents, generation) {
+            Ok(prepared) => prepared,
+            Err(err) => {
+                return Err(cleanup_artifacts_after_error(
+                    input.artifact_store.as_ref(),
+                    &result.artifacts,
+                    err,
+                )
+                .await);
+            }
+        };
         for document in prepared {
             result.documents_prepared += 1;
             result.chunks_prepared += document.chunks.len() as u64;
@@ -131,7 +164,14 @@ pub(super) async fn prepare_changed_documents_without_vectors(
                 .extend(document.graph_candidates.clone());
             let status =
                 document_status(&document, 0, DocumentLifecycleStatus::Prepared, timestamp());
-            ledger.update_document_status(status.clone()).await?;
+            if let Err(err) = ledger.update_document_status(status.clone()).await {
+                return Err(cleanup_artifacts_after_error(
+                    input.artifact_store.as_ref(),
+                    &result.artifacts,
+                    anyhow::Error::new(err),
+                )
+                .await);
+            }
             result.document_statuses.push(status);
         }
     }
@@ -210,11 +250,14 @@ pub(super) async fn normalize_changed_documents(
         }
 
         if let Some(reused) = reuse::load_reused_web_document(
+            input.document_cache.as_ref(),
             &run.source_id,
             diff.previous_generation.as_ref(),
             &item.manifest_item.source_item_key,
             &diff.next_generation,
-        ) {
+        )
+        .await?
+        {
             reused_item_keys.push(item.manifest_item.source_item_key.clone());
             documents_to_cache.push(reused.document);
             continue;
@@ -243,7 +286,13 @@ pub(super) async fn normalize_changed_documents(
         let inline = clean_output.inline;
         documents_to_cache.extend(normalized.clone());
         documents.extend(normalized);
-        reuse::cache_documents(&run.source_id, &diff.next_generation, &documents_to_cache);
+        reuse::cache_documents(
+            input.document_cache.as_ref(),
+            &run.source_id,
+            &diff.next_generation,
+            &documents_to_cache,
+        )
+        .await?;
         return Ok(NormalizedWebDocuments {
             documents,
             warnings,
@@ -254,7 +303,13 @@ pub(super) async fn normalize_changed_documents(
         });
     }
 
-    reuse::cache_documents(&run.source_id, &diff.next_generation, &documents_to_cache);
+    reuse::cache_documents(
+        input.document_cache.as_ref(),
+        &run.source_id,
+        &diff.next_generation,
+        &documents_to_cache,
+    )
+    .await?;
     Ok(NormalizedWebDocuments {
         documents,
         warnings,

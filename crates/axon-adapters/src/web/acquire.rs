@@ -54,8 +54,8 @@ use crate::adapter::Result;
 use crate::boundary::{FetchProvider, RenderProvider};
 
 use super::options::{
-    auto_dispatch_skip, automation_script_ref, effective_render_mode, etag_conditional,
-    min_markdown_chars, user_agent, verticals_enabled, warc_path,
+    auto_dispatch_skip, automation_script_ref, custom_headers, effective_render_mode,
+    etag_conditional, min_markdown_chars, user_agent, verticals_enabled, warc_path,
 };
 use super::vertical::{VerticalAcquire, VerticalOptions};
 
@@ -74,6 +74,7 @@ struct AcquireOptions {
     mode: RenderMode,
     min_markdown_chars: usize,
     automation_script: Option<ArtifactRef>,
+    custom_headers: Vec<RedactedHeader>,
     etag_conditional: bool,
     vertical: VerticalOptions,
 }
@@ -107,6 +108,7 @@ pub(super) async fn acquire_changed_items(
         mode: effective_render_mode(values),
         min_markdown_chars: min_markdown_chars(values),
         automation_script: automation_script_ref(values),
+        custom_headers: custom_headers(values),
         etag_conditional: etag_conditional(values),
         vertical: VerticalOptions {
             enabled: verticals_enabled(values),
@@ -243,7 +245,8 @@ async fn acquire_item(
 
     match opts.mode {
         RenderMode::Http => {
-            let fetched = acquire_via_fetch(fetch, item, opts.etag_conditional).await?;
+            let fetched =
+                acquire_via_fetch(fetch, item, opts.etag_conditional, &opts.custom_headers).await?;
             Ok(AcquiredItem {
                 item: fetched,
                 warnings,
@@ -282,6 +285,7 @@ pub(crate) async fn acquire_via_fetch(
     fetch: &dyn FetchProvider,
     item: &ManifestItem,
     etag_conditional: bool,
+    custom_headers: &[RedactedHeader],
 ) -> Result<Option<AcquiredSourceItem>> {
     let prior_etag = if etag_conditional {
         item.metadata.get("web_prior_etag").and_then(Value::as_str)
@@ -289,7 +293,9 @@ pub(crate) async fn acquire_via_fetch(
         None
     };
     let sent_prior_validator = prior_etag.is_some();
-    let fetched = fetch.fetch(build_fetch_request(item, prior_etag)).await?;
+    let fetched = fetch
+        .fetch(build_fetch_request(item, prior_etag, custom_headers))
+        .await?;
     if fetched.status == 304 {
         if !sent_prior_validator {
             return Err(ApiError::new(
@@ -442,8 +448,12 @@ async fn acquire_via_auto_switch(
 /// `prior_etag`, when present, is sent as `If-None-Match` — the caller
 /// decides whether one applies (gated by `etag_conditional` and whether the
 /// incoming item carries a `web_prior_etag`; see [`acquire_via_fetch`]).
-fn build_fetch_request(item: &ManifestItem, prior_etag: Option<&str>) -> FetchRequest {
-    let mut headers = Vec::new();
+fn build_fetch_request(
+    item: &ManifestItem,
+    prior_etag: Option<&str>,
+    custom_headers: &[RedactedHeader],
+) -> FetchRequest {
+    let mut headers = custom_headers.to_vec();
     if let Some(etag) = prior_etag {
         headers.push(RedactedHeader {
             name: "If-None-Match".to_string(),

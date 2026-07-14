@@ -1,6 +1,6 @@
 use axon_adapters::web;
 use axon_api::source::*;
-use axon_core::boundary::ArtifactStore;
+use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore};
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeMap;
@@ -68,6 +68,78 @@ pub(super) async fn store_web_artifact(
         content_hash: Some(content_hash),
         created_at: timestamp(),
     })
+}
+
+pub(super) async fn store_web_artifact_bytes(
+    store: &dyn ArtifactStore,
+    payload: WebArtifactPayload,
+    bytes: Vec<u8>,
+) -> anyhow::Result<ArtifactRef> {
+    let size_bytes = payload.size_bytes.unwrap_or(bytes.len() as u64);
+    let content_hash = payload
+        .content_hash
+        .unwrap_or_else(|| sha256_prefixed(&bytes));
+    let mut metadata = payload.metadata;
+    metadata.insert("producer".to_string(), serde_json::json!("web_source"));
+    metadata.insert(
+        "source_id".to_string(),
+        serde_json::json!(payload.source_id.0.clone()),
+    );
+    metadata.insert(
+        "job_id".to_string(),
+        serde_json::json!(payload.job_id.0.to_string()),
+    );
+    metadata.insert(
+        "content_hash".to_string(),
+        serde_json::json!(content_hash.clone()),
+    );
+    metadata.insert("size_bytes".to_string(), serde_json::json!(size_bytes));
+
+    let handle = store
+        .put_bytes(ArtifactBytesWriteRequest {
+            kind: payload.kind,
+            content_type: payload.content_type,
+            bytes,
+            source_id: Some(payload.source_id),
+            job_id: Some(payload.job_id),
+            metadata,
+        })
+        .await?;
+
+    Ok(ArtifactRef {
+        artifact_id: handle.artifact_id,
+        artifact_kind: handle.artifact_kind,
+        uri: handle.uri.unwrap_or_default(),
+        size_bytes: Some(size_bytes),
+        content_hash: Some(content_hash),
+        created_at: timestamp(),
+    })
+}
+
+pub(super) async fn cleanup_artifacts_after_error(
+    store: &dyn ArtifactStore,
+    artifacts: &[ArtifactRef],
+    cause: anyhow::Error,
+) -> anyhow::Error {
+    let mut cleanup_errors = Vec::new();
+    for artifact in artifacts {
+        let handle = ArtifactHandle {
+            artifact_id: artifact.artifact_id.clone(),
+            artifact_kind: artifact.artifact_kind,
+            uri: Some(artifact.uri.clone()),
+        };
+        if let Err(err) = store.delete(handle).await {
+            cleanup_errors.push(format!(
+                "failed to delete artifact {} after failed web source generation: {err}",
+                artifact.artifact_id.0
+            ));
+        }
+    }
+    if cleanup_errors.is_empty() {
+        cause
+    } else {
+        cause.context(cleanup_errors.join("; "))
+    }
 }
 
 pub(super) fn should_store_artifact(policy: &OutputPolicy, size_bytes: u64) -> bool {
@@ -138,15 +210,25 @@ impl WebArtifactIndex {
 pub(super) async fn record_artifacts_on_manifest(
     ledger: &dyn axon_ledger::store::LedgerStore,
     manifest: &mut SourceManifest,
+    diff: &SourceManifestDiff,
     artifact_index: &WebArtifactIndex,
 ) -> anyhow::Result<()> {
     if artifact_index.is_empty() && manifest.items.is_empty() {
         return Ok(());
     }
+    let previous_items = previous_manifest_items(ledger, diff).await?;
     put_artifacts(&mut manifest.metadata, &artifact_index.generation_artifacts);
     for item in &mut manifest.items {
         if let Some(artifacts) = artifact_index.item_artifacts.get(&item.source_item_key) {
             put_artifacts(&mut item.metadata, artifacts);
+        } else if diff
+            .unchanged
+            .iter()
+            .any(|unchanged| unchanged.source_item_key == item.source_item_key)
+            && let Some(previous) = previous_items.get(&item.source_item_key)
+            && let Some(artifacts) = artifacts_from_metadata(&previous.metadata)
+        {
+            put_artifacts(&mut item.metadata, &artifacts);
         }
         let cache_key = DocumentCacheKey {
             source_id: item.source_id.clone(),
@@ -160,6 +242,32 @@ pub(super) async fn record_artifacts_on_manifest(
     }
     ledger.put_manifest(manifest.clone()).await?;
     Ok(())
+}
+
+async fn previous_manifest_items(
+    ledger: &dyn axon_ledger::store::LedgerStore,
+    diff: &SourceManifestDiff,
+) -> anyhow::Result<BTreeMap<SourceItemKey, ManifestItem>> {
+    let Some(previous_generation) = diff.previous_generation.clone() else {
+        return Ok(BTreeMap::new());
+    };
+    let Some(previous_manifest) = ledger
+        .get_manifest(diff.source_id.clone(), previous_generation)
+        .await?
+    else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(previous_manifest
+        .items
+        .into_iter()
+        .map(|item| (item.source_item_key.clone(), item))
+        .collect())
+}
+
+fn artifacts_from_metadata(metadata: &MetadataMap) -> Option<Vec<ArtifactRef>> {
+    metadata
+        .get(ARTIFACT_METADATA_KEY)
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
 fn put_artifacts(metadata: &mut MetadataMap, artifacts: &[ArtifactRef]) {
@@ -194,14 +302,14 @@ pub(super) async fn store_warc_artifact(
         "artifact_role".to_string(),
         serde_json::json!("web_warc_archive"),
     );
-    let artifact = store_web_artifact(
+    let artifact = store_web_artifact_bytes(
         input.artifact_store.as_ref(),
         WebArtifactPayload {
             kind: ArtifactKind::Warc,
             content_type: "application/warc".to_string(),
-            content: ContentRef::InlineBytes {
-                bytes_base64: base64::engine::general_purpose::STANDARD.encode(&archive.bytes),
-                mime_type: "application/warc".to_string(),
+            content: ContentRef::External {
+                uri: "warc://generated".to_string(),
+                integrity: Some(archive.sha256.clone()),
             },
             source_id: run.source_id.clone(),
             job_id: input.job_id,
@@ -209,6 +317,7 @@ pub(super) async fn store_warc_artifact(
             content_hash: Some(archive.sha256),
             size_bytes: Some(archive.size_bytes),
         },
+        archive.bytes,
     )
     .await?;
     Ok(vec![artifact])

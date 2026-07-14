@@ -70,7 +70,6 @@ impl RemovedSurfaceReport {
 const CLI_COMMANDS: &[RemovedOperation] = &[
     op("embed", "axon <source>"),
     op("ingest", "axon <source>"),
-    op("scrape", "axon <url> --scope page"),
     op("crawl", "axon <url> --scope site"),
     op(
         "code-search",

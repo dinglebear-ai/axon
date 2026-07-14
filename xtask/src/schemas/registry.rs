@@ -12,7 +12,6 @@ pub struct RemovedSurfaceRule {
 pub const REMOVED_SURFACE_RULES: &[RemovedSurfaceRule] = &[
     cli("\"embed\""),
     cli("\"ingest\""),
-    cli("\"scrape\""),
     cli("\"crawl\""),
     cli("\"code-search\""),
     cli("\"code-search-watch\""),

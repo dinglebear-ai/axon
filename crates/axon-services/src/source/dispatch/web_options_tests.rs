@@ -1,4 +1,5 @@
 use axon_core::config::{Config, RenderMode};
+use std::path::PathBuf;
 
 use super::*;
 
@@ -78,5 +79,72 @@ fn url_whitelist_and_blacklist_only_set_when_nonempty() {
     assert_eq!(
         options.get("url_blacklist").unwrap(),
         &serde_json::json!(["/blocked"])
+    );
+}
+
+#[test]
+fn warc_automation_and_headers_thread_into_validated_options() {
+    let cfg = Config {
+        warc_output: Some(PathBuf::from("/tmp/source.warc")),
+        automation_script: Some(PathBuf::from("/tmp/automation.json")),
+        custom_headers: vec!["X-Test: ok".to_string()],
+        ..Config::default()
+    };
+
+    let options = web_crawl_options(&cfg, None, None);
+
+    assert_eq!(
+        options.get("warc_path").unwrap(),
+        &serde_json::json!("/tmp/source.warc")
+    );
+    assert_eq!(
+        options.get("automation_script").unwrap(),
+        &serde_json::json!("/tmp/automation.json")
+    );
+    assert_eq!(
+        options.get("custom_headers").unwrap(),
+        &serde_json::json!(["X-Test: ok"])
+    );
+}
+
+#[test]
+fn caller_web_options_reject_automation_without_local_execute() {
+    let mut base = MetadataMap::new();
+    let mut caller = MetadataMap::new();
+    caller.insert(
+        "automation_script".to_string(),
+        serde_json::json!("/tmp/automation.json"),
+    );
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write];
+
+    let err = merge_caller_web_options(&mut base, &caller, Some(&snapshot))
+        .expect_err("automation_script requires elevated scopes");
+
+    assert_eq!(err.code.0, "auth.scope_required");
+    assert!(base.get("automation_script").is_none());
+}
+
+#[test]
+fn caller_web_options_allow_automation_for_local_execute() {
+    let mut base = MetadataMap::new();
+    let mut caller = MetadataMap::new();
+    caller.insert(
+        "automation_script".to_string(),
+        serde_json::json!("/tmp/automation.json"),
+    );
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.granted_scopes = vec![
+        AuthScope::Read,
+        AuthScope::Write,
+        AuthScope::Local,
+        AuthScope::Execute,
+    ];
+
+    merge_caller_web_options(&mut base, &caller, Some(&snapshot)).expect("scopes allow option");
+
+    assert_eq!(
+        base.get("automation_script").unwrap(),
+        &serde_json::json!("/tmp/automation.json")
     );
 }

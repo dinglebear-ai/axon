@@ -44,6 +44,20 @@ fn legacy_crawl_request() -> JobCreateRequest {
     }
 }
 
+fn source_job_request(idempotency_key: &str) -> JobCreateRequest {
+    let mut request = legacy_crawl_request();
+    request.job_kind = JobKind::Source;
+    request.idempotency_key = Some(idempotency_key.to_string());
+    request.request = Some(json!({
+        "source_request": {
+            "source": "https://example.com",
+            "scope": "site",
+            "embed": true
+        }
+    }));
+    request
+}
+
 #[tokio::test]
 async fn legacy_crawl_unreachable_registry_has_no_crawl_runner() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -133,4 +147,60 @@ async fn legacy_crawl_unreachable_start_enqueues_source_not_crawl() {
             .items
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn crawl_status_falls_back_to_unified_source_job() {
+    let harness = source_context_with_fake_web().await.expect("harness");
+    let store = harness.ctx().job_store().expect("job store");
+    let created = store
+        .create(source_job_request("crawl-status-source-fallback"))
+        .await
+        .expect("source job row");
+    let job_id = created.job_id;
+
+    let result = crate::crawl::crawl_status(harness.ctx(), job_id.0)
+        .await
+        .expect("crawl status fallback")
+        .expect("unified source job status");
+
+    assert_eq!(
+        result
+            .payload
+            .get("status")
+            .and_then(|value| value.as_str()),
+        Some("pending")
+    );
+    assert_eq!(
+        store
+            .get(job_id)
+            .await
+            .expect("get source row")
+            .expect("source row should exist")
+            .job_id,
+        job_id
+    );
+}
+
+#[tokio::test]
+async fn crawl_cancel_falls_back_to_unified_source_job() {
+    let harness = source_context_with_fake_web().await.expect("harness");
+    let store = harness.ctx().job_store().expect("job store");
+    let created = store
+        .create(source_job_request("crawl-cancel-source-fallback"))
+        .await
+        .expect("source job row");
+    let job_id = created.job_id;
+
+    let canceled = crate::crawl::crawl_cancel(harness.ctx(), job_id.0)
+        .await
+        .expect("crawl cancel fallback");
+
+    assert!(canceled);
+    let row = store
+        .get(job_id)
+        .await
+        .expect("get canceled row")
+        .expect("source row should exist");
+    assert_eq!(row.status, LifecycleStatus::Canceled);
 }

@@ -219,6 +219,7 @@ impl TargetLocalSourceRuntime {
             default_timeout_ms: cfg.request_timeout_ms,
         });
         let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
+        let document_cache = crate::web_source::InProcessWebDocumentCache::new();
 
         Ok(Self {
             jobs,
@@ -245,6 +246,7 @@ impl TargetLocalSourceRuntime {
             fetch_provider: Arc::new(fetch_provider),
             render_provider: Arc::new(render_provider),
             artifact_store: Arc::new(artifact_store),
+            document_cache: Arc::new(document_cache),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
     }

@@ -47,6 +47,13 @@ pub fn command_registry() -> &'static [CliCommandSpec] {
             required_scope: "read",
         },
         CliCommandSpec {
+            name: "scrape",
+            maps_to_dto: Some("SourceRequest"),
+            mutates: true,
+            async_job: false,
+            required_scope: "write",
+        },
+        CliCommandSpec {
             name: "summarize",
             maps_to_dto: Some("SummarizeRequest"),
             mutates: false,
@@ -136,7 +143,6 @@ pub fn removed_commands() -> &'static [&'static str] {
     &[
         "embed",
         "ingest",
-        "scrape",
         "crawl",
         "code-search",
         "code-search-watch",
@@ -155,7 +161,7 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert!(names.contains("map"));
         assert!(names.contains("extract"));
-        assert!(!names.contains("scrape"));
-        assert!(removed_commands().contains(&"scrape"));
+        assert!(names.contains("scrape"));
+        assert!(!removed_commands().contains(&"scrape"));
     }
 }

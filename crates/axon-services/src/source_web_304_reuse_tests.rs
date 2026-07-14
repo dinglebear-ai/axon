@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_adapters::boundary::{FetchProvider, RenderProvider};
 use axon_api::source::*;
+use axon_core::boundary::{DocumentCache, FakeCoreBoundaries};
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
@@ -143,6 +144,7 @@ impl RenderProvider for ConditionalFetchProvider {
 fn web_input(
     provider: Arc<ConditionalFetchProvider>,
     etag_conditional: bool,
+    document_cache: Arc<dyn DocumentCache>,
 ) -> WebSourceIndexInput {
     let mut crawl_options = MetadataMap::new();
     crawl_options.insert("render_mode".to_string(), serde_json::json!("http"));
@@ -164,10 +166,12 @@ fn web_input(
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
         auth_snapshot: None,
+        attempt: 1,
         embed: true,
         fetch_provider: provider.clone(),
         render_provider: provider,
-        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        artifact_store: Arc::new(FakeCoreBoundaries::new()),
+        document_cache,
         event_store: None,
     }
 }
@@ -268,12 +272,13 @@ fn test_lock() -> &'static Mutex<()> {
 async fn seed_cached_generation(
     provider: Arc<ConditionalFetchProvider>,
     ledger: &FakeLedgerStore,
+    document_cache: Arc<dyn DocumentCache>,
 ) -> anyhow::Result<(
     WebSourceIndexInput,
     super::run::WebAdapterRun,
     SourceGenerationId,
 )> {
-    let input = web_input(provider, false);
+    let input = web_input(provider, false, document_cache);
     let run = resolve_web_run(&input)?;
     ledger.upsert_source(source_summary(&input, &run)).await?;
     let first_diff = diff_for(
@@ -303,16 +308,16 @@ async fn seed_cached_generation(
 #[tokio::test]
 async fn second_run_304_reuses_previous_document_without_embedding() {
     let _guard = test_lock().lock().await;
-    reuse::reset_cache();
     let provider = Arc::new(ConditionalFetchProvider::new("# Intro\n\nv1", "\"abc\""));
+    let document_cache: Arc<dyn DocumentCache> = Arc::new(FakeCoreBoundaries::new());
     let ledger = FakeLedgerStore::new();
     let (_first_input, first_run, first_generation) =
-        seed_cached_generation(provider.clone(), &ledger)
+        seed_cached_generation(provider.clone(), &ledger, document_cache.clone())
             .await
             .expect("seed initial cached generation");
 
     provider.set_conditional_304(true).await;
-    let second_input = web_input(provider.clone(), true);
+    let second_input = web_input(provider.clone(), true, document_cache);
     let second_run = resolve_web_run(&second_input).expect("resolve second run");
     assert_eq!(second_run.source_id, first_run.source_id);
     let second_diff = diff_for(
@@ -361,21 +366,26 @@ async fn second_run_304_reuses_previous_document_without_embedding() {
 #[tokio::test]
 async fn missing_prior_content_refetches_before_publish() {
     let _guard = test_lock().lock().await;
-    reuse::reset_cache();
     let provider = Arc::new(ConditionalFetchProvider::new("# Intro\n\nv1", "\"abc\""));
+    let document_cache: Arc<dyn DocumentCache> = Arc::new(FakeCoreBoundaries::new());
     let ledger = FakeLedgerStore::new();
     let (_first_input, first_run, first_generation) =
-        seed_cached_generation(provider.clone(), &ledger)
+        seed_cached_generation(provider.clone(), &ledger, document_cache.clone())
             .await
             .expect("seed initial cached generation");
-    reuse::evict_document(
-        &first_run.source_id,
-        &first_generation,
-        &SourceItemKey::new("https://docs.example.test/intro"),
-    );
+    document_cache
+        .invalidate(DocumentCacheInvalidation::Key {
+            key: DocumentCacheKey {
+                source_id: first_run.source_id.clone(),
+                source_item_key: SourceItemKey::new("https://docs.example.test/intro"),
+                generation: Some(first_generation.clone()),
+            },
+        })
+        .await
+        .expect("evict prior cached document");
 
     provider.set_conditional_304(true).await;
-    let second_input = web_input(provider.clone(), true);
+    let second_input = web_input(provider.clone(), true, document_cache);
     let second_run = resolve_web_run(&second_input).expect("resolve second run");
     let second_diff = diff_for(
         &second_run,
@@ -412,22 +422,27 @@ async fn missing_prior_content_refetches_before_publish() {
 #[tokio::test]
 async fn cache_miss_refetch_fails_if_unconditional_fetch_still_returns_304() {
     let _guard = test_lock().lock().await;
-    reuse::reset_cache();
     let provider = Arc::new(ConditionalFetchProvider::new("# Intro\n\nv1", "\"abc\""));
+    let document_cache: Arc<dyn DocumentCache> = Arc::new(FakeCoreBoundaries::new());
     let ledger = FakeLedgerStore::new();
     let (_first_input, first_run, first_generation) =
-        seed_cached_generation(provider.clone(), &ledger)
+        seed_cached_generation(provider.clone(), &ledger, document_cache.clone())
             .await
             .expect("seed initial cached generation");
-    reuse::evict_document(
-        &first_run.source_id,
-        &first_generation,
-        &SourceItemKey::new("https://docs.example.test/intro"),
-    );
+    document_cache
+        .invalidate(DocumentCacheInvalidation::Key {
+            key: DocumentCacheKey {
+                source_id: first_run.source_id.clone(),
+                source_item_key: SourceItemKey::new("https://docs.example.test/intro"),
+                generation: Some(first_generation.clone()),
+            },
+        })
+        .await
+        .expect("evict prior cached document");
 
     provider.set_conditional_304(true).await;
     provider.set_unconditional_304(true).await;
-    let second_input = web_input(provider.clone(), true);
+    let second_input = web_input(provider.clone(), true, document_cache);
     let second_run = resolve_web_run(&second_input).expect("resolve second run");
     let second_diff = diff_for(
         &second_run,
@@ -461,18 +476,18 @@ async fn cache_miss_refetch_fails_if_unconditional_fetch_still_returns_304() {
 #[tokio::test]
 async fn changed_page_uses_previous_manifest_etag_not_current_discovery_etag() {
     let _guard = test_lock().lock().await;
-    reuse::reset_cache();
     let provider = Arc::new(ConditionalFetchProvider::new("# Intro\n\nv1", "\"abc\""));
+    let document_cache: Arc<dyn DocumentCache> = Arc::new(FakeCoreBoundaries::new());
     let ledger = FakeLedgerStore::new();
     let (_first_input, first_run, first_generation) =
-        seed_cached_generation(provider.clone(), &ledger)
+        seed_cached_generation(provider.clone(), &ledger, document_cache.clone())
             .await
             .expect("seed initial cached generation");
 
     provider.set_revision("# Intro\n\nv2", "\"v2\"").await;
     provider.set_conditional_304(true).await;
 
-    let second_input = web_input(provider.clone(), true);
+    let second_input = web_input(provider.clone(), true, document_cache);
     let second_run = resolve_web_run(&second_input).expect("resolve second run");
     assert_eq!(second_run.source_id, first_run.source_id);
     let current_manifest_item = manifest_item(&second_run, Some("\"v2\""));
@@ -519,7 +534,7 @@ async fn changed_page_uses_previous_manifest_etag_not_current_discovery_etag() {
 fn mixed_modified_304_and_removed_counts_are_distinct() {
     let _guard = test_lock().blocking_lock();
     let provider = Arc::new(ConditionalFetchProvider::new("# Intro\n\nv1", "\"abc\""));
-    let input = web_input(provider, true);
+    let input = web_input(provider, true, Arc::new(FakeCoreBoundaries::new()));
     let run = resolve_web_run(&input).expect("resolve run");
     let reused = manifest_item(&run, Some("\"abc\""));
     let mut changed = manifest_item(&run, Some("\"def\""));

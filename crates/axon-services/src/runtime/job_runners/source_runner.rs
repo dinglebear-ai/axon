@@ -145,6 +145,7 @@ pub(crate) async fn run_source_request_with_context(
         claimed.job_id,
         source_request.clone(),
         auth_snapshot,
+        claimed.attempt,
     );
     crate::source::index_source_with_execution(source_request, ctx, execution).await
 }
