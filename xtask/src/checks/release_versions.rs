@@ -405,7 +405,7 @@ fn build_plan(
         .iter()
         .map(|component| {
             let version = read_version(root, &component.version_source)?;
-            Version::parse(&version).with_release_context(|| {
+            let candidate_version = Version::parse(&version).with_release_context(|| {
                 format!("{} version is not valid semver: {version}", component.id)
             })?;
             let candidate_tag = format!("{}{}", component.tag_prefix, version);
@@ -417,7 +417,22 @@ fn build_plan(
                     component_changed_since_ref(root, component, &compare_ref, head)?
                 }
                 GateMode::Main => match last_tag.as_deref() {
-                    Some(tag) => component_changed_since_ref(root, component, tag, head)?,
+                    Some(tag) => {
+                        let component_changed =
+                            component_changed_since_ref(root, component, tag, head)?;
+                        if !component_changed {
+                            false
+                        } else {
+                            let latest_version = version_from_tag(component, tag)
+                                .with_release_context(|| {
+                                    format!(
+                                        "{} latest tag has invalid version: {tag}",
+                                        component.id
+                                    )
+                                })?;
+                            candidate_version > latest_version && !tag_exists(root, &candidate_tag)?
+                        }
+                    }
                     None => true,
                 },
             };
@@ -490,20 +505,20 @@ fn latest_version_from_plan(
 ) -> ReleaseResult<Option<Version>> {
     plan.last_tag
         .as_deref()
-        .map(|tag| {
-            let version = tag
-                .strip_prefix(&component.tag_prefix)
-                .with_release_context(|| {
-                    format!("{} latest tag has wrong prefix: {tag}", component.id)
-                })?;
-            Version::parse(version).with_release_context(|| {
-                format!(
-                    "{} latest tag has invalid semver suffix: {tag}",
-                    component.id
-                )
-            })
-        })
+        .map(|tag| version_from_tag(component, tag))
         .transpose()
+}
+
+fn version_from_tag(component: &Component, tag: &str) -> ReleaseResult<Version> {
+    let version = tag
+        .strip_prefix(&component.tag_prefix)
+        .with_release_context(|| format!("{} latest tag has wrong prefix: {tag}", component.id))?;
+    Version::parse(version).with_release_context(|| {
+        format!(
+            "{} latest tag has invalid semver suffix: {tag}",
+            component.id
+        )
+    })
 }
 
 fn bump_hint(component: &Component) -> String {
