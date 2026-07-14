@@ -23,7 +23,7 @@ data class EmbedRequest(
     @SerialName("source_type") val sourceType: String? = null,
 )
 
-/** ServiceJob — common shape across /v1/{crawl,embed,extract,ingest}/list and /{id}. */
+/** ServiceJob — UI-facing common shape for unified and legacy job rows. */
 @Serializable
 data class ServiceJob(
     val id: String = "",
@@ -41,7 +41,39 @@ data class ServiceJob(
     @SerialName("config_json") val configJson: JsonElement? = null,
 )
 
-/** GET /v1/{kind} response — paginated job list. */
+/** GET /v1/jobs response — generic source-pipeline job page. */
+@Serializable
+data class JobSummaryPage(
+    val items: List<UnifiedJobSummary> = emptyList(),
+    @SerialName("next_cursor") val nextCursor: String? = null,
+    val limit: Int = 0,
+    val total: Long? = null,
+)
+
+/** JobSummary from the unified `/v1/jobs` surface. */
+@Serializable
+data class UnifiedJobSummary(
+    @SerialName("job_id") val jobId: String = "",
+    val kind: String? = null,
+    val status: String = "",
+    val phase: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    val counts: JsonElement? = null,
+    @SerialName("last_error") val lastError: JsonElement? = null,
+)
+
+fun UnifiedJobSummary.toServiceJob(): ServiceJob =
+    ServiceJob(
+        id = jobId,
+        status = status,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        errorText = lastError?.toString(),
+        progressJson = counts,
+    )
+
+/** Legacy per-family response shape kept for compatibility with extract bridge endpoints. */
 @Serializable
 data class JobListResponse(
     val jobs: List<ServiceJob> = emptyList(),
@@ -65,6 +97,13 @@ data class StatusSummary(
 @Serializable
 data class CancelResponse(
     val canceled: Boolean = false,
+)
+
+/** POST /v1/jobs/{id}/cancel response. */
+@Serializable
+data class UnifiedJobCancelResult(
+    @SerialName("job_id") val jobId: String = "",
+    val status: String = "",
 )
 
 /** GET /v1/watch response envelope. */

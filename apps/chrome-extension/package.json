@@ -1,7 +1,7 @@
 {
   "name": "axon-chrome-extension",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Axon Chrome extension — MV3 side panel, popup command console, and context-menu capture.",
   "scripts": {
     "test": "node --test"

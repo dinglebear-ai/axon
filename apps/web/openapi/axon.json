@@ -2216,7 +2216,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobSummary"
+                  "$ref": "#/components/schemas/Page"
                 }
               }
             }
@@ -5832,7 +5832,7 @@
         },
         "responses": {
           "200": {
-            "description": "Search results and queued crawl jobs",
+            "description": "Search results and queued source auto-index jobs",
             "content": {
               "application/json": {
                 "schema": {}
@@ -6712,91 +6712,6 @@
         ]
       }
     },
-    "/v1/watch/{id}/run": {
-      "post": {
-        "tags": [
-          "watch"
-        ],
-        "operationId": "run_watch",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Watch definition ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Watch run result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Watch not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Watch execution failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/watches": {
       "get": {
         "tags": [
@@ -7222,6 +7137,100 @@
           },
           "502": {
             "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/watches/{watch_id}/exec": {
+      "post": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "exec_watch",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchExecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Watch execution job descriptor",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch execution failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -9829,7 +9838,7 @@
               },
               {
                 "$ref": "#/components/schemas/JobProgress",
-                "description": "Server-derived, transport-neutral progress for the generic async\nfamilies (embed/extract/ingest). `None` for crawl, which carries a\nricher client-side snapshot rather than the generic shape."
+                "description": "Server-derived, transport-neutral progress for the generic async\nfamilies (embed/extract/ingest). `None` for legacy crawl bridge rows,\nwhich are migration-only after the SourceRequest cutover."
               }
             ]
           }
@@ -10666,6 +10675,41 @@
           },
           "response_mode": {
             "$ref": "#/components/schemas/ResponseMode"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Page": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSummary"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -13321,11 +13365,23 @@
           "adapter": {
             "$ref": "#/components/schemas/AdapterRef"
           },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            }
+          },
           "canonical_uri": {
             "type": "string"
           },
           "counts": {
             "$ref": "#/components/schemas/SourceCounts"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceError"
+            }
           },
           "graph": {
             "$ref": "#/components/schemas/GraphWriteSummary"
@@ -14037,6 +14093,25 @@
           },
           {
             "type": "object",
+            "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
+            "required": [
+              "collection",
+              "kind"
+            ],
+            "properties": {
+              "collection": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "collection"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "collection",
               "document_id",
@@ -14210,6 +14285,34 @@
           "task_payload": {},
           "task_type": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchExecRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refresh": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceRefreshPolicy"
+              }
+            ]
+          },
+          "wait": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
