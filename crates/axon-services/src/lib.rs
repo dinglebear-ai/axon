@@ -118,6 +118,10 @@ pub use youtube_source::{
     YoutubeSourceIndexInput, YoutubeSourceIndexOutput, index_youtube_source_with_job,
 };
 pub mod youtube_target;
+
+#[cfg(test)]
+#[path = "legacy_crawl_unreachable_tests.rs"]
+mod legacy_crawl_unreachable_tests;
 pub use youtube_target::is_youtube_target;
 
 #[cfg(test)]

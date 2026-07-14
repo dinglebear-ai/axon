@@ -1819,10 +1819,7 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset",
-          "crawl",
-          "ingest",
-          "embed"
+          "reset"
         ],
         "type": "string",
         "x-axon": {
@@ -2141,7 +2138,7 @@
         "path": "crates/axon-authz/src/policy.rs"
       },
       {
-        "checksum": "sha256:cdf5d490a8b2eb0d697fbad7e1b3ed6d0da128c7ad433fd133ef98f83f01bd9f",
+        "checksum": "sha256:56d079f56747b3ecdc7ebad14a82b2a21146ca80add9b27ea98bf3a6d505ddf2",
         "kind": "rust_module",
         "path": "crates/axon-core/src/boundary.rs"
       },

@@ -6234,33 +6234,22 @@
       "type": "object"
     },
     "JobCleanupRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobCleanupRequest_LifecycleStatus": {
       "enum": [
@@ -6443,33 +6432,22 @@
       "type": "object"
     },
     "JobClearRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobClearRequest_LifecycleStatus": {
       "enum": [
@@ -7157,33 +7135,22 @@
       ]
     },
     "JobCreateRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobCreateRequest_JobPriority": {
       "enum": [
@@ -7434,33 +7401,22 @@
       "type": "string"
     },
     "JobDescriptor_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobEvent": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8344,33 +8300,22 @@
       "type": "object"
     },
     "JobListRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobListRequest_LifecycleStatus": {
       "enum": [
@@ -8428,33 +8373,22 @@
       "type": "object"
     },
     "JobRecoverRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobRecoverResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8571,33 +8505,22 @@
       "type": "object"
     },
     "JobRecoveryRequest_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobRecoveryResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8829,33 +8752,22 @@
       "type": "string"
     },
     "JobRetryResult_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobStageSnapshot": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -9807,33 +9719,22 @@
       "type": "string"
     },
     "JobSummary_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "JobSummary_LifecycleStatus": {
       "enum": [
@@ -11034,33 +10935,22 @@
       "type": "string"
     },
     "PollDescriptor_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "PreparedChunk": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -20058,33 +19948,22 @@
       "type": "string"
     },
     "SourceJobStatus_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "SourceJobStatus_JobStageSnapshot": {
       "additionalProperties": false,
@@ -24598,11 +24477,23 @@
         "adapter": {
           "$ref": "#/$defs/SourceResult_AdapterRef"
         },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/SourceResult_ArtifactRef"
+          },
+          "type": "array"
+        },
         "canonical_uri": {
           "type": "string"
         },
         "counts": {
           "$ref": "#/$defs/SourceResult_SourceCounts"
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/SourceResult_SourceError"
+          },
+          "type": "array"
         },
         "graph": {
           "$ref": "#/$defs/SourceResult_GraphWriteSummary"
@@ -24696,6 +24587,56 @@
     },
     "SourceResult_ArtifactId": {
       "type": "string"
+    },
+    "SourceResult_ArtifactKind": {
+      "enum": [
+        "raw_content",
+        "normalized_content",
+        "manifest",
+        "report",
+        "screenshot",
+        "warc",
+        "provider_trace"
+      ],
+      "type": "string"
+    },
+    "SourceResult_ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/SourceResult_ArtifactId"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/SourceResult_ArtifactKind"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_kind",
+        "uri",
+        "created_at"
+      ],
+      "type": "object"
     },
     "SourceResult_ContentRef": {
       "oneOf": [
@@ -24889,33 +24830,22 @@
       "type": "string"
     },
     "SourceResult_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "SourceResult_LedgerSummary": {
       "additionalProperties": false,
@@ -24966,6 +24896,9 @@
         "expired",
         "skipped"
       ],
+      "type": "string"
+    },
+    "SourceResult_ProviderId": {
       "type": "string"
     },
     "SourceResult_Severity": {
@@ -25020,6 +24953,56 @@
         "chunks_total",
         "vector_points_total",
         "bytes_total"
+      ],
+      "type": "object"
+    },
+    "SourceResult_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceResult_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SourceResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
       ],
       "type": "object"
     },
@@ -25864,33 +25847,22 @@
       "type": "string"
     },
     "SuccessEnvelope_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "SuccessEnvelope_LedgerSummary": {
       "additionalProperties": false,
@@ -25971,6 +25943,9 @@
       ],
       "type": "object"
     },
+    "SuccessEnvelope_ProviderId": {
+      "type": "string"
+    },
     "SuccessEnvelope_Severity": {
       "enum": [
         "debug",
@@ -26026,6 +26001,56 @@
       ],
       "type": "object"
     },
+    "SuccessEnvelope_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SuccessEnvelope_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/SuccessEnvelope_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SuccessEnvelope_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
     "SuccessEnvelope_SourceGenerationId": {
       "type": "string"
     },
@@ -26058,11 +26083,23 @@
         "adapter": {
           "$ref": "#/$defs/SuccessEnvelope_AdapterRef"
         },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/SuccessEnvelope_ArtifactRef"
+          },
+          "type": "array"
+        },
         "canonical_uri": {
           "type": "string"
         },
         "counts": {
           "$ref": "#/$defs/SuccessEnvelope_SourceCounts"
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/SuccessEnvelope_SourceError"
+          },
+          "type": "array"
         },
         "graph": {
           "$ref": "#/$defs/SuccessEnvelope_GraphWriteSummary"
@@ -27617,33 +27654,22 @@
       "type": "string"
     },
     "WatchDescriptor_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "WatchDescriptor_Severity": {
       "enum": [
@@ -27899,33 +27925,22 @@
       "type": "string"
     },
     "WatchHistoryResult_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "WatchHistoryResult_WatchId": {
       "type": "string"
@@ -28228,33 +28243,22 @@
       "type": "string"
     },
     "WatchResult_JobKind": {
-      "oneOf": [
-        {
-          "enum": [
-            "source",
-            "watch",
-            "map",
-            "extract",
-            "research",
-            "ask",
-            "query",
-            "retrieve",
-            "memory",
-            "graph",
-            "prune",
-            "provider_probe",
-            "reset",
-            "crawl",
-            "ingest"
-          ],
-          "type": "string"
-        },
-        {
-          "const": "embed",
-          "description": "Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`\nenqueue paths in `axon-services`. Requires the `jobs.kind` CHECK\nwidened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.",
-          "type": "string"
-        }
-      ]
+      "enum": [
+        "source",
+        "watch",
+        "map",
+        "extract",
+        "research",
+        "ask",
+        "query",
+        "retrieve",
+        "memory",
+        "graph",
+        "prune",
+        "provider_probe",
+        "reset"
+      ],
+      "type": "string"
     },
     "WatchResult_Severity": {
       "enum": [
@@ -28715,10 +28719,7 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset",
-          "crawl",
-          "ingest",
-          "embed"
+          "reset"
         ],
         "type": "string",
         "x-axon": {
@@ -29041,7 +29042,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:372466d1aedf5632d7af89b9562ec6e2820eb8fcea83f8182b064b6c46492c93",
+        "checksum": "sha256:ff2d872269803c526f15ba9de3cdb873c04ef184699b0edd8d5fdde9e7489067",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
@@ -29066,7 +29067,7 @@
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
       {
-        "checksum": "sha256:04755fecf0a574f9d07bbe72c6053592703a07ab14de3d4c28dd5083f7219828",
+        "checksum": "sha256:476e1beaf6df536d05126c2ff3ef5570bdab4408989e299c8c4345031011d87b",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
