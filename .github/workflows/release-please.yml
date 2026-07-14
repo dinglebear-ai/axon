@@ -44,7 +44,10 @@ jobs:
 
   release-pr-fixups:
     needs: release-please
-    if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+    # release-please may update already-open release PRs without setting
+    # prs_created=true. Run fixups for any PR payload it returns so component
+    # source version files cannot drift behind the manifest/changelog bump.
+    if: ${{ needs.release-please.outputs.prs != '' && needs.release-please.outputs.prs != '[]' && needs.release-please.outputs.prs != 'null' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write  # required to push generated fixup commits to release PR branches

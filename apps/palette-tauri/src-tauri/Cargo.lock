@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "axon-palette-tauri"
-version = "5.14.0"
+version = "5.14.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
