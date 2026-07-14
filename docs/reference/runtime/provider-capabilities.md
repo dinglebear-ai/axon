@@ -28,7 +28,7 @@ Provider capabilities report health, limits, cooling, reservation policy, reserv
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-adapters/src/boundary.rs` | `sha256:4fee60c1f2f8b8cb8dc320c4b2777cb6b63f1c3b41d148bc4e66291ec36db695` |
-| `crates/axon-api/src/schema_registry.rs` | `sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5` |
+| `crates/axon-api/src/schema_registry.rs` | `sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be` |
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
 | `crates/axon-authz/src/policy.rs` | `sha256:27590ae1e1ecfde070df97bf3d67b362ad08d4e5d499d7d19baa64e2d1519ac3` |
 | `crates/axon-core/src/boundary.rs` | `sha256:ac9a29bb0d9f5a8fd681ee9a1cd0d55f0a4de89cb12664b89e7e684107a2f1aa` |

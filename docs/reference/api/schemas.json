@@ -29012,7 +29012,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:17fe591576842490809db43afd3797ca5b5460fe526286d4597c35c839b3fea5",
+        "checksum": "sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
