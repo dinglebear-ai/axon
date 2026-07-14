@@ -76,5 +76,6 @@ shipping_paths = ["apps/chrome-extension"]
 version_source = { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" }
 version_files = [
   { kind = "json_version", path = "apps/chrome-extension/manifest.json", json_pointer = "/version" },
+  { kind = "json_version", path = "apps/chrome-extension/package.json", json_pointer = "/version" },
   { kind = "changelog_heading", path = "apps/chrome-extension/CHANGELOG.md" },
 ]

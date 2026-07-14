@@ -78,7 +78,7 @@ jobs:
             done < <(jq -c '.[]' fixup-plan.json)
             cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
             if ! git diff --quiet; then
-              git add Cargo.lock apps/palette-tauri/src-tauri/Cargo.lock apps/android/app/build.gradle.kts
+              git add --update
               git commit -m "chore: apply release-please fixups"
               git push origin HEAD:"$branch"
             fi

@@ -16,8 +16,7 @@ import com.axon.app.core.api.models.DomainsResponse
 import com.axon.app.core.api.models.EmbedRequest
 import com.axon.app.core.api.models.ExtractRequest
 import com.axon.app.core.api.models.IngestRequest
-import com.axon.app.core.api.models.JobDetailResponse
-import com.axon.app.core.api.models.JobListResponse
+import com.axon.app.core.api.models.JobSummaryPage
 import com.axon.app.core.api.models.SearchWebRequest
 import com.axon.app.core.api.models.SearchWebResponse
 import com.axon.app.core.api.models.ServiceJob
@@ -29,8 +28,11 @@ import com.axon.app.core.api.models.SuggestRequest
 import com.axon.app.core.api.models.SuggestResponse
 import com.axon.app.core.api.models.SummarizeRequest
 import com.axon.app.core.api.models.SummarizeResponse
+import com.axon.app.core.api.models.UnifiedJobCancelResult
+import com.axon.app.core.api.models.UnifiedJobSummary
 import com.axon.app.core.api.models.WatchDef
 import com.axon.app.core.api.models.WatchListResponse
+import com.axon.app.core.api.models.toServiceJob
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -191,10 +193,15 @@ class AxonClient(
     }
 
     suspend fun crawlStatus(jobId: String): Result<CrawlStatusResponse> = withContext(Dispatchers.IO) {
-        // The server wraps the job in {"job": {...}}; decode the envelope and unwrap.
-        get<CrawlStatusWrapper>(
-            openApiRoute("GET", "/v1/crawl/{id}", "/v1/crawl/${encodePathSegment(jobId)}"),
-        ).map { it.job }
+        get<UnifiedJobSummary>(
+            openApiRoute("GET", "/v1/jobs/{id}", "/v1/jobs/${encodePathSegment(jobId)}"),
+        ).map { job ->
+            CrawlStatusResponse(
+                id = job.jobId,
+                status = job.status,
+                error = job.lastError?.toString(),
+            )
+        }
     }
 
     // ── Phase 2 endpoints ──────────────────────────────────────────────────────
@@ -254,32 +261,37 @@ class AxonClient(
         statusUrl = job?.statusUrl,
     )
 
-    /** GET /v1/{kind}/{id} — job detail. Long-poll-friendly via httpLong. */
+    /** GET /v1/jobs/{id} — unified job detail. Long-poll-friendly via httpLong. */
     suspend fun getJob(kind: JobKind, id: String): Result<ServiceJob> = withContext(Dispatchers.IO) {
-        getWith<JobDetailResponse>(
+        getWith<UnifiedJobSummary>(
             httpLong,
-            openApiRoute("GET", "/v1/{kind}/{id}", "/v1/${kind.path}/${encodePathSegment(id)}"),
-        ).map { it.job }
+            openApiRoute("GET", "/v1/jobs/{id}", "/v1/jobs/${encodePathSegment(id)}"),
+        ).map { it.toServiceJob() }
     }
 
-    /** GET /v1/{kind} — list jobs of one kind. Server wraps in {"jobs":[...],"limit":N,"offset":N}. */
+    /** GET /v1/jobs?kind=... — list unified jobs filtered to one kind. */
     suspend fun listJobs(kind: JobKind, limit: Int = 25, offset: Int = 0): Result<List<ServiceJob>> = withContext(Dispatchers.IO) {
-        get<JobListResponse>(
-            openApiRoute("GET", "/v1/{kind}", "/v1/${kind.path}?limit=$limit&offset=$offset"),
-        ).map { it.jobs }
+        get<JobSummaryPage>(
+            openApiRoute("GET", "/v1/jobs", "/v1/jobs?kind=${queryEncode(kind.path)}&limit=$limit"),
+        ).map { page -> page.items.map { it.toServiceJob() } }
     }
 
-    /** POST /v1/{kind}/{id}/cancel. */
+    /** POST /v1/jobs/{id}/cancel. */
     suspend fun cancelJob(kind: JobKind, id: String): Result<CancelResponse> = withContext(Dispatchers.IO) {
         val body = "{}".toRequestBody(JSON_MEDIA_TYPE)
         val builder = runCatching {
             authRequest(
                 Request.Builder()
-                    .url("${baseUrl()}${openApiRoute("POST", "/v1/{kind}/{id}/cancel", "/v1/${kind.path}/${encodePathSegment(id)}/cancel")}")
+                    .url("${baseUrl()}${openApiRoute("POST", "/v1/jobs/{id}/cancel", "/v1/jobs/${encodePathSegment(id)}/cancel")}")
                     .post(body),
             )
         }.getOrElse { return@withContext Result.failure(it) }
-        execute(http, builder)
+        execute<UnifiedJobCancelResult>(http, builder).map { result ->
+            val normalized = result.status.lowercase()
+            CancelResponse(
+                canceled = normalized in setOf("cancelled", "canceled", "cancelling", "canceling"),
+            )
+        }
     }
 
     suspend fun status(): Result<StatusSummary> = withContext(Dispatchers.IO) { get(openApiRoute("GET", "/v1/status")) }
