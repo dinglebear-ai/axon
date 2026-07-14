@@ -775,6 +775,24 @@ fn main_mode_marks_changed_since_latest_tag() {
 }
 
 #[test]
+fn main_mode_skips_changed_component_when_candidate_tag_already_exists() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(fixture.path("src/lib.rs"), "pub fn post_release_fix() {}\n").unwrap();
+    fixture.git(&["add", "src/lib.rs"]);
+    fixture.git(&["commit", "-m", "post release fix"]);
+
+    check(fixture.root(), None, "HEAD", GateMode::Main, false)
+        .expect("post-release same-version changes do not make auto-tag fail");
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(!cli.changed);
+    assert_eq!(cli.candidate_tag, "v1.0.0");
+    assert_eq!(cli.last_tag.as_deref(), Some("v1.0.0"));
+}
+
+#[test]
 fn main_mode_marks_unchanged_when_latest_tag_points_at_head() {
     let fixture = Fixture::new();
     fixture.init_repo();
