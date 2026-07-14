@@ -9,9 +9,10 @@
 //! MCP, and REST share one entrypoint.
 
 use axon_api::source::{
-    ContentRef, LifecycleStatus, ResponseMode, SourceRequest, SourceResult, SourceScope,
+    ContentRef, LifecycleStatus, ResponseMode, SourceIntent, SourceLimits, SourceRequest,
+    SourceResult, SourceScope,
 };
-use axon_core::config::Config;
+use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
 use axon_services::context::ServiceContext;
 use axon_services::index_source;
@@ -25,6 +26,14 @@ pub async fn run_source(
 
     let request = build_source_request(cfg, input)?;
 
+    run_source_request(cfg, service_context, request).await
+}
+
+pub(crate) async fn run_source_request(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    request: SourceRequest,
+) -> Result<(), Box<dyn Error>> {
     let result = index_source(request, service_context)
         .await
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
@@ -55,14 +64,26 @@ fn parse_scope(scope: &str) -> Result<SourceScope, Box<dyn Error>> {
         .map_err(|_| format!("unknown --scope value: {scope}").into())
 }
 
-fn build_source_request(cfg: &Config, input: String) -> Result<SourceRequest, Box<dyn Error>> {
+pub(crate) fn build_source_request(
+    cfg: &Config,
+    input: String,
+) -> Result<SourceRequest, Box<dyn Error>> {
     let mut request = SourceRequest::new(input);
     request.collection = Some(cfg.collection.clone());
     request.embed = cfg.embed;
     if cfg.scrape_inline {
         request.output.response_mode = ResponseMode::Inline;
     }
-    if let Some(scope) = cfg.source_scope.as_deref() {
+    if cfg.command == CommandKind::Scrape {
+        request.intent = SourceIntent::Acquire;
+        request.scope = Some(SourceScope::Page);
+        request.limits = SourceLimits {
+            max_items: Some(1),
+            max_pages: Some(1),
+            max_depth: Some(0),
+            ..SourceLimits::default()
+        };
+    } else if let Some(scope) = cfg.source_scope.as_deref() {
         request.scope = Some(parse_scope(scope)?);
     }
     Ok(request)
