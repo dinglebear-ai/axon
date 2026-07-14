@@ -1,35 +1,36 @@
-# axon youtube (removed — use `axon ingest`)
+# axon youtube (removed — use `axon <source>`)
 
-Last Modified: 2026-03-09
+Last Modified: 2026-07-14
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon ingest <target>` |
-| REST | `POST /v1/ingest` |
-| MCP | `ingest.start` with `source_type: "youtube"` |
-| Service | `services::ingest::* via source_type=youtube` |
+| CLI | `axon <source>` |
+| REST | `POST /v1/sources` |
+| MCP | `{ "action": "source" }` |
+| Service | `services::source::* via SourceRequest` |
 
-Parity notes: Compatibility source page. Use the unified ingest action for CLI, REST, and MCP.
+Parity notes: Compatibility source page. Use the unified source action for CLI, REST, and MCP.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-> **This command has been replaced.** Use [`axon ingest`](ingest.md) instead.
+> **This command has been replaced.** Use the unified source command instead.
 >
-> `axon ingest` auto-detects the source type. YouTube URLs, `@handles`, and bare video IDs are recognized automatically.
+> `axon <source>` auto-detects the source type. YouTube URLs, `@handles`, and
+> bare video IDs are recognized automatically.
 
 > For implementation details and troubleshooting see [`docs/guides/ingest/youtube.md`](../../guides/ingest/youtube.md).
 
 ## Synopsis
 
 ```bash
-axon ingest <TARGET> [FLAGS]
-axon ingest <SUBCOMMAND> [ARGS]
+axon <TARGET> [FLAGS]
+axon jobs <SUBCOMMAND> [ARGS]
 ```
 
-Replace `axon youtube` with `axon ingest` — flags and behavior are identical.
+Replace `axon youtube` with `axon <source>`; inspect async work with `axon jobs`.
 
 ## Prerequisites
 
@@ -71,14 +72,9 @@ pipx install yt-dlp
 ## Job Subcommands
 
 ```bash
-axon ingest status <job_id>   # show one ingest job
-axon ingest cancel <job_id>   # cancel a pending/running job
-axon ingest errors <job_id>   # show job error text
-axon ingest list              # list recent ingest jobs (last 50)
-axon ingest cleanup           # remove failed/canceled + old completed jobs
-axon ingest clear             # delete all ingest jobs and purge the queue
-axon ingest recover           # reclaim stale/interrupted jobs
-axon ingest worker            # run ingest worker inline (blocking)
+axon jobs status <job_id>   # show one source job
+axon jobs cancel <job_id>   # cancel a pending/running job
+axon jobs list              # list recent jobs
 ```
 
 ## Required Environment Variables
@@ -89,21 +85,21 @@ None required for YouTube. Qdrant (`QDRANT_URL`) and TEI (`TEI_URL`) must be run
 
 ```bash
 # Video URL
-axon ingest "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --wait true
+axon "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --wait true
 
 # Channel @handle (auto-expanded)
-axon ingest @SpaceinvaderOne
+axon @SpaceinvaderOne
 
 # Bare video ID
-axon ingest dQw4w9WgXcQ --wait true
+axon dQw4w9WgXcQ --wait true
 
 # Playlist
-axon ingest "https://www.youtube.com/playlist?list=PLxxxxxx" --wait true
+axon "https://www.youtube.com/playlist?list=PLxxxxxx" --wait true
 
 # Job control
-axon ingest list
-axon ingest status 550e8400-e29b-41d4-a716-446655440000
-axon ingest cancel 550e8400-e29b-41d4-a716-446655440000
+axon jobs list
+axon jobs status 550e8400-e29b-41d4-a716-446655440000
+axon jobs cancel 550e8400-e29b-41d4-a716-446655440000
 ```
 
 ## Migration
@@ -114,6 +110,6 @@ axon youtube "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --wait true
 axon youtube @SpaceinvaderOne
 
 # After
-axon ingest "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --wait true
-axon ingest @SpaceinvaderOne
+axon "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --wait true
+axon @SpaceinvaderOne
 ```

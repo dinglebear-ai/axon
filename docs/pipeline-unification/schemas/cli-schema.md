@@ -1,5 +1,5 @@
 # CLI Schema Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-14
 
 ## Contract
 
@@ -137,6 +137,16 @@ Every flag record includes:
 - config
 
 Removed commands are absent.
+
+`scrape` is the only retained former source-family convenience command. Its
+schema must map to `SourceRequest` with `scope=page`, `embed=true` by default,
+`limits.max_pages=1`, and clean content output. It must not expose crawl fanout
+or a legacy scrape engine path.
+
+Reserved removed command tokens (`crawl`, `embed`, `ingest`, `code-search`,
+and `code-search-watch`) do not appear as commands or aliases. A CLI schema
+generator may record them only as removed/reserved diagnostics with replacement
+guidance; they must not deserialize to executable command specs.
 
 ## Complete Command Registry Shape
 

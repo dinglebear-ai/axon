@@ -1,11 +1,10 @@
 # Job Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-14
 
 ## Contract
 
-This is the target clean-break job model. The current implementation still has
-per-family job tables, payloads, and routes for crawl, embed, extract, and
-ingest.
+This is the clean-break job model. The current implementation still has some
+per-family legacy storage, but the web acquisition surface now uses Source jobs.
 
 Axon has one durable job model. It does not have separate infrastructure models
 for crawl jobs, embed jobs, ingest jobs, extract jobs, watch jobs, prune jobs,
@@ -34,12 +33,16 @@ provider work.
 
 ## Current Implementation Snapshot
 
-Refreshed 2026-07-10 against HEAD `5a4558cc7`:
+Refreshed 2026-07-14 against the crawl SourceRequest cutover worktree:
 
 Implemented today:
 
-- `axon-jobs` stores family-specific job payloads and workers for crawl, embed,
+- `axon-jobs` still stores family-specific legacy payloads for crawl, embed,
   extract, ingest, and watch scheduling.
+- Web page/site/docs acquisition, retained `scrape`, source-backed `map`,
+  search/research auto-index, refresh, and URL watch now enqueue `source` jobs.
+  They do not create new `JobKind::Crawl` rows and do not hand off to child
+  Embed jobs.
 - REST now exposes a generic `/v1/jobs` collection
   (`handlers::jobs::unified_jobs_read_router` /
   `unified_jobs_write_router` / `unified_jobs_admin_router` in
@@ -59,7 +62,9 @@ Planned by this contract:
 - Family-specific *storage* (the SQLite job tables) collapses into one job
   model with `job_kind`, stage plan, attempts, provider reservations,
   progress events, and typed results. The REST surface has already converged
-  on one `/v1/jobs` collection ahead of the storage-layer unification.
+  on one `/v1/jobs` collection ahead of the full storage-layer unification.
+  Legacy crawl rows are migration-only and are dead-lettered as
+  `legacy.crawl.removed` instead of recovered/requeued.
 
 ## Design Rules
 

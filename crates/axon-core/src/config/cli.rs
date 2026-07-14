@@ -35,7 +35,7 @@ pub(super) enum CliCommand {
     Endpoints(EndpointArgs),
     /// LLM-powered structured data extraction from URLs
     Extract(ExtractArgs),
-    /// Web search via SearXNG/Tavily, auto-queues crawl jobs for results
+    /// Web search via SearXNG/Tavily, auto-queues Source jobs for results
     Search(TextArg),
     /// Web research via SearXNG/Tavily with LLM synthesis and auto-indexing
     Research(TextArg),

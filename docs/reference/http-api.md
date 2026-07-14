@@ -33,7 +33,8 @@ RAG routes:
 
 Exploration routes:
 
-- `POST /v1/scrape` with `{ "url": "..." }` or `{ "urls": ["..."] }`
+- `POST /v1/sources` with a `SourceRequest`; use `"scope":"page"` for a
+  single-page scrape projection and `"scope":"site"` for site acquisition.
 - `POST /v1/summarize` with `{ "url": "..." }` or `{ "urls": ["..."] }`
 - `POST /v1/summarize/stream` streams summarization synthesis (SSE).
 - `POST /v1/map` with `{ "url": "...", "limit": 100, "offset": 0 }`
@@ -45,7 +46,11 @@ Exploration routes:
 - `POST /v1/research` with the same body as search; HTTP requests time out after 35 seconds.
 - `POST /v1/research/stream` streams research synthesis (SSE) and emits a terminal `error` event if the 35-second stream budget is exceeded.
 
-Header forwarding: `scrape`, `summarize`, `crawl`, and `extract` accept `headers` arrays for origin fetches. Treat these as credential forwarding: values may include bearer tokens or cookies for the target origin. Axon rejects hop-by-hop and internal forwarding headers such as `Connection`, `Host`, `Content-Length`, `Forwarded`, and `X-Forwarded-*`.
+Header forwarding: source-backed web acquisition, `summarize`, and `extract`
+accept `headers` arrays for origin fetches. Treat these as credential
+forwarding: values may include bearer tokens or cookies for the target origin.
+Axon rejects hop-by-hop and internal forwarding headers such as `Connection`,
+`Host`, `Content-Length`, `Forwarded`, and `X-Forwarded-*`.
 
 Domain filters are exact host matches against indexed `payload.domain` values. `example.com` does not include `docs.example.com` unless that exact host is requested.
 
@@ -59,13 +64,11 @@ Artifact download:
 
 Async job routes:
 
-- `POST /v1/crawl`, `GET /v1/crawl`, `GET /v1/crawl/{id}`
-- `POST /v1/embed`, `GET /v1/embed`, `GET /v1/embed/{id}`
 - `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`
-- `POST /v1/ingest`, `GET /v1/ingest`, `GET /v1/ingest/{id}`
 - `POST /v1/ingest/sessions/prepared`
+- `GET /v1/jobs`, `GET /v1/jobs/{id}`, `GET /v1/jobs/{id}/events`
 
-Each async family also supports:
+The extract family also supports:
 
 - `GET /v1/{family}`
 - `POST /v1/{family}/{id}/cancel`
@@ -79,22 +82,21 @@ Start responses use `202 Accepted`, a `Location` header, and:
 {
   "job_id": "...",
   "status": "pending",
-  "status_url": "/v1/crawl/..."
+  "status_url": "/v1/jobs/..."
 }
 ```
 
-`POST /v1/embed` uses the same server-side input validator as MCP embed.
-URL and raw text inputs are accepted. Host-local file and directory inputs must
-resolve under `AXON_MCP_EMBED_ALLOWED_ROOTS` and satisfy the configured
-byte/depth/entry limits; missing path-like inputs are rejected instead of being
-treated as raw text.
+The removed indexing routes `POST /v1/embed`, `POST /v1/ingest`,
+`POST /v1/scrape`, and `POST /v1/crawl` now return `404`. Use
+`POST /v1/sources` for all source acquisition/indexing.
 
 Admin routes:
 
-- `POST /v1/dedupe`
-- `GET /v1/watch?limit=100`
-- `POST /v1/watch`
-- `POST /v1/watch/{id}/run`
+- `POST /v1/prune/plan`
+- `POST /v1/prune/exec`
+- `GET /v1/watches?limit=100`
+- `POST /v1/watches`
+- `POST /v1/watches/{watch_id}/exec`
 
 `POST /v1/migrate` is intentionally not exposed. Collection migration is a long-running CLI-only operation until it has a dedicated async job family.
 

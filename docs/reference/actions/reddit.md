@@ -1,35 +1,36 @@
-# axon reddit (removed — use `axon ingest`)
+# axon reddit (removed — use `axon <source>`)
 
-Last Modified: 2026-03-09
+Last Modified: 2026-07-14
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon ingest <target>` |
-| REST | `POST /v1/ingest` |
-| MCP | `ingest.start` with `source_type: "reddit"` |
-| Service | `services::ingest::* via source_type=reddit` |
+| CLI | `axon <source>` |
+| REST | `POST /v1/sources` |
+| MCP | `{ "action": "source" }` |
+| Service | `services::source::* via SourceRequest` |
 
-Parity notes: Compatibility source page. Use the unified ingest action for CLI, REST, and MCP.
+Parity notes: Compatibility source page. Use the unified source action for CLI, REST, and MCP.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-> **This command has been replaced.** Use [`axon ingest`](ingest.md) instead.
+> **This command has been replaced.** Use the unified source command instead.
 >
-> `axon ingest` auto-detects the source type. Reddit subreddit prefixes (`r/name`) and URLs are recognized automatically.
+> `axon <source>` auto-detects the source type. Reddit subreddit prefixes
+> (`r/name`) and URLs are recognized automatically.
 
 > For implementation details and troubleshooting see [`docs/guides/ingest/reddit.md`](../../guides/ingest/reddit.md).
 
 ## Synopsis
 
 ```bash
-axon ingest <TARGET> [FLAGS]
-axon ingest <SUBCOMMAND> [ARGS]
+axon <TARGET> [FLAGS]
+axon jobs <SUBCOMMAND> [ARGS]
 ```
 
-Replace `axon reddit` with `axon ingest` — flags and behavior are identical.
+Replace `axon reddit` with `axon <source>`; inspect async work with `axon jobs`.
 
 ## Arguments
 
@@ -54,14 +55,9 @@ Replace `axon reddit` with `axon ingest` — flags and behavior are identical.
 ## Job Subcommands
 
 ```bash
-axon ingest status <job_id>   # show one ingest job
-axon ingest cancel <job_id>   # cancel a pending/running job
-axon ingest errors <job_id>   # show job error text
-axon ingest list              # list recent ingest jobs (last 50)
-axon ingest cleanup           # remove failed/canceled + old completed jobs
-axon ingest clear             # delete all ingest jobs and purge the queue
-axon ingest recover           # reclaim stale/interrupted jobs
-axon ingest worker            # run ingest worker inline (blocking)
+axon jobs status <job_id>   # show one source job
+axon jobs cancel <job_id>   # cancel a pending/running job
+axon jobs list              # list recent jobs
 ```
 
 ## Required Environment Variables
@@ -75,21 +71,21 @@ axon ingest worker            # run ingest worker inline (blocking)
 
 ```bash
 # Subreddit — prefix form
-axon ingest r/unraid
+axon r/unraid
 
 # Subreddit — with sort and time range
-axon ingest r/rust --sort top --time week --wait true
+axon r/rust --sort top --time week --wait true
 
 # Full Reddit URL
-axon ingest "https://www.reddit.com/r/homelab/" --wait true
+axon "https://www.reddit.com/r/homelab/" --wait true
 
 # Thread URL
-axon ingest "https://www.reddit.com/r/unraid/comments/abc123/title/" --wait true
+axon "https://www.reddit.com/r/unraid/comments/abc123/title/" --wait true
 
 # Job control
-axon ingest list
-axon ingest status 550e8400-e29b-41d4-a716-446655440000
-axon ingest cancel 550e8400-e29b-41d4-a716-446655440000
+axon jobs list
+axon jobs status 550e8400-e29b-41d4-a716-446655440000
+axon jobs cancel 550e8400-e29b-41d4-a716-446655440000
 ```
 
 ## Migration
@@ -100,6 +96,6 @@ axon reddit r/unraid
 axon reddit r/unraid --sort top --time week --wait true
 
 # After
-axon ingest r/unraid
-axon ingest r/unraid --sort top --time week --wait true
+axon r/unraid
+axon r/unraid --sort top --time week --wait true
 ```

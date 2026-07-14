@@ -42,11 +42,12 @@ bash ./scripts/test-mcp-tools-mcporter.sh
 ```bash
 mcporter --config config/mcporter.json list axon --schema
 mcporter --config config/mcporter.json call axon.axon action:doctor --output json
-mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
+mcporter --config config/mcporter.json call axon.axon action:source source:https://example.com scope:page embed:true --output json
 ```
 
-The smoke harness uses SQLite/in-process jobs. Legacy `export` and graph
-actions were removed.
+The smoke harness uses SQLite/in-process jobs. Legacy source-family actions
+such as `crawl`, `scrape`, `embed`, and `ingest` were removed from MCP; use
+`action=source`.
 
 ## Change Rule
 When changing tool behavior, update in the same commit:

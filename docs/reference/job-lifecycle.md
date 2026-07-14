@@ -1,10 +1,11 @@
 # Job Lifecycle
-Last Modified: 2026-06-09
+Last Modified: 2026-07-14
 
 The async-job state machine for axon. Jobs use SQLite persistence and in-process tokio workers; there is no message broker, Postgres, or Redis runtime.
 
-> Current runtime only. The #298 target replaces the four family-specific job
-> tables with the unified source job model in
+> Current runtime only. Legacy family-specific job tables still exist for
+> migration/status compatibility, but web page/site/docs acquisition now uses
+> Source jobs. See
 > [`../pipeline-unification/runtime/job-contract.md`](../pipeline-unification/runtime/job-contract.md).
 
 For module layout, helper-function index, and the `JobBackend` / `ServiceJobRuntime` distinction, see [`../../crates/axon-jobs/src/CLAUDE.md`](../../crates/axon-jobs/src/CLAUDE.md) and [`../../crates/axon-services/src/CLAUDE.md`](../../crates/axon-services/src/CLAUDE.md).
@@ -26,16 +27,17 @@ For module layout, helper-function index, and the `JobBackend` / `ServiceJobRunt
 
 ## Scope
 
-Four async job families are persisted in SQLite and processed by in-process workers spawned by `SqliteJobBackend::new_with_workers`:
+Legacy async job families are persisted in SQLite and processed by in-process
+workers spawned by `SqliteJobBackend::new_with_workers`:
 
-- **Crawl** — site/URL crawling (`crates/axon-jobs/src/workers/runners/crawl.rs`)
+- **Crawl** — legacy rows only; new web acquisition uses Source jobs.
 - **Extract** — LLM structured extraction (`crates/axon-jobs/src/workers/runners/extract.rs`)
 - **Embed** — TEI embedding + Qdrant upsert (`crates/axon-jobs/src/workers/runners/embed.rs`)
 - **Ingest** — GitHub / GitLab / Gitea / Git / RSS / Reddit / YouTube / sessions (`crates/axon-jobs/src/workers/runners/ingest.rs`)
 
 Refresh and graph job runners were removed with the legacy queue runtime. No migration, `JobKind`, runner, or service code creates or references those old tables.
 
-Watch (recurring scheduler) is **not** part of `JobBackend`/`JobKind`. It is a separate SQLite-backed scheduler in `crates/axon-jobs/src/watch.rs` whose CRUD shim lives in `crates/axon-services/src/watch.rs`. It dispatches into the four queues above when a watch fires.
+Watch (recurring scheduler) is **not** part of `JobBackend`/`JobKind`. It is a separate SQLite-backed scheduler in `crates/axon-jobs/src/watch.rs` whose CRUD shim lives in `crates/axon-services/src/watch.rs`. Web watch runs dispatch Source jobs when a watch fires.
 
 ## Job Kinds and Tables
 
@@ -111,7 +113,8 @@ Every `axon_*_jobs` row carries the same lifecycle columns. The transitions are:
 4. Returns the new `JobId` (`Uuid`).
 5. If the backend has workers (`new_with_workers` mode), `WorkerHandles::notify(kind)` fires the per-kind `Notify` so the lane wakes immediately instead of waiting for the next 5 s poll.
 
-The auto-embed handoff inside the crawl runner (`runners/crawl.rs:61-103`) also flows through `enqueue_job`, so the embed cap applies even to internally-chained jobs. When the embed cap rejects the chain, the crawl result JSON includes `"embed_deferred"` with a human-readable reason and the markdown is left on disk unindexed.
+The old crawl-to-embed handoff is not the web source path. Source jobs acquire,
+prepare, embed, and publish under one job id with no child Embed job.
 
 ## Claim and Execute Flow
 
@@ -139,7 +142,8 @@ A worker processes up to `WORKER_BATCH_LIMIT = 32` jobs per wake before yielding
 
 Long-running jobs persist progress through `update_result_json` without changing status. Worker-originated progress includes the active attempt ID in the SQL predicate, so late progress from an older reclaimed attempt cannot update a newer retry that reused the same job ID.
 
-- **Crawl** uses `spawn_crawl_progress_persister` (`workers/progress.rs:9-28`). The crawl engine sends `CrawlSummary` on a 32-slot mpsc channel; the persister updates aggregate progress counters after each message. Final crawl `result_json` includes bounded diagnostic samples under `diagnostics` plus `diagnostic_counts` for `axon crawl errors`.
+- **Crawl** progress support is legacy/migration-only. New web Source jobs emit
+  Source progress events and metrics under the shared Source job id.
 - **Embed** uses `spawn_embed_progress_persister` (`workers/progress.rs:30-48`) keyed off `EmbedProgress` from `vector::ops::tei`.
 - **Extract** and **ingest** runners write progress directly via `update_result_json` from inside their bodies.
 
@@ -381,13 +385,14 @@ This section describes the behavior contract between the server and user-facing 
 
 ### Accepted-job response (202)
 
-When a crawl/embed/extract/ingest command is submitted to the server, it returns HTTP 202:
+When an async source/extract/operational command is submitted to the server, it
+returns HTTP 202:
 
 ```json
 {
   "job_id": "abc-123",
   "status": "accepted",
-  "status_url": "/v1/crawl/abc-123"
+  "status_url": "/v1/jobs/abc-123"
 }
 ```
 
@@ -440,7 +445,10 @@ Only raster image artifacts are previewed inline. Active or ambiguous types such
 
 - App flows must never display raw absolute server paths (`/home/axon/.axon/...`) as primary output.
 - Artifact preview routes must not expose unauthenticated image URLs or accept absolute server paths.
-- Automation API endpoints (`POST /v1/crawl`, `GET /v1/crawl/{id}`, canonical `GET /v1/artifacts?path=...`) must remain available. The legacy slash-capturing artifact path remains a runtime compatibility alias.
+- Automation API endpoints (`POST /v1/sources`, `GET /v1/jobs/{id}`, canonical
+  `GET /v1/artifacts?path=...`) must remain available. The removed
+  `/v1/crawl` route must remain absent; crawl-like web acquisition is a
+  `SourceRequest` with `scope=site`.
 
 ### Coverage
 
