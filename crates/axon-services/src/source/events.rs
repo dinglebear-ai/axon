@@ -13,6 +13,7 @@ pub(crate) struct SourceEventEmitter {
     source_kind: Option<SourceKind>,
     scope: Option<SourceScope>,
     adapter: Option<AdapterRef>,
+    attempt: u32,
 }
 
 impl SourceEventEmitter {
@@ -23,6 +24,7 @@ impl SourceEventEmitter {
             source_kind: None,
             scope: None,
             adapter: None,
+            attempt: 1,
         }
     }
 
@@ -50,6 +52,11 @@ impl SourceEventEmitter {
         self.source_kind = Some(source_kind);
         self.scope = Some(scope);
         self.adapter = Some(adapter);
+        self
+    }
+
+    pub(crate) fn with_attempt(mut self, attempt: u32) -> Self {
+        self.attempt = attempt.max(1);
         self
     }
 
@@ -96,6 +103,7 @@ impl SourceEventEmitter {
             self.source_kind,
             self.scope,
             self.adapter.clone(),
+            self.attempt,
             message,
         )
         .await
@@ -120,12 +128,13 @@ pub(crate) async fn emit_source_event(
     source_kind: Option<SourceKind>,
     scope: Option<SourceScope>,
     adapter: Option<AdapterRef>,
+    attempt: u32,
     message: impl Into<String>,
 ) -> anyhow::Result<()> {
     let sequence = jobs.latest_event_sequence(job_id).await?.unwrap_or(0) + 1;
     let mut event =
         SourceProgressEvent::minimal(job_id, sequence, phase, status, severity, message);
-    event.attempt = 1;
+    event.attempt = attempt.max(1);
     event.visibility = Visibility::Public;
     event.source_id = None;
     event.adapter = adapter;

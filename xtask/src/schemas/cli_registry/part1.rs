@@ -218,6 +218,14 @@ fn commands_search_brand_debug_doctor() -> Vec<CliRegistryCommand> {
             false,
             "read",
         ),
+        c(
+            &["scrape"],
+            "Fetch, normalize, and embed exactly one web page through SourceRequest",
+            Some("SourceRequest"),
+            true,
+            false,
+            "write",
+        ),
         // brand / debug / diff / doctor
         c(
             &["brand"],

@@ -29122,7 +29122,7 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:9019aca90671d373722f9c1692a68edd5198c2c7374e12aaaa6cb74af1964673",
+        "checksum": "sha256:5dbf927545ddce3d543efaf93118da81c9c86fd33a3ed9a058cf77c8580c3f47",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       }

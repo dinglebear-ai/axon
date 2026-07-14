@@ -9,7 +9,7 @@ mod vectorize_helpers;
 mod web_source_job;
 
 pub(crate) use self::job_execution::WebSourceJobExecution;
-pub(crate) use self::reuse::document_cache_boundary;
+pub(crate) use self::reuse::InProcessWebDocumentCache;
 pub(crate) use self::web_source_job::index_web_source_with_execution;
 pub use self::web_source_job::index_web_source_with_job;
 pub(crate) use self::web_source_job::job_create_request as web_source_job_create_request;
@@ -20,12 +20,13 @@ use axon_adapters::boundary::{FetchProvider, RenderProvider};
 use axon_adapters::{SourceAdapter, web::WebSourceAdapter};
 use axon_api::source::*;
 use axon_core::boundary::ArtifactStore;
+use axon_core::boundary::DocumentCache;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
-use self::artifacts::record_artifacts_on_manifest;
+use self::artifacts::{cleanup_artifacts_after_error, record_artifacts_on_manifest};
 use self::publish::{
     GenerationDocumentCounts, complete_generation, completed_source_summary,
     ensure_lease_before_publish, fail_generation, publish_generation_without_vectors,
@@ -72,6 +73,7 @@ pub struct WebSourceIndexInput {
     pub embedding_model: String,
     pub embedding_dimensions: u32,
     pub auth_snapshot: Option<AuthSnapshot>,
+    pub attempt: u32,
     /// `SourceRequest.embed` (source-pipeline.md, Validation Checklist:
     /// "`embed=false` never writes vectors"). When `false`, discovery,
     /// acquire, normalize, prepare, ledger publish, and graph-candidate
@@ -81,6 +83,7 @@ pub struct WebSourceIndexInput {
     pub fetch_provider: Arc<dyn FetchProvider>,
     pub render_provider: Arc<dyn RenderProvider>,
     pub artifact_store: Arc<dyn ArtifactStore>,
+    pub document_cache: Arc<dyn DocumentCache>,
     pub event_store: Option<Arc<dyn JobStore>>,
 }
 
@@ -160,7 +163,8 @@ async fn index_web_source_with_lease(
         input.event_store.clone(),
         input.job_id,
         input.scope,
-    );
+    )
+    .with_attempt(input.attempt);
     let adapter = WebSourceAdapter::new(
         Arc::clone(&input.fetch_provider),
         Arc::clone(&input.render_provider),
@@ -344,12 +348,29 @@ async fn publish_prepared_generation_without_vectors(
     };
     let effective_diff = apply_reused_item_keys(&diff, &prepared.reused_item_keys);
     if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
-        return Err(fail_generation(ledger, generation, err).await);
+        let err = fail_generation(ledger, generation, err).await;
+        return Err(cleanup_artifacts_after_error(
+            input.artifact_store.as_ref(),
+            &prepared.artifacts,
+            err,
+        )
+        .await);
     }
-    if let Err(err) =
-        record_artifacts_on_manifest(ledger, &mut manifest, &prepared.artifact_index).await
+    if let Err(err) = record_artifacts_on_manifest(
+        ledger,
+        &mut manifest,
+        &effective_diff,
+        &prepared.artifact_index,
+    )
+    .await
     {
-        return Err(fail_generation(ledger, generation, err).await);
+        let err = fail_generation(ledger, generation, err).await;
+        return Err(cleanup_artifacts_after_error(
+            input.artifact_store.as_ref(),
+            &prepared.artifacts,
+            err,
+        )
+        .await);
     }
     let completed = match complete_generation(
         ledger,
@@ -366,9 +387,27 @@ async fn publish_prepared_generation_without_vectors(
     .await
     {
         Ok(completed) => completed,
-        Err(err) => return Err(fail_generation(ledger, generation, err).await),
+        Err(err) => {
+            let err = fail_generation(ledger, generation, err).await;
+            return Err(cleanup_artifacts_after_error(
+                input.artifact_store.as_ref(),
+                &prepared.artifacts,
+                err,
+            )
+            .await);
+        }
     };
-    let published = publish_generation_without_vectors(ledger, &completed).await?;
+    let published = match publish_generation_without_vectors(ledger, &completed).await {
+        Ok(published) => published,
+        Err(err) => {
+            return Err(cleanup_artifacts_after_error(
+                input.artifact_store.as_ref(),
+                &prepared.artifacts,
+                err,
+            )
+            .await);
+        }
+    };
     for status in &prepared.document_statuses {
         ledger
             .update_document_status(published_status(status))

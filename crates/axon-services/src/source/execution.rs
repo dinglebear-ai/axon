@@ -6,6 +6,7 @@ pub(crate) struct SourceExecutionContext {
     pub(crate) auth_snapshot: Option<AuthSnapshot>,
     pub(crate) priority: JobPriority,
     pub(crate) idempotency_key: Option<String>,
+    pub(crate) attempt: u32,
 }
 
 impl SourceExecutionContext {
@@ -15,6 +16,7 @@ impl SourceExecutionContext {
             auth_snapshot,
             priority: request.execution.priority,
             idempotency_key: request.idempotency_key,
+            attempt: 1,
         }
     }
 
@@ -22,12 +24,14 @@ impl SourceExecutionContext {
         job_id: JobId,
         request: SourceRequest,
         auth_snapshot: Option<AuthSnapshot>,
+        attempt: u32,
     ) -> Self {
         Self {
             existing_job_id: Some(job_id),
             auth_snapshot,
             priority: request.execution.priority,
             idempotency_key: request.idempotency_key,
+            attempt,
         }
     }
 }

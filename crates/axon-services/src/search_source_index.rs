@@ -10,7 +10,6 @@ use axon_api::source::{
     SourceRefreshPolicy, SourceRequest, SourceScope,
 };
 use axon_core::config::Config;
-use axon_core::http::validate_url_with_dns;
 
 use crate::context::ServiceContext;
 use crate::source::dispatch::web_options::web_crawl_options;
@@ -26,7 +25,6 @@ pub async fn enqueue_web_source_auto_index(
     embed: bool,
     reason: &str,
 ) -> anyhow::Result<JobDescriptor> {
-    validate_url_with_dns(url).await?;
     let store = service_context
         .job_store()
         .ok_or_else(|| anyhow::anyhow!("unified job store is not available for this runtime"))?;

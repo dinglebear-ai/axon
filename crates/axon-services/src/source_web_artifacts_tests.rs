@@ -9,7 +9,8 @@ use axon_vectors::store::FakeVectorStore;
 
 use crate::source::prune::drain_cleanup_debt_full_with_boundaries;
 
-use super::{WebSourceIndexInput, document_cache_boundary, index_web_source};
+use super::artifacts::{ARTIFACT_METADATA_KEY, WebArtifactIndex, record_artifacts_on_manifest};
+use super::{WebSourceIndexInput, index_web_source};
 
 fn web_input(core: FakeCoreBoundaries, output: OutputPolicy) -> WebSourceIndexInput {
     web_input_with_text(
@@ -45,10 +46,12 @@ fn web_input_with_text(
         embedding_model: "fake-embedding".to_string(),
         embedding_dimensions: 8,
         auth_snapshot: None,
+        attempt: 1,
         embed: false,
         fetch_provider: providers.clone(),
         render_provider: providers,
-        artifact_store: Arc::new(core),
+        artifact_store: Arc::new(core.clone()),
+        document_cache: Arc::new(core),
         event_store: None,
     }
 }
@@ -169,6 +172,108 @@ fn source_result_serializes_artifacts_when_present() {
 
     let json = serde_json::to_value(&result).expect("serialize source result");
     assert_eq!(json["artifacts"][0]["artifact_id"], "art_clean");
+}
+
+#[tokio::test]
+async fn unchanged_manifest_item_carries_forward_previous_artifact_refs() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source_summary()).await.unwrap();
+    let artifact = ArtifactRef {
+        artifact_id: ArtifactId::new("art_previous"),
+        artifact_kind: ArtifactKind::NormalizedContent,
+        uri: "fake://artifact/art_previous".to_string(),
+        size_bytes: Some(12),
+        content_hash: Some("sha256:previous".to_string()),
+        created_at: Timestamp("2026-07-13T00:00:00Z".to_string()),
+    };
+    let mut previous_item = manifest_item("gen_previous");
+    previous_item.metadata.insert(
+        ARTIFACT_METADATA_KEY.to_string(),
+        serde_json::json!([artifact.clone()]),
+    );
+    ledger
+        .put_manifest(SourceManifest {
+            source_id: SourceId::new("src_web_artifacts"),
+            generation: SourceGenerationId::new("gen_previous"),
+            adapter: AdapterRef {
+                name: "web".to_string(),
+                version: "test".to_string(),
+            },
+            scope: SourceScope::Page,
+            items: vec![previous_item],
+            created_at: Timestamp("2026-07-13T00:00:00Z".to_string()),
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .unwrap();
+    let current_item = manifest_item("gen_current");
+    let mut manifest = SourceManifest {
+        source_id: SourceId::new("src_web_artifacts"),
+        generation: SourceGenerationId::new("gen_current"),
+        adapter: AdapterRef {
+            name: "web".to_string(),
+            version: "test".to_string(),
+        },
+        scope: SourceScope::Page,
+        items: vec![current_item.clone()],
+        created_at: Timestamp("2026-07-13T00:00:00Z".to_string()),
+        metadata: MetadataMap::new(),
+    };
+    let diff = SourceManifestDiff {
+        header: StageResultHeader {
+            job_id: JobId::new(uuid::Uuid::from_u128(9)),
+            stage_id: StageId::new(uuid::Uuid::nil()),
+            phase: PipelinePhase::Diffing,
+            status: LifecycleStatus::Completed,
+            started_at: Timestamp("2026-07-13T00:00:00Z".to_string()),
+            completed_at: Some(Timestamp("2026-07-13T00:00:00Z".to_string())),
+            counts: StageCounts {
+                items_total: Some(1),
+                items_done: 1,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            warnings: Vec::new(),
+            error: None,
+        },
+        source_id: SourceId::new("src_web_artifacts"),
+        previous_generation: Some(SourceGenerationId::new("gen_previous")),
+        next_generation: SourceGenerationId::new("gen_current"),
+        added: Vec::new(),
+        modified: Vec::new(),
+        removed: Vec::new(),
+        unchanged: vec![current_item],
+        skipped: Vec::new(),
+        failed: Vec::new(),
+        counts: DiffCounts {
+            added: 0,
+            modified: 0,
+            removed: 0,
+            unchanged: 1,
+            skipped: 0,
+            failed: 0,
+        },
+    };
+
+    record_artifacts_on_manifest(&ledger, &mut manifest, &diff, &WebArtifactIndex::default())
+        .await
+        .unwrap();
+
+    let stored = ledger
+        .get_manifest(
+            SourceId::new("src_web_artifacts"),
+            SourceGenerationId::new("gen_current"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let artifacts: Vec<ArtifactRef> =
+        serde_json::from_value(stored.items[0].metadata[ARTIFACT_METADATA_KEY].clone()).unwrap();
+    assert_eq!(artifacts, vec![artifact]);
 }
 
 #[tokio::test]
@@ -300,7 +405,6 @@ async fn second_web_generation_records_artifact_and_cache_cleanup_debt() {
     let ledger = FakeLedgerStore::new();
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
-    let cache = document_cache_boundary();
     let source_url = format!(
         "https://docs.example.test/intro-cache-{}",
         uuid::Uuid::new_v4()
@@ -388,7 +492,7 @@ async fn second_web_generation_records_artifact_and_cache_cleanup_debt() {
         None,
         None,
         Some(&core),
-        Some(cache.as_ref()),
+        Some(&core),
         "axon-web-artifact-test",
         &counts,
     )
@@ -406,7 +510,7 @@ async fn second_web_generation_records_artifact_and_cache_cleanup_debt() {
         );
     }
     assert!(
-        DocumentCache::get(cache.as_ref(), cache_key)
+        DocumentCache::get(&core, cache_key)
             .await
             .unwrap()
             .is_none(),
@@ -442,6 +546,25 @@ fn source_summary() -> SourceSummary {
         tags: Vec::new(),
         watch_id: None,
         last_job_id: None,
+    }
+}
+
+fn manifest_item(generation: &str) -> ManifestItem {
+    ManifestItem {
+        source_id: SourceId::new("src_web_artifacts"),
+        source_item_key: SourceItemKey::new("https://docs.example.test/intro"),
+        canonical_uri: "https://docs.example.test/intro".to_string(),
+        item_kind: ItemKind::WebPage,
+        content_kind: Some(ContentKind::Markdown),
+        display_path: Some("/intro".to_string()),
+        parent_key: None,
+        size_bytes: Some(12),
+        content_hash: Some(format!("hash-{generation}")),
+        mtime: None,
+        version: None,
+        fetch_plan: None,
+        metadata: MetadataMap::new(),
+        graph_hints: Vec::new(),
     }
 }
 

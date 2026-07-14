@@ -9,7 +9,7 @@
 //!
 //! Coverage rule: every entry here must correspond to a real, live clap
 //! variant. Commands the removed-surface contract forbids from CLI docs
-//! (`embed`, `ingest`, `scrape`, `crawl`, `code-search`, `code-search-watch`,
+//! (`embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`,
 //! `purge`, `dedupe`, `axon refresh`, `fresh` — see
 //! `xtask/src/schemas/registry.rs::REMOVED_SURFACE_RULES`) are intentionally
 //! excluded even though some of them (`refresh`, `fresh`) are still
@@ -82,7 +82,6 @@ pub(super) fn excluded_top_level_groups() -> &'static [&'static str] {
     &[
         "embed",
         "ingest",
-        "scrape",
         "crawl",
         "code-search",
         "code-search-watch",

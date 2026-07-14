@@ -12,7 +12,7 @@ use axon_adapters::providers::{
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
 };
 use axon_api::source::ProviderId;
-use axon_core::boundary::ArtifactStore;
+use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
 #[cfg(test)]
@@ -47,6 +47,7 @@ pub struct TargetLocalSourceRuntime {
     pub embedding_reservations: Arc<ProviderReservationManager>,
     pub vector_reservations: Arc<ProviderReservationManager>,
     pub artifact_store: Arc<dyn ArtifactStore>,
+    pub document_cache: Arc<dyn DocumentCache>,
     /// Real acquisition boundary for `WebSourceAdapter` (issue #298 Wave 1b) —
     /// `dispatch_web` threads these into `WebSourceIndexInput` instead of
     /// running a `crawl_for_source` acquisition pre-pass.
@@ -101,6 +102,7 @@ impl TargetLocalSourceRuntime {
             embedding_model: embedding_model.into(),
             embedding_dimensions,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+            document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             fetch_provider: Arc::new(HttpFetchProvider::new(HttpFetchConfig::default())),
             render_provider: Arc::new(ChromeRenderProvider::new(ChromeRenderConfig::default())),
             enricher: Arc::new(NoopSourceEnricher::new()),

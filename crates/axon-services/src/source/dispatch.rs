@@ -8,29 +8,24 @@
 //! per-family orchestration that previously lived in the CLI.
 
 mod index_inputs;
+mod web;
 pub(crate) mod web_options;
 
 use anyhow::Context as _;
-use axon_api::source::{AuthScope, AuthSnapshot, JobId, MetadataMap, SourceScope};
-use axon_core::config::Config;
+use axon_api::source::{AuthScope, AuthSnapshot, JobId};
 use axon_core::logging::log_info;
 use uuid::Uuid;
-use web_options::web_crawl_options;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-use crate::source::SourceExecutionContext;
-use crate::web_source::{
-    WebSourceJobExecution, index_web_source_with_execution, web_source_job_create_request,
-};
 use crate::{
     GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy, SessionSelector,
-    WebSourceIndexInput, clone_git_repo, fetch_feed_to_file, fetch_reddit_dump,
-    fetch_registry_dump, fetch_youtube_dump, index_feed_source_with_job, index_git_source_with_job,
-    index_local_source_with_job, index_reddit_source_with_job, index_registry_source_with_job,
-    index_sessions_source_with_job, index_youtube_source_with_job, parse_registry_target,
-    parse_session_selector,
+    clone_git_repo, fetch_feed_to_file, fetch_reddit_dump, fetch_registry_dump, fetch_youtube_dump,
+    index_feed_source_with_job, index_git_source_with_job, index_local_source_with_job,
+    index_reddit_source_with_job, index_registry_source_with_job, index_sessions_source_with_job,
+    index_youtube_source_with_job, parse_registry_target, parse_session_selector,
 };
+pub(crate) use web::dispatch_web;
 
 /// Placeholder job id — every `index_*_source_with_job` bridge creates the real
 /// job row and overwrites this with the descriptor's job id.
@@ -427,116 +422,6 @@ pub async fn dispatch_session(
         warnings: Vec::new(),
         artifacts: Vec::new(),
         inline: None,
-    })
-}
-
-/// Web source: drive the `WebSourceAdapter`'s discover→acquire→normalize
-/// pipeline directly (issue #298 Wave 1b) — no `crawl_for_source`/
-/// `crawl_for_source_page` acquisition pre-pass and no
-/// `manifest.jsonl`/`markdown_root` disk handoff. `dispatch_web` translates
-/// the ambient CLI-resolved `cfg: &Config` into the web adapter's
-/// `validated_options` shape so existing `--render-mode`/`--max-depth`/
-/// `--url-whitelist`/etc. flags keep working; `max_pages`/`max_depth` (from the
-/// caller's `SourceRequest.limits`) override config when set, matching the
-/// pre-Wave-1b behavior.
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn dispatch_web(
-    cfg: &Config,
-    runtime: &TargetLocalSourceRuntime,
-    input: &str,
-    collection: &str,
-    owner_id: &str,
-    scope: SourceScope,
-    auth_snapshot: Option<&AuthSnapshot>,
-    embed: bool,
-    max_pages: Option<u64>,
-    max_depth: Option<u32>,
-    output: &axon_api::source::OutputPolicy,
-    route: &axon_api::source::RoutePlan,
-    source_execution: &SourceExecutionContext,
-) -> anyhow::Result<IndexCounts> {
-    log_info(&format!(
-        "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?} max_depth={max_depth:?}"
-    ));
-    let mut crawl_options = web_crawl_options(cfg, max_pages, max_depth);
-    for (key, value) in route.validated_options.values.iter() {
-        crawl_options.insert(key.clone(), value.clone());
-    }
-    let execution_job_id = source_execution
-        .existing_job_id
-        .unwrap_or_else(placeholder_job_id);
-    let index_input = WebSourceIndexInput {
-        source: input.to_string(),
-        scope,
-        map_urls: Vec::new(),
-        crawl_options,
-        output: output.clone(),
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: execution_job_id,
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        auth_snapshot: auth_snapshot.cloned(),
-        embed,
-        fetch_provider: runtime.fetch_provider.clone(),
-        render_provider: runtime.render_provider.clone(),
-        artifact_store: runtime.artifact_store.clone(),
-        event_store: Some(runtime.jobs.clone()),
-    };
-    let output = if let Some(job_id) = source_execution.existing_job_id.clone() {
-        let execution = WebSourceJobExecution {
-            job_id,
-            owns_status: false,
-        };
-        index_web_source_with_execution(
-            index_input,
-            execution,
-            runtime.jobs.as_ref(),
-            runtime.ledger.as_ref(),
-            runtime.embedding_provider.as_ref(),
-            runtime.vector_store.as_ref(),
-        )
-        .await
-    } else {
-        let descriptor = runtime
-            .jobs
-            .create(web_source_job_create_request(
-                &index_input,
-                source_execution.priority,
-                source_execution.idempotency_key.clone(),
-                MetadataMap::new(),
-            ))
-            .await?;
-        let execution = WebSourceJobExecution {
-            job_id: descriptor.job_id,
-            owns_status: true,
-        };
-        index_web_source_with_execution(
-            index_input,
-            execution,
-            runtime.jobs.as_ref(),
-            runtime.ledger.as_ref(),
-            runtime.embedding_provider.as_ref(),
-            runtime.vector_store.as_ref(),
-        )
-        .await
-    }
-    .map_err(|e| anyhow::anyhow!(e.to_string()))
-    .context("web source indexing failed")?;
-    Ok(IndexCounts {
-        job_id: output.job_id,
-        source_id: output.source_id,
-        generation: output.generation,
-        documents_prepared: output.documents_prepared,
-        chunks_prepared: output.chunks_prepared,
-        vector_points_written: output.vector_points_written,
-        removed: output.removed_pages,
-        graph_candidates: output.graph_candidates,
-        warnings: output.warnings,
-        artifacts: output.artifacts,
-        inline: output.inline,
     })
 }
 
