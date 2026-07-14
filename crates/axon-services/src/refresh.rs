@@ -24,9 +24,10 @@
 //!   each one up in the ledger by its deterministically-derived `SourceId`
 //!   (`axon_route::source_id`, the same id `index_source`/`enqueue_source`
 //!   would compute for that origin) in case it was registered after the fact.
-//!   Origins without a ledger hit re-enqueue directly via
-//!   `crawl_start_with_context`/`ingest_start_with_context`, replaying the
-//!   **original job's** stored `axon_crawl_jobs`/`axon_ingest_jobs` config
+//!   Origins without a ledger hit no longer re-enqueue web crawls directly:
+//!   they return a migration-required failure so refresh cannot bypass the
+//!   unified Source pipeline. Ingest origins still replay
+//!   `ingest_start_with_context`, using the original `axon_ingest_jobs` config
 //!   snapshot when one exists. Only content indexed with the `seed_url` field
 //!   participates in this fallback — chunks indexed before origin tracking
 //!   shipped carry no `seed_url` and are invisible to the facet (re-crawl/
@@ -53,7 +54,7 @@ const LEDGER_LIST_PAGE_SIZE: usize = 200;
 /// What `refresh` will do with a single indexed origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefreshAction {
-    /// Re-enqueue a crawl job seeded from the origin URL.
+    /// Re-enqueue a web/source refresh job seeded from the origin URL.
     Crawl,
     /// Re-enqueue an ingest job for the origin target.
     Ingest,
@@ -64,7 +65,7 @@ pub enum RefreshAction {
 impl RefreshAction {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Crawl => "crawl",
+            Self::Crawl => "source_refresh",
             Self::Ingest => "ingest",
             Self::Skip(_) => "skip",
         }
@@ -436,38 +437,17 @@ pub async fn execute_refresh(
             continue;
         }
 
-        // Legacy fallback (documented in the module docs): the origin
-        // predates ledger registration, or no unified job store is available
-        // on this runtime.
+        // Legacy fallback (documented in the module docs): ingest origins may
+        // still replay ingest job snapshots. Web origins without a Source
+        // ledger row fail closed instead of creating a crawl-shaped job that
+        // bypasses SourceRequest.
         match origin.action {
             RefreshAction::Skip(_) => unreachable!("skip handled above"),
             RefreshAction::Crawl => {
-                let snapshot = match &pool {
-                    Some(pool) => {
-                        axon_jobs::query::latest_crawl_config_json(pool, &origin.seed_url)
-                            .await
-                            .unwrap_or_default()
-                    }
-                    None => None,
-                };
-                let job_cfg = origin_config(&enqueue_cfg, snapshot.as_deref());
-                // `refresh` re-enqueues previously indexed origins as a
-                // system-triggered maintenance operation — no per-caller auth
-                // identity is available here.
-                match crate::crawl::crawl_start_with_context(
-                    &job_cfg,
-                    std::slice::from_ref(&origin.seed_url),
-                    service_context,
-                    None,
-                    None,
-                )
-                .await
-                {
-                    Ok(_) => outcome.crawl_enqueued += 1,
-                    Err(e) => outcome
-                        .failures
-                        .push((origin.seed_url.clone(), e.to_string())),
-                }
+                outcome.failures.push((
+                    origin.seed_url.clone(),
+                    refresh_web_migration_required(origin).to_string(),
+                ));
             }
             RefreshAction::Ingest => {
                 let snapshot = match &pool {
@@ -511,6 +491,14 @@ pub async fn execute_refresh(
         }
     }
     Ok(outcome)
+}
+
+fn refresh_web_migration_required(origin: &RefreshOrigin) -> &'static str {
+    if origin.ledger_source_id.is_some() {
+        "source refresh requires a unified job store on this runtime"
+    } else {
+        "source refresh requires ledger registration; re-index this web origin through the unified Source pipeline before running refresh"
+    }
 }
 
 /// Re-enqueue `origin` through the unified source pipeline: a `SourceRequest`

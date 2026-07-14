@@ -84,6 +84,7 @@ pub mod scrape;
 pub mod screenshot;
 pub mod search;
 pub mod search_crawl;
+pub mod search_source_index;
 pub mod service_traits;
 pub mod sessions;
 pub mod sessions_legacy;
@@ -125,6 +126,9 @@ mod client_contract_tests;
 #[cfg(test)]
 #[path = "freshness_tests.rs"]
 mod freshness_tests;
+#[cfg(test)]
+#[path = "source_auto_index_cutover_tests.rs"]
+mod source_auto_index_cutover_tests;
 #[cfg(test)]
 #[path = "source_web_job_identity_tests.rs"]
 mod source_web_job_identity_tests;

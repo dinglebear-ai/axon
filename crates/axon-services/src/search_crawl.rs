@@ -1,8 +1,8 @@
 use crate::context::ServiceContext;
-use crate::crawl as crawl_service;
 use crate::search::search_batch;
+use crate::search_source_index::enqueue_web_source_auto_index;
 use crate::types::{ResearchHit, SearchOptions};
-use axon_api::source::LifecycleStatus;
+use axon_api::source::{LifecycleStatus, SourceScope};
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url_with_dns};
 use serde::Serialize;
@@ -15,7 +15,8 @@ use crate::search::SearchError;
 /// Typed result returned by [`search_and_crawl`].
 ///
 /// Contains search results plus the outcome of auto-enqueueing
-/// one bounded crawl job per result URL.
+/// one bounded Source job per result URL. Field names retain `crawl` for
+/// compatibility with existing CLI/MCP/REST payloads.
 pub struct SearchAndCrawlResult {
     pub results: Vec<Value>,
     pub crawl_jobs: Vec<SearchCrawlJob>,
@@ -48,12 +49,12 @@ pub enum SearchCrawlRejectionKind {
     WaitFailed,
 }
 
-/// Run a SearXNG/Tavily search and enqueue one bounded crawl job per result URL.
+/// Run a SearXNG/Tavily search and enqueue one bounded Source job per result URL.
 ///
 /// This is the canonical entry point for both the CLI and MCP search action.
 /// Callers receive a typed result and decide their own UX (error on zero jobs,
 /// include in JSON response, etc.) — this function never errors on partial
-/// crawl failures.
+/// auto-index failures.
 pub async fn search_and_crawl(
     cfg: &Config,
     service_context: &ServiceContext,
@@ -79,16 +80,15 @@ pub(crate) struct CrawlOutput {
     pub(crate) rejected: Vec<SearchCrawlRejection>,
 }
 
-fn crawl_config(cfg: &Config) -> Config {
+fn auto_index_config(cfg: &Config) -> Config {
     // SECURITY: clear headers so auth meant for the search caller is never
     // replayed against URLs returned by the configured search backend.
     let mut c = cfg.clone();
-    // Search auto-indexing must kick off every accepted result URL before any
-    // optional wait phase. Waiting inside crawl_start_with_context would make
-    // result N block result N+1 from ever being queued.
+    // Search auto-indexing must enqueue every accepted result URL before any
+    // optional wait phase.
     c.wait = false;
-    c.max_pages = 200;
-    c.max_depth = 10;
+    c.max_pages = 1;
+    c.max_depth = 0;
     c.discover_sitemaps = false;
     c.max_sitemaps = 0;
     c.custom_headers = Vec::new();
@@ -101,7 +101,16 @@ async fn enqueue_search_crawls(
     service_context: &ServiceContext,
     results: &[Value],
 ) -> CrawlOutput {
-    let crawl_cfg = crawl_config(cfg);
+    enqueue_search_crawls_with_reason(cfg, service_context, results, "search").await
+}
+
+async fn enqueue_search_crawls_with_reason(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    results: &[Value],
+    reason: &str,
+) -> CrawlOutput {
+    let auto_index_cfg = auto_index_config(cfg);
     let mut output = CrawlOutput::default();
     let mut seen = HashSet::new();
 
@@ -125,7 +134,7 @@ async fn enqueue_search_crawls(
             ));
             continue;
         }
-        match enqueue_one(&crawl_cfg, service_context, &normalized).await {
+        match enqueue_one(&auto_index_cfg, service_context, &normalized, reason).await {
             Ok(job) => output.jobs.push(job),
             Err(r) => output.rejected.push(r),
         }
@@ -154,13 +163,14 @@ pub(crate) async fn enqueue_research_crawls(
             })
         })
         .collect();
-    enqueue_search_crawls(cfg, service_context, &results).await
+    enqueue_search_crawls_with_reason(cfg, service_context, &results, "research").await
 }
 
 async fn enqueue_one(
-    crawl_cfg: &Config,
+    auto_index_cfg: &Config,
     service_context: &ServiceContext,
     url: &str,
+    reason: &str,
 ) -> Result<SearchCrawlJob, SearchCrawlRejection> {
     if let Err(e) = validate_url_with_dns(url).await {
         return Err(rejection(
@@ -173,35 +183,25 @@ async fn enqueue_one(
     }
 
     let url_owned = url.to_string();
-    // Auto-queued research/search crawls are system-triggered — no per-caller
-    // auth identity is available at this call site.
-    match crawl_service::crawl_start_with_context(
-        crawl_cfg,
-        std::slice::from_ref(&url_owned),
+    match enqueue_web_source_auto_index(
+        auto_index_cfg,
         service_context,
-        None,
-        None,
+        &url_owned,
+        SourceScope::Page,
+        1,
+        0,
+        auto_index_cfg.embed,
+        reason,
     )
     .await
     {
-        Ok(outcome) => {
-            let Some(job) = outcome.result.jobs.first() else {
-                return Err(rejection(
-                    Some(url),
-                    None,
-                    None,
-                    SearchCrawlRejectionKind::QueueRejected,
-                    "crawl service returned no job id",
-                ));
-            };
-            Ok(SearchCrawlJob {
-                url: url_owned,
-                job_id: job.job_id.clone(),
-            })
-        }
+        Ok(job) => Ok(SearchCrawlJob {
+            url: url_owned,
+            job_id: job.id.0.to_string(),
+        }),
         Err(e) => {
             let reason = e.to_string();
-            tracing::warn!(url = %url, error = %reason, "search auto-index: enqueue failed");
+            tracing::warn!(url = %url, error = %reason, "search source auto-index: enqueue failed");
             Err(rejection(
                 Some(url),
                 None,
@@ -221,16 +221,16 @@ async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut C
                 None,
                 None,
                 SearchCrawlRejectionKind::WaitFailed,
-                format!("crawl service returned invalid job id: {}", job.job_id),
+                format!("source auto-index returned invalid job id: {}", job.job_id),
             ));
             continue;
         };
 
-        match wait_for_unified_crawl_job(service_context, job_id).await {
+        match wait_for_unified_source_job(service_context, job_id).await {
             Ok(status)
                 if status == LifecycleStatus::Failed || status == LifecycleStatus::Canceled =>
             {
-                let mut reason = format!("crawl job {job_id} {status:?}");
+                let mut reason = format!("source job {job_id} {status:?}");
                 if let Ok(Some(summary)) = crate::jobs::unified_job_status(
                     service_context,
                     axon_api::source::JobId(job_id),
@@ -265,9 +265,8 @@ async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut C
 /// Poll the unified job store for `job_id`'s terminal `LifecycleStatus`,
 /// mirroring `ServiceJobRuntime::wait_for_job`'s timeout semantics
 /// (`cfg.job_wait_timeout_secs`) but reading the unified store instead of a
-/// legacy per-family table (crawl now enqueues onto the unified store — see
-/// `crawl_start_with_context`).
-async fn wait_for_unified_crawl_job(
+/// legacy per-family table.
+async fn wait_for_unified_source_job(
     service_context: &ServiceContext,
     job_id: uuid::Uuid,
 ) -> Result<LifecycleStatus, Box<dyn Error + Send + Sync>> {
@@ -292,7 +291,7 @@ async fn wait_for_unified_crawl_job(
             return Ok(summary.status);
         }
         if tokio::time::Instant::now() >= deadline {
-            return Err(format!("crawl job {job_id} wait timed out after {timeout_secs}s").into());
+            return Err(format!("source job {job_id} wait timed out after {timeout_secs}s").into());
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
