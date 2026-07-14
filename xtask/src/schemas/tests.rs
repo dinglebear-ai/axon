@@ -2021,6 +2021,21 @@ fn canonical_enums_match_axon_api_schemars_output() {
         values
     }
 
+    fn public_job_kind_values() -> Vec<String> {
+        JobKind::all()
+            .iter()
+            .copied()
+            .filter(|kind| kind.is_public_source_surface())
+            .map(|kind| {
+                serde_json::to_value(kind)
+                    .expect("JobKind serializes")
+                    .as_str()
+                    .expect("JobKind serializes to string")
+                    .to_string()
+            })
+            .collect()
+    }
+
     macro_rules! check {
         ($name:literal, $ty:ty) => {
             let (_, expected) = registry::CANONICAL_ENUMS
@@ -2048,7 +2063,15 @@ fn canonical_enums_match_axon_api_schemars_output() {
     check!("ItemKind", ItemKind);
     check!("ContentKind", ContentKind);
     check!("PipelinePhase", PipelinePhase);
-    check!("JobKind", JobKind);
+    let (_, expected_job_kind) = registry::CANONICAL_ENUMS
+        .iter()
+        .find(|(name, _)| *name == "JobKind")
+        .expect("JobKind missing from CANONICAL_ENUMS");
+    assert_eq!(
+        public_job_kind_values(),
+        expected_job_kind.to_vec(),
+        "JobKind CANONICAL_ENUMS values drifted from public source-surface projection"
+    );
     check!("LifecycleStatus", LifecycleStatus);
     check!("PublishState", PublishState);
     check!("DocumentLifecycleStatus", DocumentLifecycleStatus);

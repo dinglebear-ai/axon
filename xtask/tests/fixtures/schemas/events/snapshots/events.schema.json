@@ -2893,10 +2893,7 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset",
-          "crawl",
-          "ingest",
-          "embed"
+          "reset"
         ],
         "type": "string",
         "x-axon": {

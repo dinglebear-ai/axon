@@ -59,9 +59,6 @@ pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
             "prune",
             "provider_probe",
             "reset",
-            "crawl",
-            "ingest",
-            "embed",
         ],
     ),
     (
