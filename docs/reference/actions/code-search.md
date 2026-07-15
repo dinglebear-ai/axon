@@ -119,8 +119,8 @@ inside the short freshness TTL. Use `embed` for background refreshes, or
 
 This is separate from Axon's other automatic systems:
 
-- `axon sessions watch` watches local Claude/Codex/Gemini transcript export
-  roots and ingests changed session files.
+- Session transcript indexing uses `axon sessions` for one-shot local ingest or
+  `session:<provider>:<path>` selectors through the unified source pipeline.
 - `axon watch` is a URL change detector that can enqueue crawls when watched
   web pages change.
 

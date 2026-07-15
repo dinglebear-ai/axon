@@ -3,7 +3,6 @@ use axon_core::config::Config;
 use axon_core::ui::{accent, muted, primary, print_aurora_table, symbol_for_status};
 use axon_services::setup::{
     self, ComposeAction, LocalSetupInitOptions, LocalSetupMode, LocalSetupStatus,
-    SessionWatchServiceReport,
 };
 use serde_json::json;
 use std::error::Error;
@@ -17,7 +16,6 @@ const USAGE_LINES: &[&str] = &[
     "axon preflight",
     "axon smoke",
     "axon compose up|down|restart|rebuild",
-    "axon setup session-watch-service install|check|remove|status",
     "axon setup plugin-hook",
 ];
 
@@ -32,10 +30,6 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         CommandKind::Smoke => return run_local_setup_command(cfg, LocalSetupMode::Smoke).await,
         CommandKind::Compose => return run_compose_command(cfg).await,
         _ => {}
-    }
-
-    if let Some(action) = cfg.setup_session_watch_action {
-        return run_session_watch_service_setup_command(cfg, action).await;
     }
 
     match cfg.positional.first().map(String::as_str) {
@@ -126,18 +120,6 @@ fn run_setup_config_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
         _ => print_usage(cfg),
     }
-}
-
-async fn run_session_watch_service_setup_command(
-    cfg: &Config,
-    action: setup::SessionWatchServiceAction,
-) -> Result<(), Box<dyn Error>> {
-    let report = setup::run_session_watch_service_setup(action).await?;
-    print_session_watch_service_report(cfg, &report)?;
-    if report.has_errors {
-        return Err(format!("session watch service {} failed", action.as_str()).into());
-    }
-    Ok(())
 }
 
 /// Full setup wizard: init env/compose → start stack → install self to ~/.local/bin.
@@ -310,27 +292,6 @@ fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
             println!("  {}", muted(line));
         }
     }
-    Ok(())
-}
-
-fn print_session_watch_service_report(
-    cfg: &Config,
-    report: &SessionWatchServiceReport,
-) -> Result<(), Box<dyn Error>> {
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(report)?);
-        return Ok(());
-    }
-
-    println!(
-        "{} {}",
-        primary("Session Watch Service"),
-        muted(report.action.as_str())
-    );
-    println!("{} {}", muted("unit:"), report.unit_path.display());
-    println!("{} {}", muted("env:"), report.env_path.display());
-    println!("{} {}", muted("binary:"), report.axon_bin.display());
-    print_setup_phases(&report.phases);
     Ok(())
 }
 

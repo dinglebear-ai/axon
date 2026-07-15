@@ -54,12 +54,9 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     // verticals, and package metadata enrichment.
     "crates/axon-extract",
     // axon-ingest was likewise deleted outright (issue #298 cleanup, not a
-    // staged cutover): its still-live pieces (sessions machinery, ingest
-    // orchestration/classification) moved to axon-services (sessions_legacy,
-    // ingest::{orchestrate,progress,classify_target,target_parse}); the
-    // provider-orchestration code it used to own for github/gitlab/gitea/
-    // generic_git/reddit/youtube/rss was deleted outright in the earlier
-    // Phase 12 clean break.
+    // staged cutover): retained source-family orchestration now lives in
+    // axon-services and source adapters, while the old ingest crate and
+    // session-specific prepared/watch paths are intentionally absent.
     // axon-crawl was deleted outright (issue #298 Wave 2a, mechanical move not
     // a rewrite): its Spider-based HTTP/Chrome crawl engine, manifest,
     // sitemap, and screenshot modules relocated verbatim into

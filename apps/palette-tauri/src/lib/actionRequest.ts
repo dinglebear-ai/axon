@@ -135,7 +135,6 @@ export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({
   ...ctx.collectionBody,
 });
 export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
-export const ingestSessionsPreparedBody: BodyBuilder = (ctx) => jsonBody(ctx.arg, "prepared sessions request");
 // `github` takes a bare owner[/repo[/path...]] target (NOT a URL — see
 // `BARE_TARGET_SUBCOMMANDS`-style handling in actions.ts, though github is
 // simply absent from `acceptsDirectUrl` so no coercion ever applies). This
@@ -223,12 +222,6 @@ function diffRequestBody(words: string[]): Req["RestDiffRequest"] {
   return { url_a: clean[0], url_b: clean[1] };
 }
 
-function jsonBody(value: string, label: string): Record<string, unknown> {
-  const parsed = JSON.parse(value.trim());
-  if (!isRecord(parsed)) throw new Error(`${label} must be a JSON object`);
-  return parsed;
-}
-
 /** Validate a string is a UUID, throwing a user-facing error otherwise. */
 export function uuid(value: string): string {
   const clean = value.trim();
@@ -244,8 +237,4 @@ function hostName(url: string): string {
   } catch {
     return url;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -51,7 +51,6 @@ import {
   getRoute,
   githubBrowseBody,
   ingestBody,
-  ingestSessionsPreparedBody,
   mapBody,
   noBody,
   postRoute,
@@ -121,7 +120,6 @@ export type StructuredViewKey =
   | "embed"
   | "extract"
   | "ingest"
-  | "ingest-sessions-prepared"
   | "github"
   | "endpoints"
   | "brand"
@@ -458,14 +456,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: formatWatchRun,
     actionIcon: HelpCircle,
     structuredView: "watch-run",
-  }),
-  "ingest-sessions-prepared": entry({
-    route: postRoute("/v1/ingest/sessions/prepared"),
-    buildBody: ingestSessionsPreparedBody,
-    outputKind: code,
-    formatText: jobStartFormatter("ingest-sessions-prepared"),
-    actionIcon: HelpCircle,
-    structuredView: "ingest-sessions-prepared",
   }),
   // Local Tauri shell action; the marker route is metadata-only.
   terminal: behavior({

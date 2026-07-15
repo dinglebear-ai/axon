@@ -25,20 +25,24 @@ export function useOpenJob(setRun: Dispatch<SetStateAction<RunState>>) {
           snapshot: summarizeCrawl({ job: { status: "running" } }, { jobId, url: label }),
           minimized: false,
         });
-      } else if (family === "embed" || family === "extract" || family === "ingest") {
+      } else {
+        const asyncFamily =
+          family === "extract"
+            ? "extract"
+            : family === "source" || family === "embed" || family === "ingest"
+              ? "source"
+              : null;
+        if (!asyncFamily) return;
         setRun({
           kind: "asyncJob",
-          family,
+          family: asyncFamily,
           title: `${family[0].toUpperCase()}${family.slice(1)}`,
           subtitle: `job ${jobId}`,
           jobId,
-          // Unified route (bead axon_rust-ruzox.9) — the per-family status
-          // route for embed/ingest no longer exists (extract's still does,
-          // but the unified route is polled uniformly — see useJobPoll.ts).
           statusUrl: `/v1/jobs/${jobId}`,
           target: label,
           startedAtMs,
-          snapshot: summarizeJob(family, { job: { status: "running" } }, { jobId, label }),
+          snapshot: summarizeJob(asyncFamily, { job: { status: "running" } }, { jobId, label }),
           minimized: false,
         });
       }

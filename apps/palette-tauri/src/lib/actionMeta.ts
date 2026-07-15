@@ -25,7 +25,6 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   ingest: { category: "Crawl & ingest", input: "target", output: "job", label: "Ingest" },
   embed: { category: "Crawl & ingest", input: "input", output: "vectors", label: "Embed" },
   extract: { category: "Crawl & ingest", input: "URLs", output: "data", label: "Extract" },
-  "ingest-sessions-prepared": { category: "Crawl & ingest", input: "JSON", output: "job", label: "Prepared sessions" },
   github: { category: "Fetch & read", input: "owner/repo/path", output: "repos, tree, or file", label: "GitHub" },
   search: { category: "Search & discover", input: "query", output: "results", label: "Search" },
   research: { category: "Search & discover", input: "query", output: "brief", label: "Research" },

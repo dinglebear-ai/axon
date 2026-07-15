@@ -12,6 +12,11 @@ import { parseCommand } from "@/lib/paletteView";
 const onSubmit = vi.fn();
 const onEnterMode = vi.fn();
 const onHelp = vi.fn();
+const fixtureActions = ["help", "scrape", "browser"].map((subcommand) => {
+  const action = ACTIONS.find((candidate) => candidate.subcommand === subcommand);
+  if (!action) throw new Error(`missing ${subcommand} action`);
+  return action;
+});
 
 afterEach(() => {
   cleanup();
@@ -22,7 +27,7 @@ function Harness() {
   const [selected, setSelected] = useState(0);
   return (
     <ActionList
-      filtered={ACTIONS.slice(0, 3)}
+      filtered={fixtureActions}
       selected={selected}
       setSelected={setSelected}
       parsed={parseCommand("")}

@@ -39,7 +39,6 @@ export type PaletteSubcommand =
   | "watch-list"
   | "watch-create"
   | "watch-run"
-  | "ingest-sessions-prepared"
   | "github"
   | "terminal"
   | `${JobFamily}-${JobOperation}`;
@@ -401,16 +400,6 @@ const STATIC_ACTIONS = [
     description: "Run an existing watch definition immediately by UUID.",
     example: "watch-run 00000000-0000-4000-8000-000000000000",
     tone: "info",
-  },
-  {
-    label: "Ingest prepared sessions",
-    subcommand: "ingest-sessions-prepared",
-    kind: "operation",
-    argMode: "single",
-    aliases: ["sessions-prepared", "ingest-sessions-prepared", "prepared-sessions"],
-    description: "Submit a prepared AI-session ingest request as JSON.",
-    example: "ingest-sessions-prepared {\"sessions\":[]}",
-    tone: "orange",
   },
   { label: "Terminal", subcommand: "terminal", kind: "local", argMode: "none", aliases: ["terminal", "shell", "sh", "console", "cmd"], description: "Run real shell commands in a persistent session with your actual working directory. Desktop app only.", example: "terminal", tone: "neutral", autoRunOnSwitch: true },
 ] as const satisfies readonly PaletteAction[];

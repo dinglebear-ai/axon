@@ -160,10 +160,7 @@ fn classify_action(source_type: &str, seed_url: &str) -> RefreshAction {
         )
     {
         RefreshAction::Ingest
-    } else if matches!(
-        source_type.as_str(),
-        "session" | "sessions" | "prepared_sessions"
-    ) {
+    } else if matches!(source_type.as_str(), "session" | "sessions") {
         RefreshAction::Skip("sessions are not re-runnable from an origin marker")
     } else if matches!(source_type.as_str(), "registry" | "package") {
         RefreshAction::Crawl
