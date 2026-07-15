@@ -133,12 +133,11 @@ pub fn command_registry() -> &'static [CliCommandSpec] {
 /// Commands section) by this module's own unit test. It is **not** wired
 /// into the clap `Command` tree, dispatch, help, or completion code, so
 /// nothing here actually enforces that a name stays removed — adding a
-/// `purge`/`dedupe`/`refresh`/`fresh`-style command back under one of these
-/// names would not be caught automatically. `purge`, `dedupe`, `refresh`,
-/// and `fresh` are deliberately NOT listed here even though the Phase 10
-/// target eventually removes them too: they are still fully live,
-/// dispatchable `CommandKind` variants today (see `crates/axon-cli/src/lib.rs`),
-/// with no replacement yet, so listing them as "removed" would be false.
+/// `refresh`/`fresh`-style command back under one of these names would not be
+/// caught automatically. `refresh` and `fresh` are deliberately NOT listed
+/// here even though the Phase 10 target eventually removes them too: they are
+/// still fully live, dispatchable `CommandKind` variants today, with no
+/// replacement yet, so listing them as "removed" would be false.
 pub fn removed_commands() -> &'static [&'static str] {
     &[
         "embed",
@@ -146,6 +145,8 @@ pub fn removed_commands() -> &'static [&'static str] {
         "crawl",
         "code-search",
         "code-search-watch",
+        "purge",
+        "dedupe",
     ]
 }
 

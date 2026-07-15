@@ -58,9 +58,8 @@ fn retained_scrape_parses_scrape_specific_flags() {
     );
 }
 
-/// `crawl`, `embed`, `ingest`, `code-search`, and `code-search-watch`
-/// remain removed/reserved after the pipeline-unification clean break
-/// (issue #298 P10). `scrape` is retained and must continue to parse.
+/// Removed command tokens remain absent after the pipeline-unification clean
+/// break (issue #298 P10). `scrape` is retained and must continue to parse.
 #[test]
 fn removed_commands_no_longer_parse() {
     for name in [
@@ -69,6 +68,8 @@ fn removed_commands_no_longer_parse() {
         "ingest",
         "code-search",
         "code-search-watch",
+        "purge",
+        "dedupe",
     ] {
         let err = Cli::try_parse_from(["axon", name, "x"])
             .expect_err(&format!("`axon {name}` must not parse after removal"));

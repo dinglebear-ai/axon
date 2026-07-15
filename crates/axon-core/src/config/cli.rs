@@ -81,7 +81,7 @@ pub(super) enum CliCommand {
     Memory(MemoryArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
     Sessions(SessionsArgs),
-    /// Index a local source path through the unified pipeline (local paths only)
+    /// Index a source through the unified pipeline
     Source(SourceArgs),
     /// Capture a full-page screenshot of one or more URLs
     Screenshot(ScrapeArgs),
