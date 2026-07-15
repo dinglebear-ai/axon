@@ -1,4 +1,4 @@
-//! REST route registry entries for the `/v1/prune/*` and `/v1/watch*` surface.
+//! REST route registry entries for the `/v1/prune/*` and canonical `/v1/watches*` surface.
 //!
 //! Split out of the parent `schema_registry` module to keep it under the
 //! repo's monolith line cap. Spliced back into `rest_route_registry()`'s
@@ -40,14 +40,6 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         Some("PruneExecRequest"),
         "PruneResult",
     ),
-    read("GET", "/v1/watch", "watch_list", "WatchListResponse"),
-    write(
-        "POST",
-        "/v1/watch",
-        "watch_create",
-        Some("WatchRequest"),
-        "WatchResponse",
-    ),
     // `POST /v1/watch/{id}/run` was removed per the REST contract's
     // clean-break rule (`docs/pipeline-unification/surfaces/rest-contract.md`
     // "Removed Route Behavior") — its canonical replacement is
@@ -55,8 +47,7 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
     //
     // Canonical source-request-backed watch surface (issue #298 REST
     // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
-    // Routes). Distinct from the legacy `/v1/watch` task_type/task_payload
-    // routes above — see `crates/axon-jobs/src/watch_store.rs` module docs.
+    // Routes).
     write(
         "POST",
         "/v1/watches",

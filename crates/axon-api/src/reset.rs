@@ -12,13 +12,18 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Target Qdrant payload schema version the unified pipeline writes and expects
-/// after cutover. This is the single source of truth for the current schema:
-/// `axon-vector`'s `PAYLOAD_SCHEMA_VERSION` re-exports it, and doctor/preflight
-/// flag any sampled point older than this as schema-incompatible (needs
-/// `axon reset`). Bump here when a new required payload field lands; see the
-/// version history on `axon_vector::ops::qdrant::PAYLOAD_SCHEMA_VERSION`.
+/// Legacy target Qdrant payload schema version from the pre-unification vector
+/// payload. Kept for older docs/API references only; the unified pipeline's
+/// live compatibility fence is [`TARGET_PAYLOAD_CONTRACT_VERSION`].
 pub const TARGET_PAYLOAD_SCHEMA_VERSION: u32 = 8;
+
+/// Target vector payload contract version the unified pipeline writes and
+/// expects after the clean-break cutover.
+///
+/// Current points carry this string in `payload_contract_version`; retired
+/// pre-unification points either lack it or carry only the old integer
+/// `payload_schema_version`.
+pub const TARGET_PAYLOAD_CONTRACT_VERSION: &str = "2026-07-01";
 
 /// Logical stores a reset can target. String-typed at the wire boundary so the
 /// registry can grow without a breaking enum change across transports.

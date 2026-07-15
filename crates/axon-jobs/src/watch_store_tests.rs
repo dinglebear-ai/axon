@@ -21,7 +21,7 @@ fn watch_request() -> WatchRequest {
         embed: true,
         options: AdapterOptions::default(),
         scope: Some(SourceScope::Directory),
-        collection: None,
+        collection: Some("watch-test".to_string()),
         enabled: Some(true),
     }
 }
@@ -88,6 +88,69 @@ async fn sqlite_watch_store_creates_gets_updates_and_lists() {
     .unwrap();
     assert_eq!(listed.items.len(), 1);
     assert_eq!(listed.items[0].watch_id, created.watch_id);
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_reconstructs_stored_request() {
+    let (store, _pool, _temp) = store().await;
+
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+    let request = store
+        .request(created.watch_id.clone())
+        .await
+        .unwrap()
+        .expect("stored request");
+
+    assert_eq!(request.source, "file:///repo");
+    assert_eq!(request.schedule.every_seconds, 60);
+    assert!(request.embed);
+    assert_eq!(request.scope, Some(SourceScope::Directory));
+    assert_eq!(request.collection.as_deref(), Some("watch-test"));
+    assert_eq!(
+        store.request(WatchId::new("missing")).await.unwrap(),
+        None,
+        "missing canonical ids should not resolve through a fallback"
+    );
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_rejects_zero_interval_on_create() {
+    let (store, _pool, _temp) = store().await;
+    let mut request = watch_request();
+    request.schedule.every_seconds = 0;
+
+    let err = WatchStore::create(&store, request)
+        .await
+        .expect_err("zero interval should be rejected");
+
+    assert_eq!(err.code.to_string(), "watch.invalid_schedule");
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_rejects_zero_interval_on_update() {
+    let (store, _pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+
+    let err = WatchStore::update(
+        &store,
+        created.watch_id,
+        WatchUpdateRequest {
+            enabled: None,
+            schedule: Some(WatchSchedule {
+                every_seconds: 0,
+                cron: None,
+                timezone: None,
+            }),
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await
+    .expect_err("zero interval should be rejected");
+
+    assert_eq!(err.code.to_string(), "watch.invalid_schedule");
 }
 
 #[tokio::test]

@@ -14,22 +14,17 @@ interface UseJobPollArgs {
   onCloseJob: () => void;
 }
 
-// Live lifecycle for the generic async-job families (embed/extract/ingest).
+// Live lifecycle for the generic async-job families (source/extract).
 // Sibling of `useCrawlJob`: a ~1Hz poll of the unified `GET /v1/jobs/{id}`
 // route while the job is non-terminal, plus the tray/cancel controls. Crawl
-// keeps its own, richer hook; this one drives the simpler `JobSnapshot`
-// model. The old per-family routes (`GET /v1/{family}/{id}`) this hook used
-// to poll were removed for embed/ingest; `/v1/extract/{id}` still exists but
-// polling the unified route uniformly keeps one code path. See
-// `summarizeUnifiedJob` (bead axon_rust-ruzox.9) for the shape gaps this
-// migration accepts.
+// keeps its own, richer hook; this one drives the simpler `JobSnapshot` model.
 export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob }: UseJobPollArgs) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [canceling, setCanceling] = useState(false);
 
   const isAsync = run.kind === "asyncJob";
   const jobId = isAsync ? run.jobId : "";
-  const family = isAsync ? run.family : "embed";
+  const family = isAsync ? run.family : "source";
   const phase = isAsync ? run.snapshot.phase : "done";
   const terminal = isJobPhaseTerminal(phase);
 

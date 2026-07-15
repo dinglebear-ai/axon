@@ -841,45 +841,6 @@
     },
     {
       "async": true,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions watch",
-      "path": [
-        "sessions",
-        "watch"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Watch local AI session exports and ingest stable changes"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "sessions watch-status",
-      "path": [
-        "sessions",
-        "watch-status"
-      ],
-      "requires_auth_scope": "read",
-      "summary": "Summarize session watch checkpoints and recent errors"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions smoke-watch",
-      "path": [
-        "sessions",
-        "smoke-watch"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Write a probe transcript and wait for the watcher to ingest it"
-    },
-    {
-      "async": true,
       "group": "source",
       "maps_to_dto": null,
       "mutates": true,
@@ -1134,62 +1095,6 @@
     },
     {
       "async": false,
-      "group": "setup",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "setup session-watch-service install",
-      "path": [
-        "setup",
-        "session-watch-service",
-        "install"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Write service files, run initial ingest, and enable the user service"
-    },
-    {
-      "async": false,
-      "group": "setup",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "setup session-watch-service check",
-      "path": [
-        "setup",
-        "session-watch-service",
-        "check"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Verify generated files and systemd state without mutating service files"
-    },
-    {
-      "async": false,
-      "group": "setup",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "setup session-watch-service remove",
-      "path": [
-        "setup",
-        "session-watch-service",
-        "remove"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Disable the user service and remove generated service files"
-    },
-    {
-      "async": false,
-      "group": "setup",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "setup session-watch-service status",
-      "path": [
-        "setup",
-        "session-watch-service",
-        "status"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Print current user systemd status for the service"
-    },
-    {
-      "async": false,
       "group": "mcp",
       "maps_to_dto": null,
       "mutates": false,
@@ -1349,7 +1254,7 @@
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:48bcc8b23decdadde94a0ccccf485ec8f13922c80cbed4ad421ae36096a5c1c5",
+        "checksum": "sha256:756702bd08fbee655602e08333cee6173bcdca71bb96f3c8cf08adfc251c9c59",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1379,12 +1284,12 @@
         "path": "xtask/src/schemas/cli_registry/part1.rs"
       },
       {
-        "checksum": "sha256:44c444983b6cb72bd9e50d3bc239e08d1ca9358ee588c90af40142cac80ef805",
+        "checksum": "sha256:437a4e8cd9eeab8626eb5750683352d79ead14e03e356b4aef21a6e0af0b58f5",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part2.rs"
       },
       {
-        "checksum": "sha256:12369c37652edf712d21113879a14cda9f0426e1b825f5a25ed19d0732a500f4",
+        "checksum": "sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part3.rs"
       }

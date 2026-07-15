@@ -40,17 +40,24 @@ async fn open_sqlite_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error
 
 /// Reclaim stale watch leases from a previous crashed process.
 ///
-/// Clears `lease_expires_at` for any `axon_watch_defs` row whose lease has
-/// already expired so the scheduler can re-acquire them immediately.
+/// Clears `lease_expires_at` for any legacy `axon_watch_defs` row or canonical
+/// `axon_source_watches` row whose lease has already expired so the scheduler
+/// can re-acquire it immediately.
 pub async fn reclaim_stale_watch_leases(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     let now = now_ms();
-    let result = sqlx::query(
+    let legacy = sqlx::query(
         "UPDATE axon_watch_defs SET lease_expires_at = NULL WHERE lease_expires_at < ?",
     )
     .bind(now)
     .execute(pool)
     .await?;
-    Ok(result.rows_affected())
+    let source = sqlx::query(
+        "UPDATE axon_source_watches SET lease_expires_at = NULL WHERE lease_expires_at < ?",
+    )
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(legacy.rows_affected() + source.rows_affected())
 }
 
 /// Checkpoint all WAL frames into the main database file and close the pool.

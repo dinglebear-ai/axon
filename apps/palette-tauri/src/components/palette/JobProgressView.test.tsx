@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
-// Render tests for JobProgressView — the live status card for embed/extract/
-// ingest jobs. Proves the card renders family-aware copy, metrics, terminal
+// Render tests for JobProgressView — the live status card for source/extract
+// jobs. Proves the card renders family-aware copy, metrics, terminal
 // states, and that Cancel only appears while the job is active. jest-dom
 // matchers are registered globally via src/test/setup.ts.
 
@@ -16,13 +16,13 @@ afterEach(cleanup);
 const noop = () => {};
 
 describe("JobProgressView", () => {
-  it("renders a running ingest job with family verb, label, and Cancel", () => {
+  it("renders a running source job with family verb, label, and Cancel", () => {
     const snapshot = summarizeJob(
-      "ingest",
+      "source",
       {
         job: { status: "running" },
         progress: {
-          family: "ingest",
+          family: "source",
           phase: "running",
           percent: 25,
           metrics: [{ label: "tasks", value: "1 / 4" }],
@@ -40,7 +40,7 @@ describe("JobProgressView", () => {
         onClose={noop}
       />,
     );
-    expect(screen.getByText(/Ingesting unraid\/api/)).toBeInTheDocument();
+    expect(screen.getByText(/Indexing unraid\/api/)).toBeInTheDocument();
     expect(screen.getByText("job abc123")).toBeInTheDocument();
     expect(screen.getByText("25%")).toBeInTheDocument();
     expect(screen.getByText("1 / 4")).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe("JobProgressView", () => {
 
   it("hides Cancel and surfaces the error on a failed job", () => {
     const snapshot = summarizeJob(
-      "ingest",
+      "source",
       { job: { status: "failed", error_text: "github_repo target not found: owner/typo" } },
       { jobId: "j9", label: "owner/typo" },
     );
@@ -69,7 +69,7 @@ describe("JobProgressView", () => {
 
   it("fires onCancel when Cancel is clicked", () => {
     const onCancel = vi.fn();
-    const snapshot = summarizeJob("embed", { job: { status: "running" } }, { jobId: "e1", label: "notes" });
+    const snapshot = summarizeJob("source", { job: { status: "running" } }, { jobId: "e1", label: "notes" });
     render(
       <JobProgressView
         snapshot={snapshot}

@@ -467,18 +467,6 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         auth: RestRouteAuth::Admin,
         openapi: true,
     },
-    RestRouteInfo {
-        method: "GET",
-        path: "/v1/watch",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/watch",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
     // `POST /v1/watch/{id}/run` was removed per the REST contract's
     // clean-break rule (`docs/pipeline-unification/surfaces/rest-contract.md`
     // "Removed Route Behavior") — its canonical replacement,

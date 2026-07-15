@@ -1,5 +1,5 @@
 # Sessions Ingest
-Last Modified: 2026-06-13
+Last Modified: 2026-07-15
 
 Version: 1.0.0
 Last Updated: 01:26:53 | 02/25/2026 EST
@@ -43,25 +43,35 @@ Use `--wait true` for synchronous execution.
 
 The Claude plugin SessionStart hook is recall-only: it calls `axon memory context` for the current git project and must stay fast and best-effort. It does not scan or ingest session files.
 
-Automatic capture is handled by the separate host-local watcher:
+Automatic capture must use the unified source/watch pipeline. The old
+session-specific watcher, status/smoke helpers, and setup service are not
+supported surfaces.
+
+Use `axon sessions` for a one-shot local ingest, or submit an explicit session
+selector through the source pipeline when a caller needs the transport-neutral
+path:
 
 ```bash
-axon setup session-watch-service install
+axon sessions --codex --wait true
+axon 'session:codex:/home/me/.codex/sessions/2026/07/15/session.jsonl' --wait true
 ```
 
-That service runs `axon sessions watch --no-initial-scan --json`, watches Claude/Codex/Gemini transcript roots, and reuses prepared-session ingest. Full-file reingest is the v0 behavior; deterministic point IDs and stale-tail cleanup make it correct when a transcript changes. Append-offset optimization can be added later using the checkpoint table fields once the simpler full-file path has proven stable.
+A session selector has the form `session:<provider>:<path>`, where provider is
+`claude`, `codex`, or `gemini`, and path is a session export file or directory.
+The selector routes through the session source adapter, not through local-path
+indexing, so transcript parsing/redaction stays session-aware.
 
-Provider and project filters are available on the watcher itself, for example `axon sessions watch --codex --project axon --json`.
+## Remote and Server Submission
 
-## Remote Watch Upload
+Server/API callers submit session work through `POST /v1/sources` with a
+`SourceRequest` whose `source` is a `session:<provider>:<path>` selector. The
+removed prepared-session endpoint must not be reintroduced as a compatibility
+route.
 
-When `AXON_SERVER_URL` is set together with `axon sessions watch --upload-to-server`, the watcher still reads session files from the client machine. The client parses and redacts Claude, Codex, and Gemini transcripts locally, sends prepared documents to `POST /v1/ingest/sessions/prepared`, and the server persists that upload beside a SQLite ingest job before waking ingest workers. Plain `axon sessions` remains host-local in this release.
-
-The remote server must return `202 Accepted` with a `job_id`. The watcher emits an accepted-remote event and writes a local `remote_accepted` checkpoint for that durable upload acceptance. That checkpoint means the file was queued remotely, not that the remote embedding job reached terminal success, and it is intentionally separate from local success checkpoints.
-
-Prepared-session uploads are bounded by semantic limits: max document count, per-document text size, total text size, metadata size, supported platform names, and collection-name validation. The uploaded payload is deleted after successful worker completion and is included in ingest cleanup/clear behavior.
-
-The generic remote ingest shape `source_type="sessions"` is intentionally rejected over REST/MCP in this phase. That prevents remote callers from causing the server to scan server-local AI history directories.
+Prepared uploads are a pipeline-unification target for clients that cannot
+expose local paths to the server. That replacement belongs under the staged
+uploads contract plus `POST /v1/sources`; it is not the removed prepared-session
+endpoint.
 
 ## Git Enrichment (repo and branch fields)
 
@@ -91,7 +101,8 @@ Because the Claude CLI encodes path separators and literal hyphens identically (
 2. Implement `ingest_<provider>_sessions(cfg, state, multi)` following the pattern in `claude.rs`
 3. Register it in sessions dispatch (`crates/axon-ingest/src/sessions.rs`) with a `cfg.sessions_<provider>` flag check
 4. Add the `--<provider>` flag (e.g. `--claude`, `--codex`, `--gemini`) to `SessionsArgs` in `crates/axon-core/src/config/cli.rs` and wire it through `crates/axon-core/src/config/parse/build_config/`
-5. Update service/API schema surfaces and prepared-session REST/MCP docs when the format is exposed beyond CLI.
+5. Update service/API schema surfaces and source-adapter docs when the format
+   is exposed beyond CLI.
 6. Add a unit test with a minimal sample file in `#[cfg(test)]`
 
 ## Troubleshooting

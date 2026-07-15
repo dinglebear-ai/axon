@@ -38,15 +38,11 @@ No systemd unit is created. Docker Compose is the only production deployment tar
 
 ### Session Memory and Auto-Ingest
 
-The SessionStart hook is recall-only and prints best-effort `axon memory context` for the current git project. It does not scan or ingest transcript files during session startup.
-
-For automatic transcript capture, install the host-local watcher:
-
-```bash
-axon setup session-watch-service install
-```
-
-The service runs `axon sessions watch --no-initial-scan --json` and reuses the existing prepared-session ingest path.
+The SessionStart hook is recall-only and prints best-effort `axon memory context`
+for the current git project. It does not scan or ingest transcript files during
+session startup. Index transcripts with `axon sessions` or with explicit
+`session:<provider>:<path>` selectors through the unified source pipeline; the
+old prepared-session watcher service is not part of the plugin surface.
 
 ## Commands
 

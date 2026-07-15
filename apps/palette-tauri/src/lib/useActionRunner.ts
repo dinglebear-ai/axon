@@ -20,7 +20,12 @@ import {
   type PaletteResult,
 } from "@/lib/axonClient";
 import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
-import { type AsyncJobFamily, pendingJobSnapshot, summarizeJob } from "@/lib/jobProgress";
+import {
+  asyncJobFamilyForSubcommand,
+  type AsyncJobFamily,
+  pendingJobSnapshot,
+  summarizeJob,
+} from "@/lib/jobProgress";
 import { formatPayload, outputKindFor, type OutputKind } from "@/lib/format";
 import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import { argumentFor, validationMessage, type ParsedCommand } from "@/lib/paletteView";
@@ -218,7 +223,7 @@ export function useActionRunner({
     }
   }
 
-  // ── Async-job branch: submit embed/extract/ingest, then hand the live poll
+  // ── Async-job branch: submit source-backed/extract jobs, then hand the live poll
   // off to useJobPoll. Mirrors submitCrawl but uses the generic JobSnapshot.
   async function submitAsyncJob(
     action: RemotePaletteAction,
@@ -284,8 +289,6 @@ export function useActionRunner({
           ? {
               ...current,
               jobId,
-              // Unified route (bead axon_rust-ruzox.9) — the per-family status
-              // route for embed/ingest no longer exists.
               statusUrl: `/v1/jobs/${jobId}`,
               subtitle: `job ${jobId}`,
               snapshot: summarizeJob(family, result.payload, { jobId, label }),
@@ -494,7 +497,13 @@ export function useActionRunner({
       executableAction.subcommand === "extract" ||
       executableAction.subcommand === "ingest"
     ) {
-      await submitAsyncJob(executableAction, argument, executableAction.subcommand, client, config);
+      await submitAsyncJob(
+        executableAction,
+        argument,
+        asyncJobFamilyForSubcommand(executableAction.subcommand),
+        client,
+        config,
+      );
       return;
     }
     if (executableAction.subcommand === "ask" || executableAction.subcommand === "chat") {

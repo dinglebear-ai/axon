@@ -1,45 +1,23 @@
-//! `WatchService` — recurring watch definitions (create/update/get/list/exec/
-//! pause/resume/delete/history).
+//! `WatchService` — source-backed recurring watch definitions
+//! (create/update/get/list/exec/pause/resume/delete/history).
 //!
 //! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
-//! §WatchService. **Finding vs. the approved wiring plan:** the plan assumed
-//! `watch.rs`'s `WatchDef`/`WatchDefCreate` free functions could thinly wrap
-//! into the contract's `WatchRequest`/`WatchResult`/`WatchSummary` DTOs, but
-//! `WatchDef` is a generic scheduler row (`id`, `name`, `task_type`,
-//! `task_payload: serde_json::Value`, `every_seconds`, ...) with no
-//! `canonical_uri`/`adapter`/`scope` fields the contract DTOs expect —
-//! reconstructing those from `task_payload` would require knowing (and
-//! committing to) the JSON shape the `watch` task-runner expects, which is
-//! genuinely new orchestration, not a thin field-for-field wrap. So
-//! `create`/`update`/`get`/`list` (all of which return a `WatchResult` or
-//! `WatchSummary`) stay documented stubs
-//! ([`crate::service_traits::not_implemented`]).
-//!
-//! `exec` and `history` are different: their return types (`JobDescriptor`,
-//! `WatchHistoryResult { jobs: Vec<JobDescriptor>, .. }`) never reference
-//! `canonical_uri`/`adapter`/`scope`, so they don't hit the blocker above and
-//! *are* wired as real thin wraps — both resolve the canonical `WatchId` to
-//! its bridged legacy `WatchDef` (`resolve_legacy_watch_def`, by dual-write
-//! name since the two stores don't share a primary key — see that fn's
-//! doc), then `exec` runs it synchronously (`watch::run_watch_now`) and
-//! `history` lists its runs (`watch::list_watch_runs`) — both mapping
-//! `WatchRun` into a synthesized `JobDescriptor`. `pause`/`resume`/`delete`
-//! still have no backing free function at all (CLAUDE.md documents them as
-//! "parse but are not yet implemented"). Only the `Fake` implements full
-//! in-memory semantics for every method.
+//! §WatchService. The production implementation is backed by
+//! `SqliteWatchStore` (`axon_source_watches` / `axon_source_watch_runs`) and
+//! manual `exec` enqueues a detached `JobKind::Source` job through the unified
+//! source pipeline.
 
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use axon_api::source::{
-    JobDescriptor, JobId, JobKind, LifecycleStatus, Page, WatchExecRequest, WatchHistoryRequest,
-    WatchHistoryResult, WatchId, WatchListRequest, WatchRequest, WatchResult, WatchSummary,
-    WatchUpdateRequest,
+    DeleteResult, JobDescriptor, JobId, JobKind, LifecycleStatus, Page, WatchExecRequest,
+    WatchHistoryRequest, WatchHistoryResult, WatchId, WatchListRequest, WatchRequest, WatchResult,
+    WatchSummary, WatchUpdateRequest,
 };
 
 use crate::context::ServiceContext;
-use crate::service_traits::not_implemented;
-use crate::watch;
+use crate::watch::{self, SourceWatchStoreTrait};
 
 #[async_trait]
 pub trait WatchService: Send + Sync {
@@ -74,135 +52,109 @@ impl WatchServiceImpl {
 
 #[async_trait]
 impl WatchService for WatchServiceImpl {
-    async fn create(&self, _request: WatchRequest) -> anyhow::Result<WatchResult> {
-        Err(not_implemented("WatchService::create"))
+    async fn create(&self, request: WatchRequest) -> anyhow::Result<WatchResult> {
+        let pool = self.ctx.jobs.sqlite_pool();
+        watch::create_source_watch(&self.ctx.cfg, pool.as_deref(), request, None)
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))
     }
 
     async fn update(
         &self,
-        _watch_id: WatchId,
-        _request: WatchUpdateRequest,
+        watch_id: WatchId,
+        request: WatchUpdateRequest,
     ) -> anyhow::Result<WatchResult> {
-        Err(not_implemented("WatchService::update"))
+        let pool = self.ctx.jobs.sqlite_pool();
+        let store = watch::open_source_watch_store(&self.ctx.cfg, pool.as_deref())
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))?;
+        SourceWatchStoreTrait::update(&store, watch_id, request)
+            .await
+            .map_err(|err| anyhow::anyhow!("{}", err.message))
     }
 
-    async fn get(&self, _watch_id: WatchId) -> anyhow::Result<WatchResult> {
-        Err(not_implemented("WatchService::get"))
+    async fn get(&self, watch_id: WatchId) -> anyhow::Result<WatchResult> {
+        let pool = self.ctx.jobs.sqlite_pool();
+        let store = watch::open_source_watch_store(&self.ctx.cfg, pool.as_deref())
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))?;
+        SourceWatchStoreTrait::get(&store, watch_id.clone())
+            .await
+            .map_err(|err| anyhow::anyhow!("{}", err.message))?
+            .ok_or_else(|| anyhow::anyhow!("watch {} not found", watch_id.0))
     }
 
-    async fn list(&self, _request: WatchListRequest) -> anyhow::Result<Page<WatchSummary>> {
-        Err(not_implemented("WatchService::list"))
+    async fn list(&self, request: WatchListRequest) -> anyhow::Result<Page<WatchSummary>> {
+        let pool = self.ctx.jobs.sqlite_pool();
+        let store = watch::open_source_watch_store(&self.ctx.cfg, pool.as_deref())
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))?;
+        SourceWatchStoreTrait::list(&store, request)
+            .await
+            .map_err(|err| anyhow::anyhow!("{}", err.message))
     }
 
     async fn exec(
         &self,
         watch_id: WatchId,
-        _request: WatchExecRequest,
+        request: WatchExecRequest,
     ) -> anyhow::Result<JobDescriptor> {
-        let def = resolve_legacy_watch_def(&self.ctx.cfg, &watch_id).await?;
-        let run = watch::run_watch_now(&self.ctx.cfg, &def)
+        let pool = self.ctx.jobs.sqlite_pool();
+        watch::exec_source_watch(&self.ctx, pool.as_deref(), watch_id, request, None)
             .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        Ok(watch_run_to_job_descriptor(&run))
+            .map_err(|err| anyhow::anyhow!("{err}"))
     }
 
-    async fn pause(&self, _watch_id: WatchId) -> anyhow::Result<WatchResult> {
-        Err(not_implemented("WatchService::pause"))
+    async fn pause(&self, watch_id: WatchId) -> anyhow::Result<WatchResult> {
+        self.update(
+            watch_id,
+            WatchUpdateRequest {
+                enabled: Some(false),
+                schedule: None,
+                options: None,
+                embed: None,
+                collection: None,
+                scope: None,
+            },
+        )
+        .await
     }
 
-    async fn resume(&self, _watch_id: WatchId) -> anyhow::Result<WatchResult> {
-        Err(not_implemented("WatchService::resume"))
+    async fn resume(&self, watch_id: WatchId) -> anyhow::Result<WatchResult> {
+        self.update(
+            watch_id,
+            WatchUpdateRequest {
+                enabled: Some(true),
+                schedule: None,
+                options: None,
+                embed: None,
+                collection: None,
+                scope: None,
+            },
+        )
+        .await
     }
 
-    async fn delete(&self, _watch_id: WatchId) -> anyhow::Result<axon_api::source::DeleteResult> {
-        Err(not_implemented("WatchService::delete"))
+    async fn delete(&self, watch_id: WatchId) -> anyhow::Result<DeleteResult> {
+        let pool = self.ctx.jobs.sqlite_pool();
+        let store = watch::open_source_watch_store(&self.ctx.cfg, pool.as_deref())
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))?;
+        let deleted = store
+            .delete(watch_id.clone())
+            .await
+            .map_err(|err| anyhow::anyhow!("{}", err.message))?;
+        Ok(DeleteResult {
+            deleted,
+            id: watch_id.0,
+        })
     }
 
     async fn history(&self, request: WatchHistoryRequest) -> anyhow::Result<WatchHistoryResult> {
-        let def = resolve_legacy_watch_def(&self.ctx.cfg, &request.watch_id).await?;
-        let limit = i64::from(request.limit.unwrap_or(50));
-        let runs = watch::list_watch_runs(&self.ctx.cfg, def.id, limit)
+        let pool = self.ctx.jobs.sqlite_pool();
+        watch::history_source_watch(&self.ctx.cfg, pool.as_deref(), request)
             .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        Ok(WatchHistoryResult {
-            watch_id: request.watch_id,
-            jobs: runs.iter().map(watch_run_to_job_descriptor).collect(),
-            next_cursor: None,
-        })
-    }
-}
-
-/// Resolve the legacy scheduler-owned `WatchDef` backing a canonical
-/// `WatchId`.
-///
-/// The canonical source-request-backed watch store
-/// (`axon_jobs::watch_store::SqliteWatchStore`, `axon_source_watches`) and
-/// the legacy task_type/task_payload scheduler
-/// (`axon_jobs::watch`, `axon_watch_defs`) are deliberately separate tables
-/// with no shared primary key — see `crates/axon-jobs/src/migrations/
-/// 0023_create_source_watch_store.sql`. `crate::watch::create_source_watch`
-/// bridges them with a best-effort dual-write: creating a canonical watch
-/// also creates a legacy `WatchDef` named `format!("watch-{watch_id}")` so
-/// the still-live `workers/watch_scheduler.rs` actually ticks it. Resolve
-/// that link here by name. Falls back to treating `watch_id` as a bare
-/// legacy UUID first, for a caller that already holds a legacy `/v1/watch`
-/// id directly rather than a canonical `/v1/watches` one.
-async fn resolve_legacy_watch_def(
-    cfg: &axon_core::config::Config,
-    watch_id: &WatchId,
-) -> anyhow::Result<watch::WatchDef> {
-    if let Ok(uuid) = uuid::Uuid::parse_str(&watch_id.0)
-        && let Some(def) = watch::get_watch_def(cfg, uuid)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?
-    {
-        return Ok(def);
-    }
-    let legacy_name = format!("watch-{}", watch_id.0);
-    watch::get_watch_def_by_name(cfg, &legacy_name)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "watch {} not found (no bridged scheduler entry; the dual-write in \
-                 create_source_watch may have failed at creation time, or the watch id is \
-                 unknown)",
-                watch_id.0
-            )
-        })
-}
-
-/// Map a `WatchRun` scheduler row into a synthesized `JobDescriptor`. Neither
-/// `JobDescriptor` nor the `WatchHistoryResult`/`exec` return types reference
-/// `canonical_uri`/`adapter`/`scope`, so this mapping is a real thin wrap —
-/// unlike `create`/`get`/`list`, which are blocked on those missing fields
-/// (see module doc comment).
-fn watch_run_to_job_descriptor(run: &watch::WatchRun) -> JobDescriptor {
-    let job_id = JobId::new(run.dispatched_job_id.unwrap_or(run.id));
-    let status = watch_run_status_to_lifecycle(&run.status);
-    JobDescriptor {
-        kind: JobKind::Watch,
-        id: job_id,
-        status_url: format!("/v1/jobs/{}", job_id.0),
-        events_url: format!("/v1/jobs/{}/events", job_id.0),
-        stream_url: format!("/v1/jobs/{}/stream", job_id.0),
-        poll_after_ms: 1_000,
-        cancel_url: None,
-        retry_url: None,
-        job_id,
-        status,
-        poll: None,
-        created_at: Some(axon_api::source::Timestamp::from(run.created_at)),
-        updated_at: Some(axon_api::source::Timestamp::from(run.updated_at)),
-    }
-}
-
-fn watch_run_status_to_lifecycle(status: &str) -> LifecycleStatus {
-    match status {
-        axon_jobs::watch::WATCH_RUN_STATUS_RUNNING => LifecycleStatus::Running,
-        axon_jobs::watch::WATCH_RUN_STATUS_COMPLETED => LifecycleStatus::Completed,
-        axon_jobs::watch::WATCH_RUN_STATUS_FAILED => LifecycleStatus::Failed,
-        _ => LifecycleStatus::Queued,
+            .map_err(|err| anyhow::anyhow!("{err}"))
     }
 }
 

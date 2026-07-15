@@ -134,8 +134,7 @@ export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({
   target: first(ctx.words, "target"),
   ...ctx.collectionBody,
 });
-export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
-export const ingestSessionsPreparedBody: BodyBuilder = (ctx) => jsonBody(ctx.arg, "prepared sessions request");
+export const watchCreateBody: BodyBuilder<Req["WatchRequest"]> = (ctx) => watchCreateRequestBody(ctx.words);
 // `github` takes a bare owner[/repo[/path...]] target (NOT a URL — see
 // `BARE_TARGET_SUBCOMMANDS`-style handling in actions.ts, though github is
 // simply absent from `acceptsDirectUrl` so no coercion ever applies). This
@@ -202,17 +201,17 @@ export function required(words: string[], field: string): string[] {
   return clean;
 }
 
-function watchCreateRequestBody(words: string[]): Record<string, unknown> {
+function watchCreateRequestBody(words: string[]): Req["WatchRequest"] {
   const url = first(words, "url");
   const seconds = words[1] ? Number(words[1]) : 3600;
-  if (!Number.isFinite(seconds) || seconds < 1) {
-    throw new Error("watch interval must be a positive number of seconds");
+  if (!Number.isFinite(seconds) || seconds < 30) {
+    throw new Error("watch interval must be at least 30 seconds");
   }
   return {
-    name: hostName(url),
-    task_type: "watch",
-    task_payload: { urls: [url], ignore_patterns: [] },
-    every_seconds: Math.floor(seconds),
+    source: url,
+    schedule: { every_seconds: Math.floor(seconds) },
+    embed: true,
+    options: { values: {} },
     enabled: true,
   };
 }
@@ -223,12 +222,6 @@ function diffRequestBody(words: string[]): Req["RestDiffRequest"] {
   return { url_a: clean[0], url_b: clean[1] };
 }
 
-function jsonBody(value: string, label: string): Record<string, unknown> {
-  const parsed = JSON.parse(value.trim());
-  if (!isRecord(parsed)) throw new Error(`${label} must be a JSON object`);
-  return parsed;
-}
-
 /** Validate a string is a UUID, throwing a user-facing error otherwise. */
 export function uuid(value: string): string {
   const clean = value.trim();
@@ -236,16 +229,4 @@ export function uuid(value: string): string {
     throw new Error("id must be a UUID");
   }
   return clean;
-}
-
-function hostName(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

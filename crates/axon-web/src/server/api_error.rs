@@ -107,6 +107,10 @@ pub(crate) fn status_for_api_error(error: &ApiError) -> StatusCode {
             "auth.missing" | "auth.unauthenticated" => StatusCode::UNAUTHORIZED,
             _ => StatusCode::FORBIDDEN,
         },
+        "watch" => match code {
+            "watch.not_found" => StatusCode::NOT_FOUND,
+            _ => status_from_stage(error.stage),
+        },
         "provider" => match code {
             "provider.rate_limited" | "provider.cooling" => StatusCode::TOO_MANY_REQUESTS,
             _ => StatusCode::BAD_GATEWAY,

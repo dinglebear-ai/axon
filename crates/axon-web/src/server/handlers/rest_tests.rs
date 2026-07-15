@@ -767,215 +767,32 @@ async fn axon_write_token_satisfies_read_scope_route() {
     );
 }
 
-// ── Watch route tests (ovuc) ─────────────────────────────────────────────
+// ── Watch route tests ─────────────────────────────────────────────────────
 
-/// GET /v1/watch is reachable (not 404) in LoopbackDev.
 #[tokio::test]
 #[serial]
-async fn watch_list_route_is_reachable() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-
-    let status = reqwest::get(format!("{base}/v1/watch"))
-        .await
-        .expect("watch list")
-        .status();
-
-    stop(shutdown, handle).await;
-    assert_ne!(
-        status,
-        StatusCode::NOT_FOUND,
-        "GET /v1/watch should be mounted"
-    );
-    assert_ne!(
-        status,
-        StatusCode::METHOD_NOT_ALLOWED,
-        "GET should work on /v1/watch"
-    );
-}
-
-/// POST /v1/watch with empty name returns 400.
-#[tokio::test]
-#[serial]
-async fn watch_create_rejects_empty_name() {
+async fn legacy_watch_routes_are_absent() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
+    let unknown = "00000000-0000-0000-0000-000000000001";
 
-    let response = client
-        .post(format!("{base}/v1/watch"))
-        .json(&serde_json::json!({
-            "name": "",
-            "task_type": "watch",
-            "task_payload": {},
-            "every_seconds": 60,
-            "enabled": true,
-            "next_run_at": "2026-01-01T00:00:00Z"
-        }))
-        .send()
-        .await
-        .expect("watch create");
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("json");
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["ok"], false);
-    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
-}
-
-/// POST /v1/watch with every_seconds=0 returns 400.
-#[tokio::test]
-#[serial]
-async fn watch_create_rejects_zero_interval() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/watch"))
-        .json(&serde_json::json!({
-            "name": "test-watch",
-            "task_type": "watch",
-            "task_payload": {},
-            "every_seconds": 0,
-            "enabled": true,
-            "next_run_at": "2026-01-01T00:00:00Z"
-        }))
-        .send()
-        .await
-        .expect("watch create");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-/// POST /v1/watch with unsupported task_type returns 400.
-#[tokio::test]
-#[serial]
-async fn watch_create_rejects_unsupported_task_type() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/watch"))
-        .json(&serde_json::json!({
-            "name": "test",
-            "task_type": "frobinate",
-            "task_payload": {},
-            "every_seconds": 60,
-            "enabled": true,
-            "next_run_at": "2026-01-01T00:00:00Z"
-        }))
-        .send()
-        .await
-        .expect("watch create");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-#[serial]
-async fn watch_create_requires_non_empty_url_array() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
-
-    let cases = [
-        serde_json::json!({}),
-        serde_json::json!({ "urls": [] }),
-        serde_json::json!({ "urls": [1] }),
-    ];
-    for payload in cases {
-        let response = client
-            .post(format!("{base}/v1/watch"))
-            .json(&serde_json::json!({
-                "name": "test",
-                "task_type": "watch",
-                "task_payload": payload,
-                "every_seconds": 60,
-                "enabled": true,
-                "next_run_at": "2026-01-01T00:00:00Z"
-            }))
-            .send()
-            .await
-            .expect("watch create");
-        let status = response.status();
-        let body: serde_json::Value = response.json().await.expect("json body");
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(body["error"]["code"], "route.validation.invalid_field");
-        assert!(
-            body["error"]["message"]
-                .as_str()
-                .unwrap_or("")
-                .contains("urls"),
-            "expected urls error, got {body}"
-        );
+    for (method, path) in [
+        ("GET", "/v1/watch".to_string()),
+        ("POST", "/v1/watch".to_string()),
+        ("GET", format!("/v1/watch/{unknown}")),
+        ("POST", format!("/v1/watch/{unknown}/run")),
+    ] {
+        let request = match method {
+            "GET" => client.get(format!("{base}{path}")),
+            "POST" => client.post(format!("{base}{path}")),
+            _ => unreachable!(),
+        };
+        let response = request.send().await.expect("legacy watch request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method} {path}");
     }
 
     stop(shutdown, handle).await;
-}
-
-/// GET /v1/watch/{uuid} with an unknown UUID returns 404 (not found in DB)
-/// or 500/502 (SQLite unavailable in test env). Never 405.
-#[tokio::test]
-#[serial]
-async fn watch_get_unknown_uuid_route_is_mounted() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let unknown = "00000000-0000-0000-0000-000000000001";
-
-    let response = reqwest::get(format!("{base}/v1/watch/{unknown}"))
-        .await
-        .expect("watch get");
-    let status = response.status();
-
-    stop(shutdown, handle).await;
-    // 404 = route mounted, UUID not found in SQLite (correct result)
-    // 500 / 502 = route mounted, SQLite unavailable in test env (acceptable)
-    // 405 = route NOT registered — definite bug
-    // 401/403 = auth guard fired unexpectedly — also a bug in LoopbackDev
-    assert!(
-        matches!(
-            status,
-            StatusCode::NOT_FOUND | StatusCode::INTERNAL_SERVER_ERROR | StatusCode::BAD_GATEWAY
-        ),
-        "GET /v1/watch/{{uuid}} should return 404/500/502, got {status}"
-    );
-}
-
-/// POST /v1/watch and GET /v1/watch/{id} coexist on the retained test router.
-#[tokio::test]
-#[serial]
-async fn watch_create_uses_production_path_not_legacy_create_path() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
-
-    let legacy_create = client
-        .post(format!("{base}/v1/watch/create"))
-        .json(&serde_json::json!({
-            "name": "",
-            "task_type": "watch",
-            "task_payload": {},
-            "every_seconds": 60,
-            "enabled": true,
-            "next_run_at": "2026-01-01T00:00:00Z"
-        }))
-        .send()
-        .await
-        .expect("POST /v1/watch/create");
-
-    stop(shutdown, handle).await;
-    assert_ne!(
-        legacy_create.status(),
-        StatusCode::BAD_REQUEST,
-        "legacy /v1/watch/create must not reach the watch-create handler after route consolidation"
-    );
 }
 
 // ── deny_unknown_fields across all Family 2+3 body structs (xqp1) ────────

@@ -175,6 +175,60 @@ fn host_of(url: &str) -> String {
         .unwrap_or_default()
 }
 
+fn payload_str<'a>(payload: &'a serde_json::Value, field: &str) -> Option<&'a str> {
+    payload
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn chunk_locator_canonical_uri(payload: &serde_json::Value) -> Option<&str> {
+    payload
+        .get("chunk_locator")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|locator| locator.get("canonical_uri"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn indexed_url_from_payload(payload: &serde_json::Value) -> Option<String> {
+    [
+        "item_canonical_uri",
+        "source_canonical_uri",
+        "url",
+        "web_url",
+        "web_normalized_url",
+    ]
+    .into_iter()
+    .find_map(|field| payload_str(payload, field).and_then(parse_http_url))
+    .or_else(|| chunk_locator_canonical_uri(payload).and_then(parse_http_url))
+}
+
+fn ranked_base_urls_from_context(
+    indexed_urls: &[String],
+    domain_facets: Vec<(String, u64)>,
+) -> Vec<(String, usize)> {
+    let mut ranked: Vec<(String, usize)> = domain_facets
+        .into_iter()
+        .filter(|(domain, _)| !domain.is_empty() && domain != "unknown")
+        .map(|(domain, count)| (domain, count as usize))
+        .collect();
+    if ranked.is_empty() {
+        let mut counts = std::collections::BTreeMap::<String, usize>::new();
+        for url in indexed_urls {
+            let host = host_of(url);
+            if !host.is_empty() {
+                *counts.entry(host).or_insert(0) += 1;
+            }
+        }
+        ranked = counts.into_iter().collect();
+    }
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    ranked
+}
+
 #[allow(dead_code)]
 struct SuggestPromptContext {
     desired: usize,
@@ -189,9 +243,10 @@ struct SuggestPromptContext {
     existing_url_context: String,
 }
 
-/// Fetch every distinct indexed `url` (one representative chunk per
+/// Fetch every distinct indexed canonical URL (one representative chunk per
 /// document, via the `chunk_index == 0` filter) up to `limit`. Ports legacy
-/// `qdrant_indexed_urls` on top of `QdrantVectorStore::scroll_pages`.
+/// `qdrant_indexed_urls` on top of `QdrantVectorStore::scroll_pages`, but uses
+/// the unified vector payload's canonical URI fields first.
 async fn fetch_indexed_urls(
     store: &QdrantVectorStore,
     collection: &str,
@@ -203,17 +258,19 @@ async fn fetch_indexed_urls(
         .scroll_pages(
             collection,
             Some(filter),
-            serde_json::json!({ "include": ["url"] }),
+            serde_json::json!({ "include": [
+                "item_canonical_uri",
+                "source_canonical_uri",
+                "url",
+                "web_url",
+                "web_normalized_url",
+                "chunk_locator"
+            ] }),
             256,
             |page| {
                 for point in page {
-                    if let Some(url) = point
-                        .payload
-                        .get("url")
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                    {
-                        seen.insert(url.to_string());
+                    if let Some(url) = indexed_url_from_payload(&point.payload) {
+                        seen.insert(url);
                     }
                 }
                 limit.is_none_or(|cap| seen.len() < cap)
@@ -238,16 +295,20 @@ async fn build_suggest_prompt_context(
 
     let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), SUGGEST_VECTOR_PROVIDER_ID);
 
-    // Fetch indexed URLs for duplicate filtering (capped to avoid full-collection scan).
-    let (indexed_urls, domain_facets) = tokio::try_join!(
-        fetch_indexed_urls(&store, &cfg.collection, Some(index_dedup_limit)),
-        async {
-            store
-                .facet(&cfg.collection, "domain", None, base_url_context_limit)
-                .await
-                .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })
+    // Fetch indexed URLs for duplicate filtering first. The domain facet is only
+    // fallback context, so it must not delay a required scan failure.
+    let indexed_urls = fetch_indexed_urls(&store, &cfg.collection, Some(index_dedup_limit)).await?;
+    let domain_facets = match store
+        .facet(&cfg.collection, "web_domain", None, base_url_context_limit)
+        .await
+        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })
+    {
+        Ok(facets) => facets,
+        Err(err) => {
+            tracing::warn!(error = %err, "suggest: web_domain facet failed; deriving domain context from canonical URLs");
+            Vec::new()
         }
-    )?;
+    };
 
     if indexed_urls.is_empty() {
         return Err("No indexed URLs found in Qdrant collection; run crawl/scrape first".into());
@@ -261,12 +322,10 @@ async fn build_suggest_prompt_context(
         indexed_lookup.insert(format!("{without_slash}/"));
     }
 
-    // Domain facets come back alphabetically sorted; re-sort by page count descending.
-    let mut ranked_base_urls: Vec<(String, usize)> = domain_facets
-        .into_iter()
-        .map(|(domain, count)| (domain, count as usize))
-        .collect();
-    ranked_base_urls.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    // Domain facets come back alphabetically sorted; re-sort by page count
+    // descending. When the facet is unavailable (older collection/no index),
+    // derive a coarse host count from the canonical URL scan.
+    let ranked_base_urls = ranked_base_urls_from_context(&indexed_urls, domain_facets);
 
     let base_context = ranked_base_urls
         .iter()

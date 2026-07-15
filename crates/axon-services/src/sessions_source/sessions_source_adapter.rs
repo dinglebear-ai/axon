@@ -13,6 +13,7 @@ use super::{SESSIONS_ADAPTER_VERSION, SessionsSourceIndexInput};
 pub(super) struct SessionsAdapterRun {
     pub sessions_root: PathBuf,
     pub source_id: SourceId,
+    pub root_token: String,
     pub adapter: AdapterRef,
     pub plan: SourcePlan,
 }
@@ -29,18 +30,27 @@ pub(super) fn resolve_adapter_run(
             )
         })?
         .is_file();
-    let source_token = source_token(&input.provider, &input.session_id);
-    let source_id = sessions_source_id(&input.provider, &input.session_id);
+    let root_token = root_token(&sessions_root);
+    let source_token = source_token(&input.provider, &input.session_id, &root_token);
+    let source_id = sessions_source_id(&input.provider, &input.session_id, &sessions_root);
     let scope = if root_is_file {
         SourceScope::File
     } else {
         SourceScope::Thread
     };
     let adapter = sessions_adapter_ref();
-    let plan = source_plan(input, &source_id, &source_token, adapter.clone(), scope);
+    let plan = source_plan(
+        input,
+        &source_id,
+        &source_token,
+        &root_token,
+        adapter.clone(),
+        scope,
+    );
     Ok(SessionsAdapterRun {
         sessions_root,
         source_id,
+        root_token,
         adapter,
         plan,
     })
@@ -157,7 +167,7 @@ pub(super) fn source_summary(
 ) -> SourceSummary {
     SourceSummary {
         source_id: run.source_id.clone(),
-        canonical_uri: format!("session://{}/{}", input.provider, input.session_id),
+        canonical_uri: canonical_session_uri(&input.provider, &input.session_id, &run.root_token),
         display_name: run
             .sessions_root
             .file_name()
@@ -194,15 +204,28 @@ pub(super) fn sessions_adapter_ref() -> AdapterRef {
     }
 }
 
-pub(crate) fn sessions_source_id(provider: &str, session_id: &str) -> SourceId {
+pub(crate) fn sessions_source_id(
+    provider: &str,
+    session_id: &str,
+    sessions_root: &Path,
+) -> SourceId {
+    let root_token = root_token(sessions_root);
     SourceId::new(format!(
         "src_session_{}",
-        source_token(provider, session_id)
+        source_token(provider, session_id, &root_token)
     ))
 }
 
-pub(super) fn source_token(provider: &str, session_id: &str) -> String {
-    stable_token(&format!("session:{provider}:{session_id}"))
+pub(super) fn root_token(sessions_root: &Path) -> String {
+    stable_token(&sessions_root.to_string_lossy())
+}
+
+pub(super) fn source_token(provider: &str, session_id: &str, root_token: &str) -> String {
+    stable_token(&format!("session:{provider}:{session_id}:{root_token}"))
+}
+
+fn canonical_session_uri(provider: &str, session_id: &str, root_token: &str) -> String {
+    format!("session://{provider}/{session_id}?root={root_token}")
 }
 
 pub(crate) fn timestamp() -> Timestamp {
@@ -225,16 +248,23 @@ fn source_plan(
     input: &SessionsSourceIndexInput,
     source_id: &SourceId,
     source_token: &str,
+    root_token: &str,
     adapter: AdapterRef,
     scope: SourceScope,
 ) -> SourcePlan {
-    let canonical_uri = format!("session://{}/{}", input.provider, input.session_id);
+    let canonical_uri = canonical_session_uri(&input.provider, &input.session_id, root_token);
     let request_source = format!("session:{}:{}", input.provider, input.session_id);
     let mut values = MetadataMap::new();
     values.insert(
         "sessions_root".to_string(),
         serde_json::json!(input.sessions_root.to_string_lossy()),
     );
+    if let Some(project_filter) = input.project_filter.as_deref() {
+        values.insert(
+            "project_filter".to_string(),
+            serde_json::json!(project_filter),
+        );
+    }
     let mut request = SourceRequest::new(request_source.clone());
     request.adapter = Some("session".to_string());
     request.scope = Some(scope);

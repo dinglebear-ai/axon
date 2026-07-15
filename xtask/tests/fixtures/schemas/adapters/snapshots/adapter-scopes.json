@@ -545,7 +545,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "project_filter"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "thread",
@@ -555,7 +557,7 @@
         "parser_hints": [],
         "provider_requirements": [],
         "refresh_supported": true,
-        "safety_class": "public_network",
+        "safety_class": "local_filesystem",
         "source_kind": "session",
         "supported_scopes": [
           "thread"
@@ -1534,7 +1536,7 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:6f9d764e75177b3bb54716815285138a8c71a65570d66751086b527f3d79d4b6",
+        "checksum": "sha256:ba55212e0f21cc9e079e28a26c96dfd0bcc7a04583b9144527bdea852d233182",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

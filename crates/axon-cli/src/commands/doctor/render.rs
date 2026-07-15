@@ -264,15 +264,14 @@ fn render_cutover_stores_section(report: &serde_json::Value) {
         muted(&empty_status(sqlite_non_empty, "")),
     );
     let vectors_extra = if vectors_incompatible {
-        " (old payload schema)"
+        " (incompatible payload contract)"
     } else {
         ""
     };
+    let vectors_ok = !vectors_incompatible;
     println!(
         "  {} vectors {}",
-        symbol_for_status(status_from_bool(
-            !vectors_non_empty && !vectors_incompatible
-        )),
+        symbol_for_status(status_from_bool(vectors_ok)),
         muted(&empty_status(
             vectors_non_empty || vectors_incompatible,
             vectors_extra
@@ -282,7 +281,10 @@ fn render_cutover_stores_section(report: &serde_json::Value) {
         let guidance = report_text(report, &["cutover_stores", "guidance"], "run `axon reset`");
         println!("  {} {}", muted("⚠"), muted(&guidance));
     } else {
-        println!("  {} stores are empty/fresh — no reset needed", muted("·"));
+        println!(
+            "  {} no incompatible cutover stores detected — no reset needed",
+            muted("·")
+        );
     }
 }
 

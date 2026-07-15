@@ -41,7 +41,7 @@ type RestSearchRequestSchema = Schemas['RestSearchRequest'];
 type RestResearchRequestSchema = Schemas['RestResearchRequest'];
 type RestExtractRequestSchema = Schemas['RestExtractRequest'];
 type AcceptedJobSchema = Schemas['AcceptedJob'];
-type WatchCreateRequestSchema = Schemas['WatchDefCreateRequest'];
+type WatchCreateRequestSchema = Schemas['WatchRequest'];
 type RestMemoryRequestSchema = Schemas['RestMemoryRequest'];
 
 export interface ErrorBody extends ErrorBodySchema {}
@@ -192,21 +192,20 @@ export class AxonClient {
   }
 
   listWatch(params?: Pick<PaginationParams, 'limit'>): Promise<unknown> {
-    return this.get('/v1/watch', params);
+    return this.get('/v1/watches', params);
   }
 
   createWatch(body: WatchCreateRequest): Promise<unknown> {
-    return this.post('/v1/watch', body);
+    return this.post('/v1/watches', body);
   }
 
   runWatch(id: string): Promise<unknown> {
-    return this.post(`/v1/watch/${encodeURIComponent(id)}/run`);
+    return this.post(`/v1/watches/${encodeURIComponent(id)}/exec`);
   }
 
   // -------------------------------------------------------------------------
-  // /v1/watches — source-request-backed watch surface (distinct from the
-  // legacy /v1/watch task_type surface above). See panel-types.ts for the
-  // response shapes.
+  // /v1/watches — source-request-backed watch surface. See panel-types.ts for
+  // the response shapes.
   // -------------------------------------------------------------------------
 
   listWatches(params?: { enabled?: boolean; source_id?: string; adapter?: string; limit?: number; cursor?: string }): Promise<unknown> {

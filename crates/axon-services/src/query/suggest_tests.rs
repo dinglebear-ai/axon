@@ -143,3 +143,34 @@ fn suggestion_score_prefers_docs_paths_over_low_value_paths() {
     let privacy_score = suggestion_score("https://example.com/privacy");
     assert!(docs_score > privacy_score);
 }
+
+#[test]
+fn indexed_url_from_payload_prefers_unified_canonical_uri() {
+    let payload = serde_json::json!({
+        "item_canonical_uri": "https://docs.example.com/page",
+        "source_canonical_uri": "https://docs.example.com",
+        "url": "https://legacy.example.com/page"
+    });
+
+    assert_eq!(
+        indexed_url_from_payload(&payload).as_deref(),
+        Some("https://docs.example.com/page")
+    );
+}
+
+#[test]
+fn ranked_base_urls_falls_back_to_hosts_when_domain_facet_missing() {
+    let indexed = vec![
+        "https://b.example.com/one".to_string(),
+        "https://a.example.com/one".to_string(),
+        "https://b.example.com/two".to_string(),
+    ];
+
+    assert_eq!(
+        ranked_base_urls_from_context(&indexed, Vec::new()),
+        vec![
+            ("b.example.com".to_string(), 2),
+            ("a.example.com".to_string(), 1)
+        ]
+    );
+}

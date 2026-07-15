@@ -15,16 +15,10 @@ use uuid::Uuid;
 pub mod classify;
 mod classify_target;
 pub(crate) mod orchestrate;
-mod prepared_sessions;
-pub(crate) mod progress;
 pub mod request;
 mod target_parse;
 pub use classify::classify_target;
-pub use orchestrate::{
-    ingest_payload, ingest_sessions, ingest_sessions_prepared_with_progress,
-    ingest_sessions_with_progress, map_ingest_result,
-};
-pub use prepared_sessions::ingest_sessions_prepared_start_with_context;
+pub use orchestrate::{ingest_payload, map_ingest_result};
 pub use request::{source_from_mcp_request, validate_ingest_source};
 
 pub fn map_ingest_start_result(job_id: String) -> IngestStartResult {
@@ -101,7 +95,7 @@ fn ingest_source_request(
                 format!("r/{target}")
             }
         }
-        IngestSource::Sessions { .. } | IngestSource::PreparedSessions { .. } => {
+        IngestSource::Sessions { .. } => {
             return Err("sessions ingest must use the source session selector path".into());
         }
     };

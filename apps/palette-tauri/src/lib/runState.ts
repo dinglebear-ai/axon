@@ -66,7 +66,7 @@ export type RunState =
       minimized: boolean;
     }
   | {
-      // Live async-job view for embed/extract/ingest. Polled from the real
+      // Live async-job view for source/extract jobs. Polled from the real
       // backend the same way as crawl, but with the simpler `JobSnapshot`
       // model. `minimized` drives the compact tray vs. the full job card.
       kind: "asyncJob";
