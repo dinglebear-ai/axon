@@ -1,12 +1,13 @@
 use crate::context::ServiceContext;
 use crate::types::{ExecutionMode, IngestStartResult, JobStartOutcome, StartDisposition};
+use axon_api::source::{
+    AuthSnapshot, JobCreateRequest, JobIntent, JobKind, JobPriority, JobStagePlan, MetadataMap,
+    PipelinePhase,
+};
 use axon_core::config::Config;
-use axon_jobs::backend::{JobPayload, JobSidecarPayload};
-use axon_jobs::config_snapshot::ingest_config_json;
-use axon_jobs::ingest::types::{source_type_label, target_label};
 use std::error::Error;
 
-use super::{IngestSource, map_ingest_start_result};
+use super::map_ingest_start_result;
 
 pub async fn ingest_sessions_prepared_start_with_context(
     cfg: &Config,
@@ -16,24 +17,43 @@ pub async fn ingest_sessions_prepared_start_with_context(
     request
         .validate(cfg)
         .map_err(|err| -> Box<dyn Error> { err.into() })?;
-    let source = IngestSource::PreparedSessions {};
-    let config_json = ingest_config_json(cfg, &source)?;
-    let payload_json = serde_json::to_string(&request)?;
-    let job_id = service_context
-        .jobs
-        .enqueue_with_sidecar(
-            JobPayload::Ingest {
-                target: target_label(&source),
-                source_type: source_type_label(&source).to_string(),
-                config_json,
-            },
-            JobSidecarPayload::IngestPreparedSessions { payload_json },
-        )
+    let store = service_context
+        .job_store()
+        .ok_or("unified job store is not available for this runtime")?;
+    let descriptor = store
+        .create(JobCreateRequest {
+            request_id: None,
+            job_kind: JobKind::Source,
+            job_intent: JobIntent::Acquire,
+            source_id: None,
+            watch_id: None,
+            parent_job_id: None,
+            root_job_id: None,
+            attempt: 1,
+            priority: JobPriority::Normal,
+            idempotency_key: None,
+            stage_plan: vec![JobStagePlan {
+                phase: PipelinePhase::Parsing,
+                required: true,
+                provider_requirements: Vec::new(),
+                estimated_items: Some(request.docs.len() as u64),
+            }],
+            request: Some(serde_json::json!({ "prepared_sessions": request })),
+            auth_snapshot: AuthSnapshot::trusted_system("runtime"),
+            config_snapshot_id: None,
+            requirements: MetadataMap::new(),
+            result_schema: Some("source_result".to_string()),
+            warnings: Vec::new(),
+            error: None,
+            metadata: MetadataMap::new(),
+            deadline_at: None,
+        })
         .await
-        .map_err(|e| -> Box<dyn Error> { e })?;
+        .map_err(|error| -> Box<dyn Error> { error.message.into() })?;
+    service_context.notify_unified();
     Ok(JobStartOutcome {
         disposition: StartDisposition::Enqueued,
         execution_mode: ExecutionMode::InProcess,
-        result: map_ingest_start_result(job_id.to_string()),
+        result: map_ingest_start_result(descriptor.id.0.to_string()),
     })
 }

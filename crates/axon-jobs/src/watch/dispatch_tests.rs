@@ -41,7 +41,7 @@ async fn enqueued_change_crawl_is_claimable_by_unified_worker() {
         .unwrap();
 
     // The job must exist in the unified `jobs` table (not the legacy
-    // `axon_crawl_jobs` table) with a status a worker can claim.
+    // durable `jobs` table with a status a worker can claim.
     let store = SqliteUnifiedJobStore::new(pool.clone());
     let summary = store
         .get(JobId(job_id))

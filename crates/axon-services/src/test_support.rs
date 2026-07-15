@@ -11,7 +11,6 @@ use axon_api::source::{
 use axon_core::config::Config;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::SqliteJobBackend;
-use axon_jobs::backend::{BackendResult, JobKind as BackendJobKind, JobPayload};
 use axon_jobs::boundary::JobStore;
 use axon_jobs::status::JobStatus;
 use axon_jobs::unified::SqliteUnifiedJobStore;
@@ -22,8 +21,8 @@ use axon_vectors::store::FakeVectorStore;
 use serde_json::{Value, json};
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
-use crate::runtime::ServiceJobRuntime;
 use crate::runtime::SqliteServiceRuntime;
+use crate::runtime::{RuntimeResult, ServiceJobRuntime};
 
 #[derive(Default)]
 pub(crate) struct NoopServiceRuntime;
@@ -52,78 +51,56 @@ impl ServiceJobRuntime for NoopServiceRuntime {
         "test"
     }
 
-    async fn enqueue(&self, _payload: JobPayload) -> BackendResult<uuid::Uuid> {
-        Ok(uuid::Uuid::new_v4())
-    }
-
-    async fn wait_for_job(&self, _id: uuid::Uuid, _kind: BackendJobKind) -> BackendResult<String> {
+    async fn wait_for_job(&self, _id: uuid::Uuid, _kind: JobKind) -> RuntimeResult<String> {
         Ok("completed".to_string())
     }
 
-    async fn job_errors(
-        &self,
-        _id: uuid::Uuid,
-        _kind: BackendJobKind,
-    ) -> BackendResult<Option<String>> {
+    async fn job_errors(&self, _id: uuid::Uuid, _kind: JobKind) -> RuntimeResult<Option<String>> {
         Ok(None)
     }
 
-    async fn has_active_jobs(&self, _kind: BackendJobKind) -> BackendResult<bool> {
+    async fn has_active_jobs(&self, _kind: JobKind) -> RuntimeResult<bool> {
         Ok(false)
     }
 
     async fn list_jobs(
         &self,
-        _kind: BackendJobKind,
+        _kind: JobKind,
         _limit: i64,
         _offset: i64,
-    ) -> Result<Vec<crate::types::ServiceJob>, Box<dyn Error + Send + Sync>> {
+    ) -> RuntimeResult<Vec<crate::types::ServiceJob>> {
         Ok(Vec::new())
     }
 
     async fn job_status(
         &self,
-        _kind: BackendJobKind,
+        _kind: JobKind,
         _id: uuid::Uuid,
-    ) -> Result<Option<crate::types::ServiceJob>, Box<dyn Error + Send + Sync>> {
+    ) -> RuntimeResult<Option<crate::types::ServiceJob>> {
         Ok(None)
     }
 
-    async fn cancel_job(
-        &self,
-        _kind: BackendJobKind,
-        _id: uuid::Uuid,
-    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+    async fn cancel_job(&self, _kind: JobKind, _id: uuid::Uuid) -> RuntimeResult<bool> {
         Ok(false)
     }
 
-    async fn cleanup_jobs(
-        &self,
-        _kind: BackendJobKind,
-    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+    async fn cleanup_jobs(&self, _kind: JobKind) -> RuntimeResult<u64> {
         Ok(0)
     }
 
-    async fn clear_jobs(&self, _kind: BackendJobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+    async fn clear_jobs(&self, _kind: JobKind) -> RuntimeResult<u64> {
         Ok(0)
     }
 
-    async fn recover_jobs(
-        &self,
-        _kind: BackendJobKind,
-        _stale_threshold_ms: i64,
-    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+    async fn recover_jobs(&self, _kind: JobKind, _stale_threshold_ms: i64) -> RuntimeResult<u64> {
         Ok(0)
     }
 
-    async fn count_jobs(&self, _kind: BackendJobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+    async fn count_jobs(&self, _kind: JobKind) -> RuntimeResult<i64> {
         Ok(0)
     }
 
-    async fn count_jobs_by_status(
-        &self,
-        _kind: BackendJobKind,
-    ) -> Result<HashMap<JobStatus, i64>, Box<dyn Error + Send + Sync>> {
+    async fn count_jobs_by_status(&self, _kind: JobKind) -> RuntimeResult<HashMap<JobStatus, i64>> {
         Ok(HashMap::new())
     }
 }

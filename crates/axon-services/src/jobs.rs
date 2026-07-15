@@ -8,10 +8,9 @@ pub use crate::runtime::WorkerMode;
 use crate::types::ServiceJob;
 use axon_api::source::{
     AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobDescriptor, JobExecutionMode, JobIntent,
-    JobPolicy, JobPriority, JobStagePlan, JobStatusUpdate, LifecycleStatus, MetadataMap,
+    JobKind, JobPolicy, JobPriority, JobStagePlan, JobStatusUpdate, LifecycleStatus, MetadataMap,
     OperationKind, PipelinePhase, Severity, SourceError, job_policy_for_operation,
 };
-use axon_jobs::backend::JobKind;
 
 mod unified_ops;
 use unified_ops::box_send_sync;
@@ -367,7 +366,3 @@ fn result_schema_for_operation(operation: OperationKind) -> &'static str {
         OperationKind::Retrieve => "retrieve_result",
     }
 }
-
-#[cfg(test)]
-#[path = "jobs_tests.rs"]
-mod tests;

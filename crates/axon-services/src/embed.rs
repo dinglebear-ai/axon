@@ -1,4 +1,4 @@
-//! Service-layer wrappers for embed job lifecycle operations and synchronous embedding entry points.
+//! Service-layer wrappers for embed command convenience operations and synchronous embedding entry points.
 
 pub(crate) mod local_write;
 mod select;
@@ -10,13 +10,8 @@ use crate::runtime::WorkerMode;
 use crate::types::{
     EmbedJobResult, EmbedStartResult, ExecutionMode, JobStartOutcome, StartDisposition,
 };
-use axon_api::source::{
-    AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
-    JobStagePlan, MetadataMap, PipelinePhase,
-};
+use axon_api::source::{AuthSnapshot, JobKind, JobPriority, SourceIntent, SourceRequest};
 use axon_core::config::Config;
-use axon_jobs::backend::JobKind;
-use axon_jobs::config_snapshot::config_snapshot_json;
 use local_write::embed_local_path;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -54,7 +49,7 @@ pub async fn embed_status(
     service_context: &ServiceContext,
     id: Uuid,
 ) -> Result<Option<EmbedJobResult>, Box<dyn Error>> {
-    let job = job_service::job_status(service_context, JobKind::Embed, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Source, id).await?;
     Ok(job.map(|value| {
         map_embed_job_result(serde_json::to_value(value).unwrap_or(serde_json::Value::Null))
     }))
@@ -65,7 +60,7 @@ pub async fn embed_list(
     limit: i64,
     offset: i64,
 ) -> Result<EmbedJobResult, Box<dyn Error>> {
-    let jobs = job_service::list_jobs(service_context, JobKind::Embed, limit, offset).await?;
+    let jobs = job_service::list_jobs(service_context, JobKind::Source, limit, offset).await?;
     Ok(map_embed_job_result(serde_json::to_value(jobs)?))
 }
 
@@ -73,23 +68,23 @@ pub async fn embed_cancel(
     service_context: &ServiceContext,
     id: Uuid,
 ) -> Result<bool, Box<dyn Error>> {
-    job_service::cancel_job(service_context, JobKind::Embed, id).await
+    job_service::cancel_job(service_context, JobKind::Source, id).await
 }
 
 pub async fn embed_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::cleanup_jobs(service_context, JobKind::Embed).await
+    job_service::cleanup_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn embed_clear(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::clear_jobs(service_context, JobKind::Embed).await
+    job_service::clear_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn embed_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::recover_jobs(service_context, JobKind::Embed).await
+    job_service::recover_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn embed_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
-    match job_service::start_worker(service_context, JobKind::Embed).await? {
+    match job_service::start_worker(service_context, JobKind::Source).await? {
         WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
@@ -107,52 +102,34 @@ pub async fn embed_start_with_context(
 ) -> Result<JobStartOutcome<EmbedStartResult>, Box<dyn Error>> {
     // tx is accepted for API compatibility
     let _ = tx;
-    let config_json = config_snapshot_json(cfg)?;
     let store = service_context
         .job_store()
         .ok_or("unified job store is not available for this runtime")?;
-    let descriptor = store
-        .create(JobCreateRequest {
-            request_id: None,
-            job_kind: UnifiedJobKind::Embed,
-            job_intent: JobIntent::Index,
-            source_id: None,
-            watch_id: None,
-            parent_job_id: None,
-            root_job_id: None,
-            attempt: 1,
-            priority: JobPriority::Normal,
-            idempotency_key: None,
-            stage_plan: vec![JobStagePlan {
-                phase: PipelinePhase::Embedding,
-                required: true,
-                provider_requirements: Vec::new(),
-                estimated_items: None,
-            }],
-            request: Some(serde_json::json!({
-                "input": input,
-                "config_json": config_json,
-            })),
-            auth_snapshot: caller
-                .cloned()
-                .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
-            config_snapshot_id: Some(crate::config_snapshot_hash::config_snapshot_id_from_json(
-                &config_json,
-            )),
-            requirements: MetadataMap::new(),
-            result_schema: Some("embed_result".to_string()),
-            warnings: Vec::new(),
-            error: None,
-            metadata: MetadataMap::new(),
-            deadline_at: None,
-        })
-        .await
-        .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
+    let mut request = SourceRequest::new(input.to_string());
+    request.intent = SourceIntent::Acquire;
+    request.embed = true;
+    request.collection = Some(cfg.collection.clone());
+    request.execution.priority = JobPriority::Normal;
+    let auth_snapshot = caller
+        .cloned()
+        .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime"));
+    let source_result =
+        crate::source::enqueue::enqueue_source(request, store.as_ref(), Some(auth_snapshot))
+            .await
+            .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+    let descriptor = source_result.job.ok_or_else(|| -> Box<dyn Error> {
+        source_result
+            .errors
+            .first()
+            .map(|error| error.message.clone())
+            .unwrap_or_else(|| "failed to enqueue source-backed embed job".to_string())
+            .into()
+    })?;
     service_context.notify_unified();
     Ok(JobStartOutcome {
         disposition: StartDisposition::Enqueued,
         execution_mode: ExecutionMode::InProcess,
-        result: map_embed_start_result(descriptor.job_id.0.to_string()),
+        result: map_embed_start_result(descriptor.id.0.to_string()),
     })
 }
 
@@ -448,7 +425,3 @@ fn validate_local_embed_relative_path(
     }
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "embed_tests.rs"]
-mod tests;

@@ -76,14 +76,15 @@ Partially implemented:
   jobs. `axon scrape <url>` is retained as a one-page projection with
   `scope=page`, `embed=true`, `limits.max_pages=1`, clean content output, and
   no crawl fanout. Bare web sources with `--scope site|docs`, search/research
-  auto-index, refresh, and URL watch enqueue Source jobs rather than legacy
-  Crawl jobs or child Embed jobs.
+  auto-index, refresh, and URL watch enqueue Source jobs rather than old
+  crawl-family rows or child embedding jobs.
 - `axon crawl <url>` is reserved at CLI routing time with replacement guidance
   to use `axon <url> --scope site|docs`. The old MCP `crawl` action and REST
-  `/v1/crawl` route are removed from public surfaces. Legacy `JobKind::Crawl`
-  rows are migration-only and are dead-lettered instead of recovered/requeued.
+  `/v1/crawl` route are removed from public surfaces. The final durable-job
+  schema admits only `source` for web crawl/scrape/map work; old family job
+  storage is dropped by the terminal migration rather than bridged.
 - Refresh still facets Qdrant payloads by `source_type`/`seed_url`; web origins
-  re-enter through Source jobs, while non-web legacy snapshot handling remains
+  re-enter through Source jobs, while non-web snapshot coverage remains
   follow-up until all source families share the universal SourceLedger.
 - URL watch and code-search watch are separate systems today. URL watch is a
   SQLite URL change detector that dispatches web refreshes as Source jobs;
@@ -91,7 +92,8 @@ Partially implemented:
   local-code watch behavior remains follow-up.
 - `graphing` currently runs **after** `publishing`, not before it as the Stage
   Registry order below implies. `axon-services::source::index_source_with_auth`
-  dispatches acquire+prepare+embed+publish through the family bridge first,
+  dispatches acquire+prepare+embed+publish through the source-family
+  orchestrator first,
   then calls `graph::write_baseline_graph` (which reads the already-published
   manifest to build the source container + document nodes/edges) and only
   after that runs `prune::drain_cleanup_debt`. So the real order is

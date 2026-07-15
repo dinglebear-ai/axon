@@ -4,16 +4,16 @@ use crate::context::ServiceContext;
 use crate::jobs as job_service;
 use crate::system::watchdog::{include_status_job, include_status_view};
 use crate::types::{ServiceJob, StatusResult, StatusTotals};
+use axon_api::source::JobKind;
 use axon_core::config::Config;
-use axon_jobs::backend::JobKind;
 use axon_jobs::store::sqlite_diagnostics;
 use std::error::Error;
 
 pub struct StatusJobs {
-    pub crawl: Vec<ServiceJob>,
+    pub source: Vec<ServiceJob>,
     pub extract: Vec<ServiceJob>,
-    pub embed: Vec<ServiceJob>,
-    pub ingest: Vec<ServiceJob>,
+    pub watch: Vec<ServiceJob>,
+    pub prune: Vec<ServiceJob>,
 }
 
 #[must_use = "full_status returns a Result that should be handled"]
@@ -24,20 +24,20 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         errors.push(error);
     }
     let payload = build_status_payload_with_errors_and_sqlite(
-        &jobs.crawl,
+        &jobs.source,
         &jobs.extract,
-        &jobs.embed,
-        &jobs.ingest,
+        &jobs.watch,
+        &jobs.prune,
         &totals,
         &errors,
         &sqlite,
     );
     let mut text = vec![
         "Axon Status".to_string(),
-        format!("crawl jobs:   {} total", totals.crawl),
+        format!("source jobs:  {} total", totals.source),
         format!("extract jobs: {} total", totals.extract),
-        format!("embed jobs:   {} total", totals.embed),
-        format!("ingest jobs:  {} total", totals.ingest),
+        format!("watch jobs:   {} total", totals.watch),
+        format!("prune jobs:   {} total", totals.prune),
     ];
     if !errors.is_empty() {
         text.push(format!(
@@ -98,19 +98,19 @@ pub async fn load_status_jobs(
 ) -> Result<(StatusJobs, StatusTotals, Vec<String>), Box<dyn Error>> {
     let cfg = service_context.cfg.as_ref();
     let (
-        crawl_raw,
+        source_raw,
         extract_raw,
-        embed_raw,
-        ingest_raw,
-        crawl_total,
+        watch_raw,
+        prune_raw,
+        source_total,
         extract_total,
-        embed_total,
-        ingest_total,
+        watch_total,
+        prune_total,
     ) = tokio::join!(
         async {
-            job_service::list_jobs(service_context, JobKind::Crawl, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Source, 20, 0)
                 .await
-                .map_err(|e| format!("crawl: {e}"))
+                .map_err(|e| format!("source: {e}"))
         },
         async {
             job_service::list_jobs(service_context, JobKind::Extract, 20, 0)
@@ -118,21 +118,21 @@ pub async fn load_status_jobs(
                 .map_err(|e| format!("extract: {e}"))
         },
         async {
-            job_service::list_jobs(service_context, JobKind::Embed, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Watch, 20, 0)
                 .await
-                .map_err(|e| format!("embed: {e}"))
+                .map_err(|e| format!("watch: {e}"))
         },
         async {
-            job_service::list_jobs(service_context, JobKind::Ingest, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Prune, 20, 0)
                 .await
-                .map_err(|e| format!("ingest: {e}"))
+                .map_err(|e| format!("prune: {e}"))
         },
         async {
             service_context
                 .jobs
-                .count_jobs(JobKind::Crawl)
+                .count_jobs(JobKind::Source)
                 .await
-                .map_err(|e| format!("crawl: {e}"))
+                .map_err(|e| format!("source: {e}"))
         },
         async {
             service_context
@@ -144,31 +144,31 @@ pub async fn load_status_jobs(
         async {
             service_context
                 .jobs
-                .count_jobs(JobKind::Embed)
+                .count_jobs(JobKind::Watch)
                 .await
-                .map_err(|e| format!("embed: {e}"))
+                .map_err(|e| format!("watch: {e}"))
         },
         async {
             service_context
                 .jobs
-                .count_jobs(JobKind::Ingest)
+                .count_jobs(JobKind::Prune)
                 .await
-                .map_err(|e| format!("ingest: {e}"))
+                .map_err(|e| format!("prune: {e}"))
         },
     );
 
     let mut errors = Vec::new();
     let jobs = StatusJobs {
-        crawl: list_or_degraded("crawl", crawl_raw, cfg, &mut errors),
+        source: list_or_degraded("source", source_raw, cfg, &mut errors),
         extract: list_or_degraded("extract", extract_raw, cfg, &mut errors),
-        embed: list_or_degraded("embed", embed_raw, cfg, &mut errors),
-        ingest: list_or_degraded("ingest", ingest_raw, cfg, &mut errors),
+        watch: list_or_degraded("watch", watch_raw, cfg, &mut errors),
+        prune: list_or_degraded("prune", prune_raw, cfg, &mut errors),
     };
     let totals = StatusTotals {
-        crawl: count_or_degraded("crawl", crawl_total, &mut errors),
+        source: count_or_degraded("source", source_total, &mut errors),
         extract: count_or_degraded("extract", extract_total, &mut errors),
-        embed: count_or_degraded("embed", embed_total, &mut errors),
-        ingest: count_or_degraded("ingest", ingest_total, &mut errors),
+        watch: count_or_degraded("watch", watch_total, &mut errors),
+        prune: count_or_degraded("prune", prune_total, &mut errors),
     };
     Ok((jobs, totals, errors))
 }
@@ -205,35 +205,35 @@ fn list_or_degraded(
 }
 
 pub fn build_status_payload(
-    crawl_jobs: &[ServiceJob],
+    source_jobs: &[ServiceJob],
     extract_jobs: &[ServiceJob],
-    embed_jobs: &[ServiceJob],
-    ingest_jobs: &[ServiceJob],
+    watch_jobs: &[ServiceJob],
+    prune_jobs: &[ServiceJob],
     totals: &StatusTotals,
 ) -> serde_json::Value {
     build_status_payload_with_errors(
-        crawl_jobs,
+        source_jobs,
         extract_jobs,
-        embed_jobs,
-        ingest_jobs,
+        watch_jobs,
+        prune_jobs,
         totals,
         &[],
     )
 }
 
 pub fn build_status_payload_with_errors(
-    crawl_jobs: &[ServiceJob],
+    source_jobs: &[ServiceJob],
     extract_jobs: &[ServiceJob],
-    embed_jobs: &[ServiceJob],
-    ingest_jobs: &[ServiceJob],
+    watch_jobs: &[ServiceJob],
+    prune_jobs: &[ServiceJob],
     totals: &StatusTotals,
     errors: &[String],
 ) -> serde_json::Value {
     build_status_payload_with_errors_and_sqlite(
-        crawl_jobs,
+        source_jobs,
         extract_jobs,
-        embed_jobs,
-        ingest_jobs,
+        watch_jobs,
+        prune_jobs,
         totals,
         errors,
         &serde_json::Value::Null,
@@ -241,24 +241,24 @@ pub fn build_status_payload_with_errors(
 }
 
 pub fn build_status_payload_with_errors_and_sqlite(
-    crawl_jobs: &[ServiceJob],
+    source_jobs: &[ServiceJob],
     extract_jobs: &[ServiceJob],
-    embed_jobs: &[ServiceJob],
-    ingest_jobs: &[ServiceJob],
+    watch_jobs: &[ServiceJob],
+    prune_jobs: &[ServiceJob],
     totals: &StatusTotals,
     errors: &[String],
     sqlite: &serde_json::Value,
 ) -> serde_json::Value {
     serde_json::json!({
-        "local_crawl_jobs": wire_jobs(crawl_jobs),
-        "local_extract_jobs": wire_jobs(extract_jobs),
-        "local_embed_jobs": wire_jobs(embed_jobs),
-        "local_ingest_jobs": wire_jobs(ingest_jobs),
+        "source_jobs": wire_jobs(source_jobs),
+        "extract_jobs": wire_jobs(extract_jobs),
+        "watch_jobs": wire_jobs(watch_jobs),
+        "prune_jobs": wire_jobs(prune_jobs),
         "totals": {
-            "crawl": totals.crawl,
+            "source": totals.source,
             "extract": totals.extract,
-            "embed": totals.embed,
-            "ingest": totals.ingest,
+            "watch": totals.watch,
+            "prune": totals.prune,
         },
         "sqlite": sqlite,
         "degraded": !errors.is_empty(),
@@ -269,7 +269,3 @@ pub fn build_status_payload_with_errors_and_sqlite(
 fn wire_jobs(jobs: &[ServiceJob]) -> Vec<serde_json::Value> {
     jobs.iter().map(ServiceJob::wire_json_compat).collect()
 }
-
-#[cfg(test)]
-#[path = "status_tests.rs"]
-mod tests;

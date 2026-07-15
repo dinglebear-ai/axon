@@ -119,20 +119,11 @@ pub use youtube_source::{
 };
 pub mod youtube_target;
 
-#[cfg(test)]
-#[path = "legacy_crawl_unreachable_tests.rs"]
-mod legacy_crawl_unreachable_tests;
 pub use youtube_target::is_youtube_target;
 
 #[cfg(test)]
 #[path = "client_contract_tests.rs"]
 mod client_contract_tests;
-#[cfg(test)]
-#[path = "freshness_tests.rs"]
-mod freshness_tests;
-#[cfg(test)]
-#[path = "source_auto_index_cutover_tests.rs"]
-mod source_auto_index_cutover_tests;
 #[cfg(test)]
 #[path = "source_observability_tests.rs"]
 mod source_observability_tests;

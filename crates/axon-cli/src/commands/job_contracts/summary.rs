@@ -38,22 +38,6 @@ pub struct JobSummaryEntry {
 }
 
 impl JobSummaryEntry {
-    pub fn from_crawl(job: &axon_jobs::crawl::CrawlJob) -> Self {
-        super::record::SharedJobRecord::crawl(job).into()
-    }
-
-    pub fn from_extract(job: &axon_jobs::extract::ExtractJob) -> Self {
-        super::record::SharedJobRecord::extract(job).into()
-    }
-
-    pub fn from_ingest(job: &axon_jobs::ingest::IngestJob) -> Self {
-        super::record::SharedJobRecord::ingest(job).into()
-    }
-
-    pub fn from_embed(job: &axon_jobs::embed::EmbedJob) -> Self {
-        super::record::SharedJobRecord::embed(job).into()
-    }
-
     pub fn from_service_job(job: &axon_services::types::ServiceJob) -> Self {
         super::record::SharedJobRecord::service(job).into()
     }

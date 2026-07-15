@@ -1,4 +1,4 @@
-use axon_jobs::backend::JobKind;
+use axon_api::source::JobKind;
 use rmcp::ErrorData;
 use uuid::Uuid;
 
@@ -32,19 +32,37 @@ pub(super) fn parse_task_id(task_id: &str) -> Result<(JobKind, Uuid), ErrorData>
 
 pub(super) fn kind_name(kind: JobKind) -> &'static str {
     match kind {
-        JobKind::Crawl => "crawl",
-        JobKind::Embed => "embed",
+        JobKind::Source => "source",
+        JobKind::Watch => "watch",
+        JobKind::Map => "map",
         JobKind::Extract => "extract",
-        JobKind::Ingest => "ingest",
+        JobKind::Research => "research",
+        JobKind::Ask => "ask",
+        JobKind::Query => "query",
+        JobKind::Retrieve => "retrieve",
+        JobKind::Memory => "memory",
+        JobKind::Graph => "graph",
+        JobKind::Prune => "prune",
+        JobKind::ProviderProbe => "provider_probe",
+        JobKind::Reset => "reset",
     }
 }
 
 fn parse_kind(kind: &str) -> Result<JobKind, ErrorData> {
     match kind {
-        "crawl" => Ok(JobKind::Crawl),
-        "embed" => Ok(JobKind::Embed),
+        "source" => Ok(JobKind::Source),
+        "watch" => Ok(JobKind::Watch),
+        "map" => Ok(JobKind::Map),
         "extract" => Ok(JobKind::Extract),
-        "ingest" => Ok(JobKind::Ingest),
+        "research" => Ok(JobKind::Research),
+        "ask" => Ok(JobKind::Ask),
+        "query" => Ok(JobKind::Query),
+        "retrieve" => Ok(JobKind::Retrieve),
+        "memory" => Ok(JobKind::Memory),
+        "graph" => Ok(JobKind::Graph),
+        "prune" => Ok(JobKind::Prune),
+        "provider_probe" => Ok(JobKind::ProviderProbe),
+        "reset" => Ok(JobKind::Reset),
         _ => Err(invalid_task_id("unknown task kind")),
     }
 }

@@ -7,9 +7,11 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::types::ServiceJob;
-use axon_jobs::backend::{BackendResult, JobKind, JobPayload, JobSidecarPayload};
+use axon_api::source::JobKind;
 use axon_jobs::boundary::JobStore;
 use axon_jobs::status::JobStatus;
+
+pub type RuntimeResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkerMode {
@@ -66,20 +68,10 @@ pub trait ServiceJobRuntime: Send + Sync {
     /// callers treat a missed wakeup as a (slower, still-correct) poll fallback.
     fn notify_unified(&self) {}
 
-    async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid>;
-    async fn enqueue_with_sidecar(
-        &self,
-        payload: JobPayload,
-        sidecar: JobSidecarPayload,
-    ) -> BackendResult<Uuid> {
-        let _ = payload;
-        let _ = sidecar;
-        Err("sidecar enqueue is not supported by this runtime".into())
-    }
-    async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> BackendResult<String>;
-    async fn job_errors(&self, id: Uuid, kind: JobKind) -> BackendResult<Option<String>>;
-    async fn has_active_jobs(&self, kind: JobKind) -> BackendResult<bool>;
-    async fn notify_worker(&self, kind: JobKind) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> RuntimeResult<String>;
+    async fn job_errors(&self, id: Uuid, kind: JobKind) -> RuntimeResult<Option<String>>;
+    async fn has_active_jobs(&self, kind: JobKind) -> RuntimeResult<bool>;
+    async fn notify_worker(&self, kind: JobKind) -> RuntimeResult<()> {
         let _ = kind;
         Err("worker notifications are not supported by this runtime".into())
     }
@@ -89,55 +81,37 @@ pub trait ServiceJobRuntime: Send + Sync {
         kind: JobKind,
         limit: i64,
         offset: i64,
-    ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>>;
+    ) -> RuntimeResult<Vec<ServiceJob>>;
     async fn list_ingest_jobs(
         &self,
         source_filter: Option<&str>,
         limit: i64,
         offset: i64,
-    ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
+    ) -> RuntimeResult<Vec<ServiceJob>> {
         if source_filter.is_some() {
             return Err(
                 "filtered ingest pagination is not supported by this runtime implementation".into(),
             );
         }
-        self.list_jobs(JobKind::Ingest, limit, offset).await
+        self.list_jobs(JobKind::Source, limit, offset).await
     }
-    async fn job_status(
-        &self,
-        kind: JobKind,
-        id: Uuid,
-    ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>>;
-    async fn cancel_job(
-        &self,
-        kind: JobKind,
-        id: Uuid,
-    ) -> Result<bool, Box<dyn Error + Send + Sync>>;
-    async fn cleanup_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>>;
-    async fn clear_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>>;
-    async fn recover_jobs(
-        &self,
-        kind: JobKind,
-        stale_threshold_ms: i64,
-    ) -> Result<u64, Box<dyn Error + Send + Sync>>;
-    async fn drain_jobs(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+    async fn job_status(&self, kind: JobKind, id: Uuid) -> RuntimeResult<Option<ServiceJob>>;
+    async fn cancel_job(&self, kind: JobKind, id: Uuid) -> RuntimeResult<bool>;
+    async fn cleanup_jobs(&self, kind: JobKind) -> RuntimeResult<u64>;
+    async fn clear_jobs(&self, kind: JobKind) -> RuntimeResult<u64>;
+    async fn recover_jobs(&self, kind: JobKind, stale_threshold_ms: i64) -> RuntimeResult<u64>;
+    async fn drain_jobs(&self, kind: JobKind) -> RuntimeResult<WorkerMode> {
         let _ = kind;
         Ok(WorkerMode::Unsupported(
             "queue draining is not supported by this runtime",
         ))
     }
 
-    async fn start_worker(
-        &self,
-        kind: JobKind,
-    ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+    async fn start_worker(&self, kind: JobKind) -> RuntimeResult<WorkerMode> {
         self.notify_worker(kind).await?;
         self.drain_jobs(kind).await
     }
 
-    async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>>;
-    async fn count_jobs_by_status(
-        &self,
-        kind: JobKind,
-    ) -> Result<HashMap<JobStatus, i64>, Box<dyn Error + Send + Sync>>;
+    async fn count_jobs(&self, kind: JobKind) -> RuntimeResult<i64>;
+    async fn count_jobs_by_status(&self, kind: JobKind) -> RuntimeResult<HashMap<JobStatus, i64>>;
 }

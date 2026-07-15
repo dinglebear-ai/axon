@@ -8,10 +8,9 @@ use crate::embed::embed_start_with_context;
 use crate::ingest::ingest_start_with_context;
 use crate::scrape::scrape_batch_with_optional_embed;
 use axon_api::ingest::target_label;
+use axon_api::source::JobKind;
 use axon_core::config::Config;
 use axon_core::redact::redact_secrets;
-use axon_jobs::backend::JobKind;
-use axon_jobs::config_snapshot::{config_snapshot_json, ingest_config_json};
 use axon_jobs::freshness::{
     FRESHNESS_RUN_STATUS_COMPLETED, FRESHNESS_RUN_STATUS_ENQUEUED, FRESHNESS_RUN_STATUS_FAILED,
     FRESHNESS_RUN_STATUS_SKIPPED_ACTIVE_JOB, FreshnessDef, FreshnessRun,
@@ -224,11 +223,10 @@ pub(crate) async fn dispatch_freshness(
         }
         FreshnessRequestPayload::V1(FreshnessRequestV1::Crawl { urls }) => {
             let effective = crate::crawl::apply_crawl_defaults(&cfg);
-            let expected_config_json = config_snapshot_json(&effective)?;
-            if has_active_equivalent_crawl(service_context, &urls, &expected_config_json).await? {
+            if has_active_equivalent_crawl(service_context, &urls).await? {
                 return Ok(skipped_active_job(def));
             }
-            let outcome = crawl_start_for_freshness(&cfg, &urls, service_context).await?;
+            let outcome = crawl_start_for_freshness(&effective, &urls, service_context).await?;
             Ok(FreshnessDispatchOutcome {
                 status: FRESHNESS_RUN_STATUS_ENQUEUED.to_string(),
                 dispatched_job_id: first_uuid(outcome.get("job_ids")),
@@ -236,15 +234,7 @@ pub(crate) async fn dispatch_freshness(
             })
         }
         FreshnessRequestPayload::V1(FreshnessRequestV1::Embed { input }) => {
-            let expected_config_json = config_snapshot_json(&cfg)?;
-            if has_active_equivalent_single(
-                service_context,
-                JobKind::Embed,
-                &input,
-                &expected_config_json,
-            )
-            .await?
-            {
+            if has_active_equivalent_single(service_context, &input).await? {
                 return Ok(skipped_active_job(def));
             }
             // The freshness scheduler is a system-triggered background loop —
@@ -261,15 +251,7 @@ pub(crate) async fn dispatch_freshness(
         }
         FreshnessRequestPayload::V1(FreshnessRequestV1::Ingest { source }) => {
             let target = target_label(&source);
-            let expected_config_json = ingest_config_json(&cfg, &source)?;
-            if has_active_equivalent_single(
-                service_context,
-                JobKind::Ingest,
-                &target,
-                &expected_config_json,
-            )
-            .await?
-            {
+            if has_active_equivalent_single(service_context, &target).await? {
                 return Ok(skipped_active_job(def));
             }
             // The freshness scheduler is a system-triggered background loop —
@@ -302,44 +284,30 @@ async fn crawl_start_for_freshness(
 
 async fn has_active_equivalent_single(
     service_context: &ServiceContext,
-    kind: JobKind,
     target: &str,
-    expected_config_json: &str,
 ) -> Result<bool, FreshnessError> {
-    let jobs = service_context.jobs.list_jobs(kind, 1000, 0).await?;
+    let jobs = service_context
+        .jobs
+        .list_jobs(JobKind::Source, 1000, 0)
+        .await?;
     Ok(jobs.iter().any(|job| {
         is_active_status(&job.status)
             && (job.target.as_deref() == Some(target) || job.url.as_deref() == Some(target))
-            && job_config_matches(job.config_json.as_ref(), expected_config_json)
     }))
 }
 
 async fn has_active_equivalent_crawl(
     service_context: &ServiceContext,
     urls: &[String],
-    expected_config_json: &str,
 ) -> Result<bool, FreshnessError> {
     let jobs = service_context
         .jobs
-        .list_jobs(JobKind::Crawl, 1000, 0)
+        .list_jobs(JobKind::Source, 1000, 0)
         .await?;
     Ok(urls.iter().all(|url| {
-        jobs.iter().any(|job| {
-            is_active_status(&job.status)
-                && job.url.as_deref() == Some(url.as_str())
-                && job_config_matches(job.config_json.as_ref(), expected_config_json)
-        })
+        jobs.iter()
+            .any(|job| is_active_status(&job.status) && job.url.as_deref() == Some(url.as_str()))
     }))
-}
-
-fn job_config_matches(config_json: Option<&Value>, expected_config_json: &str) -> bool {
-    let Some(config_json) = config_json else {
-        return true;
-    };
-    let Ok(expected) = serde_json::from_str::<Value>(expected_config_json) else {
-        return false;
-    };
-    *config_json == expected
 }
 
 fn is_active_status(status: &str) -> bool {
@@ -364,9 +332,4 @@ fn first_uuid(value: Option<&Value>) -> Option<Uuid> {
         .and_then(|items| items.first())
         .and_then(Value::as_str)
         .and_then(|raw| Uuid::parse_str(raw).ok())
-}
-
-#[cfg(test)]
-pub(crate) fn lease_limit_for_available_capacity(max_due: i64, available_permits: usize) -> i64 {
-    available_permits.min(max_due.clamp(1, 100) as usize) as i64
 }

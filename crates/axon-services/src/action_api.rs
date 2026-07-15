@@ -247,7 +247,3 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Graph(_) => "graph",
     }
 }
-
-#[cfg(test)]
-#[path = "action_api_tests.rs"]
-mod tests;

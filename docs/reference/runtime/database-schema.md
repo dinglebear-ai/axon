@@ -15,11 +15,11 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-graph/src/migrations` | `sha256:0386be31730c916c31e940f4257a03380562634f67f634a96df4e71c2d5edc3b` |
-| `crates/axon-jobs/src/migrations` | `sha256:63877d59acbd8e4682be0903d09bd2fe3001d6c18c95e44d00afffa82e10c1d6` |
+| `crates/axon-jobs/src/migrations` | `sha256:cc646123e0f4078b8018b7d4a597a7be6a27a1045bf67dde23ebaffb872e76e5` |
 | `crates/axon-ledger/src/migrations` | `sha256:5c0c9f475a14a4a0af3eacbe6f3cf029612170b3ab5b91c5c1b1c5fe88d0b285` |
 | `crates/axon-memory/src/migrations` | `sha256:1d08bb6ab6696a4c7e574a3915cd003c270ec427b12ab2e68592aaf686c7958a` |
 | `docs/pipeline-unification/schemas/database-schema.md` | `sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571` |
-| `xtask/src/schemas/database_defs.rs` | `sha256:cbd4c77c0e062a56b476afc0b007c02d333c68f598d409101dbaf44610912386` |
+| `xtask/src/schemas/database_defs.rs` | `sha256:2e5498edd8d2f4638346fd7ea77c5e5063b0abf5be0021dc4e755f8cf93fd9e1` |
 | `xtask/src/schemas/database_defs/parser.rs` | `sha256:4ffeb151312c88f1b1d316f58d57450bed1224a374689d6fae02761de788ec4c` |
 
 ## Root Shape
@@ -60,7 +60,7 @@ Run `cargo xtask schemas generate --check`.
 
 ## Parsed Migration Summary
 
-42 tables, 87 indexes, 30 migration files parsed from `crates/axon-jobs/src/migrations`, `crates/axon-ledger/src/migrations`, `crates/axon-graph/src/migrations`, and `crates/axon-memory/src/migrations`. See `tables`/`indexes`/`foreign_keys`/`migrations`/`divergences` in the generated JSON artifact for full detail.
+36 tables, 77 indexes, 31 migration files parsed from `crates/axon-jobs/src/migrations`, `crates/axon-ledger/src/migrations`, `crates/axon-graph/src/migrations`, and `crates/axon-memory/src/migrations`. See `tables`/`indexes`/`foreign_keys`/`migrations`/`divergences` in the generated JSON artifact for full detail.
 
 ## Unified Job Tables
 

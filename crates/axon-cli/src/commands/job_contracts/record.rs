@@ -1,10 +1,6 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use axon_jobs::crawl::CrawlJob;
-use axon_jobs::embed::EmbedJob;
-use axon_jobs::extract::ExtractJob;
-use axon_jobs::ingest::IngestJob;
 use axon_jobs::status::JobStatus;
 use axon_services::types::ServiceJob;
 
@@ -36,82 +32,6 @@ pub(super) fn payload_string(payload: Option<&serde_json::Value>, key: &str) -> 
 }
 
 impl SharedJobRecord {
-    pub(super) fn crawl(job: &CrawlJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text.clone(),
-            url: Some(job.url.clone()),
-            source_type: None,
-            target: None,
-            urls: None,
-            progress_json: None,
-            result_json: job.result_json.clone(),
-            config_json: None,
-        }
-    }
-
-    pub(super) fn extract(job: &ExtractJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: None,
-            target: None,
-            urls: Some(job.urls_json.clone()),
-            progress_json: None,
-            result_json: job.result_json.clone(),
-            config_json: None,
-        }
-    }
-
-    pub(super) fn ingest(job: &IngestJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: Some(job.source_type.clone()),
-            target: Some(job.target.clone()),
-            urls: None,
-            progress_json: None,
-            result_json: job.result_json.clone(),
-            config_json: Some(job.config_json.clone()),
-        }
-    }
-
-    pub(super) fn embed(job: &EmbedJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: None,
-            target: Some(job.input_text.clone()),
-            urls: None,
-            progress_json: None,
-            result_json: job.result_json.clone(),
-            config_json: Some(job.config_json.clone()),
-        }
-    }
-
     pub(super) fn service(job: &ServiceJob) -> Self {
         Self {
             id: job.id,

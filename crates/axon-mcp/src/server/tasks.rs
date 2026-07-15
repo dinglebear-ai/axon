@@ -5,8 +5,8 @@ use super::task_id::{parse_task_id, task_id_for};
 use super::task_progress;
 use super::task_status::{task_from_job, task_result_payload};
 use crate::schema::{AxonRequest, ExtractSubaction, parse_axon_request};
+use axon_api::source::JobKind;
 use axon_core::config::{ConfigOverrides, parse::tuning};
-use axon_jobs::backend::JobKind;
 use axon_services::extract as extract_svc;
 use axon_services::types::ServiceJob;
 use rmcp::model::{

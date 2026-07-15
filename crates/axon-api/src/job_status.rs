@@ -2,8 +2,7 @@ use std::fmt;
 
 use tracing;
 
-/// Type-safe representation of the job status column values used across all
-/// `axon_*_jobs` tables.
+/// Type-safe representation of the canonical durable job status values.
 ///
 /// Using this enum instead of raw string literals eliminates entire classes of
 /// bugs: a typo in `"completd"` compiles fine but matches zero rows in
@@ -14,7 +13,7 @@ use tracing;
 /// ```rust,ignore
 /// # use axon_api::job_status::JobStatus;
 /// # async fn example(pool: &sqlx::PgPool, id: uuid::Uuid) -> Result<(), sqlx::Error> {
-/// sqlx::query("UPDATE axon_embed_jobs SET status=$1 WHERE id=$2")
+/// sqlx::query("UPDATE jobs SET status = $1 WHERE job_id = $2")
 ///     .bind(JobStatus::Completed.as_str())
 ///     .bind(id)
 ///     .execute(pool)
@@ -35,8 +34,8 @@ pub enum JobStatus {
 impl JobStatus {
     /// Returns the canonical string value stored in the database `status` column.
     ///
-    /// All `axon_*_jobs` tables enforce a CHECK constraint that restricts the
-    /// `status` column to exactly these five values. Changing a value here
+    /// The durable `jobs` table enforces a CHECK constraint that restricts
+    /// the `status` column to exactly these five values. Changing a value here
     /// will break the CHECK constraint at runtime.
     pub fn as_str(&self) -> &str {
         match self {

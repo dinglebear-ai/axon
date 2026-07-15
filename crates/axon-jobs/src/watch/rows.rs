@@ -1,6 +1,9 @@
 use super::{WatchDef, WatchDefCreate, WatchRun, WatchRunArtifact};
-use crate::query::ms_to_dt;
 use uuid::Uuid;
+
+fn ms_to_dt(ms: i64) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms).unwrap_or_else(chrono::Utc::now)
+}
 
 pub(super) type WatchDefRow = (
     String,

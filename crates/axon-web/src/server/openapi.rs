@@ -19,7 +19,7 @@ use super::{handlers, openapi_jobs, routing};
     info(
         title = "Axon REST API",
         version = env!("CARGO_PKG_VERSION"),
-        description = "Dedicated REST routes for Axon discovery, RAG, crawl, ingest, and watch workflows."
+        description = "Dedicated REST routes for Axon discovery, source indexing, RAG, memory, and watch workflows."
     ),
     paths(
         super::super::health::healthz,

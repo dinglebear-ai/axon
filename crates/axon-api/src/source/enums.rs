@@ -174,15 +174,6 @@ pub enum JobKind {
     Prune,
     ProviderProbe,
     Reset,
-    /// Job-cutover addition (2026-07-08): unified `embed`/`crawl`/`ingest`
-    /// enqueue paths in `axon-services`. Requires the `jobs.kind` CHECK
-    /// widened by `axon-jobs` migration `0021_job_kind_family_cutover.sql`.
-    Embed,
-    /// Legacy migration-only row kind. Normal web acquisition must not create
-    /// this kind after the `SourceRequest` cutover; site/docs/page web work is
-    /// represented as `JobKind::Source`.
-    Crawl,
-    Ingest,
 }
 
 impl JobKind {
@@ -201,18 +192,12 @@ impl JobKind {
             Self::Prune,
             Self::ProviderProbe,
             Self::Reset,
-            Self::Embed,
-            Self::Crawl,
-            Self::Ingest,
         ]
     }
 
-    /// Public Source-pipeline job kinds advertised in REST/MCP/generated
-    /// schemas. `Embed`, `Crawl`, and `Ingest` remain deserializable for old
-    /// rows and migration readers, but new public indexing flows use Source
-    /// jobs instead.
+    /// Public Source-pipeline job kinds advertised in REST/MCP/generated schemas.
     pub const fn is_public_source_surface(self) -> bool {
-        !matches!(self, Self::Crawl | Self::Embed | Self::Ingest)
+        true
     }
 }
 
@@ -232,9 +217,7 @@ pub enum JobIntent {
     Cleanup,
     Probe,
     Reset,
-    /// Initial index/acquire submission for a legacy per-family job
-    /// (crawl/embed/ingest) that predates the unified `source` pipeline's
-    /// `Acquire` intent.
+    /// Initial source indexing submission.
     Index,
     /// Discover items without embedding (`JobKind::Map`).
     Map,
