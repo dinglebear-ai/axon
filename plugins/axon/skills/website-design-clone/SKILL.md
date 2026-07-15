@@ -92,7 +92,7 @@ Create or return a `DESIGN.md` with this structure. Embed the full-page screensh
 - Evidence: [scrape/screenshot/html/links used]
 
 ## Reference Screenshot
-![Full-page screenshot of [Source Site]]([path returned by axon screenshot --json])
+Screenshot: path returned by `axon screenshot --json`
 
 Use this screenshot as the visual source of truth for layout, hierarchy, density, and feel. Tokens below describe the same page in machine-readable form.
 

@@ -108,15 +108,12 @@ The implementation and operations reference for the ingest pipeline and supporte
 
 ### Cross-Linking Rule
 
-Only actions with real ingest deep-dives link to `docs/guides/ingest/`:
-```markdown
-> For implementation details and troubleshooting see [`docs/guides/ingest/<name>.md`](../ingest/<name>.md).
-```
+Only actions with real ingest deep-dives link to `docs/guides/ingest/`. Use a
+real file path when one exists; do not leave placeholder markdown links in
+checked-in docs.
 
-Every `ingest/` file opens with a back-link to its `actions/` counterpart:
-```markdown
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/<name>.md`](../actions/<name>.md)
-```
+Every `ingest/` file opens with a back-link to its real `actions/`
+counterpart.
 
 Do not create tiny action stubs in `docs/guides/ingest/` for actions such as `ask`, `doctor`, `domains`, `embed`, `evaluate`, `query`, `retrieve`, `setup`, `sources`, `stats`, or `suggest`. Keep their operational notes in `docs/reference/actions/<name>.md` unless they grow into a true deep-dive.
 

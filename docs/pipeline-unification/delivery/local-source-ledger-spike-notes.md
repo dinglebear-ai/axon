@@ -2,7 +2,7 @@
 
 Issue: [#298](https://github.com/jmagar/axon/issues/298)
 
-Plan: [2026-07-01-local-source-ledger-spike.md](../plans/2026-07-01-local-source-ledger-spike.md)
+Plan: local source ledger spike plan from the #298 implementation packet.
 
 ## Purpose
 

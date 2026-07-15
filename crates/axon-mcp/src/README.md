@@ -57,6 +57,6 @@ When changing tool behavior, update in the same commit:
 4. `docs/reference/mcp/tool-schema.md`
 
 ## Related Docs
-- [Repository README](../../README.md)
-- [Architecture](../../docs/architecture/overview.md)
-- [MCP Runtime Guide](../../docs/reference/mcp/overview.md)
+- [Repository README](../../../README.md)
+- [Architecture](../../../docs/architecture/overview.md)
+- [MCP Runtime Guide](../../../docs/reference/mcp/overview.md)

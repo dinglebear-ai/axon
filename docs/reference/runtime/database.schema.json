@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axon.local/schemas/runtime/database.schema.json",
+  "title": "Axon Runtime Database Schema",
+  "type": "object",
+  "description": "Placeholder final-tree schema entry. The authoritative runtime schema is generated from SQLite migrations.",
+  "properties": {
+    "schema_version": {
+      "type": "integer"
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

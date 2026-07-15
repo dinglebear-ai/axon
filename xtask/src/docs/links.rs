@@ -15,6 +15,7 @@ use crate::checks::doc_links::extract_relative_link_targets;
 /// Directory names skipped entirely while walking for markdown files.
 const SKIP_DIRS: &[&str] = &[
     ".git",
+    ".claude",
     ".worktrees",
     "target",
     "node_modules",
@@ -23,6 +24,13 @@ const SKIP_DIRS: &[&str] = &[
     ".venv",
     "vendor",
     ".cache",
+    // Dated/history docs are intentionally not freshness-checked. They contain
+    // old absolute evidence paths and archived implementation notes.
+    "archive",
+    "plans",
+    "reports",
+    "sessions",
+    "superpowers",
 ];
 
 pub fn check_repo_wide(root: &Path) -> Result<()> {

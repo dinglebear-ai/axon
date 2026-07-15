@@ -13,7 +13,7 @@ Reference documentation for the technology choices, architecture, and prerequisi
 
 ## Cross-references
 
-- [../repo/REPO.md](../../contributing/repo/repo.md) -- repository structure
-- [../repo/RECIPES.md](../../contributing/repo/recipes.md) -- Justfile recipes
+- [../repo/REPO.md](../../development/repo/repo.md) -- repository structure
+- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes
 - [../CONFIG.md](../../guides/configuration.md) -- configuration reference
 - [../mcp/DEPLOY.md](../../reference/mcp/deploy.md) -- deployment patterns

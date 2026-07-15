@@ -129,4 +129,4 @@ LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fa
 
 - [ARCH.md](arch.md) -- architecture patterns
 - [PRE-REQS.md](pre-reqs.md) -- prerequisites
-- [../repo/RECIPES.md](../../contributing/repo/recipes.md) -- Justfile recipes
+- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes

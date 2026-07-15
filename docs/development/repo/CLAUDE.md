@@ -17,6 +17,6 @@ Reference documentation for the repository structure, conventions, and tooling.
 
 - [../SETUP.md](../../guides/getting-started.md) -- step-by-step setup guide
 - [../CONFIG.md](../../guides/configuration.md) -- environment variable reference
-- [../GUARDRAILS.md](../guardrails.md) -- security guardrails
+- [Security](../../operations/security.md) -- security guardrails
 - [../stack/TECH.md](../../architecture/stack/tech.md) -- technology stack
 - [../stack/ARCH.md](../../architecture/stack/arch.md) -- architecture overview

@@ -28,6 +28,6 @@ The architectural control flow for Axon runtime commands and services is unchang
 
 ## Recommended reading order
 
-1. [source-map.md](source-map.md) for direct changed-file drill-down.
-2. [workflows.md](workflows.md) for CI and automation behavior.
-3. [testing.md](testing.md) for validation commands.
+1. [source-map.md](../source-map.md) for direct changed-file drill-down.
+2. [workflows.md](../workflows.md) for CI and automation behavior.
+3. [testing.md](../testing.md) for validation commands.
