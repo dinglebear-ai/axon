@@ -19,7 +19,7 @@ pub async fn index_sessions_source_with_job(
     embedding_provider: &dyn EmbeddingProvider,
     vector_store: &dyn VectorStore,
 ) -> anyhow::Result<SessionsSourceIndexOutput> {
-    let source_id = sessions_source_id(&input.provider, &input.session_id);
+    let source_id = sessions_source_id(&input.provider, &input.session_id, &input.sessions_root);
     let descriptor = jobs
         .create(job_create_request(&input, source_id.clone()))
         .await?;

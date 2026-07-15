@@ -251,8 +251,8 @@ async fn handle_watch_create(
         enabled: Some(true),
     };
     let created = match pool {
-        Some(pool) => watch_svc::create_source_watch(cfg, Some(pool), request).await?,
-        None => watch_svc::create_source_watch(cfg, None, request).await?,
+        Some(pool) => watch_svc::create_source_watch(cfg, Some(pool), request, None).await?,
+        None => watch_svc::create_source_watch(cfg, None, request, None).await?,
     };
     if cfg.json_output {
         println!(
@@ -280,23 +280,54 @@ fn watch_create_source(
     name_or_source: &str,
     task_payload: &serde_json::Value,
 ) -> Result<String, Box<dyn Error>> {
-    if let Some(source) = first_watch_url(task_payload) {
-        return Ok(source);
+    if let Some(object) = task_payload.as_object() {
+        if object.is_empty() {
+            return source_from_name(name_or_source);
+        }
+
+        let unsupported = object
+            .keys()
+            .filter(|key| key.as_str() != "urls")
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unsupported.is_empty() {
+            return Err(format!(
+                "watch create: --task-payload fields are not supported by source watches: {}; pass source options through the canonical source/watch API instead",
+                unsupported.join(", ")
+            )
+            .into());
+        }
+
+        let urls = object
+            .get("urls")
+            .and_then(|value| value.as_array())
+            .ok_or("watch create: --task-payload must contain urls as an array")?;
+        if urls.len() != 1 {
+            return Err(
+                "watch create: source watches accept exactly one URL/source per watch".into(),
+            );
+        }
+        let source = urls[0]
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or("watch create: urls[0] must be a non-empty string")?;
+        return Ok(source.to_string());
     }
+
+    if !task_payload.is_null() {
+        return Err("watch create: --task-payload must be a JSON object".into());
+    }
+
+    source_from_name(name_or_source)
+}
+
+fn source_from_name(name_or_source: &str) -> Result<String, Box<dyn Error>> {
     let source = name_or_source.trim();
     if source.is_empty() {
         return Err("watch create requires a source".into());
     }
     Ok(source.to_string())
-}
-
-fn first_watch_url(task_payload: &serde_json::Value) -> Option<String> {
-    task_payload
-        .get("urls")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
 }
 
 async fn handle_watch_exec(
@@ -314,6 +345,7 @@ async fn handle_watch_exec(
             refresh: None,
             wait: None,
         },
+        None,
     )
     .await?;
     if cfg.json_output {

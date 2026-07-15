@@ -54,7 +54,7 @@ impl WatchServiceImpl {
 impl WatchService for WatchServiceImpl {
     async fn create(&self, request: WatchRequest) -> anyhow::Result<WatchResult> {
         let pool = self.ctx.jobs.sqlite_pool();
-        watch::create_source_watch(&self.ctx.cfg, pool.as_deref(), request)
+        watch::create_source_watch(&self.ctx.cfg, pool.as_deref(), request, None)
             .await
             .map_err(|err| anyhow::anyhow!("{err}"))
     }
@@ -100,7 +100,7 @@ impl WatchService for WatchServiceImpl {
         request: WatchExecRequest,
     ) -> anyhow::Result<JobDescriptor> {
         let pool = self.ctx.jobs.sqlite_pool();
-        watch::exec_source_watch(&self.ctx, pool.as_deref(), watch_id, request)
+        watch::exec_source_watch(&self.ctx, pool.as_deref(), watch_id, request, None)
             .await
             .map_err(|err| anyhow::anyhow!("{err}"))
     }

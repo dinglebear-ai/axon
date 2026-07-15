@@ -368,9 +368,9 @@ class AxonRepository(
         client.listWatches().map { watches ->
             watches.map {
                 WatchUi(
-                    id = it.id,
-                    name = it.name,
-                    taskType = it.taskType,
+                    id = it.displayId,
+                    name = it.displayName,
+                    taskType = it.displayTaskType,
                     enabled = it.enabled,
                     everySeconds = it.everySeconds,
                     nextRunAt = it.nextRunAt,

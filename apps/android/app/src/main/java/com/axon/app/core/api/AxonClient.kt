@@ -312,7 +312,8 @@ class AxonClient(
         }
 
     suspend fun listWatches(limit: Int = 25): Result<List<WatchDef>> = withContext(Dispatchers.IO) {
-        get<WatchListResponse>(openApiRoute("GET", "/v1/watch", "/v1/watch?limit=$limit")).map { it.watches }
+        get<WatchListResponse>(openApiRoute("GET", "/v1/watches", "/v1/watches?limit=$limit"))
+            .map { it.allWatches }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

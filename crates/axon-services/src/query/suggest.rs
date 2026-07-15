@@ -295,18 +295,14 @@ async fn build_suggest_prompt_context(
 
     let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), SUGGEST_VECTOR_PROVIDER_ID);
 
-    // Fetch indexed URLs for duplicate filtering (capped to avoid full-collection scan).
-    let (indexed_urls, domain_facets) = tokio::join!(
-        fetch_indexed_urls(&store, &cfg.collection, Some(index_dedup_limit)),
-        async {
-            store
-                .facet(&cfg.collection, "web_domain", None, base_url_context_limit)
-                .await
-                .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })
-        }
-    );
-    let indexed_urls = indexed_urls?;
-    let domain_facets = match domain_facets {
+    // Fetch indexed URLs for duplicate filtering first. The domain facet is only
+    // fallback context, so it must not delay a required scan failure.
+    let indexed_urls = fetch_indexed_urls(&store, &cfg.collection, Some(index_dedup_limit)).await?;
+    let domain_facets = match store
+        .facet(&cfg.collection, "web_domain", None, base_url_context_limit)
+        .await
+        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })
+    {
         Ok(facets) => facets,
         Err(err) => {
             tracing::warn!(error = %err, "suggest: web_domain facet failed; deriving domain context from canonical URLs");

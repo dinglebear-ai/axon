@@ -111,14 +111,14 @@ class AxonClientPhase2Test {
         assertEquals("42", progress["pages_crawled"]!!.jsonPrimitive.content)
     }
 
-    @Test fun `listWatches GETs v1 watch and decodes watch envelope`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"watches":[{"id":"w1","name":"Docs","task_type":"watch","enabled":true,"every_seconds":300,"next_run_at":"2026-06-04T12:00:00Z"}]}""").addHeader("Content-Type","application/json"))
+    @Test fun `listWatches GETs v1 watches and decodes watch page`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"items":[{"watch_id":"w1","source_id":"Docs","enabled":true,"schedule":{"every_seconds":300},"next_run_at":"2026-06-04T12:00:00Z"}]}""").addHeader("Content-Type","application/json"))
         val r = client.listWatches()
         assertTrue(r.isSuccess)
-        assertEquals("Docs", r.getOrThrow()[0].name)
+        assertEquals("Docs", r.getOrThrow()[0].displayName)
         val req = server.takeRequest()
         assertEquals("GET", req.method)
-        assertTrue("expected path starting with /v1/watch, got ${req.path}", req.path!!.startsWith("/v1/watch"))
+        assertTrue("expected path starting with /v1/watches, got ${req.path}", req.path!!.startsWith("/v1/watches"))
     }
 
     @Test fun `cancelJob POSTs v1 kind id cancel`() = runBlocking {

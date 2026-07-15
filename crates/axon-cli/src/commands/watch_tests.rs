@@ -64,6 +64,43 @@ async fn handle_watch_create_rejects_invalid_task_payload_json() {
     assert!(err.to_string().contains("--task-payload is not valid JSON"));
 }
 
+#[test]
+fn watch_create_source_rejects_lossy_legacy_payload_fields() {
+    let err = watch_create_source(
+        "docs",
+        &serde_json::json!({
+            "urls": ["https://example.com/docs"],
+            "ignore_patterns": ["^Last updated:"],
+            "max_depth": 2,
+        }),
+    )
+    .expect_err("extra legacy fields should be rejected");
+
+    assert!(err.to_string().contains("ignore_patterns"));
+    assert!(err.to_string().contains("max_depth"));
+}
+
+#[test]
+fn watch_create_source_rejects_multi_url_payload() {
+    let err = watch_create_source(
+        "docs",
+        &serde_json::json!({
+            "urls": ["https://example.com/one", "https://example.com/two"],
+        }),
+    )
+    .expect_err("multi-url payload should be rejected");
+
+    assert!(err.to_string().contains("exactly one"));
+}
+
+#[test]
+fn watch_create_source_uses_name_when_payload_empty() {
+    let source = watch_create_source("https://example.com/from-name", &serde_json::json!({}))
+        .expect("empty payload should use name/source argument");
+
+    assert_eq!(source, "https://example.com/from-name");
+}
+
 #[tokio::test]
 async fn handle_watch_create_writes_only_source_watch_store() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;

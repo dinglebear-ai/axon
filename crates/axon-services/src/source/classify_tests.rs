@@ -261,6 +261,14 @@ async fn classify_source_input_detects_session_selector() {
     );
 }
 
+#[test]
+fn session_source_requires_local_filesystem_safety() {
+    assert_eq!(
+        safety_class_for(SourceInputKind::Session),
+        axon_api::source::SafetyClass::LocalFilesystem
+    );
+}
+
 #[tokio::test]
 async fn classify_source_input_detects_registry_target() {
     assert_eq!(

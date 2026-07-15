@@ -12,16 +12,18 @@
 //! a source job and records that job in canonical watch history.
 
 use axon_api::source::{
-    WatchExecRequest, WatchId, WatchListRequest, WatchRequest, WatchUpdateRequest,
+    AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility, WatchExecRequest, WatchId,
+    WatchListRequest, WatchRequest, WatchUpdateRequest,
 };
+use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
-use axon_services::service_traits::{WatchService, WatchServiceImpl};
 use axon_services::watch as watch_svc;
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, Query, State},
     http::StatusCode,
 };
+use lab_auth::AuthContext;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -61,10 +63,14 @@ pub(crate) struct WatchListQuery {
 )]
 pub(crate) async fn create_watch(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(request): Json<WatchRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let pool = state.service_context.jobs.sqlite_pool();
-    let created = watch_svc::create_source_watch(&cfg, pool.as_deref(), request)
+    let auth_snapshot = auth
+        .as_ref()
+        .map(|Extension(auth)| auth_snapshot_from_context(auth));
+    let created = watch_svc::create_source_watch(&cfg, pool.as_deref(), request, auth_snapshot)
         .await
         .map_err(HttpError::from_box)?;
     Ok(Json(json!(created)))
@@ -144,6 +150,7 @@ pub(crate) async fn get_watch(
 )]
 pub(crate) async fn exec_watch(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Path(watch_id): Path<String>,
     Json(request): Json<WatchExecRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
@@ -163,12 +170,48 @@ pub(crate) async fn exec_watch(
         ));
     }
 
-    let service = WatchServiceImpl::new(std::sync::Arc::clone(&state.service_context));
-    let descriptor = service
-        .exec(watch_id_typed, request)
-        .await
-        .map_err(|err| HttpError::from_box_send_sync(err.into()))?;
+    let pool = state.service_context.jobs.sqlite_pool();
+    let auth_snapshot = auth
+        .as_ref()
+        .map(|Extension(auth)| auth_snapshot_from_context(auth));
+    let descriptor = watch_svc::exec_source_watch(
+        &state.service_context,
+        pool.as_deref(),
+        watch_id_typed,
+        request,
+        auth_snapshot,
+    )
+    .await
+    .map_err(HttpError::from_box)?;
     Ok(Json(json!(descriptor)))
+}
+
+fn auth_snapshot_from_context(auth: &AuthContext) -> AuthSnapshot {
+    AuthSnapshot::from_caller(
+        &caller_context_from_auth(auth),
+        Visibility::Internal,
+        "runtime",
+    )
+}
+
+fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
+    let auth_mode = if auth.sub == "static-bearer" {
+        AuthMode::StaticToken
+    } else {
+        AuthMode::Oauth
+    };
+    let mut caller = CallerContext {
+        caller_id: Some(auth.sub.clone()),
+        transport: TransportKind::Rest,
+        trusted_local: false,
+        scopes: auth.scopes.clone(),
+        visibility_ceiling: Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    caller.visibility_ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+    caller
 }
 
 #[utoipa::path(

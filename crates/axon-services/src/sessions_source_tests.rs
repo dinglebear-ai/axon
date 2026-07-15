@@ -31,6 +31,7 @@ fn input(sessions_root: std::path::PathBuf) -> SessionsSourceIndexInput {
         vector_reservations: None,
         embed: true,
         max_items: None,
+        project_filter: None,
     }
 }
 
@@ -85,6 +86,34 @@ fn write_two_claude_fixtures(dir: &std::path::Path) {
         ),
     )
     .unwrap();
+}
+
+#[test]
+fn session_source_identity_includes_root_hash() {
+    let temp = tempfile::tempdir().unwrap();
+    let first = temp.path().join("one").join("same-name");
+    let second = temp.path().join("two").join("same-name");
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+
+    let first_run =
+        super::sessions_source_adapter::resolve_adapter_run(&input(first)).expect("first run");
+    let second_run =
+        super::sessions_source_adapter::resolve_adapter_run(&input(second)).expect("second run");
+
+    assert_ne!(first_run.source_id, second_run.source_id);
+    assert_ne!(
+        first_run.plan.route.source.canonical_uri,
+        second_run.plan.route.source.canonical_uri
+    );
+    assert!(
+        first_run
+            .plan
+            .route
+            .source
+            .canonical_uri
+            .starts_with("session://claude/abc123?root=")
+    );
 }
 
 #[tokio::test]

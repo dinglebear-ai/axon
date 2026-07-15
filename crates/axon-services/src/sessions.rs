@@ -18,6 +18,17 @@ pub enum SessionProvider {
 }
 
 impl SessionProvider {
+    pub fn parse(raw: &str) -> Result<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            "gemini" => Ok(Self::Gemini),
+            provider => Err(anyhow!(
+                "unsupported session provider `{provider}`; expected claude, codex, or gemini"
+            )),
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
@@ -47,6 +58,10 @@ impl SessionRoots {
     }
 
     pub fn from_config(_cfg: &Config) -> Result<Self> {
+        Self::from_home_env()
+    }
+
+    pub fn from_home_env() -> Result<Self> {
         let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
         Ok(Self::for_home(PathBuf::from(home)))
     }
@@ -106,6 +121,42 @@ pub fn validate_session_file_path(
     }
 
     Err(anyhow!("unsupported session file: outside provider roots"))
+}
+
+pub fn validate_session_source_path(
+    roots: &SessionRoots,
+    provider: SessionProvider,
+    path: &Path,
+) -> Result<PathBuf> {
+    let link_meta = std::fs::symlink_metadata(path)
+        .map_err(|error| anyhow!("unsupported session source: metadata failed: {error}"))?;
+    if link_meta.file_type().is_symlink() {
+        return Err(anyhow!("unsupported session source: symlink rejected"));
+    }
+    if !link_meta.is_file() && !link_meta.is_dir() {
+        return Err(anyhow!(
+            "unsupported session source: expected a regular file or directory"
+        ));
+    }
+
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| anyhow!("unsupported session source: canonicalize failed: {error}"))?;
+    reject_secret_components(&canonical)?;
+
+    for (root_provider, root) in canonical_provider_roots(roots) {
+        if root_provider != provider || canonical.strip_prefix(&root).is_err() {
+            continue;
+        }
+        if link_meta.is_file() && !has_supported_session_extension(provider, &canonical) {
+            return Err(anyhow!("unsupported session source extension"));
+        }
+        return Ok(canonical);
+    }
+
+    Err(anyhow!(
+        "unsupported session source: outside provider roots"
+    ))
 }
 
 pub fn validate_event_path_missing_ok(

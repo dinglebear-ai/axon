@@ -18,6 +18,7 @@ use axon_jobs::boundary::FakeJobWatchStore;
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::FakeVectorStore;
 use httpmock::prelude::*;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::*;
@@ -78,6 +79,13 @@ fn write_two_session_fixtures(dir: &std::path::Path) {
     .unwrap();
 }
 
+fn claude_fixture_dir(home: &Path) -> PathBuf {
+    let dir = home.join(".claude/projects/-home-j-proj");
+    std::fs::create_dir_all(&dir).unwrap();
+    write_two_session_fixtures(&dir);
+    dir
+}
+
 #[tokio::test]
 async fn dispatch_local_denies_secret_like_path_before_bridge() {
     let ledger = Arc::new(FakeLedgerStore::new());
@@ -116,14 +124,15 @@ async fn dispatch_local_denies_secret_like_path_before_bridge() {
 
 #[tokio::test]
 async fn dispatch_session_embed_false_writes_no_vectors() {
-    let dir = tempfile::tempdir().unwrap();
-    write_two_session_fixtures(dir.path());
+    let home = tempfile::tempdir().unwrap();
+    let dir = claude_fixture_dir(home.path());
+    let roots = crate::sessions::SessionRoots::for_home(home.path());
     let ledger = Arc::new(FakeLedgerStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors.clone(), ledger.clone());
 
-    let selector = format!("session:claude:{}", dir.path().display());
-    let counts = dispatch_session(
+    let selector = format!("session:claude:{}", dir.display());
+    let counts = dispatch_session_with_roots(
         &runtime,
         &selector,
         "axon-test",
@@ -131,6 +140,8 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
         None,
         false,
         None,
+        None,
+        &roots,
     )
     .await
     .expect("dispatch_session should succeed");
@@ -155,14 +166,15 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
 
 #[tokio::test]
 async fn dispatch_session_max_items_caps_documents_prepared() {
-    let dir = tempfile::tempdir().unwrap();
-    write_two_session_fixtures(dir.path());
+    let home = tempfile::tempdir().unwrap();
+    let dir = claude_fixture_dir(home.path());
+    let roots = crate::sessions::SessionRoots::for_home(home.path());
     let ledger = Arc::new(FakeLedgerStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors, ledger);
 
-    let selector = format!("session:claude:{}", dir.path().display());
-    let counts = dispatch_session(
+    let selector = format!("session:claude:{}", dir.display());
+    let counts = dispatch_session_with_roots(
         &runtime,
         &selector,
         "axon-test",
@@ -170,6 +182,8 @@ async fn dispatch_session_max_items_caps_documents_prepared() {
         None,
         true,
         Some(1),
+        None,
+        &roots,
     )
     .await
     .expect("dispatch_session should succeed");
@@ -178,6 +192,38 @@ async fn dispatch_session_max_items_caps_documents_prepared() {
         counts.documents_prepared, 1,
         "max_items=Some(1) must cap the discovered manifest before diffing"
     );
+}
+
+#[tokio::test]
+async fn dispatch_session_rejects_paths_outside_provider_roots() {
+    let home = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    write_two_session_fixtures(outside.path());
+    let roots = crate::sessions::SessionRoots::for_home(home.path());
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors.clone(), ledger);
+
+    let selector = format!("session:claude:{}", outside.path().display());
+    let err = dispatch_session_with_roots(
+        &runtime,
+        &selector,
+        "axon-test",
+        "test-owner",
+        None,
+        true,
+        None,
+        None,
+        &roots,
+    )
+    .await
+    .expect_err("outside provider roots should be rejected");
+
+    assert!(
+        err.to_string().contains("outside provider roots"),
+        "expected provider-root denial, got: {err:?}"
+    );
+    assert!(vectors.points("axon-test").await.is_empty());
 }
 
 #[tokio::test]

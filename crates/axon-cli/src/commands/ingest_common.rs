@@ -15,6 +15,8 @@ use axon_services::types::ServiceJob;
 use std::error::Error;
 use uuid::Uuid;
 
+const SESSION_LIST_SCAN_MAX_JOBS: i64 = 10_000;
+
 /// Routes ingest subcommands (status, cancel, errors, list, cleanup, clear, worker, recover).
 ///
 /// Returns `Ok(true)` if a subcommand was handled, `Ok(false)` if the first
@@ -52,11 +54,7 @@ pub async fn maybe_handle_ingest_subcommand(
         "list" => {
             let (limit, offset) = axon_services::transport::job_list_pagination(None, None);
             let jobs = if cmd_name == "sessions" {
-                job_service::list_jobs(service_context, JobKind::Source, limit, offset)
-                    .await?
-                    .into_iter()
-                    .filter(is_session_source_job)
-                    .collect()
+                list_session_source_jobs(service_context, limit, offset).await?
             } else {
                 job_service::list_ingest_jobs(service_context, None, limit, offset).await?
             };
@@ -88,6 +86,39 @@ pub async fn maybe_handle_ingest_subcommand(
     }
 
     Ok(true)
+}
+
+async fn list_session_source_jobs(
+    service_context: &ServiceContext,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
+    let page_limit = limit.max(1);
+    let mut next_offset = offset.max(0);
+    let mut scanned = 0i64;
+    let mut sessions = Vec::new();
+
+    while (sessions.len() as i64) < limit && scanned < SESSION_LIST_SCAN_MAX_JOBS {
+        let page =
+            job_service::list_jobs(service_context, JobKind::Source, page_limit, next_offset)
+                .await?;
+        if page.is_empty() {
+            break;
+        }
+        scanned += page.len() as i64;
+        next_offset += page_limit;
+
+        for job in page {
+            if is_session_source_job(&job) {
+                sessions.push(job);
+                if (sessions.len() as i64) >= limit {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(sessions)
 }
 
 fn is_session_source_job(job: &ServiceJob) -> bool {

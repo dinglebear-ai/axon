@@ -1,4 +1,4 @@
-use axon_api::{AuthorityLevel, SourceIntent, SourceKind, SourceRequest, SourceScope};
+use axon_api::{AuthorityLevel, SafetyClass, SourceIntent, SourceKind, SourceRequest, SourceScope};
 
 use crate::{
     AdapterRegistry, AuthorityRecord, InMemoryAuthorityRegistry, SourceResolver, SourceRouter,
@@ -39,6 +39,19 @@ fn resolver_maps_known_alias_to_official_docs_entrypoint() {
             .warnings
             .iter()
             .any(|warning| warning.code == "authority.entrypoint_mapped")
+    );
+}
+
+#[test]
+fn session_adapter_is_local_filesystem_and_allows_project_filter() {
+    let registry = AdapterRegistry::target_defaults();
+    let adapter = registry.find("session").expect("session adapter");
+
+    assert_eq!(adapter.safety_class, SafetyClass::LocalFilesystem);
+    assert!(
+        adapter
+            .allowed_option_keys
+            .contains(&"project_filter".to_string())
     );
 }
 

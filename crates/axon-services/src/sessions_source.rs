@@ -69,6 +69,10 @@ pub struct SessionsSourceIndexInput {
     /// diffing so files beyond the limit are neither diffed nor vectorized.
     /// `None` means uncapped.
     pub max_items: Option<u64>,
+    /// Optional case-insensitive project substring from `axon sessions --project`.
+    /// Applied during adapter discovery so unmatched transcripts are never
+    /// prepared or embedded.
+    pub project_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

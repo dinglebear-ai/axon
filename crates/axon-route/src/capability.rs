@@ -109,10 +109,11 @@ const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
     "markdown_root",
     "map_urls",
 ];
+const SESSION_ADAPTER_OPTION_KEYS: &[&str] = &["project_filter"];
 
 fn safety_class(source_kind: SourceKind) -> SafetyClass {
     match source_kind {
-        SourceKind::Local => SafetyClass::LocalFilesystem,
+        SourceKind::Local | SourceKind::Session => SafetyClass::LocalFilesystem,
         SourceKind::CliTool | SourceKind::McpTool => SafetyClass::ToolExecution,
         _ => SafetyClass::PublicNetwork,
     }
@@ -194,7 +195,8 @@ impl AdapterRegistry {
                     CredentialKind::ApiKey,
                     "Reddit API credentials are required before acquisition",
                 ),
-            AdapterDefinition::new("session", "1", SourceKind::Session, SourceScope::Thread),
+            AdapterDefinition::new("session", "1", SourceKind::Session, SourceScope::Thread)
+                .with_options(SESSION_ADAPTER_OPTION_KEYS),
             AdapterDefinition::new("upload", "1", SourceKind::Upload, SourceScope::File),
             AdapterDefinition::new("web", "1", SourceKind::Web, SourceScope::Site)
                 .with_scope(SourceScope::Page)
@@ -227,7 +229,7 @@ impl AdapterRegistry {
 
 fn minimum_safety_class(source_kind: SourceKind) -> Option<SafetyClass> {
     match source_kind {
-        SourceKind::Local | SourceKind::CliTool | SourceKind::McpTool => {
+        SourceKind::Local | SourceKind::Session | SourceKind::CliTool | SourceKind::McpTool => {
             Some(safety_class(source_kind))
         }
         _ => None,

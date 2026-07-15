@@ -1,20 +1,16 @@
 //! In-process watch scheduler.
 //!
-//! A single periodic loop that fires recurring watch definitions. Each tick
-//! atomically leases every enabled watch whose `next_run_at` has passed (see
-//! [`lease_due_watches`]) and runs each leased watch via
-//! [`run_leased_watch_now_with_pool`], which records a run, reschedules
-//! `next_run_at` to `now + every_seconds`, and clears the lease. The running
-//! task heartbeats the lease while it works, so long runs do not double-fire.
-//! A crash leaves the lease in place only until it expires, after which the next
-//! sweep (or the startup
-//! `reclaim_stale_watch_leases` call) frees it for re-run.
+//! A single periodic loop that fires recurring watches.
 //!
-//! Clean-break blocker: this loop still leases `axon_watch_defs` rows and runs
-//! `WatchDef` task payloads. The CLI/service source-watch path no longer
-//! dual-writes those rows, so recurring background ticks for canonical
-//! `axon_source_watches` need a separate scheduler pass that leases
-//! source-watch rows and enqueues `SourceRequest` jobs directly.
+//! The canonical source-watch pass leases enabled due `axon_source_watches`
+//! rows, turns each row back into a `SourceRequest`, and enqueues a
+//! `JobKind::Source` row for the unified worker. It records history in
+//! `axon_source_watch_runs` and uses live source jobs as an in-flight guard, so
+//! recurring source watches do not depend on legacy `axon_watch_defs` ids.
+//!
+//! The legacy `axon_watch_defs` pass remains for rows that already use the old
+//! task-payload watch model. It still runs each leased definition via
+//! [`run_leased_watch_now_with_pool`].
 //!
 //! Tuning (read once at spawn, mirroring `AXON_JOB_WAIT_TIMEOUT_SECS` in
 //! `backend.rs`):
@@ -22,14 +18,22 @@
 //! - `AXON_WATCH_LEASE_SECS` — lease TTL; must exceed a single run's wall time
 //!   so a long run is never double-fired (default 300, min 1).
 
+use crate::boundary::{JobStore, WatchStore};
 use crate::store::now_ms;
+use crate::unified::SqliteUnifiedJobStore;
 use crate::watch::{lease_due_watches, parse_watch_lease_secs, run_leased_watch_now_with_pool};
+use crate::watch_store::{LeasedSourceWatch, SqliteWatchStore};
+use axon_api::source::{
+    JobCreateRequest, JobDescriptor, JobIntent, JobKind, MetadataMap, SourceIntent,
+    SourceRefreshPolicy, SourceRequest, SourceWatchPolicy,
+};
 use axon_core::config::Config;
 use axon_core::config::parse::tuning;
 use sqlx::SqlitePool;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -68,11 +72,17 @@ fn lease_ttl_ms() -> i64 {
 async fn sweep_due_watches(
     pool: &Arc<SqlitePool>,
     cfg: &Arc<Config>,
+    unified_notify: &Arc<Notify>,
     lease_ttl_ms: i64,
 ) -> Result<usize, Box<dyn Error>> {
-    let due = lease_due_watches(pool, now_ms(), lease_ttl_ms, LEASE_BATCH_LIMIT).await?;
-    let count = due.len();
-    for watch in due {
+    let now = now_ms();
+    let legacy_due = lease_due_watches(pool, now, lease_ttl_ms, LEASE_BATCH_LIMIT).await?;
+    let source_store = SqliteWatchStore::new((**pool).clone());
+    let source_due = source_store
+        .lease_due(now, lease_ttl_ms, LEASE_BATCH_LIMIT)
+        .await?;
+    let count = legacy_due.len() + source_due.len();
+    for watch in legacy_due {
         let pool = Arc::clone(pool);
         let cfg = Arc::clone(cfg);
         tokio::spawn(async move {
@@ -81,13 +91,155 @@ async fn sweep_due_watches(
             }
         });
     }
+    if !source_due.is_empty() {
+        let job_store = SqliteUnifiedJobStore::new((**pool).clone());
+        let mut enqueued = 0usize;
+        for watch in source_due {
+            let watch_id = watch.watch_id.0.clone();
+            match enqueue_leased_source_watch(&source_store, &job_store, watch, now).await {
+                Ok(job) => {
+                    enqueued += 1;
+                    tracing::debug!(
+                        watch_id = %watch_id,
+                        job_id = %job.job_id.0,
+                        "source-watch scheduler: enqueued source job"
+                    );
+                }
+                Err(err) => {
+                    if let Err(release_err) = source_store
+                        .release_lease(&axon_api::source::WatchId::new(watch_id.clone()))
+                        .await
+                    {
+                        tracing::warn!(
+                            watch_id = %watch_id,
+                            error = %release_err,
+                            "source-watch scheduler: failed to release lease after enqueue error"
+                        );
+                    }
+                    tracing::warn!(
+                        watch_id = %watch_id,
+                        error = %err,
+                        "source-watch scheduler: enqueue failed"
+                    );
+                }
+            }
+        }
+        if enqueued > 0 {
+            unified_notify.notify_waiters();
+        }
+    }
     Ok(count)
+}
+
+async fn enqueue_leased_source_watch(
+    source_store: &SqliteWatchStore,
+    job_store: &SqliteUnifiedJobStore,
+    watch: LeasedSourceWatch,
+    scheduled_at_ms: i64,
+) -> Result<JobDescriptor, String> {
+    let source_request = source_request_for_scheduled_watch(&watch, scheduled_at_ms);
+    let descriptor = JobStore::create(
+        job_store,
+        source_watch_job_create_request(&watch, source_request, scheduled_at_ms),
+    )
+    .await
+    .map_err(|err| err.to_string())?;
+    WatchStore::record_run(source_store, watch.watch_id, descriptor.job_id)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(descriptor)
+}
+
+fn source_request_for_scheduled_watch(
+    watch: &LeasedSourceWatch,
+    scheduled_at_ms: i64,
+) -> SourceRequest {
+    let mut source = SourceRequest::new(watch.request.source.clone());
+    source.intent = SourceIntent::Watch;
+    source.watch = SourceWatchPolicy::Enabled;
+    source.refresh = SourceRefreshPolicy::IfStale;
+    source.embed = watch.request.embed;
+    source.options = watch.request.options.clone();
+    source.scope = watch.request.scope;
+    source.collection = watch.request.collection.clone();
+    source.metadata.insert(
+        "source_watch_id".to_string(),
+        serde_json::json!(watch.watch_id.0.clone()),
+    );
+    source.metadata.insert(
+        "source_watch_source_id".to_string(),
+        serde_json::json!(watch.source_id.0.clone()),
+    );
+    source.metadata.insert(
+        "source_watch_trigger".to_string(),
+        serde_json::json!("scheduler"),
+    );
+    source.metadata.insert(
+        "source_watch_scheduled_at_ms".to_string(),
+        serde_json::json!(scheduled_at_ms),
+    );
+    source.idempotency_key = Some(source_watch_idempotency_key(
+        &watch.watch_id.0,
+        scheduled_at_ms,
+    ));
+    source
+}
+
+fn source_watch_job_create_request(
+    watch: &LeasedSourceWatch,
+    source_request: SourceRequest,
+    scheduled_at_ms: i64,
+) -> JobCreateRequest {
+    let priority = source_request.execution.priority;
+    let idempotency_key = source_request.idempotency_key.clone();
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "source_watch_id".to_string(),
+        serde_json::json!(watch.watch_id.0.clone()),
+    );
+    metadata.insert(
+        "source_watch_source_id".to_string(),
+        serde_json::json!(watch.source_id.0.clone()),
+    );
+    metadata.insert(
+        "source_watch_scheduled_at_ms".to_string(),
+        serde_json::json!(scheduled_at_ms),
+    );
+    JobCreateRequest {
+        request_id: None,
+        job_kind: JobKind::Source,
+        job_intent: JobIntent::Watch,
+        source_id: None,
+        // jobs.watch_id still references legacy axon_watch_defs(id). Source
+        // watches are linked through axon_source_watch_runs plus metadata.
+        watch_id: None,
+        parent_job_id: None,
+        root_job_id: None,
+        attempt: 1,
+        priority,
+        idempotency_key,
+        stage_plan: Vec::new(),
+        request: Some(serde_json::json!({ "source_request": source_request })),
+        auth_snapshot: watch.auth_snapshot.clone().unwrap_or_default(),
+        config_snapshot_id: None,
+        requirements: MetadataMap::new(),
+        result_schema: Some("source_result".to_string()),
+        warnings: Vec::new(),
+        error: None,
+        metadata,
+        deadline_at: None,
+    }
+}
+
+fn source_watch_idempotency_key(watch_id: &str, scheduled_at_ms: i64) -> String {
+    format!("source-watch:{watch_id}:{scheduled_at_ms}")
 }
 
 /// Periodic scheduler loop. Spawned once by `spawn_workers`; exits on shutdown.
 pub(super) async fn watch_scheduler_loop(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
+    unified_notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
     let lease_ttl = lease_ttl_ms();
@@ -101,7 +253,7 @@ pub(super) async fn watch_scheduler_loop(
             biased;
             _ = shutdown.cancelled() => break,
             _ = ticker.tick() => {
-                match sweep_due_watches(&pool, &cfg, lease_ttl).await {
+                match sweep_due_watches(&pool, &cfg, &unified_notify, lease_ttl).await {
                     Ok(fired) if fired > 0 => {
                         tracing::debug!(fired, "watch scheduler: dispatched due watches");
                     }

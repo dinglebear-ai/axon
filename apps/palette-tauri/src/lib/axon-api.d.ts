@@ -1232,22 +1232,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/watch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["watch_list"];
-        put?: never;
-        post: operations["watch_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/watches": {
         parameters: {
             query?: never;
@@ -3010,16 +2994,6 @@ export interface components {
         VectorPointId: string;
         /** @enum {string} */
         Visibility: "public" | "internal" | "sensitive" | "redacted" | "derived";
-        WatchDefCreateRequest: {
-            enabled?: boolean | null;
-            /** Format: int64 */
-            every_seconds: number;
-            name: string;
-            /** Format: date-time */
-            next_run_at?: string | null;
-            task_payload: unknown;
-            task_type: string;
-        };
         WatchExecRequest: {
             reason?: string | null;
             refresh?: null | components["schemas"]["SourceRefreshPolicy"];
@@ -7522,115 +7496,6 @@ export interface operations {
             };
         };
     };
-    watch_list: {
-        parameters: {
-            query?: {
-                limit?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Watch definitions */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Watch storage unavailable */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    watch_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WatchDefCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Created watch definition */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Invalid watch request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Watch storage unavailable */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     watches_list: {
         parameters: {
             query?: {
@@ -7697,7 +7562,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created (or dual-write-ensured) watch detail */
+            /** @description Created watch detail */
             200: {
                 headers: {
                     [name: string]: unknown;

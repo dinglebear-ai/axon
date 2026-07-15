@@ -6554,164 +6554,6 @@
         ]
       }
     },
-    "/v1/watch": {
-      "get": {
-        "tags": [
-          "watch"
-        ],
-        "operationId": "watch_list",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Watch definitions",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Watch storage unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "watch"
-        ],
-        "operationId": "watch_create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WatchDefCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Created watch definition",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid watch request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Watch storage unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/watches": {
       "get": {
         "tags": [
@@ -6850,7 +6692,7 @@
         },
         "responses": {
           "200": {
-            "description": "Created (or dual-write-ensured) watch detail",
+            "description": "Created watch detail",
             "content": {
               "application/json": {
                 "schema": {}
@@ -14248,42 +14090,6 @@
           "redacted",
           "derived"
         ]
-      },
-      "WatchDefCreateRequest": {
-        "type": "object",
-        "required": [
-          "name",
-          "task_type",
-          "task_payload",
-          "every_seconds"
-        ],
-        "properties": {
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "every_seconds": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "name": {
-            "type": "string"
-          },
-          "next_run_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "task_payload": {},
-          "task_type": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false
       },
       "WatchExecRequest": {
         "type": "object",

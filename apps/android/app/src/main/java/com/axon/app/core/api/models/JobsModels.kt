@@ -106,24 +106,48 @@ data class UnifiedJobCancelResult(
     val status: String = "",
 )
 
-/** GET /v1/watch response envelope. */
+/** GET /v1/watches response envelope. */
 @Serializable
 data class WatchListResponse(
+    val items: List<WatchDef> = emptyList(),
     val watches: List<WatchDef> = emptyList(),
-)
+) {
+    val allWatches: List<WatchDef>
+        get() = items.ifEmpty { watches }
+}
 
 /** Watch definition shape returned by the REST watch list endpoint. */
 @Serializable
 data class WatchDef(
+    @SerialName("watch_id") val watchId: String = "",
     val id: String = "",
     val name: String = "",
+    @SerialName("source_id") val sourceId: String = "",
     @SerialName("task_type") val taskType: String = "",
     @SerialName("task_payload") val taskPayload: JsonElement? = null,
-    @SerialName("every_seconds") val everySeconds: Long = 0L,
+    val schedule: WatchSchedule = WatchSchedule(),
+    @SerialName("every_seconds") val legacyEverySeconds: Long = 0L,
     val enabled: Boolean = false,
     @SerialName("next_run_at") val nextRunAt: String? = null,
     @SerialName("lease_expires_at") val leaseExpiresAt: String? = null,
     @SerialName("last_run_at") val lastRunAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
+) {
+    val displayId: String
+        get() = id.ifBlank { watchId }
+
+    val displayName: String
+        get() = name.ifBlank { sourceId.ifBlank { displayId } }
+
+    val displayTaskType: String
+        get() = taskType.ifBlank { "watch" }
+
+    val everySeconds: Long
+        get() = schedule.everySeconds.takeIf { it > 0 } ?: legacyEverySeconds
+}
+
+@Serializable
+data class WatchSchedule(
+    @SerialName("every_seconds") val everySeconds: Long = 0L,
 )

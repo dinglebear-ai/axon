@@ -14,6 +14,7 @@
 
 mod decode;
 mod metadata;
+mod project_filter;
 mod target;
 
 use std::fs;
@@ -33,6 +34,7 @@ use crate::manifest::item_identity;
 use self::decode::DecodedSession;
 pub use self::decode::redact_session_text;
 use self::metadata::session_source_document;
+use self::project_filter::matches_project_filter;
 pub use self::target::{SessionTarget, parse_session_target};
 
 pub const MODULE_NAME: &str = "sessions";
@@ -129,6 +131,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     validate_adapter(plan)?;
     let target = session_target(plan)?;
     let root = sessions_root(plan)?;
+    let project_filter = project_filter(plan);
 
     let mut files = collect_files(&root)?;
     files.sort();
@@ -136,10 +139,13 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     let base_uri = format!("session://{}/{}", target.provider, target.session_id);
     let mut items = Vec::new();
     for file in files {
-        if !has_supported_session_extension(&file) {
+        if !has_supported_session_extension(&target, &file) {
             continue;
         }
         let key = relative_key(&root, &file)?;
+        if !matches_project_filter(project_filter.as_deref(), &root, &file, &key) {
+            continue;
+        }
         let path = safe_item_path(&root, &key)?;
         let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
         if !meta.is_file() {
@@ -261,6 +267,17 @@ fn sessions_root(plan: &SourcePlan) -> Result<PathBuf> {
         })
 }
 
+fn project_filter(plan: &SourcePlan) -> Option<String> {
+    plan.route
+        .validated_options
+        .values
+        .get("project_filter")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 fn session_target(plan: &SourcePlan) -> Result<SessionTarget> {
     parse_session_target(&plan.request.source)
 }
@@ -313,10 +330,13 @@ fn should_descend_entry(entry: &DirEntry) -> bool {
 }
 
 /// Supported session export extensions: `.jsonl` for Claude/Codex, `.json` for Gemini.
-fn has_supported_session_extension(path: &Path) -> bool {
+fn has_supported_session_extension(target: &SessionTarget, path: &Path) -> bool {
     matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("jsonl") | Some("json")
+        (
+            target.provider.as_str(),
+            path.extension().and_then(|ext| ext.to_str())
+        ),
+        ("claude" | "codex", Some("jsonl")) | ("gemini", Some("json"))
     )
 }
 
@@ -385,16 +405,13 @@ fn decode_item(
         .clone()
         .unwrap_or_else(|| item.manifest_item.source_item_key.0.clone());
     let path = Path::new(&key);
-    match path.extension().and_then(|ext| ext.to_str()) {
-        Some("jsonl") => {
-            let decoded = if target.provider.eq_ignore_ascii_case("codex") {
-                decode::decode_codex_jsonl(text)
-            } else {
-                decode::decode_claude_jsonl(text)
-            };
-            Ok(decoded)
-        }
-        Some("json") => decode::decode_gemini_json(text).map_err(|err| {
+    match (
+        target.provider.as_str(),
+        path.extension().and_then(|ext| ext.to_str()),
+    ) {
+        ("codex", Some("jsonl")) => Ok(decode::decode_codex_jsonl(text)),
+        ("claude", Some("jsonl")) => Ok(decode::decode_claude_jsonl(text)),
+        ("gemini", Some("json")) => decode::decode_gemini_json(text).map_err(|err| {
             ApiError::new(
                 "adapter.session.decode_failed",
                 axon_error::ErrorStage::Normalizing,

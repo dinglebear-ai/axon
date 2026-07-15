@@ -94,14 +94,14 @@ pub async fn classify_source_input(input: &str) -> SourceInputKind {
 /// (or forgot to call) this mapping could let a caller holding only the
 /// broad `axon:write` scope index an arbitrary local path.
 ///
-/// `Local` is the only input kind that currently maps to
-/// `SafetyClass::LocalFilesystem`. Every other classified kind acquires over
-/// the network and falls back to `PublicNetwork`. CLI/MCP tool-execution
-/// sources are not produced by [`classify_source_input`] today; when they
-/// are, they should map to `SafetyClass::ToolExecution`.
+/// `Local` and `Session` map to `SafetyClass::LocalFilesystem` because both
+/// read server-local paths. Most other classified kinds acquire over the network
+/// and fall back to `PublicNetwork`. CLI/MCP tool-execution sources are not
+/// produced by [`classify_source_input`] today; when they are, they should map
+/// to `SafetyClass::ToolExecution`.
 pub fn safety_class_for(kind: SourceInputKind) -> SafetyClass {
     match kind {
-        SourceInputKind::Local => SafetyClass::LocalFilesystem,
+        SourceInputKind::Local | SourceInputKind::Session => SafetyClass::LocalFilesystem,
         _ => SafetyClass::PublicNetwork,
     }
 }

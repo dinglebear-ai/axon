@@ -1209,14 +1209,6 @@ export type components = {
         };
         "VectorPointId": string;
         "Visibility": "public" | "internal" | "sensitive" | "redacted" | "derived";
-        "WatchDefCreateRequest": {
-            "enabled"?: boolean | null;
-            "every_seconds": number;
-            "name": string;
-            "next_run_at"?: string | null;
-            "task_payload": unknown;
-            "task_type": string;
-        };
         "WatchExecRequest": {
             "reason"?: string | null;
             "refresh"?: null | components['schemas']['SourceRefreshPolicy'];
@@ -1335,7 +1327,6 @@ export type paths = {
     "/v1/suggest": { post: operations["suggest"] };
     "/v1/summarize": { post: operations["summarize"] };
     "/v1/summarize/stream": { post: operations["summarize_stream"] };
-    "/v1/watch": { get: operations["watch_list"]; post: operations["watch_create"] };
     "/v1/watches": { get: operations["watches_list"]; post: operations["watches_create"] };
     "/v1/watches/{watch_id}": { get: operations["watches_get"]; patch: operations["watches_update"]; delete: operations["watches_delete"] };
     "/v1/watches/{watch_id}/exec": { post: operations["watches_exec"] };
@@ -1426,8 +1417,6 @@ export type operations = {
     "suggest": { method: "post"; path: "/v1/suggest"; operationId: "suggest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSuggestRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "429": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "summarize": { method: "post"; path: "/v1/summarize"; operationId: "summarize"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSummarizeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "summarize_stream": { method: "post"; path: "/v1/summarize/stream"; operationId: "summarize_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSummarizeRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "watch_list": { method: "get"; path: "/v1/watch"; operationId: "watch_list"; parameters: { query: { "limit"?: number | null }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "watch_create": { method: "post"; path: "/v1/watch"; operationId: "watch_create"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['WatchDefCreateRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_list": { method: "get"; path: "/v1/watches"; operationId: "watches_list"; parameters: { query: { "enabled"?: boolean | null; "source_id"?: string | null; "adapter"?: string | null; "limit"?: number | null; "cursor"?: string | null }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_create": { method: "post"; path: "/v1/watches"; operationId: "watches_create"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['WatchRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_get": { method: "get"; path: "/v1/watches/{watch_id}"; operationId: "watches_get"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

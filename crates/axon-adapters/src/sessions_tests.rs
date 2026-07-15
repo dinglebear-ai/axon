@@ -52,6 +52,16 @@ fn fixture_gemini_dir() -> PathBuf {
     dir
 }
 
+fn fixture_mixed_extension_dir() -> PathBuf {
+    let dir = fixture_claude_dir();
+    fs::write(
+        dir.join("chat.json"),
+        r#"{"messages":[{"type":"human","content":[{"text":"wrong provider"}]}]}"#,
+    )
+    .unwrap();
+    dir
+}
+
 fn fixture_degraded_claude_dir() -> PathBuf {
     let dir = temp_dir("degraded");
     fs::create_dir_all(&dir).unwrap();
@@ -127,6 +137,13 @@ fn session_plan(
     }
 }
 
+fn insert_project_filter(plan: &mut SourcePlan, project: &str) {
+    plan.route
+        .validated_options
+        .values
+        .insert("project_filter".to_string(), serde_json::json!(project));
+}
+
 fn diff_from(plan: &SourcePlan, items: Vec<ManifestItem>) -> SourceManifestDiff {
     let added = items.len() as u64;
     SourceManifestDiff {
@@ -188,6 +205,93 @@ async fn discover_lists_claude_jsonl_files() {
             .and_then(|v| v.as_str()),
         Some("claude")
     );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn discover_filters_session_extensions_by_provider() {
+    let root = fixture_mixed_extension_dir();
+    for (target, expected, rejected) in [
+        (CLAUDE_TARGET, "session.jsonl", "chat.json"),
+        (CODEX_TARGET, "session.jsonl", "chat.json"),
+        (GEMINI_TARGET, "chat.json", "session.jsonl"),
+    ] {
+        let plan = session_plan(target, &root, SourceScope::Thread, true);
+        let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+        let keys: Vec<_> = manifest
+            .items
+            .iter()
+            .filter_map(|i| i.display_path.as_deref())
+            .collect();
+        assert!(
+            keys.contains(&expected),
+            "{target} should include {expected}"
+        );
+        assert!(
+            !keys.contains(&rejected),
+            "{target} should reject {rejected}"
+        );
+    }
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn discover_applies_project_filter_to_manifest_items() {
+    let root = temp_dir("claude-projects");
+    let axon_dir = root.join("-home-j-workspace-axon");
+    let other_dir = root.join("-home-j-workspace-other");
+    fs::create_dir_all(&axon_dir).unwrap();
+    fs::create_dir_all(&other_dir).unwrap();
+    fs::write(
+        axon_dir.join("axon-session.jsonl"),
+        r#"{"type":"user","message":{"content":"axon"}}"#,
+    )
+    .unwrap();
+    fs::write(
+        other_dir.join("other-session.jsonl"),
+        r#"{"type":"user","message":{"content":"other"}}"#,
+    )
+    .unwrap();
+
+    let mut plan = session_plan(CLAUDE_TARGET, &root, SourceScope::Thread, true);
+    insert_project_filter(&mut plan, "/home/j/workspace/axon");
+    let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+    let keys: Vec<_> = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect();
+
+    assert_eq!(keys, vec!["-home-j-workspace-axon/axon-session.jsonl"]);
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn discover_applies_project_filter_to_codex_cwd_content() {
+    let root = fixture_codex_dir();
+    let mut plan = session_plan(CODEX_TARGET, &root, SourceScope::Thread, true);
+    insert_project_filter(&mut plan, "/home/j/proj");
+
+    let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+    let keys: Vec<_> = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect();
+
+    assert_eq!(keys, vec!["rollout.jsonl"]);
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn discover_project_filter_keeps_gemini_unmatched_when_export_lacks_project() {
+    let root = fixture_gemini_dir();
+    let mut plan = session_plan(GEMINI_TARGET, &root, SourceScope::Thread, true);
+    insert_project_filter(&mut plan, "axon");
+
+    let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+
+    assert!(manifest.items.is_empty());
     fs::remove_dir_all(&root).ok();
 }
 

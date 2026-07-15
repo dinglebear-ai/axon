@@ -77,6 +77,7 @@ pub fn spawn_workers(
         tokio::spawn(watch_scheduler::watch_scheduler_loop(
             Arc::clone(&pool),
             Arc::clone(&cfg),
+            Arc::clone(&unified_notify),
             shutdown.clone(),
         )),
     ];

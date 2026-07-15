@@ -76,9 +76,10 @@ impl AxonMcpServer {
             collection: req.collection.clone(),
             enabled: req.enabled,
         };
-        let created = watch_svc::create_source_watch(self.cfg.as_ref(), pool.as_deref(), request)
-            .await
-            .map_err(|e| invalid_params(e.to_string()))?;
+        let created =
+            watch_svc::create_source_watch(self.cfg.as_ref(), pool.as_deref(), request, None)
+                .await
+                .map_err(|e| invalid_params(e.to_string()))?;
         respond_with_mode(
             "watch",
             "create",

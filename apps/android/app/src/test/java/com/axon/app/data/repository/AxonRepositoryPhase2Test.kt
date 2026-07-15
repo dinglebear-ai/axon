@@ -86,7 +86,7 @@ class AxonRepositoryPhase2Test {
     }
 
     @Test fun `listWatches maps watch definitions`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"watches":[{"id":"w","name":"Docs","task_type":"watch","enabled":true,"every_seconds":300}]}""").addHeader("Content-Type","application/json"))
+        server.enqueue(MockResponse().setBody("""{"items":[{"watch_id":"w","source_id":"Docs","enabled":true,"schedule":{"every_seconds":300}}]}""").addHeader("Content-Type","application/json"))
         val watches = repo.listWatches().getOrThrow()
         assertEquals(1, watches.size)
         assertEquals("Docs", watches[0].name)

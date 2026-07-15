@@ -335,6 +335,11 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
         || lc.contains("missing required")
     {
         (StatusCode::BAD_REQUEST, "bad_request")
+    } else if lc.contains("auth.scope_required")
+        || lc.contains("source requires scope")
+        || lc.contains("local source requires axon:local")
+    {
+        (StatusCode::FORBIDDEN, "forbidden")
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, "internal")
     }
