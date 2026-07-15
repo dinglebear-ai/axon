@@ -197,6 +197,7 @@ jobs:
       - name: Attach artifacts to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
