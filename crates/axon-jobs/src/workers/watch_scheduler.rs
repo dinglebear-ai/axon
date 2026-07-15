@@ -10,6 +10,12 @@
 //! sweep (or the startup
 //! `reclaim_stale_watch_leases` call) frees it for re-run.
 //!
+//! Clean-break blocker: this loop still leases `axon_watch_defs` rows and runs
+//! `WatchDef` task payloads. The CLI/service source-watch path no longer
+//! dual-writes those rows, so recurring background ticks for canonical
+//! `axon_source_watches` need a separate scheduler pass that leases
+//! source-watch rows and enqueues `SourceRequest` jobs directly.
+//!
 //! Tuning (read once at spawn, mirroring `AXON_JOB_WAIT_TIMEOUT_SECS` in
 //! `backend.rs`):
 //! - `AXON_WATCH_TICK_SECS` — seconds between sweeps (default 15, min 1).

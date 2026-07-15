@@ -97,34 +97,43 @@ pub async fn run_watch(
             .await?
         }
         WatchRuntimeSubcommand::List => {
-            let watches = match shared_pool.as_deref() {
-                Some(pool) => watch_svc::list_watch_defs_with_pool(pool, 200).await?,
-                None => watch_svc::list_watch_defs(cfg, 200).await?,
-            };
+            let store = watch_svc::open_source_watch_store(cfg, shared_pool.as_deref()).await?;
+            let watches = watch_svc::SourceWatchStoreTrait::list(
+                &store,
+                watch_svc::WatchListRequest {
+                    enabled: None,
+                    source_id: None,
+                    adapter: None,
+                    limit: Some(200),
+                    cursor: None,
+                },
+            )
+            .await?;
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&watches)?);
             } else {
-                println!("{}", primary("Watch Definitions"));
-                if watches.is_empty() {
+                println!("{}", primary("Source Watches"));
+                if watches.items.is_empty() {
                     println!("  {}", muted("No watches defined."));
                 } else {
-                    for w in &watches {
-                        println!("  {} {} {}", w.id, w.task_type, w.name);
+                    for w in &watches.items {
+                        println!(
+                            "  {} enabled={} every={}s",
+                            w.watch_id.0, w.enabled, w.schedule.every_seconds
+                        );
                     }
                 }
-                println!("  {} total", watches.len());
+                println!(
+                    "  {} total",
+                    watches.total.unwrap_or(watches.items.len() as u64)
+                );
             }
         }
         WatchRuntimeSubcommand::Exec { id } => {
-            handle_watch_exec(cfg, shared_pool.as_deref(), &id).await?
+            handle_watch_exec(cfg, service_context, shared_pool.as_deref(), &id).await?
         }
         WatchRuntimeSubcommand::History { id, limit } => {
-            let watch_id = parse_uuid(Some(&id), "history")?;
-            let runs = match shared_pool.as_deref() {
-                Some(pool) => watch_svc::list_watch_runs_with_pool(pool, watch_id, limit).await?,
-                None => watch_svc::list_watch_runs(cfg, watch_id, limit).await?,
-            };
-            crate::json::print_json_gated(&runs)?;
+            handle_watch_history(cfg, shared_pool.as_deref(), &id, limit).await?
         }
         WatchRuntimeSubcommand::Get { id } => {
             handle_watch_get(cfg, shared_pool.as_deref(), &id).await?
@@ -223,85 +232,64 @@ async fn handle_watch_create(
         None => None,
     };
     let task_payload = task_payload.unwrap_or_else(|| serde_json::json!({}));
-    let input = watch_svc::WatchDefCreateRequest {
-        name,
-        task_type,
-        task_payload,
-        every_seconds,
-        enabled: None,
-        next_run_at: None,
-    }
-    .into_create()
-    .map_err(|msg| format!("watch create: {msg}"))?;
-    let created = match pool {
-        Some(pool) => watch_svc::create_watch_def_with_pool(pool, &input).await?,
-        None => watch_svc::create_watch_def(cfg, &input).await?,
+    axon_jobs::watch::validate_every_seconds(every_seconds)
+        .map_err(|msg| format!("watch create: {msg}"))?;
+    axon_jobs::watch::validate_task_type(&task_type)
+        .map_err(|msg| format!("watch create: {msg}"))?;
+    let source = watch_create_source(&name, &task_payload)?;
+    let request = watch_svc::WatchRequest {
+        source,
+        schedule: watch_svc::WatchSchedule {
+            every_seconds: every_seconds.max(0) as u64,
+            cron: None,
+            timezone: None,
+        },
+        embed: false,
+        options: watch_svc::AdapterOptions::default(),
+        scope: None,
+        collection: None,
+        enabled: Some(true),
     };
-    // Dual-write (WS-B followups, issue #298): also register the watch in the
-    // source-request-backed `SqliteWatchStore` (`axon_source_watches`), so
-    // `watch get|update|pause|resume|delete` — which act exclusively on that
-    // store — can find watches created here. The legacy `axon_watch_defs` row
-    // above remains authoritative for the still-live scheduler
-    // (`crates/axon-jobs/src/workers/watch_scheduler.rs`); this is
-    // deliberately additive, not a migration off that model. Best-effort: a
-    // failure here does not fail `watch create` — the legacy watch was
-    // already persisted and remains fully functional through
-    // `list`/`history`/`exec`.
-    let mut source_created = None;
-    if let Some(source) = first_watch_url(&created.task_payload) {
-        let request = watch_svc::WatchRequest {
-            source,
-            schedule: watch_svc::WatchSchedule {
-                every_seconds: created.every_seconds.max(0) as u64,
-                cron: None,
-                timezone: None,
-            },
-            embed: false,
-            options: watch_svc::AdapterOptions::default(),
-            scope: None,
-            collection: None,
-            enabled: Some(created.enabled),
-        };
-        if let Ok(store) = watch_svc::open_source_watch_store(cfg, pool).await {
-            match watch_svc::SourceWatchStoreTrait::create(&store, request).await {
-                Ok(watch) => source_created = Some(watch),
-                Err(err) => {
-                    axon_core::logging::log_warn(&format!(
-                        "watch create: dual-write to source-request-backed watch store failed: {err} \
-                         (legacy watch {} was still created; 'watch get/update/pause/resume/delete' \
-                         will not see it)",
-                        created.id
-                    ));
-                }
-            }
-        }
-    }
+    let created = match pool {
+        Some(pool) => watch_svc::create_source_watch(cfg, Some(pool), request).await?,
+        None => watch_svc::create_source_watch(cfg, None, request).await?,
+    };
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "legacy_watch": created,
-                "source_watch": source_created,
-            }))?
+            serde_json::to_string_pretty(&watch_create_json_output(&created))?
         );
     } else {
-        match source_created {
-            Some(source_watch) => {
-                println!(
-                    "created watch {} ({}) legacy={}",
-                    created.name, source_watch.watch_id.0, created.id
-                );
-            }
-            None => println!("created watch {} ({})", created.name, created.id),
-        }
+        println!("{}", watch_create_human_output(&created));
     }
     Ok(())
 }
 
-/// Extract the first URL from a legacy watch's `task_payload.urls` array, for
-/// the source-request-backed dual-write above. Returns `None` when the
-/// payload has no `urls` array or it is empty (e.g. a non-`watch` task_type,
-/// though today `watch` is the only supported `task_type`).
+fn watch_create_json_output(created: &watch_svc::WatchResult) -> serde_json::Value {
+    serde_json::json!(created)
+}
+
+fn watch_create_human_output(created: &watch_svc::WatchResult) -> String {
+    format!(
+        "created watch {} source={}",
+        created.watch_id.0, created.canonical_uri
+    )
+}
+
+fn watch_create_source(
+    name_or_source: &str,
+    task_payload: &serde_json::Value,
+) -> Result<String, Box<dyn Error>> {
+    if let Some(source) = first_watch_url(task_payload) {
+        return Ok(source);
+    }
+    let source = name_or_source.trim();
+    if source.is_empty() {
+        return Err("watch create requires a source".into());
+    }
+    Ok(source.to_string())
+}
+
 fn first_watch_url(task_payload: &serde_json::Value) -> Option<String> {
     task_payload
         .get("urls")
@@ -313,40 +301,36 @@ fn first_watch_url(task_payload: &serde_json::Value) -> Option<String> {
 
 async fn handle_watch_exec(
     cfg: &Config,
+    service_context: &ServiceContext,
     pool: Option<&SqlitePool>,
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let watch_id = parse_uuid(Some(&raw_id.to_string()), "exec")?;
-    let watch = match pool {
-        Some(pool) => watch_svc::get_watch_def_with_pool(pool, watch_id).await?,
-        None => watch_svc::get_watch_def(cfg, watch_id).await?,
-    }
-    .ok_or("watch not found")?;
-    let run = match pool {
-        Some(pool) => watch_svc::run_watch_now_with_pool(cfg, pool, &watch).await?,
-        None => watch_svc::run_watch_now(cfg, &watch).await?,
-    };
+    let run = watch_svc::exec_source_watch(
+        service_context,
+        pool,
+        watch_svc::WatchId::new(raw_id),
+        watch_svc::WatchExecRequest {
+            reason: None,
+            refresh: None,
+            wait: None,
+        },
+    )
+    .await?;
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {
-        println!("watch run {} status={}", run.id, run.status);
+        println!("watch job {} status={:?}", run.job_id.0, run.status);
     }
     Ok(())
 }
 
-/// `axon watch get <id>` — backed by [`watch_svc::SqliteWatchStore`], the
-/// source-request-backed watch store (WS-B / audit C4-04, issue #298). This
-/// is a separate model from the task_type/task_payload watches managed by
-/// `create`/`list`/`history`/`exec` above (see `axon-jobs::watch_store`
-/// module docs); `id` here is the store's own `watch_<uuid>` string, not the
-/// legacy `axon watch create` UUID.
 async fn handle_watch_get(
     cfg: &Config,
     pool: Option<&SqlitePool>,
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch_id = resolve_source_watch_id(cfg, pool, &store, raw_id).await?;
+    let watch_id = watch_svc::WatchId::new(raw_id);
     let found = watch_svc::SourceWatchStoreTrait::get(&store, watch_id).await?;
     match found {
         Some(watch) => {
@@ -375,7 +359,7 @@ async fn handle_watch_update(
     request: watch_svc::WatchUpdateRequest,
 ) -> Result<(), Box<dyn Error>> {
     let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch_id = resolve_source_watch_id(cfg, pool, &store, raw_id).await?;
+    let watch_id = watch_svc::WatchId::new(raw_id);
     let updated = watch_svc::SourceWatchStoreTrait::update(&store, watch_id, request).await?;
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&updated)?);
@@ -396,50 +380,54 @@ async fn handle_watch_delete(
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch_id = resolve_source_watch_id(cfg, pool, &store, raw_id).await?;
-    let deleted = store.delete(watch_id).await?;
+    let watch_id = watch_svc::WatchId::new(raw_id);
+    let deleted = store.delete(watch_id.clone()).await?;
     if !deleted {
         return Err(format!("watch {raw_id} not found").into());
     }
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({"watch_id": raw_id, "deleted": true})
+            serde_json::json!({"watch_id": watch_id.0, "deleted": true})
         );
     } else {
-        println!("deleted watch {raw_id}");
+        println!("deleted watch {}", watch_id.0);
     }
     Ok(())
 }
 
-async fn resolve_source_watch_id(
+async fn handle_watch_history(
     cfg: &Config,
     pool: Option<&SqlitePool>,
-    store: &watch_svc::SqliteWatchStore,
     raw_id: &str,
-) -> Result<watch_svc::WatchId, Box<dyn Error>> {
-    let candidate = watch_svc::WatchId::new(raw_id);
-    if watch_svc::SourceWatchStoreTrait::get(store, candidate.clone())
-        .await?
-        .is_some()
-    {
-        return Ok(candidate);
+    limit: i64,
+) -> Result<(), Box<dyn Error>> {
+    let limit = u32::try_from(limit.max(0)).unwrap_or(u32::MAX);
+    let history = watch_svc::history_source_watch(
+        cfg,
+        pool,
+        watch_svc::WatchHistoryRequest {
+            watch_id: watch_svc::WatchId::new(raw_id),
+            limit: Some(limit),
+            cursor: None,
+            status: None,
+        },
+    )
+    .await?;
+    if cfg.json_output {
+        crate::json::print_json_gated(&history)?;
+    } else {
+        println!("{}", primary("Watch History"));
+        if history.jobs.is_empty() {
+            println!("  {}", muted("No runs found."));
+        } else {
+            for job in &history.jobs {
+                println!("  {} {:?} {:?}", job.job_id.0, job.kind, job.status);
+            }
+        }
+        println!("  {} total", history.jobs.len());
     }
-
-    let Ok(legacy_uuid) = Uuid::parse_str(raw_id) else {
-        return Ok(candidate);
-    };
-    let legacy = match pool {
-        Some(pool) => watch_svc::get_watch_def_with_pool(pool, legacy_uuid).await?,
-        None => watch_svc::get_watch_def(cfg, legacy_uuid).await?,
-    };
-    if let Some(legacy) = legacy
-        && let Some(source) = first_watch_url(&legacy.task_payload)
-        && let Some(source_watch) = store.get_by_source(&source).await?
-    {
-        return Ok(source_watch.watch_id);
-    }
-    Ok(candidate)
+    Ok(())
 }
 
 #[cfg(test)]

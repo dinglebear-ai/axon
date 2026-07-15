@@ -40,12 +40,9 @@ fn watch_request(source: &str, every_seconds: u64) -> WatchRequest {
     }
 }
 
-/// `create_source_watch` writes the canonical `SqliteWatchStore` row (the
-/// store `list`/`get`/`update`/`pause`/`resume`/`delete` all act on) AND
-/// dual-writes a legacy `axon_watch_defs` row so the still-live scheduler
-/// (`crates/axon-jobs/src/workers/watch_scheduler.rs`) ticks the watch.
+/// `create_source_watch` writes only the canonical `SqliteWatchStore` row.
 #[tokio::test]
-async fn create_source_watch_writes_canonical_and_legacy_rows() {
+async fn create_source_watch_writes_only_canonical_row() {
     let (pool, _temp) = open_pool().await;
     let cfg = Config::test_default();
 
@@ -69,93 +66,9 @@ async fn create_source_watch_writes_canonical_and_legacy_rows() {
     .unwrap();
     assert!(fetched.is_some(), "canonical watch row must be findable");
 
-    // Legacy dual-write: a `watch` task_type row referencing the same URL so
-    // the scheduler ticks it.
     let legacy = list_watch_defs_with_pool(&pool, 50).await.unwrap();
     assert!(
-        legacy.iter().any(|def| {
-            def.task_type == "watch"
-                && def
-                    .task_payload
-                    .get("urls")
-                    .and_then(|urls| urls.as_array())
-                    .is_some_and(|urls| {
-                        urls.iter()
-                            .any(|u| u.as_str() == Some("https://example.com/docs"))
-                    })
-        }),
-        "expected a dual-written legacy watch_def for the created source watch"
-    );
-}
-
-/// The exact lookup issue #298's REST `POST /v1/watches/{watch_id}/exec`
-/// route depends on (`WatchServiceImpl::exec`'s `resolve_legacy_watch_def`,
-/// `crates/axon-services/src/service_traits/watch_service.rs`): given only
-/// the canonical `WatchId` from `create_source_watch`, the dual-written
-/// legacy `WatchDef` must be resolvable by the deterministic
-/// `format!("watch-{watch_id}")` name — there is no shared primary key
-/// between the two stores (see `crates/axon-jobs/src/migrations/
-/// 0023_create_source_watch_store.sql`).
-#[tokio::test]
-async fn get_watch_def_by_name_resolves_the_dual_write_bridge() {
-    let (pool, _temp) = open_pool().await;
-    let cfg = Config::test_default();
-
-    let created = create_source_watch(
-        &cfg,
-        Some(&pool),
-        watch_request("https://example.com/bridge", 60),
-    )
-    .await
-    .expect("create_source_watch");
-
-    let legacy_name = format!("watch-{}", created.watch_id.0);
-    let resolved = get_watch_def_by_name_with_pool(&pool, &legacy_name)
-        .await
-        .expect("get_watch_def_by_name_with_pool")
-        .expect("dual-written legacy WatchDef must be findable by name");
-    assert_eq!(resolved.name, legacy_name);
-    assert_eq!(resolved.task_type, "watch");
-
-    // A name that was never dual-written resolves to `None`, not an error.
-    assert!(
-        get_watch_def_by_name_with_pool(&pool, "watch-does-not-exist")
-            .await
-            .expect("get_watch_def_by_name_with_pool")
-            .is_none()
-    );
-}
-
-/// `every_seconds` outside the legacy watch's bounds (`MIN`/`MAX_WATCH_INTERVAL_SECS`,
-/// see `axon-jobs::watch::validation`) must not fail the canonical create — the
-/// dual-write is best-effort and only logs a warning.
-#[tokio::test]
-async fn create_source_watch_survives_legacy_dual_write_validation_failure() {
-    let (pool, _temp) = open_pool().await;
-    let cfg = Config::test_default();
-
-    // 1 second is below MIN_WATCH_INTERVAL_SECS (30), so the legacy dual-write
-    // must fail validation while the canonical create still succeeds.
-    let created = create_source_watch(
-        &cfg,
-        Some(&pool),
-        watch_request("https://example.com/repo2", 1),
-    )
-    .await
-    .expect("create_source_watch must succeed even if the dual-write is rejected");
-    assert_eq!(created.canonical_uri, "https://example.com/repo2");
-
-    let legacy = list_watch_defs_with_pool(&pool, 50).await.unwrap();
-    assert!(
-        legacy.iter().all(|def| {
-            !def.task_payload
-                .get("urls")
-                .and_then(|urls| urls.as_array())
-                .is_some_and(|urls| {
-                    urls.iter()
-                        .any(|u| u.as_str() == Some("https://example.com/repo2"))
-                })
-        }),
-        "an invalid every_seconds must not persist a legacy watch_def row"
+        legacy.is_empty(),
+        "canonical watch create must not dual-write legacy watch_defs"
     );
 }

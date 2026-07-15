@@ -2,24 +2,14 @@
 //! (issue #298 REST contract, `docs/pipeline-unification/surfaces/rest-contract.md`
 //! "Watch Routes" table).
 //!
-//! This is a distinct model from the legacy `/v1/watch` task_type/task_payload
-//! surface in [`super::admin`] (`axon_watch_defs`/`axon_watch_runs`, migration
-//! `0002`). `/v1/watches` is backed by [`axon_services::watch::SqliteWatchStore`]
+//! `/v1/watches` is backed by [`axon_services::watch::SqliteWatchStore`]
 //! (`axon_source_watches`/`axon_source_watch_runs`, migration `0023`), matching
-//! `axon_api::source::{WatchRequest, WatchResult}`. See
-//! `crates/axon-jobs/src/watch_store.rs` module docs for why the two models
-//! are not unified in this slice. `/v1/watches` covers
+//! `axon_api::source::{WatchRequest, WatchResult}`. `/v1/watches` covers
 //! create/list/get/update/pause/resume/delete/exec.
 //!
 //! `POST /v1/watches/{watch_id}/exec` (issue #298 REST contract) is the
-//! canonical replacement for the legacy `POST /v1/watch/{id}/run` (removed —
-//! see `docs/pipeline-unification/surfaces/rest-contract.md` "Removed Route
-//! Behavior"). It delegates to
-//! [`axon_services::service_traits::WatchServiceImpl`], which resolves the
-//! canonical `watch_id` to its dual-written legacy `WatchDef` and runs it
-//! through the still-live scheduler bridge — see that module's doc comment
-//! for why the two watch stores need a name-based bridge instead of a shared
-//! primary key.
+//! canonical replacement for the removed `POST /v1/watch/{id}/run`; it enqueues
+//! a source job and records that job in canonical watch history.
 
 use axon_api::source::{
     WatchExecRequest, WatchId, WatchListRequest, WatchRequest, WatchUpdateRequest,
@@ -64,7 +54,7 @@ pub(crate) struct WatchListQuery {
     operation_id = "watches_create",
     request_body = WatchRequest,
     responses(
-        (status = 200, description = "Created (or dual-write-ensured) watch detail", body = serde_json::Value),
+        (status = 200, description = "Created watch detail", body = serde_json::Value),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "watch"
@@ -158,9 +148,8 @@ pub(crate) async fn exec_watch(
     Json(request): Json<WatchExecRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let watch_id_typed = WatchId::new(watch_id.clone());
-    // 404 up front against the canonical store — a clearer signal than the
-    // legacy-bridge "not found" `WatchService::exec` would otherwise return
-    // for a watch_id that was never created through `/v1/watches` at all.
+    // 404 up front against the canonical store so unknown source watch ids get
+    // a clean not-found response before enqueueing any source work.
     let store = open_store(&state, &cfg).await?;
     if watch_svc::SourceWatchStoreTrait::get(&store, watch_id_typed.clone())
         .await

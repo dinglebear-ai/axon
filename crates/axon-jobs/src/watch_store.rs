@@ -4,14 +4,9 @@
 //! Transport Crosswalk: watch).
 //!
 //! This is intentionally a NEW table pair (`axon_source_watches` /
-//! `axon_source_watch_runs`, migration `0023`), not a rewrite of the legacy
-//! `axon_watch_defs`/`axon_watch_runs` tables (migration `0002`) that back the
-//! still-live `axon watch create|list|history|exec` task_type/task_payload
-//! model and its scheduler
-//! (`crates/axon-jobs/src/workers/watch_scheduler.rs`). Disturbing those was
-//! explicitly out of scope for this slice. `SqliteWatchStore` models a watch
-//! the way the contract does: a `source` string plus a `WatchSchedule` and
-//! `AdapterOptions`, matching `axon_api::source::{WatchRequest, WatchResult}`.
+//! `axon_source_watch_runs`, migration `0023`) that models a watch the way the
+//! contract does: a `source` string plus a `WatchSchedule` and `AdapterOptions`,
+//! matching `axon_api::source::{WatchRequest, WatchResult}`.
 //!
 //! `delete` is intentionally an inherent method on the concrete
 //! `SqliteWatchStore`, not part of the shared `WatchStore` trait — the trait
@@ -39,26 +34,14 @@ impl SqliteWatchStore {
         Self { pool }
     }
 
-    /// Return the newest source-watch row for an exact source/canonical URI.
-    ///
-    /// This is primarily a bridge for the CLI's legacy `axon_watch_defs` id:
-    /// `watch create` still creates a legacy scheduler row and a source-watch
-    /// row, but older output printed only the legacy UUID. Resolving that UUID
-    /// through the legacy row's first URL lets `watch get|update|pause|resume|
-    /// delete` keep working for users holding the printed id.
-    pub async fn get_by_source(&self, source: &str) -> Result<Option<WatchResult>> {
-        let row = sqlx::query(
-            "SELECT * FROM axon_source_watches \
-             WHERE source = ? OR canonical_uri = ? \
-             ORDER BY created_at DESC \
-             LIMIT 1",
-        )
-        .bind(source)
-        .bind(source)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(sqlite_err)?;
-        Ok(row.as_ref().map(row_to_result))
+    /// Reconstruct the original request fields stored for a watch.
+    pub async fn request(&self, watch_id: WatchId) -> Result<Option<WatchRequest>> {
+        let row = sqlx::query("SELECT * FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&watch_id.0)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
+        row.as_ref().map(row_to_request).transpose()
     }
 
     /// Hard-delete a watch and its run history (`ON DELETE CASCADE`).
@@ -110,6 +93,10 @@ fn parse_json_str<T: serde::de::DeserializeOwned>(raw: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(raw.to_string())).ok()
 }
 
+fn parse_options(raw: &str) -> Result<AdapterOptions> {
+    serde_json::from_str(raw).map_err(json_err)
+}
+
 fn parse_scope(raw: &str) -> SourceScope {
     parse_json_str(raw).unwrap_or(SourceScope::Page)
 }
@@ -157,6 +144,30 @@ fn row_to_result(row: &SqliteRow) -> WatchResult {
         latest_job,
         warnings: Vec::new(),
     }
+}
+
+fn row_to_request(row: &SqliteRow) -> Result<WatchRequest> {
+    let source: String = row.get("source");
+    let every_seconds: i64 = row.get("every_seconds");
+    let cron: Option<String> = row.get("cron");
+    let timezone: Option<String> = row.get("timezone");
+    let embed: i64 = row.get("embed");
+    let options_json: String = row.get("options_json");
+    let collection: Option<String> = row.get("collection");
+    let enabled: i64 = row.get("enabled");
+    Ok(WatchRequest {
+        source,
+        schedule: WatchSchedule {
+            every_seconds: every_seconds.max(0) as u64,
+            cron,
+            timezone,
+        },
+        embed: embed != 0,
+        options: parse_options(&options_json)?,
+        scope: Some(parse_scope(&row.get::<String, _>("scope"))),
+        collection,
+        enabled: Some(enabled != 0),
+    })
 }
 
 fn synth_descriptor(job_id: &str, status: Option<&str>) -> JobDescriptor {

@@ -64,12 +64,8 @@ async fn handle_watch_create_rejects_invalid_task_payload_json() {
     assert!(err.to_string().contains("--task-payload is not valid JSON"));
 }
 
-/// WS-B followups (issue #298): `watch create` dual-writes into the
-/// source-request-backed `SqliteWatchStore` so `watch get|update|pause|
-/// resume|delete` — which act exclusively on that store — can find watches
-/// created here.
 #[tokio::test]
-async fn handle_watch_create_dual_writes_source_watch_store() -> Result<(), Box<dyn Error>> {
+async fn handle_watch_create_writes_only_source_watch_store() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
@@ -80,7 +76,7 @@ async fn handle_watch_create_dual_writes_source_watch_store() -> Result<(), Box<
         "demo".to_string(),
         "watch".to_string(),
         3600,
-        Some(r#"{"urls": ["https://example.com/dual-write"]}"#.to_string()),
+        Some(r#"{"urls": ["https://example.com/canonical-create"]}"#.to_string()),
     )
     .await?;
 
@@ -99,15 +95,28 @@ async fn handle_watch_create_dual_writes_source_watch_store() -> Result<(), Box<
     assert_eq!(page.items.len(), 1);
     let found = watch_svc::SourceWatchStoreTrait::get(&store, page.items[0].watch_id.clone())
         .await?
-        .expect("dual-written watch present");
-    assert_eq!(found.canonical_uri, "https://example.com/dual-write");
+        .expect("canonical watch present");
+    assert_eq!(found.canonical_uri, "https://example.com/canonical-create");
     assert_eq!(found.schedule.every_seconds, 3600);
     assert!(found.enabled);
+    let human = watch_create_human_output(&found);
+    assert!(human.contains(&found.watch_id.0));
+    assert!(!human.contains("legacy"));
+    let json = watch_create_json_output(&found);
+    assert_eq!(json["watch_id"], found.watch_id.0);
+    assert!(json.get("legacy_watch").is_none());
+    assert!(json.get("source_watch").is_none());
+
+    let legacy = watch_svc::list_watch_defs(&cfg, 10).await?;
+    assert!(
+        legacy.is_empty(),
+        "watch create must not create watch_defs rows"
+    );
     Ok(())
 }
 
 #[tokio::test]
-async fn legacy_watch_id_resolves_to_dual_written_source_watch() -> Result<(), Box<dyn Error>> {
+async fn legacy_watch_id_does_not_resolve_to_source_watch() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
@@ -122,43 +131,26 @@ async fn legacy_watch_id_resolves_to_dual_written_source_watch() -> Result<(), B
     )
     .await?;
 
-    let legacy = watch_svc::list_watch_defs(&cfg, 10)
-        .await?
-        .into_iter()
-        .find(|watch| watch.name == "legacy-alias")
-        .expect("legacy watch row");
-    let legacy_id = legacy.id.to_string();
-
-    handle_watch_get(&cfg, None, &legacy_id).await?;
-    handle_watch_update(
+    let legacy = watch_svc::create_watch_def(
         &cfg,
-        None,
-        &legacy_id,
-        watch_svc::WatchUpdateRequest {
-            enabled: Some(false),
-            schedule: None,
-            options: None,
-            embed: None,
-            collection: None,
-            scope: None,
+        &watch_svc::WatchDefCreate {
+            name: "legacy-alias-row".to_string(),
+            task_type: "watch".to_string(),
+            task_payload: serde_json::json!({
+                "urls": ["https://example.com/legacy-alias"],
+            }),
+            every_seconds: 3600,
+            enabled: true,
+            next_run_at: Utc::now(),
         },
     )
     .await?;
+    let legacy_id = legacy.id.to_string();
 
-    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
-    let source_watch = store
-        .get_by_source("https://example.com/legacy-alias")
-        .await?
-        .expect("dual-written source watch");
-    assert!(!source_watch.enabled);
-
-    handle_watch_delete(&cfg, None, &legacy_id).await?;
-    assert!(
-        store
-            .get_by_source("https://example.com/legacy-alias")
-            .await?
-            .is_none()
-    );
+    let err = handle_watch_get(&cfg, None, &legacy_id)
+        .await
+        .expect_err("legacy UUIDs must not resolve through source watches");
+    assert!(err.to_string().contains("not found"));
     Ok(())
 }
 
@@ -315,6 +307,37 @@ async fn handle_watch_update_pause_resume_and_delete_round_trip() -> Result<(), 
         .await
         .expect_err("deleting an already-deleted watch should error");
     assert!(err.to_string().contains("not found"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn handle_watch_exec_records_canonical_history() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+    cfg.json_output = true;
+    let service_context = test_service_context(&cfg).await;
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
+    let id = created.watch_id.0.clone();
+
+    handle_watch_exec(&cfg, &service_context, None, &id).await?;
+
+    let history = watch_svc::history_source_watch(
+        &cfg,
+        None,
+        watch_svc::WatchHistoryRequest {
+            watch_id: watch_svc::WatchId::new(&id),
+            limit: Some(10),
+            cursor: None,
+            status: None,
+        },
+    )
+    .await?;
+    assert_eq!(history.watch_id.0, id);
+    assert_eq!(history.jobs.len(), 1);
+    assert_eq!(history.jobs[0].kind, axon_api::source::JobKind::Source);
     Ok(())
 }
 
