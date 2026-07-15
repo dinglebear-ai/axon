@@ -161,6 +161,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0025_config_snapshots",
         sql: include_str!("migrations/0025_config_snapshots.sql"),
     },
+    SqlMigration {
+        version: 26,
+        name: "0026_remove_legacy_job_families",
+        sql: include_str!("migrations/0026_remove_legacy_job_families.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and
@@ -172,7 +177,7 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
 /// child row (job_attempts/job_stages/job_events/job_heartbeats/
 /// provider_reservations/job_artifacts) the moment `DROP TABLE jobs` executes.
 /// See `run_migration`'s special-cased branch below.
-const JOBS_TABLE_REBUILD_VERSIONS: &[i64] = &[21, 24];
+const JOBS_TABLE_REBUILD_VERSIONS: &[i64] = &[21, 24, 26];
 
 /// Namespace under which the composed runner tracks jobs migrations.
 pub const JOBS_NAMESPACE: &str = "jobs";

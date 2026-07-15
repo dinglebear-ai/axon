@@ -115,16 +115,11 @@ async fn load_monitor_status_jobs(
 
 pub fn detect_job_events(
     state: &mut JobMonitorState,
-    crawl_jobs: &[(&str, ServiceJob)],
-    embed_jobs: &[(&str, ServiceJob)],
+    source_jobs: &[(&str, ServiceJob)],
     operation_jobs: &[(&str, ServiceJob)],
 ) -> Vec<JobMonitorEvent> {
     let mut events = Vec::new();
-    for (kind, job) in crawl_jobs
-        .iter()
-        .chain(embed_jobs.iter())
-        .chain(operation_jobs.iter())
-    {
+    for (kind, job) in source_jobs.iter().chain(operation_jobs.iter()) {
         if let Some(event) = detect_one(state, kind, job) {
             events.push(event);
         }
@@ -137,27 +132,22 @@ fn detect_events_from_status_jobs(
     state: &mut JobMonitorState,
     jobs: &StatusJobs,
 ) -> Vec<JobMonitorEvent> {
-    let crawl: Vec<_> = jobs
-        .crawl
+    let source: Vec<_> = jobs
+        .source
         .iter()
         .cloned()
-        .map(|job| ("crawl", job))
-        .collect();
-    let embed: Vec<_> = jobs
-        .embed
-        .iter()
-        .cloned()
-        .map(|job| ("embed", job))
+        .map(|job| ("source", job))
         .collect();
     let operations: Vec<_> = jobs
         .extract
         .iter()
         .cloned()
         .map(|job| ("extract", job))
-        .chain(jobs.ingest.iter().cloned().map(|job| ("ingest", job)))
+        .chain(jobs.watch.iter().cloned().map(|job| ("watch", job)))
+        .chain(jobs.prune.iter().cloned().map(|job| ("prune", job)))
         .collect();
 
-    detect_job_events(state, &crawl, &embed, &operations)
+    detect_job_events(state, &source, &operations)
 }
 
 fn detect_one(
@@ -211,7 +201,7 @@ fn job_started_after_monitor(state: &JobMonitorState, job: &ServiceJob) -> bool 
 
 fn docs_metric_keys(kind: &str) -> [&'static str; 5] {
     match kind {
-        "crawl" => [
+        "source" => [
             "docs",
             "pages_crawled",
             "md_created",

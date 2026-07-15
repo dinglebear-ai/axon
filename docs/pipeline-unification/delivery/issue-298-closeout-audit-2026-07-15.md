@@ -3,19 +3,21 @@ Last Modified: 2026-07-15
 
 ## Verdict
 
-Issue #298 is not ready to close yet.
+Issue #298 is implementation-complete after this closeout branch lands.
 
-The large implementation wave is merged on `main`, and the core unification
-gates are green. This audit also fixed two closeout drifts found during review:
+The large implementation wave is merged on `main`, and this branch resolves
+the final reconciliation findings from the closeout audit:
 
 - `axon dedupe` and `axon purge` now fail as reserved removed command tokens
   instead of falling through as bare sources.
 - CLI help/schema metadata now describes `source` as all-source indexing, not
   local-path-only indexing.
-
-Remaining blocker: remove legacy job-family compatibility bridges. The policy
-decision is now explicit: old source-family job tables and backend job kinds are
-removal targets, not compatibility surfaces.
+- The final documentation tree exists and `cargo xtask docs check` is green.
+- Active runtime/status/reset/stat surfaces no longer bridge through old
+  crawl/embed/ingest job families. They use canonical durable `source` /
+  `extract` job kinds.
+- The terminal jobs migration drops old family job storage and the generated
+  database schema artifacts no longer expose those tables.
 
 ## Live Evidence
 
@@ -44,7 +46,10 @@ Core gates after the audit fixes:
 | `cargo xtask check-openapi-drift` | pass |
 | `cargo xtask check-android-api-contract` | pass |
 | `cargo xtask check-release-versions --head HEAD --mode main --json` | pass |
-| `cargo xtask docs check` | fail |
+| `cargo xtask docs check` | pass |
+| `cargo test -p axon-api -p axon-jobs -p axon-services -p axon-cli -p axon-mcp -p axon-web -p xtask --no-run` | pass |
+| `cargo test -p xtask database_defs -- --nocapture` | pass |
+| `cargo test -p axon-jobs migrations -- --nocapture` | pass |
 
 Targeted behavior probes after this audit fix:
 
@@ -99,11 +104,9 @@ Vertical extractor shape:
   review should focus on extractor coverage and adapter behavior, not crate
   resurrection.
 
-## Remaining Blockers
+## Final Reconciliation
 
-### 1. Final documentation tree is complete
-
-Resolved on the closeout follow-up branch:
+### 1. Final documentation tree
 
 ```text
 check-doc-links (repo-wide): 511 markdown file(s), no broken relative links.
@@ -116,40 +119,24 @@ The new final-tree docs are intentionally first-pass pages. They clear the tree
 and link contracts; deeper page expansion can continue without blocking the
 existence/link gate.
 
-### 2. Legacy job-family bridges must be removed
+### 2. Durable job-family closeout
 
-The old source-family crates are gone, and real source execution appears routed
-through unified source jobs. However, compatibility/status/reset code still
-references legacy family tables and job kinds:
+Resolved on the closeout follow-up branch:
 
-- `axon_crawl_jobs`
-- `axon_embed_jobs`
-- `axon_extract_jobs`
-- `axon_ingest_jobs`
-- `JobKind::Crawl`
-- `JobKind::Embed`
-- `JobKind::Extract`
-- `JobKind::Ingest`
-
-Representative live references are in:
-
-- `crates/axon-jobs/src/workers.rs`
-- `crates/axon-jobs/src/store_inventory.rs`
-- `crates/axon-jobs/src/migrations/0001_create_tables.sql`
-- `crates/axon-services/src/embed_tests.rs`
-- `crates/axon-services/src/extract_tests.rs`
-- `crates/axon-services/src/reset_tests.rs`
-
-These are not acceptable compatibility bridges in the final state. Remove the
-old tables/kinds/bridges and migrate all remaining status/reset/stat behavior
-to the unified durable job model.
+- `axon_api::source::JobKind` exposes canonical final variants only.
+- CLI/MCP/web/status/reset/stat surfaces route lifecycle reads and commands
+  through the durable job model.
+- The `axon-services` SQLite runtime reads `ServiceJob` rows from the unified
+  store instead of bridge modules.
+- The `axon-jobs` old backend/ops/query/store-inventory modules and their
+  orphan tests are removed.
+- Migration `0026_remove_legacy_job_families.sql` rebuilds `jobs` with the
+  final kind constraint and drops old family job storage.
+- Generated runtime database schema JSON/markdown is free of old family job
+  tables.
 
 ## Closeout Sequence
 
-1. Land this audit branch so removed cleanup tokens and generated CLI schema
-   metadata are corrected.
-2. Remove legacy family job tables/backend kinds/bridge modules from active
-   runtime and generated contracts.
-3. Re-run the full closeout gate set.
-4. Post the final green gate summary to issue #298, sync any stale issue-body
-   checklist items, and close the issue.
+1. Land this closeout branch.
+2. Post the final green gate summary to issue #298.
+3. Sync any stale issue-body checklist items and close the issue.

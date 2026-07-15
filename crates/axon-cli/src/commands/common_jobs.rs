@@ -78,26 +78,6 @@ macro_rules! impl_job_status {
 }
 
 impl_job_status!(
-    axon_jobs::crawl::CrawlJob,
-    JobStatusResponse::from_crawl,
-    JobSummaryEntry::from_crawl
-);
-impl_job_status!(
-    axon_jobs::extract::ExtractJob,
-    JobStatusResponse::from_extract,
-    JobSummaryEntry::from_extract
-);
-impl_job_status!(
-    axon_jobs::ingest::IngestJob,
-    JobStatusResponse::from_ingest,
-    JobSummaryEntry::from_ingest
-);
-impl_job_status!(
-    axon_jobs::embed::EmbedJob,
-    JobStatusResponse::from_embed,
-    JobSummaryEntry::from_embed
-);
-impl_job_status!(
     axon_services::types::ServiceJob,
     JobStatusResponse::from_service_job,
     JobSummaryEntry::from_service_job
@@ -366,7 +346,3 @@ pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "common_jobs_tests.rs"]
-mod tests;

@@ -13,8 +13,8 @@
 //!   [`crate::source::enqueue::enqueue_source`] (`JobKind::Source`, run by
 //!   `SourceRunner` -> `index_source_with_auth`). `SourceRequest.refresh`
 //!   semantics decide staleness, not a replayed job-table config blob.
-//! - **Legacy Qdrant-facet fallback** (kept ONLY for pre-ledger content — do
-//!   not extend it for new origins once every origin is ledger-registered):
+//! - **Qdrant-facet discovery fallback** (kept ONLY for pre-ledger content —
+//!   do not extend it for new origins once every origin is ledger-registered):
 //!   used when the ledger is unreachable on this runtime, or reachable but
 //!   holds *zero* registered sources — meaning this indexed corpus entirely
 //!   predates ledger registration. Every chunk records a `seed_url` payload
@@ -24,14 +24,11 @@
 //!   each one up in the ledger by its deterministically-derived `SourceId`
 //!   (`axon_route::source_id`, the same id `index_source`/`enqueue_source`
 //!   would compute for that origin) in case it was registered after the fact.
-//!   Origins without a ledger hit no longer re-enqueue web crawls directly:
-//!   they return a migration-required failure so refresh cannot bypass the
-//!   unified Source pipeline. Ingest origins still replay
-//!   `ingest_start_with_context`, using the original `axon_ingest_jobs` config
-//!   snapshot when one exists. Only content indexed with the `seed_url` field
-//!   participates in this fallback — chunks indexed before origin tracking
-//!   shipped carry no `seed_url` and are invisible to the facet (re-crawl/
-//!   re-ingest them once to populate the marker).
+//!   Origins without a ledger hit return a migration-required failure so
+//!   refresh cannot bypass the unified Source pipeline. Only content indexed
+//!   with the `seed_url` field participates in this fallback — chunks indexed
+//!   before origin tracking shipped carry no `seed_url` and are invisible to
+//!   the facet (re-index them once to populate the marker).
 //!
 //! Both paths share the same re-enqueue core once an origin's `SourceId` is
 //! known: [`enqueue_via_source_pipeline`].
@@ -83,7 +80,7 @@ pub struct RefreshOrigin {
     /// already registered in the ledger — `execute_refresh` re-enqueues these
     /// through the unified source pipeline. `None` means the origin predates
     /// ledger registration (or the ledger is unavailable), so `execute_refresh`
-    /// falls back to the legacy job-table replay path.
+    /// cannot be safely refreshed until it is re-indexed through SourceRequest.
     pub ledger_source_id: Option<String>,
 }
 
@@ -91,7 +88,7 @@ pub struct RefreshOrigin {
 /// assign to `seed_url` and check whether it is already registered in the
 /// ledger. Returns `None` (not an error) when routing fails, no data-plane
 /// ledger is configured on this runtime, or the source truly isn't
-/// registered yet — all of those mean "use the legacy fallback path".
+/// registered yet — all of those mean "report migration required".
 async fn ledger_source_id_for(
     service_context: Option<&ServiceContext>,
     seed_url: &str,
@@ -107,7 +104,7 @@ async fn ledger_source_id_for(
         Ok(Some(_)) => Some(source_id.0),
         Ok(None) => None,
         Err(e) => {
-            tracing::warn!(error = %e, seed_url, "refresh: ledger lookup failed; using legacy fallback for this origin");
+            tracing::warn!(error = %e, seed_url, "refresh: ledger lookup failed; origin must be re-indexed before refresh");
             None
         }
     }
@@ -181,7 +178,7 @@ fn matches_filter(origin: &RefreshOrigin, filter: Option<&str>) -> bool {
 
 /// Human-readable `source_type` label for a ledger-registered `SourceKind`.
 /// Used for `RefreshOrigin::source_type` (CLI table display and
-/// [`matches_filter`]) — deliberately coarser than the legacy Qdrant
+/// [`matches_filter`]) — deliberately coarser than the Qdrant
 /// `source_type` payload strings (`"github"`, `"reddit"`, …), since the
 /// ledger tracks provider family at the `SourceKind` level.
 fn source_kind_label(kind: SourceKind) -> &'static str {
@@ -203,7 +200,7 @@ fn source_kind_label(kind: SourceKind) -> &'static str {
 
 /// Classify a ledger-registered source into a re-runnable action based on its
 /// `SourceKind` — the ledger-driven counterpart to [`classify_action`], which
-/// classifies legacy Qdrant-facet origins by `source_type` string instead.
+/// classifies Qdrant-facet origins by `source_type` string instead.
 fn classify_action_for_kind(kind: SourceKind) -> RefreshAction {
     match kind {
         SourceKind::Web | SourceKind::Registry => RefreshAction::Crawl,
@@ -240,7 +237,7 @@ fn refresh_origin_from_source(source: SourceSummary) -> RefreshOrigin {
 /// Enumerate every source registered in the ledger via `list_sources`,
 /// paginating until exhausted or `cap` is reached.
 ///
-/// Returns `None` — "use the legacy Qdrant-facet fallback" — when there is no
+/// Returns `None` — "use the Qdrant-facet discovery fallback" — when there is no
 /// reachable ledger on this runtime (no `service_context`, no
 /// `target_local_source_runtime`) or the `list_sources` call itself fails.
 /// Returns `Some(sources)` (which may be empty) when the ledger answered
@@ -276,7 +273,7 @@ async fn ledger_registered_sources(
         let page = match ledger.list_sources(request).await {
             Ok(page) => page,
             Err(e) => {
-                tracing::warn!(error = %e, "refresh: ledger list_sources failed; using legacy facet fallback");
+                tracing::warn!(error = %e, "refresh: ledger list_sources failed; using Qdrant facet discovery fallback");
                 return None;
             }
         };
@@ -290,7 +287,7 @@ async fn ledger_registered_sources(
     Some(sources)
 }
 
-/// Legacy Qdrant-facet origin discovery (documented fallback — see module
+/// Qdrant-facet origin discovery (documented fallback — see module
 /// docs): facets the collection on `seed_url` scoped per `source_type`, then
 /// opportunistically checks each actionable origin's ledger registration
 /// status via [`ledger_source_id_for`]. Only reached from [`plan_refresh`]
@@ -352,11 +349,11 @@ fn sort_origins(origins: &mut [RefreshOrigin]) {
 ///
 /// Discovery tries the ledger first ([`ledger_registered_sources`]); only when
 /// that finds no registered sources (unreachable ledger, or a ledger that
-/// genuinely has none yet) does it fall back to the legacy Qdrant-facet path
+/// genuinely has none yet) does it fall back to the Qdrant-facet discovery path
 /// ([`facet_discovered_origins`]) — see the module docs for the full
 /// crosswalk. `service_context` is also used by the fallback path to
 /// opportunistically look up each actionable origin's ledger registration
-/// status; pass `None` to always plan the legacy fallback path (e.g. contexts
+/// status; pass `None` to always plan the Qdrant-facet fallback path (e.g. contexts
 /// with no data plane).
 pub async fn plan_refresh(
     cfg: &Config,
@@ -386,30 +383,15 @@ pub async fn plan_refresh(
 /// (never blocks on `--wait`); failures are collected per-origin so one bad
 /// origin does not abort the run.
 ///
-/// Each origin is re-enqueued with the **original job's** stored config
-/// snapshot (max_depth, scoping, budgets, headers, …) when one exists in the
-/// jobs DB — re-crawling with current process defaults would silently widen or
-/// narrow a previously scoped crawl. Collection and service endpoints always
-/// follow the current process config: refresh targets the collection it
-/// faceted, not whatever the original job wrote to.
+/// Each actionable origin must already be registered in the source ledger and
+/// is re-enqueued as a unified Source job. Facet-discovered origins without a
+/// ledger row fail closed so refresh cannot create work that bypasses
+/// SourceRequest.
 pub async fn execute_refresh(
-    cfg: &Config,
+    _cfg: &Config,
     service_context: &ServiceContext,
     plan: &RefreshPlan,
 ) -> Result<RefreshOutcome, Box<dyn Error>> {
-    let mut enqueue_cfg = cfg.clone();
-    enqueue_cfg.wait = false;
-
-    // Job-history lookups are best-effort: refresh still works (with current
-    // defaults) when the jobs DB is unavailable or holds no prior job.
-    let pool = match axon_jobs::store::open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await {
-        Ok(pool) => Some(pool),
-        Err(e) => {
-            tracing::warn!(error = %e, "refresh: jobs DB unavailable; re-enqueuing with current config defaults");
-            None
-        }
-    };
-
     let job_store = service_context.job_store();
 
     let mut outcome = RefreshOutcome::default();
@@ -421,10 +403,7 @@ pub async fn execute_refresh(
 
         // Ledger-driven path (F1-03/C4-05): this origin's deterministic
         // `SourceId` is already registered, so re-enqueue through the unified
-        // source pipeline instead of replaying a legacy job-table config
-        // snapshot. Falls through to the legacy path below when there is no
-        // unified job store on this runtime (e.g. a CLI context without
-        // in-process workers).
+        // source pipeline.
         if let (Some(_source_id), Some(store)) = (&origin.ledger_source_id, job_store.as_ref()) {
             match enqueue_via_source_pipeline(origin, store.as_ref()).await {
                 Ok(()) => match origin.action {
@@ -437,67 +416,19 @@ pub async fn execute_refresh(
             continue;
         }
 
-        // Legacy fallback (documented in the module docs): ingest origins may
-        // still replay ingest job snapshots. Web origins without a Source
-        // ledger row fail closed instead of creating a crawl-shaped job that
-        // bypasses SourceRequest.
-        match origin.action {
-            RefreshAction::Skip(_) => unreachable!("skip handled above"),
-            RefreshAction::Crawl => {
-                outcome.failures.push((
-                    origin.seed_url.clone(),
-                    refresh_web_migration_required(origin).to_string(),
-                ));
-            }
-            RefreshAction::Ingest => {
-                let snapshot = match &pool {
-                    Some(pool) => axon_jobs::query::latest_ingest_config_json(
-                        pool,
-                        &origin.source_type,
-                        &origin.seed_url,
-                    )
-                    .await
-                    .unwrap_or_default(),
-                    None => None,
-                };
-                let job_cfg = origin_config(&enqueue_cfg, snapshot.as_deref());
-                match crate::ingest::classify_target(
-                    &origin.seed_url,
-                    job_cfg.github_include_source,
-                ) {
-                    Ok(source) => {
-                        // `refresh` re-enqueues previously indexed origins as
-                        // a system-triggered maintenance operation — no
-                        // per-caller auth identity is available here.
-                        match crate::ingest::ingest_start_with_context(
-                            &job_cfg,
-                            source,
-                            service_context,
-                            None,
-                        )
-                        .await
-                        {
-                            Ok(_) => outcome.ingest_enqueued += 1,
-                            Err(e) => outcome
-                                .failures
-                                .push((origin.seed_url.clone(), e.to_string())),
-                        }
-                    }
-                    Err(e) => outcome
-                        .failures
-                        .push((origin.seed_url.clone(), e.to_string())),
-                }
-            }
-        }
+        outcome.failures.push((
+            origin.seed_url.clone(),
+            refresh_migration_required(origin).to_string(),
+        ));
     }
     Ok(outcome)
 }
 
-fn refresh_web_migration_required(origin: &RefreshOrigin) -> &'static str {
+fn refresh_migration_required(origin: &RefreshOrigin) -> &'static str {
     if origin.ledger_source_id.is_some() {
         "source refresh requires a unified job store on this runtime"
     } else {
-        "source refresh requires ledger registration; re-index this web origin through the unified Source pipeline before running refresh"
+        "source refresh requires ledger registration; re-index this origin through the unified Source pipeline before running refresh"
     }
 }
 
@@ -519,33 +450,6 @@ async fn enqueue_via_source_pipeline(
             origin.seed_url, result.status
         )),
         Err(e) => Err(e.to_string()),
-    }
-}
-
-/// Rebuild the config for one origin from the original job's stored snapshot.
-///
-/// Replays the job-shaping fields (depth, page caps, subdomain scoping,
-/// headers, budgets, include-source, …) and pins the runtime back to the
-/// current process: collection and service endpoints follow today's config,
-/// the worker stamps `seed_url` itself, and refresh is always enqueue-only.
-/// Falls back to the base config when no snapshot exists or it fails to parse.
-fn origin_config(base: &Config, snapshot_json: Option<&str>) -> Config {
-    let Some(snapshot_json) = snapshot_json else {
-        return base.clone();
-    };
-    match axon_jobs::config_snapshot::apply_config_snapshot(base, snapshot_json) {
-        Ok(mut replayed) => {
-            replayed.collection = base.collection.clone();
-            replayed.qdrant_url = base.qdrant_url.clone();
-            replayed.tei_url = base.tei_url.clone();
-            replayed.seed_url = None;
-            replayed.wait = false;
-            replayed
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "refresh: stored job config snapshot failed to apply; using current config defaults");
-            base.clone()
-        }
     }
 }
 

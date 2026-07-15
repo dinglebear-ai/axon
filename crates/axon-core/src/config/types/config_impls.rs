@@ -1,7 +1,7 @@
 use super::config::{AdaptiveConcurrencyConfig, Config};
 use super::enums::{
-    CommandKind, ConfigValueSource, EvaluateResponsesMode, MapFallback, McpTransport,
-    PerformanceProfile, RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
 use super::{
@@ -84,8 +84,6 @@ impl Default for Config {
             prune_generation: None,
             prune_confirm: false,
             reset_plan_id: None,
-            reset_confirm_legacy_wipe: false,
-            reset_confirm_legacy_wipe_source: ConfigValueSource::Unset,
             color_choice: super::enums::ColorChoice::Auto,
             watch_mode: false,
             performance_profile: PerformanceProfile::HighStable,

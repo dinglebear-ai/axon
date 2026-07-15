@@ -9,20 +9,17 @@ use crate::types::{
 };
 use axon_adapters::web_engine::engine::{SitemapDiscovery, discover_sitemap_urls};
 use axon_api::source::{
-    AuthSnapshot, JobCancelRequest, JobPriority, LifecycleStatus, SourceIntent, SourceLimits,
-    SourceRequest, SourceScope,
+    AuthSnapshot, JobCancelRequest, JobKind, JobPriority, LifecycleStatus, SourceIntent,
+    SourceLimits, SourceRequest, SourceScope,
 };
 use axon_core::config::Config;
 use axon_core::http::validate_url;
-use axon_jobs::backend::JobKind;
 use serde::{Deserialize, Serialize};
 use spider::url::Url;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use uuid::Uuid;
-
-pub use axon_jobs::crawl::CrawlJob;
 
 // ── Crawl bounds: the ONE place crawl page-cap policy lives ───────────────────
 //
@@ -384,18 +381,6 @@ pub async fn crawl_status(
     service_context: &ServiceContext,
     job_id: Uuid,
 ) -> Result<Option<CrawlJobResult>, Box<dyn Error>> {
-    match job_service::job_status(service_context, JobKind::Crawl, job_id).await {
-        Ok(Some(job)) => {
-            let payload = serde_json::to_value(job)?;
-            return Ok(Some(map_crawl_job_result_with_root(
-                payload,
-                Some(&service_context.cfg.output_dir),
-            )));
-        }
-        Ok(None) => {}
-        Err(err) => return Err(err),
-    }
-
     let unified =
         job_service::unified_job_status(service_context, axon_api::source::JobId::new(job_id))
             .await
@@ -415,7 +400,7 @@ pub async fn crawl_list(
     limit: i64,
     offset: i64,
 ) -> Result<CrawlJobResult, Box<dyn Error>> {
-    let jobs = job_service::list_jobs(service_context, JobKind::Crawl, limit, offset).await?;
+    let jobs = job_service::list_jobs(service_context, JobKind::Source, limit, offset).await?;
     Ok(map_crawl_job_result_with_root(
         serde_json::to_value(jobs)?,
         Some(&service_context.cfg.output_dir),
@@ -426,11 +411,6 @@ pub async fn crawl_cancel(
     service_context: &ServiceContext,
     job_id: Uuid,
 ) -> Result<bool, Box<dyn Error>> {
-    match job_service::cancel_job(service_context, JobKind::Crawl, job_id).await {
-        Ok(true) => return Ok(true),
-        Ok(false) => {}
-        Err(err) => return Err(err),
-    }
     let result = job_service::cancel_unified_job(
         service_context,
         axon_api::source::JobId::new(job_id),
@@ -449,19 +429,19 @@ pub async fn crawl_cancel(
 }
 
 pub async fn crawl_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::cleanup_jobs(service_context, JobKind::Crawl).await
+    job_service::cleanup_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn crawl_clear(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::clear_jobs(service_context, JobKind::Crawl).await
+    job_service::clear_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn crawl_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::recover_jobs(service_context, JobKind::Crawl).await
+    job_service::recover_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
-    match job_service::start_worker(service_context, JobKind::Crawl).await? {
+    match job_service::start_worker(service_context, JobKind::Source).await? {
         WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }

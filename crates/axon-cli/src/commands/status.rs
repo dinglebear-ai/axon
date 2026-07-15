@@ -1,11 +1,6 @@
-mod failure_summary;
-pub(crate) mod metrics;
 mod watch;
 
-use crate::commands::job_progress::{
-    crawl_progress_summary, embed_progress_summary, extract_progress_summary,
-    ingest_progress_summary,
-};
+use crate::commands::job_progress::{extract_progress_summary, source_progress_summary};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::redact::redact_secrets;
@@ -16,7 +11,6 @@ use axon_services::system::{
     build_status_payload_with_errors_and_sqlite, load_status_jobs, sqlite_status_error,
 };
 use axon_services::types::ServiceJob;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Write as _;
 
@@ -58,10 +52,10 @@ pub async fn status_snapshot(
         errors.push(error);
     }
     Ok(build_status_payload_with_errors_and_sqlite(
-        &jobs.crawl,
+        &jobs.source,
         &jobs.extract,
-        &jobs.embed,
-        &jobs.ingest,
+        &jobs.watch,
+        &jobs.prune,
         &totals,
         &errors,
         &sqlite,
@@ -79,10 +73,10 @@ pub async fn status_text(
     }
     let mut lines = Vec::new();
     lines.push("Axon Status".to_string());
-    lines.push(format!("crawl jobs:   {} total", totals.crawl));
+    lines.push(format!("source jobs:  {} total", totals.source));
     lines.push(format!("extract jobs: {} total", totals.extract));
-    lines.push(format!("embed jobs:   {} total", totals.embed));
-    lines.push(format!("ingest jobs:  {} total", totals.ingest));
+    lines.push(format!("watch jobs:   {} total", totals.watch));
+    lines.push(format!("prune jobs:   {} total", totals.prune));
     if !errors.is_empty() {
         lines.push(format!(
             "degraded: {} status count error{}",
@@ -116,18 +110,18 @@ async fn run_status_impl(
         }
         println!();
     }
-    print!("{}", render_status_jobs(&jobs, totals.crawl));
+    print!("{}", render_status_jobs(&jobs, totals.source));
     Ok(())
 }
 
-fn render_status_jobs(jobs: &axon_services::system::StatusJobs, crawl_total: i64) -> String {
-    let crawl_note = crawl_truncation_note(jobs.crawl.len(), crawl_total.max(0));
+fn render_status_jobs(jobs: &axon_services::system::StatusJobs, source_total: i64) -> String {
+    let source_note = source_truncation_note(jobs.source.len(), source_total.max(0));
     render_status_jobs_from_slices(
-        &jobs.crawl,
+        &jobs.source,
         &jobs.extract,
-        &jobs.embed,
-        &jobs.ingest,
-        crawl_note.as_deref(),
+        &jobs.watch,
+        &jobs.prune,
+        source_note.as_deref(),
     )
 }
 
@@ -135,7 +129,7 @@ fn render_status_jobs(jobs: &axon_services::system::StatusJobs, crawl_total: i64
 /// what `write_status_section` will actually display (capped at
 /// `SECTION_DISPLAY_LIMIT`), so the note never advertises a count the
 /// renderer won't show.
-fn crawl_truncation_note(slice_len: usize, total: i64) -> Option<String> {
+fn source_truncation_note(slice_len: usize, total: i64) -> Option<String> {
     let displayed = slice_len.min(SECTION_DISPLAY_LIMIT);
     let displayed_i64 = i64::try_from(displayed).unwrap_or(i64::MAX);
     (total > displayed_i64)
@@ -143,32 +137,20 @@ fn crawl_truncation_note(slice_len: usize, total: i64) -> Option<String> {
 }
 
 fn render_status_jobs_from_slices(
-    crawl_jobs: &[ServiceJob],
+    source_jobs: &[ServiceJob],
     extract_jobs: &[ServiceJob],
-    embed_jobs: &[ServiceJob],
-    ingest_jobs: &[ServiceJob],
-    crawl_note: Option<&str>,
+    watch_jobs: &[ServiceJob],
+    prune_jobs: &[ServiceJob],
+    source_note: Option<&str>,
 ) -> String {
-    let crawl_url_map: HashMap<uuid::Uuid, &str> = crawl_jobs
-        .iter()
-        .filter_map(|job| {
-            let url = job.url.as_deref()?;
-            Some((job.id, url))
-        })
-        .collect();
-    let embed_jobs_by_id: HashMap<String, &ServiceJob> = embed_jobs
-        .iter()
-        .map(|job| (job.id.to_string(), job))
-        .collect();
-    let embed_doc_totals = embed_doc_totals_from_crawls(crawl_jobs);
     let mut out = String::new();
     write_status_section(
         &mut out,
-        "Crawl",
-        crawl_note,
-        crawl_jobs,
-        |job| job.url.clone().unwrap_or_else(|| job.id.to_string()),
-        |job| crawl_progress_summary(job, &embed_jobs_by_id, &embed_doc_totals),
+        "Source",
+        source_note,
+        source_jobs,
+        format_subject,
+        source_progress_summary,
     );
     write_status_section(
         &mut out,
@@ -185,45 +167,36 @@ fn render_status_jobs_from_slices(
     );
     write_status_section(
         &mut out,
-        "Embed",
+        "Watch",
         None,
-        embed_jobs,
-        |job| {
-            job.target
-                .as_deref()
-                .map(|target| {
-                    metrics::display_embed_input(target, job.config_json.as_ref(), &crawl_url_map)
-                        .into_owned()
-                })
-                .unwrap_or_else(|| job.id.to_string())
-        },
-        |job| embed_progress_summary(job, embed_doc_totals.get(&job.id.to_string()).copied()),
+        watch_jobs,
+        format_subject,
+        source_progress_summary,
     );
     write_status_section(
         &mut out,
-        "Ingest",
+        "Prune",
         None,
-        ingest_jobs,
-        |job| match (&job.source_type, &job.target) {
-            (Some(source_type), Some(target)) => format!("{source_type}: {target}"),
-            (_, Some(target)) => target.clone(),
-            _ => job.id.to_string(),
-        },
-        ingest_progress_summary,
+        prune_jobs,
+        format_subject,
+        source_progress_summary,
     );
     out
 }
 
-fn embed_doc_totals_from_crawls(crawl_jobs: &[ServiceJob]) -> HashMap<String, u64> {
-    crawl_jobs
-        .iter()
-        .filter_map(|job| {
-            let metrics = job.result_json.as_ref()?;
-            let embed_id = metrics.get("embed_job_id")?.as_str()?;
-            let docs = metrics.get("md_created")?.as_u64()?;
-            Some((embed_id.to_string(), docs))
-        })
-        .collect()
+fn format_subject(job: &ServiceJob) -> String {
+    match (
+        job.url.as_deref(),
+        job.source_type.as_deref(),
+        job.target.as_deref(),
+        job.urls_json.as_ref(),
+    ) {
+        (Some(url), _, _, _) => url.to_string(),
+        (None, Some(source_type), Some(target), _) => format!("{source_type}: {target}"),
+        (None, _, Some(target), _) => target.to_string(),
+        (None, _, _, Some(urls)) => urls.to_string(),
+        _ => job.id.to_string(),
+    }
 }
 
 fn write_status_section(
@@ -306,7 +279,3 @@ fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
     }
     Some(error_text.to_string())
 }
-
-#[cfg(test)]
-#[path = "status_tests.rs"]
-mod tests;

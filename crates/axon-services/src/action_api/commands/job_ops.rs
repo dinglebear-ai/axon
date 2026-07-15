@@ -3,10 +3,9 @@ use crate::jobs as job_svc;
 use crate::types::ClientActionError;
 use axon_api::mcp_schema::{JobsRequest, JobsSubaction};
 use axon_api::source::{
-    JobCancelRequest, JobCleanupRequest, JobClearRequest, JobEventListRequest, JobId,
+    JobCancelRequest, JobCleanupRequest, JobClearRequest, JobEventListRequest, JobId, JobKind,
     JobListRequest, JobRecoveryRequest, JobRetryMode, JobRetryRequest,
 };
-use axon_jobs::backend::JobKind;
 
 use super::parse_job_id;
 

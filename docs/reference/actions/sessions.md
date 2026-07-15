@@ -155,6 +155,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 AXON_HTTP_TOKEN=... \
 ## Notes
 
 - Local session text is decoded and redacted before embedding.
-- Job records for local queued runs are stored in `axon_ingest_jobs` with `source_type='sessions'`.
+- Job records for local queued runs are Source jobs whose request metadata
+  identifies the sessions source family.
 - `AXON_SERVER_URL` does not route plain `axon sessions` through HTTP in this release. Only `axon sessions watch --upload-to-server` uses it.
 - Legacy remote `source_type="sessions"` ingest is rejected so an Axon server cannot scan its own `~/.claude`, `~/.codex`, or `~/.gemini` paths by accident.

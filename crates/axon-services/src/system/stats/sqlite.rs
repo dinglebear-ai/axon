@@ -1,9 +1,4 @@
 //! SQLite job-metrics gathering for `stats`.
-//!
-//! Ports legacy `axon-vector`'s `ops::stats::sqlite` verbatim — this module
-//! never touched Qdrant at all (pure SQLite reads over the shared jobs DB),
-//! so the migration off `axon_vector::` is a straight relocation, not a
-//! rewrite.
 
 use axon_core::config::Config;
 use axon_core::sqlite::open_pool;
@@ -43,7 +38,7 @@ pub(super) struct JobMetrics {
     pub(super) chunks_per_day_7d: Vec<serde_json::Value>,
 }
 
-/// Pull metrics from the SQLite job tables in the SQLite runtime.
+/// Pull metrics from the unified SQLite job table.
 ///
 /// Many fields (scrape/query/ask/retrieve/evaluate/suggest/map/search counts,
 /// growth_7d) intentionally remain `None` — these were tracked in the old
@@ -67,19 +62,19 @@ pub(super) async fn collect_job_metrics(cfg: &Config) -> JobMetrics {
 async fn collect_sqlite_metrics(pool: &SqlitePool) -> JobMetrics {
     let mut m = JobMetrics::default();
 
-    m.crawl_count = count_completed(pool, "axon_crawl_jobs").await;
-    m.embed_count = count_completed(pool, "axon_embed_jobs").await;
-    m.extract_count = count_completed(pool, "axon_extract_jobs").await;
+    m.crawl_count = count_completed_kind(pool, "source").await;
+    m.embed_count = m.crawl_count;
+    m.extract_count = count_completed_kind(pool, "extract").await;
 
-    m.average_crawl_duration_seconds = avg_duration_secs(pool, "axon_crawl_jobs").await;
-    m.average_embedding_duration_seconds = avg_duration_secs(pool, "axon_embed_jobs").await;
+    m.average_crawl_duration_seconds = avg_duration_secs_for_kind(pool, "source").await;
+    m.average_embedding_duration_seconds = m.average_crawl_duration_seconds;
     m.average_overall_crawl_duration_seconds = m.average_crawl_duration_seconds;
 
     m.average_pages_per_second = avg_pages_per_second(pool).await;
 
     m.last_indexed_secs_ago = last_indexed_secs_ago(pool).await;
-    m.crawls_last_24h = recent_completed(pool, "axon_crawl_jobs", 86_400_000).await;
-    m.crawls_last_7d = recent_completed(pool, "axon_crawl_jobs", 7 * 86_400_000).await;
+    m.crawls_last_24h = recent_completed_kind(pool, "source", 86_400_000).await;
+    m.crawls_last_7d = recent_completed_kind(pool, "source", 7 * 86_400_000).await;
 
     let (total_docs, total_chunks) = embed_totals(pool).await;
     m.total_docs = total_docs;
@@ -108,18 +103,21 @@ pub(super) fn estimated_avg_doc_tokens(
     Some((chunks as f64 / docs as f64) * estimated_avg_chunk_tokens())
 }
 
-async fn count_completed(pool: &SqlitePool, table: &str) -> Option<i64> {
-    let q = format!("SELECT COUNT(*) FROM {table} WHERE status='completed'");
-    sqlx::query_scalar::<_, i64>(&q).fetch_one(pool).await.ok()
+async fn count_completed_kind(pool: &SqlitePool, kind: &str) -> Option<i64> {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM jobs WHERE kind = ? AND status='completed'")
+        .bind(kind)
+        .fetch_one(pool)
+        .await
+        .ok()
 }
 
-async fn avg_duration_secs(pool: &SqlitePool, table: &str) -> Option<f64> {
-    let q = format!(
-        "SELECT AVG((finished_at - started_at) / 1000.0) \
-         FROM {table} \
-         WHERE status='completed' AND started_at IS NOT NULL AND finished_at IS NOT NULL"
-    );
-    sqlx::query_scalar::<_, Option<f64>>(&q)
+async fn avg_duration_secs_for_kind(pool: &SqlitePool, kind: &str) -> Option<f64> {
+    let q = "SELECT AVG((julianday(finished_at) - julianday(started_at)) * 86400.0) \
+             FROM jobs \
+             WHERE kind = ? AND status='completed' \
+               AND started_at IS NOT NULL AND finished_at IS NOT NULL";
+    sqlx::query_scalar::<_, Option<f64>>(q)
+        .bind(kind)
         .fetch_one(pool)
         .await
         .ok()
@@ -127,16 +125,18 @@ async fn avg_duration_secs(pool: &SqlitePool, table: &str) -> Option<f64> {
 }
 
 async fn avg_pages_per_second(pool: &SqlitePool) -> Option<f64> {
-    // result_json is a TEXT column; SQLite ships json_extract for parsing it.
+    // counts_json is a TEXT column; SQLite ships json_extract for parsing it.
     let q = "SELECT AVG( \
-                CAST(json_extract(result_json, '$.pages_crawled') AS REAL) \
-                / NULLIF(CAST(json_extract(result_json, '$.elapsed_ms') AS REAL) / 1000.0, 0) \
+                CAST(json_extract(counts_json, '$.items_done') AS REAL) \
+                / NULLIF((julianday(finished_at) - julianday(started_at)) * 86400.0, 0) \
               ) \
-              FROM axon_crawl_jobs \
-              WHERE status='completed' \
-                AND result_json IS NOT NULL \
-                AND json_extract(result_json, '$.pages_crawled') IS NOT NULL \
-                AND json_extract(result_json, '$.elapsed_ms') IS NOT NULL";
+              FROM jobs \
+              WHERE kind='source' \
+                AND status='completed' \
+                AND started_at IS NOT NULL \
+                AND finished_at IS NOT NULL \
+                AND counts_json IS NOT NULL \
+                AND json_extract(counts_json, '$.items_done') IS NOT NULL";
     sqlx::query_scalar::<_, Option<f64>>(q)
         .fetch_one(pool)
         .await
@@ -145,30 +145,29 @@ async fn avg_pages_per_second(pool: &SqlitePool) -> Option<f64> {
 }
 
 async fn last_indexed_secs_ago(pool: &SqlitePool) -> Option<i64> {
-    let q = "SELECT MAX(finished_at) FROM axon_embed_jobs WHERE status='completed'";
-    let max_ms: Option<i64> = sqlx::query_scalar::<_, Option<i64>>(q)
+    let q = "SELECT MAX(finished_at) FROM jobs WHERE kind='source' AND status='completed'";
+    let max_ts: Option<String> = sqlx::query_scalar::<_, Option<String>>(q)
         .fetch_one(pool)
         .await
         .ok()
         .flatten();
-    max_ms.map(|ms| {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(ms);
-        ((now - ms) / 1000).max(0)
+    max_ts.and_then(|ts| {
+        chrono::DateTime::parse_from_rfc3339(&ts).ok().map(|dt| {
+            let elapsed = chrono::Utc::now()
+                .signed_duration_since(dt.with_timezone(&chrono::Utc))
+                .num_seconds();
+            elapsed.max(0)
+        })
     })
 }
 
-async fn recent_completed(pool: &SqlitePool, table: &str, window_ms: i64) -> Option<i64> {
-    let cutoff = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_millis() as i64
-        - window_ms;
-    let q = format!("SELECT COUNT(*) FROM {table} WHERE status='completed' AND finished_at >= ?");
-    sqlx::query_scalar::<_, i64>(&q)
-        .bind(cutoff)
+async fn recent_completed_kind(pool: &SqlitePool, kind: &str, window_ms: i64) -> Option<i64> {
+    let cutoff = chrono::Utc::now() - chrono::Duration::milliseconds(window_ms);
+    let q = "SELECT COUNT(*) FROM jobs \
+             WHERE kind = ? AND status='completed' AND finished_at >= ?";
+    sqlx::query_scalar::<_, i64>(q)
+        .bind(kind)
+        .bind(cutoff.to_rfc3339())
         .fetch_one(pool)
         .await
         .ok()
@@ -176,10 +175,10 @@ async fn recent_completed(pool: &SqlitePool, table: &str, window_ms: i64) -> Opt
 
 async fn embed_totals(pool: &SqlitePool) -> (Option<i64>, Option<i64>) {
     let q = "SELECT \
-                COALESCE(SUM(CAST(json_extract(result_json, '$.docs_embedded') AS INTEGER)), 0), \
-                COALESCE(SUM(CAST(json_extract(result_json, '$.chunks_embedded') AS INTEGER)), 0) \
-              FROM axon_embed_jobs \
-              WHERE status='completed' AND result_json IS NOT NULL";
+                COALESCE(SUM(CAST(json_extract(counts_json, '$.documents_done') AS INTEGER)), 0), \
+                COALESCE(SUM(CAST(json_extract(counts_json, '$.chunks_done') AS INTEGER)), 0) \
+              FROM jobs \
+              WHERE kind='source' AND status='completed' AND counts_json IS NOT NULL";
     match sqlx::query_as::<_, (i64, i64)>(q).fetch_one(pool).await {
         Ok((d, c)) => (Some(d), Some(c)),
         Err(_) => (None, None),
@@ -187,22 +186,21 @@ async fn embed_totals(pool: &SqlitePool) -> (Option<i64>, Option<i64>) {
 }
 
 async fn most_chunks_job(pool: &SqlitePool) -> Option<serde_json::Value> {
-    let q = "SELECT id, CAST(json_extract(result_json, '$.chunks_embedded') AS INTEGER) AS chunks \
-              FROM axon_embed_jobs \
-              WHERE status='completed' AND result_json IS NOT NULL \
+    let q = "SELECT job_id, CAST(json_extract(counts_json, '$.chunks_done') AS INTEGER) AS chunks \
+              FROM jobs \
+              WHERE kind='source' AND status='completed' AND counts_json IS NOT NULL \
               ORDER BY chunks DESC NULLS LAST \
               LIMIT 1";
     let row: Option<(String, Option<i64>)> =
         sqlx::query_as(q).fetch_optional(pool).await.ok().flatten();
-    row.and_then(|(id, chunks)| {
-        chunks.map(|c| serde_json::json!({"embed_job_id": id, "chunks": c}))
-    })
+    row.and_then(|(id, chunks)| chunks.map(|c| serde_json::json!({"job_id": id, "chunks": c})))
 }
 
 async fn longest_crawl_job(pool: &SqlitePool) -> Option<serde_json::Value> {
-    let q = "SELECT id, (finished_at - started_at) / 1000.0 AS secs \
-              FROM axon_crawl_jobs \
-              WHERE status='completed' AND started_at IS NOT NULL AND finished_at IS NOT NULL \
+    let q = "SELECT job_id, (julianday(finished_at) - julianday(started_at)) * 86400.0 AS secs \
+              FROM jobs \
+              WHERE kind='source' AND status='completed' \
+                AND started_at IS NOT NULL AND finished_at IS NOT NULL \
               ORDER BY secs DESC \
               LIMIT 1";
     let row: Option<(String, Option<f64>)> =

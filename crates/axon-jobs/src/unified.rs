@@ -6,10 +6,6 @@ use axon_observe::sink::SqliteObservabilitySink;
 use sqlx::SqlitePool;
 
 use crate::boundary::{JobDeleteResult, JobStore, Result};
-pub use crate::store_inventory::{
-    LegacyJobStoreBlocker, RECEIPT_KIND_LEGACY_RESET, RECEIPT_KIND_PREFLIGHT_CLEAN_CUTOVER,
-    detect_incompatible_legacy_jobs, record_cutover_receipt,
-};
 
 #[path = "unified/control.rs"]
 mod control;

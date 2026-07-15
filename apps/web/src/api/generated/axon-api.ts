@@ -393,9 +393,9 @@ export type components = {
             "limit"?: number;
             "next_cursor"?: string | null;
         };
-        "JobFamily": "embed" | "extract" | "ingest";
+        "JobFamily": "source" | "extract";
         "JobId": string;
-        "JobKind": "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset" | "embed" | "crawl" | "ingest";
+        "JobKind": "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset";
         "JobMetric": {
             "label": string;
             "value": string;

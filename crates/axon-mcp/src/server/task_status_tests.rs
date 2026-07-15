@@ -1,5 +1,5 @@
 use super::*;
-use axon_jobs::backend::JobKind;
+use axon_api::source::JobKind;
 use axon_services::types::ServiceJob;
 use chrono::Utc;
 use rmcp::model::TaskStatus;
@@ -44,13 +44,13 @@ fn maps_axon_job_statuses_to_rmcp_task_statuses() {
         ("canceled", TaskStatus::Cancelled),
     ];
     for (axon, expected) in cases {
-        assert_eq!(task_from_job(JobKind::Crawl, &job(axon)).status, expected);
+        assert_eq!(task_from_job(JobKind::Source, &job(axon)).status, expected);
     }
 }
 
 #[test]
 fn task_objects_discourage_hot_polling() {
-    let task = task_from_job(JobKind::Crawl, &job("running"));
+    let task = task_from_job(JobKind::Source, &job("running"));
     let poll_interval = task.poll_interval.expect("task should set poll interval");
     assert_eq!(poll_interval, TASK_POLL_INTERVAL_MS);
     assert!(poll_interval >= 5_000);
@@ -58,9 +58,9 @@ fn task_objects_discourage_hot_polling() {
 
 #[test]
 fn task_result_payload_includes_sanitized_result_json() {
-    let payload = task_result_payload(JobKind::Ingest, &job("completed"));
+    let payload = task_result_payload(JobKind::Source, &job("completed"));
     let value = serde_json::to_value(payload).unwrap();
-    assert_eq!(value["kind"], "ingest");
+    assert_eq!(value["kind"], "source");
     assert_eq!(value["completed"], true);
     assert_eq!(value["result_json"]["raw"], "result");
     assert_eq!(value["result_json"]["access_token"], "[redacted]");
@@ -78,7 +78,7 @@ fn task_result_payload_truncates_oversized_result_json() {
         "chunks": (0..80).map(|_| "x".repeat(1024)).collect::<Vec<_>>()
     }));
 
-    let payload = task_result_payload(JobKind::Crawl, &job);
+    let payload = task_result_payload(JobKind::Source, &job);
     let value = serde_json::to_value(payload).unwrap();
 
     assert_eq!(value["result_json"]["truncated"], true);

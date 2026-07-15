@@ -299,18 +299,3 @@ impl fmt::Display for EvaluateResponsesMode {
         })
     }
 }
-
-/// Where a config value was actually sourced from. Used to make a value's
-/// "distinct explicit confirmation" guarantee provable rather than assumed:
-/// `reset_confirm_legacy_wipe` (see `crates/axon-services/src/reset.rs`) must
-/// only ever be honored when this is `CliFlag` — never `TomlFile`/`EnvVar`,
-/// which could be set once in a persisted file/environment and silently
-/// defeat the per-invocation confirmation the flag is meant to provide.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ConfigValueSource {
-    #[default]
-    Unset,
-    CliFlag,
-    TomlFile,
-    EnvVar,
-}

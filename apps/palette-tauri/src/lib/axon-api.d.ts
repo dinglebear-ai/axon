@@ -1833,11 +1833,11 @@ export interface components {
             next_cursor?: string | null;
         };
         /** @enum {string} */
-        JobFamily: "embed" | "extract" | "ingest";
+        JobFamily: "source" | "extract";
         /** Format: uuid */
         JobId: string;
         /** @enum {string} */
-        JobKind: "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset" | "embed" | "crawl" | "ingest";
+        JobKind: "source" | "watch" | "map" | "extract" | "research" | "ask" | "query" | "retrieve" | "memory" | "graph" | "prune" | "provider_probe" | "reset";
         /** @description One labelled, display-formatted counter (e.g. `{ "Chunks", "1,024" }`). */
         JobMetric: {
             label: string;
@@ -1900,7 +1900,7 @@ export interface components {
         JobStatusResponse: {
             /**
              * @description Raw job record in the wire-compat shape (`status`, `result_json`,
-             *     timestamps, …). Still `Value` because the per-family job payloads are
+             *     timestamps, ...). Still `Value` because the job payloads are
              *     heterogeneous; `progress` is the typed, cross-family projection of it.
              */
             job: unknown;
@@ -5033,7 +5033,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description Upstream crawl service unavailable */
+            /** @description Upstream source service unavailable */
             502: {
                 headers: {
                     [name: string]: unknown;

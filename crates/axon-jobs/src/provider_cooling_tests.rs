@@ -20,10 +20,8 @@
 //!   in `crates/axon-jobs/src/workers/unified.rs`. Exact SQL:
 //!   `SELECT job_id, kind, attempt, request_json, auth_snapshot_json FROM jobs
 //!   WHERE status IN ('queued', 'waiting', 'blocked') ORDER BY <priority CASE>,
-//!   updated_at ASC, job_id ASC LIMIT 1`. This is the ONLY unified claim
-//!   query (there is a second, unrelated legacy per-family claim function,
-//!   `ops::lifecycle::claim_next_pending_for_attempt`, for the
-//!   `axon_crawl_jobs`/`axon_embed_jobs`/etc. tables — out of scope here).
+//!   updated_at ASC, job_id ASC LIMIT 1`. This is the durable worker claim
+//!   query used by the source/extract/watch/prune runtime.
 //! - **Existing index**: `idx_axon_jobs_claim` in migration
 //!   `crates/axon-jobs/src/migrations/0019_unified_jobs_contract_fields.sql`,
 //!   exactly as the plan named it: `ON jobs(status, <priority CASE>,
@@ -71,19 +69,9 @@
 //!   `crates/axon-services`, `crates/axon-vector` (TEI), and the
 //!   `UnifiedJobRunner` registry (`crates/axon-services/src/runtime/
 //!   job_runners.rs`, which registers `ProviderProbe`/`Extract`/`Memory`
-//!   runners only). Finding: TEI's 429/5xx retry-exhaustion path
-//!   (`crates/axon-vector/src/ops/tei/tei_client.rs::send_chunk_with_retries`)
-//!   returns a plain `Box<dyn Error>` string, not an `ApiError`, and is only
-//!   reachable today through the LEGACY per-family embed job runner
-//!   (`crates/axon-jobs/src/workers/runners/embed.rs`, writing to
-//!   `axon_embed_jobs`) — a different job system from the unified `jobs`
-//!   table this plan's claim query targets. No unified `UnifiedJobRunner`
-//!   currently calls TEI or constructs an `ApiError::with_provider_cooling`.
-//!   There is therefore no live call site to "wire" without inventing one.
-//!   This test file instead proves the generic mechanism end-to-end
+//!   runners). This test file proves the generic mechanism end-to-end
 //!   (clamping, claim exclusion, clear-on-terminal) against the real store,
-//!   which is the reusable piece any future TEI-calling `UnifiedJobRunner`
-//!   will plug into.
+//!   which is the reusable piece provider-calling source runners plug into.
 
 use std::time::Duration;
 

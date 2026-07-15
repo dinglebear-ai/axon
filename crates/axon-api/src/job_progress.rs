@@ -7,9 +7,9 @@
 //! response, and the palette/android/CLI consume it instead of re-deriving — so
 //! the derivation can't drift across surfaces.
 //!
-//! Scope: the generic async families (`embed`, `extract`, `ingest`). Crawl keeps
-//! its richer client-side snapshot (page frontier / depth / event log) for now;
-//! folding it in would need a superset DTO and is tracked separately.
+//! Scope: canonical async job families exposed by the unified runtime. Source
+//! jobs cover acquisition, preparation, embedding, and publishing work; extract
+//! jobs keep their distinct LLM extraction lifecycle.
 
 use crate::service_job::ServiceJob;
 use serde::{Deserialize, Serialize};
@@ -18,9 +18,8 @@ use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JobFamily {
-    Embed,
+    Source,
     Extract,
-    Ingest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -170,8 +169,14 @@ fn determinate_percent(
     if phase != JobPhase::Running && phase != JobPhase::Pending {
         return None;
     }
-    if family == JobFamily::Ingest
+    if family == JobFamily::Source
         && let (Some(done), Some(total)) = (num(result, "tasks_done"), num(result, "tasks_total"))
+        && total > 0
+    {
+        return Some(((done as f64 / total as f64) * 100.0).clamp(0.0, 100.0));
+    }
+    if family == JobFamily::Source
+        && let (Some(done), Some(total)) = (num(result, "docs_embedded"), num(result, "docs_total"))
         && total > 0
     {
         return Some(((done as f64 / total as f64) * 100.0).clamp(0.0, 100.0));
@@ -182,16 +187,9 @@ fn determinate_percent(
 fn metrics_for(family: JobFamily, result: Option<&ResultMap>) -> Vec<JobMetric> {
     let mut metrics = Vec::new();
     match family {
-        JobFamily::Embed => {
+        JobFamily::Source => {
             push_num(&mut metrics, "Docs", num(result, "docs_embedded"));
-            push_num(&mut metrics, "Chunks", num(result, "chunks_embedded"));
-        }
-        JobFamily::Extract => {
-            push_num(&mut metrics, "Pages", num(result, "pages_visited"));
-            push_num(&mut metrics, "With data", num(result, "pages_with_data"));
-            push_num(&mut metrics, "Items", num(result, "total_items"));
-        }
-        JobFamily::Ingest => {
+            push_num(&mut metrics, "Pages", num(result, "pages_crawled"));
             if let Some(phase) = get_str(result, "phase") {
                 metrics.push(JobMetric {
                     label: "Phase".to_string(),
@@ -206,12 +204,19 @@ fn metrics_for(family: JobFamily, result: Option<&ResultMap>) -> Vec<JobMetric> 
                     "Files",
                     Some(files_ast.unwrap_or(0) + files_prose.unwrap_or(0)),
                 );
+            } else {
+                push_num(&mut metrics, "Files", num(result, "files_done"));
             }
             push_num(
                 &mut metrics,
                 "Chunks",
                 num(result, "chunks_embedded").or_else(|| num(result, "chunks")),
             );
+        }
+        JobFamily::Extract => {
+            push_num(&mut metrics, "Pages", num(result, "pages_visited"));
+            push_num(&mut metrics, "With data", num(result, "pages_with_data"));
+            push_num(&mut metrics, "Items", num(result, "total_items"));
         }
     }
     metrics

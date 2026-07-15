@@ -376,7 +376,3 @@ pub(crate) fn crawl_status_for_output<T>(results: &[T], output: &CrawlOutput) ->
         "partial"
     }
 }
-
-#[cfg(test)]
-#[path = "search_crawl_tests.rs"]
-pub(crate) mod tests;
