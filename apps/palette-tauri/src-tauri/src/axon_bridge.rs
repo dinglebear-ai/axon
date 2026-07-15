@@ -343,7 +343,12 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
         (method, path),
         (
             HttpMethod::Get,
-            "/v1/doctor" | "/v1/status" | "/v1/sources" | "/v1/domains" | "/v1/stats" | "/v1/watch"
+            "/v1/doctor"
+                | "/v1/status"
+                | "/v1/sources"
+                | "/v1/domains"
+                | "/v1/stats"
+                | "/v1/watches"
         ) | (
             HttpMethod::Post,
             // scrape/crawl/embed/ingest submit through the unified source
@@ -369,8 +374,7 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/screenshot"
                 | "/v1/dedupe"
                 | "/v1/purge"
-                | "/v1/watch"
-                | "/v1/ingest/sessions/prepared"
+                | "/v1/watches"
         ) | (
             HttpMethod::Post,
             "/v1/crawl/cleanup"
@@ -410,7 +414,8 @@ fn matches_dynamic_job_route(method: HttpMethod, path: &str) -> bool {
 
 fn matches_dynamic_watch_route(method: HttpMethod, path: &str) -> bool {
     let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
-    matches!(parts.as_slice(), ["v1", "watch", id, "run"] if method == HttpMethod::Post && is_uuid(id))
+    matches!(parts.as_slice(), ["v1", "watches", id, "exec"] if method == HttpMethod::Post && is_uuid(id))
+        || matches!(parts.as_slice(), ["v1", "watches", id] if method == HttpMethod::Delete && is_uuid(id))
 }
 
 fn is_uuid(value: &str) -> bool {

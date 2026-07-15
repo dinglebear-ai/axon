@@ -9,7 +9,7 @@
 //! stays in `axon-core` below the services layer. It never mutates.
 
 use crate::config::Config;
-use axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION;
+use axon_api::reset::TARGET_PAYLOAD_CONTRACT_VERSION;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -49,7 +49,7 @@ pub async fn build_cutover_block(cfg: &Config, qdrant_reachable: bool, sqlite_ok
     let sqlite = sqlite_store_status(cfg, sqlite_ok).await;
     let vectors = qdrant_store_status(cfg, qdrant_reachable).await;
 
-    let sqlite_non_empty = sqlite
+    let sqlite_incompatible = sqlite
         .get("non_empty")
         .and_then(Value::as_bool)
         .unwrap_or(false);
@@ -62,10 +62,10 @@ pub async fn build_cutover_block(cfg: &Config, qdrant_reachable: bool, sqlite_ok
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let reset_recommended = sqlite_non_empty || vectors_non_empty || vectors_incompatible;
+    let reset_recommended = sqlite_incompatible || vectors_incompatible;
     let guidance = if reset_recommended {
         Some(reset_guidance(
-            sqlite_non_empty,
+            sqlite_incompatible,
             vectors_non_empty,
             vectors_incompatible,
         ))
@@ -102,7 +102,7 @@ fn reset_guidance(sqlite: bool, vectors_non_empty: bool, vectors_incompatible: b
     )
 }
 
-/// Read-only SQLite content-row inventory: does the DB hold pre-cutover rows.
+/// Read-only SQLite inventory: does the DB hold retired pre-cutover rows.
 async fn sqlite_store_status(cfg: &Config, sqlite_ok: bool) -> Value {
     let path = &cfg.sqlite_path;
     if !path.exists() {
@@ -113,31 +113,28 @@ async fn sqlite_store_status(cfg: &Config, sqlite_ok: bool) -> Value {
             "note": "fresh — SQLite DB not yet created",
         });
     }
-    let (content_rows, error) = match count_sqlite_content_rows(path).await {
+    let (legacy_rows, error) = match count_sqlite_legacy_rows(path).await {
         Ok(rows) => (rows, None),
         Err(e) => (0, Some(e)),
     };
     serde_json::json!({
         "exists": true,
         "ok": sqlite_ok,
-        "non_empty": content_rows > 0,
-        "content_rows": content_rows,
+        "non_empty": legacy_rows > 0,
+        "legacy_rows": legacy_rows,
+        "content_rows": legacy_rows,
         "probe_error": error,
     })
 }
 
-/// Sum rows across the primary content-bearing tables that exist. Read-only
+/// Sum rows across retired pre-cutover tables that exist. Read-only
 /// (`mode=ro`), best-effort — a missing table contributes zero.
 ///
-/// Job-queue tables are intentionally EXCLUDED. Job rows — whether in the
-/// unified `jobs`/`job_events`/`job_artifacts` tables or the legacy
-/// `axon_*_jobs` tables — are transient runtime state, not the indexed content
-/// a cutover wipe is about. Counting them made a single post-cutover `extract`
-/// (or any other) job write trip the `startup.incompatible_store` guard on the
-/// very next invocation, forcing an `axon reset` before every run. The genuine
-/// pre-cutover signals (non-empty `sources`/`source_documents`/…, or an
-/// old Qdrant payload schema) are still detected below and by the vector probe.
-async fn count_sqlite_content_rows(path: &std::path::Path) -> Result<u64, String> {
+/// Current unified tables (`sources`, `memory_records`, `graph_nodes`, `jobs`,
+/// etc.) are intentionally EXCLUDED. They are valid post-cutover runtime state;
+/// counting them made the second CLI command after a fresh successful write trip
+/// `startup.incompatible_store`.
+async fn count_sqlite_legacy_rows(path: &std::path::Path) -> Result<u64, String> {
     use sqlx::SqlitePool;
     let connect = format!("sqlite://{}?mode=ro", path.display());
     let pool = SqlitePool::connect(&connect)
@@ -145,18 +142,9 @@ async fn count_sqlite_content_rows(path: &std::path::Path) -> Result<u64, String
         .map_err(|e| e.to_string())?;
     let mut total: u64 = 0;
     for table in [
-        "sources",
-        "source_generations",
-        "source_documents",
-        "source_cleanup_debt",
-        "code_index_generations",
-        "code_index_files",
-        "watches",
-        "watch_runs",
-        "memory_records",
-        "memory_edges",
-        "graph_nodes",
-        "graph_edges",
+        "axon_source_sources",
+        "axon_source_manifest_items",
+        "axon_source_cleanup_debt",
     ] {
         let present: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -241,10 +229,10 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
         }
     }
     let points = qdrant_point_count(client, base, collection).await;
-    let (min_schema_version, incompatible) = if points > 0 {
-        qdrant_min_schema(client, base, collection).await
+    let (sampled_contract_versions, incompatible) = if points > 0 {
+        qdrant_contract_versions(client, base, collection).await
     } else {
-        (None, false)
+        (Vec::new(), false)
     };
 
     serde_json::json!({
@@ -253,8 +241,8 @@ async fn qdrant_store_status(cfg: &Config, reachable: bool) -> Value {
         "collection": collection,
         "points": points,
         "non_empty": points > 0,
-        "min_payload_schema_version": min_schema_version,
-        "target_payload_schema_version": TARGET_PAYLOAD_SCHEMA_VERSION,
+        "payload_contract_versions": sampled_contract_versions,
+        "target_payload_contract_version": TARGET_PAYLOAD_CONTRACT_VERSION,
         "schema_incompatible": incompatible,
     })
 }
@@ -280,17 +268,21 @@ async fn qdrant_point_count(client: &reqwest::Client, base: &str, collection: &s
     }
 }
 
-/// Scroll a bounded sample and return the minimum `payload_schema_version` plus
-/// whether any is older than the target. A missing field is implicit v1.
-async fn qdrant_min_schema(
+/// Scroll a bounded sample and return observed `payload_contract_version`
+/// values plus whether any sampled point is not on the current contract.
+///
+/// Missing `payload_contract_version` is incompatible: those are old
+/// pre-unification points, even if they happen to carry the retired integer
+/// `payload_schema_version`.
+async fn qdrant_contract_versions(
     client: &reqwest::Client,
     base: &str,
     collection: &str,
-) -> (Option<u32>, bool) {
+) -> (Vec<String>, bool) {
     let url = format!("{base}/collections/{collection}/points/scroll");
     let body = serde_json::json!({
         "limit": 256,
-        "with_payload": ["payload_schema_version"],
+        "with_payload": ["payload_contract_version"],
         "with_vector": false,
     });
     let page: Value =
@@ -299,23 +291,99 @@ async fn qdrant_min_schema(
         {
             Ok(Ok(resp)) if resp.status().is_success() => match resp.json().await {
                 Ok(v) => v,
-                Err(_) => return (None, false),
+                Err(_) => return (Vec::new(), false),
             },
-            _ => return (None, false),
+            _ => return (Vec::new(), false),
         };
     let points = match page.pointer("/result/points").and_then(Value::as_array) {
         Some(p) if !p.is_empty() => p,
-        _ => return (None, false),
+        _ => return (Vec::new(), false),
     };
-    let mut min_version: Option<u32> = None;
+    let mut versions = std::collections::BTreeSet::new();
+    let mut incompatible = false;
     for point in points {
-        let version = point
-            .pointer("/payload/payload_schema_version")
-            .and_then(Value::as_u64)
-            .map(|v| v as u32)
-            .unwrap_or(1);
-        min_version = Some(min_version.map_or(version, |m| m.min(version)));
+        match point
+            .pointer("/payload/payload_contract_version")
+            .and_then(Value::as_str)
+        {
+            Some(version) => {
+                versions.insert(version.to_string());
+                if version != TARGET_PAYLOAD_CONTRACT_VERSION {
+                    incompatible = true;
+                }
+            }
+            None => {
+                versions.insert("<missing>".to_string());
+                incompatible = true;
+            }
+        }
     }
-    let incompatible = min_version.is_some_and(|v| v < TARGET_PAYLOAD_SCHEMA_VERSION);
-    (min_version, incompatible)
+    (versions.into_iter().collect(), incompatible)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::count_sqlite_legacy_rows;
+
+    #[tokio::test]
+    async fn sqlite_cutover_ignores_current_unified_content_tables() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("jobs.db");
+        let pool = sqlx::SqlitePool::connect(&format!("sqlite://{}?mode=rwc", path.display()))
+            .await
+            .expect("open sqlite");
+        sqlx::query("CREATE TABLE sources (source_id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .expect("create sources");
+        sqlx::query("CREATE TABLE memory_records (memory_id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .expect("create memory_records");
+        sqlx::query("INSERT INTO sources (source_id) VALUES ('src_current')")
+            .execute(&pool)
+            .await
+            .expect("insert source");
+        sqlx::query("INSERT INTO memory_records (memory_id) VALUES ('mem_current')")
+            .execute(&pool)
+            .await
+            .expect("insert memory");
+        pool.close().await;
+
+        let rows = count_sqlite_legacy_rows(&path).await.expect("legacy count");
+
+        assert_eq!(rows, 0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_cutover_counts_retired_source_ledger_tables() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("jobs.db");
+        let pool = sqlx::SqlitePool::connect(&format!("sqlite://{}?mode=rwc", path.display()))
+            .await
+            .expect("open sqlite");
+        sqlx::query("CREATE TABLE axon_source_sources (source_id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .expect("create legacy sources");
+        sqlx::query("CREATE TABLE axon_source_manifest_items (source_id TEXT, item_key TEXT)")
+            .execute(&pool)
+            .await
+            .expect("create legacy manifest items");
+        sqlx::query("INSERT INTO axon_source_sources (source_id) VALUES ('src_old')")
+            .execute(&pool)
+            .await
+            .expect("insert legacy source");
+        sqlx::query(
+            "INSERT INTO axon_source_manifest_items (source_id, item_key) VALUES ('src_old', 'index')",
+        )
+        .execute(&pool)
+        .await
+        .expect("insert legacy manifest");
+        pool.close().await;
+
+        let rows = count_sqlite_legacy_rows(&path).await.expect("legacy count");
+
+        assert_eq!(rows, 2);
+    }
 }

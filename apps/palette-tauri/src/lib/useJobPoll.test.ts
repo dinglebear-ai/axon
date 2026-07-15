@@ -11,14 +11,14 @@ import { useJobPoll } from "@/lib/useJobPoll";
 function runningAsyncJob(jobId: string): RunState {
   return {
     kind: "asyncJob",
-    family: "ingest",
-    title: "Ingesting owner/repo",
+    family: "source",
+    title: "Indexing owner/repo",
     subtitle: `job ${jobId}`,
     jobId,
-    statusUrl: `/v1/ingest/${jobId}`,
+    statusUrl: `/v1/jobs/${jobId}`,
     target: "owner/repo",
     startedAtMs: Date.now(),
-    snapshot: { ...pendingJobSnapshot("ingest", "owner/repo"), jobId, phase: "running", status: "running" },
+    snapshot: { ...pendingJobSnapshot("source", "owner/repo"), jobId, phase: "running", status: "running" },
     minimized: false,
   };
 }

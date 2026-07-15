@@ -87,7 +87,6 @@ pub mod search_crawl;
 pub mod search_source_index;
 pub mod service_traits;
 pub mod sessions;
-pub mod sessions_legacy;
 #[allow(dead_code)]
 pub(crate) mod sessions_source;
 pub use sessions_source::{

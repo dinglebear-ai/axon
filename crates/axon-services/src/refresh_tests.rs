@@ -42,6 +42,7 @@ fn ingest_origins_classify_as_ingest() {
         classify_action("github", "owner/repo"),
         RefreshAction::Ingest
     );
+    assert_eq!(classify_action("git", "owner/repo"), RefreshAction::Ingest);
     assert_eq!(classify_action("reddit", "r/rust"), RefreshAction::Ingest);
     assert_eq!(
         classify_action("youtube", "https://youtube.com/watch?v=x"),
@@ -60,6 +61,58 @@ fn sessions_and_non_url_embeds_are_skipped() {
         classify_action("embed", "/home/user/docs/file.md"),
         RefreshAction::Skip(_)
     ));
+}
+
+#[test]
+fn payload_origin_reads_unified_web_contract_fields() {
+    let payload = serde_json::json!({
+        "source_family": "web",
+        "source_kind": "web",
+        "web_seed_url": "https://docs.example.com",
+        "source_canonical_uri": "https://docs.example.com",
+        "item_canonical_uri": "https://docs.example.com/page"
+    });
+
+    assert_eq!(
+        payload_origin(&payload),
+        Some((
+            "web".to_string(),
+            "https://docs.example.com".to_string(),
+            None
+        ))
+    );
+}
+
+#[test]
+fn payload_origin_keeps_legacy_seed_markers_for_migration_diagnostics() {
+    let payload = serde_json::json!({
+        "source_type": "github",
+        "seed_url": "owner/repo",
+        "url": "https://github.com/owner/repo"
+    });
+
+    assert_eq!(
+        payload_origin(&payload),
+        Some(("github".to_string(), "owner/repo".to_string(), None))
+    );
+}
+
+#[test]
+fn payload_origin_carries_unified_source_id() {
+    let payload = serde_json::json!({
+        "source_id": "src_0272b3e7006f0910",
+        "source_kind": "web",
+        "web_seed_url": "https://docs.example.com"
+    });
+
+    assert_eq!(
+        payload_origin(&payload),
+        Some((
+            "web".to_string(),
+            "https://docs.example.com".to_string(),
+            Some("src_0272b3e7006f0910".to_string())
+        ))
+    );
 }
 
 #[test]

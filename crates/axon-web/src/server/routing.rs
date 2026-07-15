@@ -241,10 +241,6 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
             "/v1/extract",
             handlers::async_jobs::extract_router(Arc::clone(service_context)),
         )
-        .route(
-            "/v1/watch",
-            get(handlers::admin::list_watch).post(handlers::admin::create_watch),
-        )
         .route("/v1/watches", post(handlers::source_watch::create_watch))
         .route(
             "/v1/watches/{watch_id}",

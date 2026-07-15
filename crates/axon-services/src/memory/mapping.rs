@@ -7,10 +7,10 @@
 //! the real [`axon_memory`] store.
 
 use anyhow::{Result, bail};
+use axon_adapters::sessions::redact_session_text;
 use serde::{Deserialize, Serialize};
 
 use super::runtime_metadata::detect_runtime_memory_metadata;
-use crate::sessions_legacy::redact_session_text;
 use axon_api::mcp_schema::{MemoryEdgeType, MemoryNodeType, MemoryRequest};
 use axon_api::source::{MemoryLink, MemoryRecord, MemoryScope, MemoryStatus, MemoryType};
 

@@ -200,50 +200,39 @@ fn setup_help_is_not_polluted_by_crawl_or_vector_flags() {
 }
 
 #[test]
-fn sessions_watch_help_exposes_debounce_settle_and_initial_scan_flags() {
-    let stdout = run_help(&["sessions", "watch", "--help"]);
-    assert!(stdout.contains("Watch local AI session exports and ingest stable changes"));
-    assert!(stdout.contains("--claude"));
-    assert!(stdout.contains("--codex"));
-    assert!(stdout.contains("--gemini"));
-    assert!(stdout.contains("--project"));
-    assert!(stdout.contains("--path"));
-    assert!(stdout.contains("--debounce-ms"));
-    assert!(stdout.contains("--settle-ms"));
-    assert!(stdout.contains("--max-retries"));
-    assert!(stdout.contains("--max-batch-docs"));
-    assert!(stdout.contains("--max-processing-concurrency"));
-    assert!(stdout.contains("--rescan-cooldown-ms"));
-    assert!(stdout.contains("--no-initial-scan"));
-    assert!(stdout.contains("--upload-to-server"));
-    assert!(stdout.contains("--verbose-paths"));
-    assert!(stdout.contains("--json"));
-}
+fn legacy_session_watch_surfaces_are_removed() {
+    for args in [
+        &["sessions", "watch", "--help"][..],
+        &["sessions", "watch-status", "--help"],
+        &["sessions", "smoke-watch", "--help"],
+        &["setup", "session-watch-service", "--help"],
+    ] {
+        let stderr = run_error(args);
+        assert!(
+            stderr.contains("unrecognized subcommand") || stderr.contains("invalid value"),
+            "legacy session watch surface should be rejected for args={args:?}:\n{stderr}"
+        );
+    }
 
-#[test]
-fn setup_session_watch_service_help_exposes_install_check_remove_status() {
-    let stdout = run_help(&["setup", "session-watch-service", "--help"]);
-    assert!(
-        stdout.contains("Install, check, remove, or inspect the host-local session watch service")
-    );
-    assert!(stdout.contains("install"));
-    assert!(stdout.contains("check"));
-    assert!(stdout.contains("remove"));
-    assert!(stdout.contains("status"));
-    assert!(!stdout.contains("status <job_id>"));
-
-    let status = run_help(&["setup", "session-watch-service", "status", "--help"]);
-    assert!(status.contains("Print current user systemd status for the service"));
-    assert!(!status.contains("--active"));
-    assert!(!status.contains("--recent"));
-    assert!(!status.contains("--reclaimed"));
-}
-
-#[test]
-fn sessions_watch_status_and_smoke_watch_are_documented() {
     let stdout = run_help(&["sessions", "--help"]);
-    assert!(stdout.contains("watch-status"));
-    assert!(stdout.contains("smoke-watch"));
+    assert!(
+        !stdout.contains("watch"),
+        "sessions help should not advertise legacy watch commands:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("watch-status"),
+        "sessions help should not advertise watch-status:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("smoke-watch"),
+        "sessions help should not advertise smoke-watch:\n{stdout}"
+    );
+
+    let setup = run_help(&["setup", "--help"]);
+    assert!(
+        !setup.contains("session-watch-service"),
+        "setup help should not advertise session-watch-service:\n{setup}"
+    );
 }
 
 #[test]

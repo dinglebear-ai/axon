@@ -1,31 +1,27 @@
-//! `SqliteWatchStore` — the real, SQLite-backed [`crate::boundary::WatchStore`]
-//! implementation for source-request-backed watches (WS-B / audit C4-04,
-//! issue #298 contract: `docs/pipeline-unification/sources/source-pipeline.md`
-//! Transport Crosswalk: watch).
-//!
-//! This is intentionally a NEW table pair (`axon_source_watches` /
-//! `axon_source_watch_runs`, migration `0023`), not a rewrite of the legacy
-//! `axon_watch_defs`/`axon_watch_runs` tables (migration `0002`) that back the
-//! still-live `axon watch create|list|history|exec` task_type/task_payload
-//! model and its scheduler
-//! (`crates/axon-jobs/src/workers/watch_scheduler.rs`). Disturbing those was
-//! explicitly out of scope for this slice. `SqliteWatchStore` models a watch
-//! the way the contract does: a `source` string plus a `WatchSchedule` and
-//! `AdapterOptions`, matching `axon_api::source::{WatchRequest, WatchResult}`.
-//!
-//! `delete` is intentionally an inherent method on the concrete
-//! `SqliteWatchStore`, not part of the shared `WatchStore` trait — the trait
-//! is owned by `axon-api`/`axon-jobs::boundary` and this slice does not edit
-//! trait contracts. Callers that need delete (the CLI) hold the concrete type
-//! rather than `Arc<dyn WatchStore>`.
+//! SQLite-backed [`crate::boundary::WatchStore`] for source-request-backed
+//! watches (WS-B / issue #298). This uses the canonical `axon_source_watches`
+//! / `axon_source_watch_runs` table pair, not legacy `axon_watch_defs`.
+//! `delete` stays inherent on [`SqliteWatchStore`] because the shared trait
+//! does not include deletion.
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
+use sqlx::{Row, SqlitePool};
 
 use crate::boundary::{Result, WatchStore};
 use crate::limits::clamp_page_limit;
 use crate::store::now_ms;
+
+#[path = "watch_store_scheduler.rs"]
+mod scheduler;
+pub(crate) use scheduler::LeasedSourceWatch;
+
+#[path = "watch_store_rows.rs"]
+mod rows;
+use rows::{
+    json_err, missing_job, missing_watch, row_to_auth_snapshot, row_to_request, row_to_result,
+    scope_to_str, sqlite_err, synth_descriptor, validate_source_watch_interval,
+};
 
 /// SQLite-backed [`WatchStore`]. Cheap to clone (wraps a pooled connection
 /// handle); safe to share across worker tasks.
@@ -37,6 +33,38 @@ pub struct SqliteWatchStore {
 impl SqliteWatchStore {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// Reconstruct the original request fields stored for a watch.
+    pub async fn request(&self, watch_id: WatchId) -> Result<Option<WatchRequest>> {
+        let row = sqlx::query("SELECT * FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&watch_id.0)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
+        row.as_ref().map(row_to_request).transpose()
+    }
+
+    pub async fn request_with_auth(
+        &self,
+        watch_id: WatchId,
+    ) -> Result<Option<(WatchRequest, Option<AuthSnapshot>)>> {
+        let row = sqlx::query("SELECT * FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&watch_id.0)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
+        row.as_ref()
+            .map(|row| Ok((row_to_request(row)?, row_to_auth_snapshot(row)?)))
+            .transpose()
+    }
+
+    pub async fn create_with_auth(
+        &self,
+        request: WatchRequest,
+        auth_snapshot: Option<AuthSnapshot>,
+    ) -> Result<WatchResult> {
+        self.insert_watch(request, auth_snapshot).await
     }
 
     /// Hard-delete a watch and its run history (`ON DELETE CASCADE`).
@@ -52,116 +80,12 @@ impl SqliteWatchStore {
     }
 }
 
-fn sqlite_err(err: sqlx::Error) -> ApiError {
-    ApiError::new(
-        "watch.storage_error",
-        ErrorStage::Retrieving,
-        format!("watch store error: {err}"),
-    )
-}
-
-fn json_err(err: serde_json::Error) -> ApiError {
-    ApiError::new(
-        "watch.storage_error",
-        ErrorStage::Retrieving,
-        format!("watch store serialization error: {err}"),
-    )
-}
-
-fn missing_watch(watch_id: &WatchId) -> ApiError {
-    ApiError::new(
-        "watch.not_found",
-        ErrorStage::Retrieving,
-        format!("watch {} not found", watch_id.0),
-    )
-}
-
-fn missing_job(job_id: JobId) -> ApiError {
-    ApiError::new(
-        "job.not_found",
-        ErrorStage::Retrieving,
-        format!("job {} not found", job_id.0),
-    )
-}
-
-fn parse_json_str<T: serde::de::DeserializeOwned>(raw: &str) -> Option<T> {
-    serde_json::from_value(serde_json::Value::String(raw.to_string())).ok()
-}
-
-fn parse_scope(raw: &str) -> SourceScope {
-    parse_json_str(raw).unwrap_or(SourceScope::Page)
-}
-
-/// Serialize a `SourceScope` to the bare snake_case string this store persists
-/// (e.g. `"page"`, not the JSON-quoted `"\"page\""` `serde_json::to_string`
-/// would produce) so it round-trips through [`parse_scope`] unchanged.
-fn scope_to_str(scope: SourceScope) -> String {
-    serde_json::to_value(scope)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "page".to_string())
-}
-
-fn row_to_result(row: &SqliteRow) -> WatchResult {
-    let watch_id = WatchId::new(row.get::<String, _>("watch_id"));
-    let source_id = SourceId::new(row.get::<String, _>("source_id"));
-    let canonical_uri: String = row.get("canonical_uri");
-    let adapter = AdapterRef {
-        name: row.get("adapter_name"),
-        version: row.get("adapter_version"),
-    };
-    let scope = parse_scope(&row.get::<String, _>("scope"));
-    let enabled: i64 = row.get("enabled");
-    let every_seconds: i64 = row.get("every_seconds");
-    let cron: Option<String> = row.get("cron");
-    let timezone: Option<String> = row.get("timezone");
-    let last_job_id: Option<String> = row.get("last_job_id");
-    let last_status: Option<String> = row.get("last_status");
-    let latest_job = last_job_id.map(|job_id| synth_descriptor(&job_id, last_status.as_deref()));
-
-    WatchResult {
-        watch_id,
-        source_id,
-        canonical_uri,
-        adapter,
-        scope,
-        enabled: enabled != 0,
-        schedule: WatchSchedule {
-            every_seconds: every_seconds.max(0) as u64,
-            cron,
-            timezone,
-        },
-        job: None,
-        latest_job,
-        warnings: Vec::new(),
-    }
-}
-
-fn synth_descriptor(job_id: &str, status: Option<&str>) -> JobDescriptor {
-    let status = status
-        .and_then(parse_json_str::<LifecycleStatus>)
-        .unwrap_or(LifecycleStatus::Queued);
-    let job_id = JobId::new(uuid::Uuid::parse_str(job_id).unwrap_or_default());
-    JobDescriptor {
-        kind: JobKind::Source,
-        id: job_id,
-        status_url: format!("/v1/jobs/{}", job_id.0),
-        events_url: format!("/v1/jobs/{}/events", job_id.0),
-        stream_url: format!("/v1/jobs/{}/stream", job_id.0),
-        poll_after_ms: 1000,
-        cancel_url: Some(format!("/v1/jobs/{}/cancel", job_id.0)),
-        retry_url: Some(format!("/v1/jobs/{}/retry", job_id.0)),
-        job_id,
-        status,
-        poll: None,
-        created_at: None,
-        updated_at: None,
-    }
-}
-
-#[async_trait]
-impl WatchStore for SqliteWatchStore {
-    async fn create(&self, request: WatchRequest) -> Result<WatchResult> {
+impl SqliteWatchStore {
+    async fn insert_watch(
+        &self,
+        request: WatchRequest,
+        auth_snapshot: Option<AuthSnapshot>,
+    ) -> Result<WatchResult> {
         let watch_id = WatchId::new(format!("watch_{}", uuid::Uuid::new_v4()));
         let source_id = SourceId::new(format!("source_{}", uuid::Uuid::new_v4()));
         let adapter = AdapterRef {
@@ -170,16 +94,22 @@ impl WatchStore for SqliteWatchStore {
         };
         let scope = request.scope.unwrap_or(SourceScope::Page);
         let enabled = request.enabled.unwrap_or(true);
+        let every_seconds = validate_source_watch_interval(request.schedule.every_seconds)?;
         let options_json = serde_json::to_string(&request.options).map_err(json_err)?;
+        let auth_snapshot_json = auth_snapshot
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(json_err)?;
         let now = now_ms();
-        let next_run_at = now + (request.schedule.every_seconds as i64) * 1000;
+        let next_run_at = now + every_seconds * 1000;
 
         sqlx::query(
             "INSERT INTO axon_source_watches \
              (watch_id, source, source_id, canonical_uri, adapter_name, adapter_version, \
               scope, embed, options_json, collection, enabled, every_seconds, cron, timezone, \
-              next_run_at, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              next_run_at, last_job_id, last_status, created_at, updated_at, auth_snapshot_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&watch_id.0)
         .bind(&request.source)
@@ -192,12 +122,15 @@ impl WatchStore for SqliteWatchStore {
         .bind(&options_json)
         .bind(&request.collection)
         .bind(enabled)
-        .bind(request.schedule.every_seconds as i64)
+        .bind(every_seconds)
         .bind(&request.schedule.cron)
         .bind(&request.schedule.timezone)
         .bind(next_run_at)
+        .bind(None::<String>)
+        .bind(None::<String>)
         .bind(now)
         .bind(now)
+        .bind(&auth_snapshot_json)
         .execute(&self.pool)
         .await
         .map_err(sqlite_err)?;
@@ -215,6 +148,13 @@ impl WatchStore for SqliteWatchStore {
             warnings: Vec::new(),
         })
     }
+}
+
+#[async_trait]
+impl WatchStore for SqliteWatchStore {
+    async fn create(&self, request: WatchRequest) -> Result<WatchResult> {
+        self.insert_watch(request, None).await
+    }
 
     async fn update(&self, watch_id: WatchId, request: WatchUpdateRequest) -> Result<WatchResult> {
         let existing = sqlx::query("SELECT * FROM axon_source_watches WHERE watch_id = ?")
@@ -228,7 +168,7 @@ impl WatchStore for SqliteWatchStore {
         let mut cron: Option<String> = existing.get("cron");
         let mut timezone: Option<String> = existing.get("timezone");
         if let Some(schedule) = &request.schedule {
-            every_seconds = schedule.every_seconds as i64;
+            every_seconds = validate_source_watch_interval(schedule.every_seconds)?;
             cron = schedule.cron.clone();
             timezone = schedule.timezone.clone();
         }
@@ -308,19 +248,36 @@ impl WatchStore for SqliteWatchStore {
             ));
         }
 
-        let mut sql = String::from("SELECT * FROM axon_source_watches WHERE 1 = 1");
+        let mut where_sql = String::from(" WHERE 1 = 1");
         if request.enabled.is_some() {
-            sql.push_str(" AND enabled = ?");
+            where_sql.push_str(" AND enabled = ?");
         }
         if request.source_id.is_some() {
-            sql.push_str(" AND source_id = ?");
+            where_sql.push_str(" AND source_id = ?");
         }
         if request.adapter.is_some() {
-            sql.push_str(" AND adapter_name = ?");
+            where_sql.push_str(" AND adapter_name = ?");
         }
-        sql.push_str(" ORDER BY created_at ASC");
+        let count_sql = format!("SELECT COUNT(*) FROM axon_source_watches{where_sql}");
+        let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+        if let Some(enabled) = request.enabled {
+            count_query = count_query.bind(if enabled { 1 } else { 0 });
+        }
+        if let Some(source_id) = &request.source_id {
+            count_query = count_query.bind(&source_id.0);
+        }
+        if let Some(adapter) = &request.adapter {
+            count_query = count_query.bind(adapter);
+        }
+        let total = count_query
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sqlite_err)? as u64;
 
-        let mut query = sqlx::query(&sql);
+        let limit = clamp_page_limit(request.limit);
+        let list_sql =
+            format!("SELECT * FROM axon_source_watches{where_sql} ORDER BY created_at ASC LIMIT ?");
+        let mut query = sqlx::query(&list_sql);
         if let Some(enabled) = request.enabled {
             query = query.bind(if enabled { 1 } else { 0 });
         }
@@ -330,10 +287,9 @@ impl WatchStore for SqliteWatchStore {
         if let Some(adapter) = &request.adapter {
             query = query.bind(adapter);
         }
+        query = query.bind(limit as i64);
 
         let rows = query.fetch_all(&self.pool).await.map_err(sqlite_err)?;
-        let total = rows.len() as u64;
-        let limit = clamp_page_limit(request.limit);
         let items = rows
             .iter()
             .map(row_to_result)
@@ -346,7 +302,6 @@ impl WatchStore for SqliteWatchStore {
                 last_job_id: watch.latest_job.as_ref().map(|job| job.job_id),
                 last_status: watch.latest_job.as_ref().map(|job| job.status),
             })
-            .take(limit as usize)
             .collect::<Vec<_>>();
 
         Ok(Page {
@@ -389,7 +344,8 @@ impl WatchStore for SqliteWatchStore {
         .map_err(sqlite_err)?;
 
         sqlx::query(
-            "UPDATE axon_source_watches SET last_job_id = ?, last_status = ?, updated_at = ? \
+            "UPDATE axon_source_watches \
+             SET last_job_id = ?, last_status = ?, lease_expires_at = NULL, updated_at = ? \
              WHERE watch_id = ?",
         )
         .bind(job_id.0.to_string())

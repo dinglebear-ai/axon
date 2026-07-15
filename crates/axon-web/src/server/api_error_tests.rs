@@ -29,6 +29,12 @@ fn forbidden_kind_maps_to_auth_forbidden() {
 }
 
 #[test]
+fn watch_not_found_maps_to_not_found() {
+    let err = ApiError::new("watch.not_found", ErrorStage::Retrieving, "watch missing");
+    assert_eq!(status_for_api_error(&err), StatusCode::NOT_FOUND);
+}
+
+#[test]
 fn rate_limited_kind_is_retryable_provider_error() {
     let err = api_error_from_status_kind(
         StatusCode::TOO_MANY_REQUESTS,

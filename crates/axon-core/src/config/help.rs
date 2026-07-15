@@ -448,9 +448,7 @@ fn command_options(command: &Command, path: &[&str]) -> Vec<(String, String)> {
 }
 
 fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, String)> {
-    if matches!(path, ["setup", "session-watch-service", "status"]) {
-        return Vec::new();
-    }
+    let _ = path;
     let specs: &[(&str, &str)] = match command_name {
         "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
         "search" => SEARCH_OPTIONS,

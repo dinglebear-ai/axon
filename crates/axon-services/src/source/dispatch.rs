@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
+use crate::sessions::{SessionProvider, SessionRoots, validate_session_source_path};
 use crate::{
     GitSourceIndexInput, LocalSourceIndexInput, LocalSourceSelectionPolicy, SessionSelector,
     clone_git_repo, fetch_feed_to_file, fetch_reddit_dump, fetch_registry_dump, fetch_youtube_dump,
@@ -380,6 +381,34 @@ pub async fn dispatch_session(
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
     max_items: Option<u64>,
+    project_filter: Option<&str>,
+) -> anyhow::Result<IndexCounts> {
+    let roots = SessionRoots::from_home_env()?;
+    dispatch_session_with_roots(
+        runtime,
+        input,
+        collection,
+        owner_id,
+        auth_snapshot,
+        embed,
+        max_items,
+        project_filter,
+        &roots,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_session_with_roots(
+    runtime: &TargetLocalSourceRuntime,
+    input: &str,
+    collection: &str,
+    owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
+    project_filter: Option<&str>,
+    roots: &SessionRoots,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=session embed={embed} max_items={max_items:?}"
@@ -389,6 +418,8 @@ pub async fn dispatch_session(
         provider,
         session_id,
     } = parse_session_selector(input).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let provider_kind = SessionProvider::parse(&provider)?;
+    let sessions_root = validate_session_source_path(roots, provider_kind, &sessions_root)?;
     let index_input = index_inputs::session_index_input(
         runtime,
         sessions_root,
@@ -399,6 +430,7 @@ pub async fn dispatch_session(
         auth_snapshot,
         embed,
         max_items,
+        project_filter.map(str::to_string),
     );
     let output = index_sessions_source_with_job(
         index_input,

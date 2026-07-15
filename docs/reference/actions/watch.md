@@ -15,14 +15,10 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-Top-level recurring scheduler definitions and run history. A watch is a
-URL **change detector**: each scheduler tick it diffs every watched URL against a
-stored snapshot, summarizes meaningful changes with the LLM, records a change
-artifact, and enqueues a crawl for the changed subtrees.
-
-> Current runtime only. The #298 target makes watch source-request backed, with
-> shared source jobs, ledger leases, progress, and provider backoff rather than
-> URL-payload-only scheduler rows.
+Top-level recurring source scheduler definitions and run history. A watch is a
+source-request-backed recurring run: each due tick enqueues one canonical source
+job, records the job in watch history, and lets the unified source pipeline own
+acquire/prepare/embed/publish behavior.
 
 ## Synopsis
 
@@ -41,7 +37,8 @@ axon watch exec <id>
 axon watch history <id> [--limit <n>]
 ```
 
-The following subcommands are defined in the CLI schema but return "not yet implemented" errors:
+Additional source-watch subcommands are implemented for direct inspection and
+lifecycle control:
 
 ```bash
 axon watch get <id>
@@ -58,10 +55,10 @@ axon watch artifacts <run_id> [--limit <n>]
 
 | Subcommand | Arguments | Description |
 |------------|-----------|-------------|
-| `create` | `<name>` | Create a new watch definition |
-| `list` | — | List all watch definitions (up to 200) |
-| `exec` | `<id>` | Dispatch one immediate run for a watch definition (UUID) |
-| `history` | `<id>` | List recent runs for a watch definition. Default `--limit 50` |
+| `create` | `<source>` | Create a new source watch |
+| `list` | — | List source watches |
+| `exec` | `<id>` | Dispatch one immediate source job for a watch |
+| `history` | `<id>` | List recent source jobs for a watch. Default `--limit 50` |
 
 ### create flags
 
@@ -69,46 +66,36 @@ axon watch artifacts <run_id> [--limit <n>]
 |------|----------|-------------|
 | `--task-type <type>` | Yes | Type of task (`watch` is the only supported type) |
 | `--every-seconds <n>` | Yes | Run interval in seconds (30–604800) |
-| `--task-payload <json>` | No | JSON payload for the task. Defaults to `{}` if omitted |
+| `--task-payload <json>` | No | Compatibility payload. Only `{"urls":["<source>"]}` is accepted; richer legacy watch fields are rejected. Defaults to `{}` if omitted. |
 
-The payload is validated at create time: `urls` must be a non-empty array of
-strings (at most 256), `max_depth` (if set) is capped at 10, and every
-`ignore_patterns` entry must compile as a regex (invalid patterns are rejected
-immediately rather than failing every scheduled run).
+When `--task-payload` is omitted or `{}`, the positional `<name>` is treated as
+the canonical source selector. When `--task-payload` is supplied, it must contain
+exactly one URL/source in `urls`; multiple URLs and legacy fields such as
+`max_depth`, `ignore_patterns`, `change_threshold_words`, or `summarize` are
+rejected instead of silently ignored.
 
 ## Task Payloads
 
 The only supported `task_type` is `watch`.
 
-`watch` payload shape:
+Compatibility payload shape:
 
 ```json
 {
-  "urls": ["https://docs.example.com/guide/intro"],
-  "max_depth": 2,
-  "ignore_patterns": ["^Last updated:", "\\d+ (users|viewers) online"],
-  "change_threshold_words": 0,
-  "summarize": true
+  "urls": ["https://docs.example.com/guide/intro"]
 }
 ```
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `urls` | — (required) | Non-empty array of URLs to watch. |
-| `max_depth` | `2` | Crawl depth bound for the change-triggered crawl. |
-| `ignore_patterns` | `[]` | Regex patterns; matching lines are stripped before diffing (noise suppression, e.g. timestamps). |
-| `change_threshold_words` | `0` | Minimum absolute word-count delta for a text-only change to count as meaningful. Link changes always count. |
-| `summarize` | `true` | Produce an AI summary of each change (requires the Gemini CLI, `AXON_HEADLESS_GEMINI_CMD`). Best-effort — the raw diff is retained if the LLM is unavailable. |
+| `urls` | — | Exactly one URL or source selector for this watch. |
 
 ### Behavior summary
 
-Each tick, every watched URL is compared against its stored snapshot. A change
-counts as meaningful when content changed AND (links changed OR the absolute
-word-count delta reaches `change_threshold_words`); a first-seen URL always
-counts (seed run). Meaningful changes get an optional AI summary and a
-`url-change` run artifact. Changed URLs are then clustered by common path prefix
-and one depth-bounded crawl is enqueued per cluster, skipping any cluster whose
-prior crawl is still in flight.
+Each tick leases due enabled watches, enqueues a detached unified source job, and
+records the resulting job id in `axon_source_watch_runs`. Source-specific scope,
+embedding defaults, ledger generations, and vector publishing follow the same
+SourceRequest path as `axon <source>`.
 
 ## Examples
 
@@ -117,7 +104,7 @@ prior crawl is still in flight.
 axon watch create docs-watch \
   --task-type watch \
   --every-seconds 300 \
-  --task-payload '{"urls":["https://docs.rs/spider"],"ignore_patterns":["^Last updated:"]}'
+  --task-payload '{"urls":["https://docs.rs/spider"]}'
 
 # List watch definitions
 axon watch list --json

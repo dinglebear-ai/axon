@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use axon_api::reset::TARGET_PAYLOAD_CONTRACT_VERSION;
 use axon_api::source::MetadataMap;
 use serde_json::Value;
 
@@ -13,7 +14,7 @@ pub use crate::payload_redaction::{
 };
 
 pub const MODULE_NAME: &str = "payload";
-pub const VECTOR_PAYLOAD_CONTRACT_VERSION: &str = "2026-07-01";
+pub const VECTOR_PAYLOAD_CONTRACT_VERSION: &str = TARGET_PAYLOAD_CONTRACT_VERSION;
 pub const SOURCE_RANGE_ANCHOR_FIELDS: &[&str] = &[
     "line_start",
     "line_end",

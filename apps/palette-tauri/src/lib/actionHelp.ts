@@ -25,7 +25,7 @@ export interface HelpRunState {
   result: PaletteResult;
 }
 
-const ASYNC_ACTIONS = new Set(["crawl", "embed", "extract", "ingest", "ingest-sessions-prepared"]);
+const ASYNC_ACTIONS = new Set(["crawl", "embed", "extract", "ingest"]);
 
 export function isAsyncAction(action: PaletteAction): boolean {
   return ASYNC_ACTIONS.has(action.subcommand);

@@ -6,12 +6,11 @@ use axon_services as services;
 use axon_services::prune::PruneAuthz;
 use axum::{
     Extension, Json,
-    extract::{Query, State},
+    extract::State,
     http::{HeaderMap, StatusCode, header},
 };
 use lab_auth::AuthContext;
 use serde::Deserialize;
-use serde_json::json;
 use std::sync::Arc;
 
 use super::super::error::HttpError;
@@ -19,15 +18,6 @@ use super::super::error::HttpError;
 type WebState = (super::super::state::AppState, Arc<Config>);
 
 const PRUNE_COLLECTION_PREFIX: &str = "collection:";
-
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
-pub(crate) struct WatchListQuery {
-    limit: Option<i64>,
-}
-
-pub(crate) type WatchCreateRequest = services::watch::WatchDefCreateRequest;
-
-const MAX_TASK_PAYLOAD_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -278,71 +268,6 @@ fn has_json_content_type(headers: &HeaderMap) -> bool {
         })
         .unwrap_or(false)
 }
-
-#[utoipa::path(
-    get,
-    path = "/v1/watch",
-    operation_id = "watch_list",
-    params(WatchListQuery),
-    responses(
-        (status = 200, description = "Watch definitions", body = serde_json::Value),
-        (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
-    ),
-    tag = "watch"
-)]
-pub(crate) async fn list_watch(
-    State((_state, cfg)): State<WebState>,
-    Query(query): Query<WatchListQuery>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let limit = query.limit.unwrap_or(100).clamp(1, 500);
-    let watches = services::watch::list_watch_defs(&cfg, limit)
-        .await
-        .map_err(HttpError::from_box)?;
-    Ok(Json(json!({ "watches": watches, "limit": limit })))
-}
-
-#[utoipa::path(
-    post,
-    path = "/v1/watch",
-    operation_id = "watch_create",
-    request_body = WatchCreateRequest,
-    responses(
-        (status = 200, description = "Created watch definition", body = serde_json::Value),
-        (status = 400, description = "Invalid watch request", body = crate::server::error::ErrorBody),
-        (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
-    ),
-    tag = "watch"
-)]
-pub(crate) async fn create_watch(
-    State((_state, cfg)): State<WebState>,
-    Json(req): Json<WatchCreateRequest>,
-) -> Result<Json<services::watch::WatchDef>, HttpError> {
-    if req
-        .task_payload
-        .as_str()
-        .map_or_else(|| req.task_payload.to_string(), |s| s.to_string())
-        .len()
-        > MAX_TASK_PAYLOAD_BYTES
-    {
-        return Err(HttpError::bad_request("task_payload exceeds 64 KiB limit"));
-    }
-    let input = req
-        .into_create()
-        .map_err(|msg| HttpError::bad_request(&msg))?;
-    services::watch::create_watch_def(&cfg, &input)
-        .await
-        .map(Json)
-        .map_err(HttpError::from_box)
-}
-
-// `POST /v1/watch/{id}/run` (formerly `run_watch` here) was removed per the
-// REST contract's clean-break rule (`docs/pipeline-unification/surfaces/
-// rest-contract.md` "Removed Route Behavior"). Its canonical replacement is
-// `POST /v1/watches/{watch_id}/exec`
-// (`crate::server::handlers::source_watch::exec_watch`), which resolves the
-// canonical watch id to its dual-written legacy `WatchDef` and runs it
-// through the same `services::watch::run_watch_now` bridge this handler used
-// directly.
 
 #[cfg(test)]
 #[path = "admin_tests.rs"]

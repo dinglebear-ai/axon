@@ -2,36 +2,28 @@
 //! (issue #298 REST contract, `docs/pipeline-unification/surfaces/rest-contract.md`
 //! "Watch Routes" table).
 //!
-//! This is a distinct model from the legacy `/v1/watch` task_type/task_payload
-//! surface in [`super::admin`] (`axon_watch_defs`/`axon_watch_runs`, migration
-//! `0002`). `/v1/watches` is backed by [`axon_services::watch::SqliteWatchStore`]
+//! `/v1/watches` is backed by [`axon_services::watch::SqliteWatchStore`]
 //! (`axon_source_watches`/`axon_source_watch_runs`, migration `0023`), matching
-//! `axon_api::source::{WatchRequest, WatchResult}`. See
-//! `crates/axon-jobs/src/watch_store.rs` module docs for why the two models
-//! are not unified in this slice. `/v1/watches` covers
+//! `axon_api::source::{WatchRequest, WatchResult}`. `/v1/watches` covers
 //! create/list/get/update/pause/resume/delete/exec.
 //!
 //! `POST /v1/watches/{watch_id}/exec` (issue #298 REST contract) is the
-//! canonical replacement for the legacy `POST /v1/watch/{id}/run` (removed —
-//! see `docs/pipeline-unification/surfaces/rest-contract.md` "Removed Route
-//! Behavior"). It delegates to
-//! [`axon_services::service_traits::WatchServiceImpl`], which resolves the
-//! canonical `watch_id` to its dual-written legacy `WatchDef` and runs it
-//! through the still-live scheduler bridge — see that module's doc comment
-//! for why the two watch stores need a name-based bridge instead of a shared
-//! primary key.
+//! canonical replacement for the removed `POST /v1/watch/{id}/run`; it enqueues
+//! a source job and records that job in canonical watch history.
 
 use axon_api::source::{
-    WatchExecRequest, WatchId, WatchListRequest, WatchRequest, WatchUpdateRequest,
+    AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility, WatchExecRequest, WatchId,
+    WatchListRequest, WatchRequest, WatchUpdateRequest,
 };
+use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
-use axon_services::service_traits::{WatchService, WatchServiceImpl};
 use axon_services::watch as watch_svc;
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, Query, State},
     http::StatusCode,
 };
+use lab_auth::AuthContext;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -64,17 +56,21 @@ pub(crate) struct WatchListQuery {
     operation_id = "watches_create",
     request_body = WatchRequest,
     responses(
-        (status = 200, description = "Created (or dual-write-ensured) watch detail", body = serde_json::Value),
+        (status = 200, description = "Created watch detail", body = serde_json::Value),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "watch"
 )]
 pub(crate) async fn create_watch(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(request): Json<WatchRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let pool = state.service_context.jobs.sqlite_pool();
-    let created = watch_svc::create_source_watch(&cfg, pool.as_deref(), request)
+    let auth_snapshot = auth
+        .as_ref()
+        .map(|Extension(auth)| auth_snapshot_from_context(auth));
+    let created = watch_svc::create_source_watch(&cfg, pool.as_deref(), request, auth_snapshot)
         .await
         .map_err(HttpError::from_box)?;
     Ok(Json(json!(created)))
@@ -154,13 +150,13 @@ pub(crate) async fn get_watch(
 )]
 pub(crate) async fn exec_watch(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Path(watch_id): Path<String>,
     Json(request): Json<WatchExecRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let watch_id_typed = WatchId::new(watch_id.clone());
-    // 404 up front against the canonical store — a clearer signal than the
-    // legacy-bridge "not found" `WatchService::exec` would otherwise return
-    // for a watch_id that was never created through `/v1/watches` at all.
+    // 404 up front against the canonical store so unknown source watch ids get
+    // a clean not-found response before enqueueing any source work.
     let store = open_store(&state, &cfg).await?;
     if watch_svc::SourceWatchStoreTrait::get(&store, watch_id_typed.clone())
         .await
@@ -174,12 +170,48 @@ pub(crate) async fn exec_watch(
         ));
     }
 
-    let service = WatchServiceImpl::new(std::sync::Arc::clone(&state.service_context));
-    let descriptor = service
-        .exec(watch_id_typed, request)
-        .await
-        .map_err(|err| HttpError::from_box_send_sync(err.into()))?;
+    let pool = state.service_context.jobs.sqlite_pool();
+    let auth_snapshot = auth
+        .as_ref()
+        .map(|Extension(auth)| auth_snapshot_from_context(auth));
+    let descriptor = watch_svc::exec_source_watch(
+        &state.service_context,
+        pool.as_deref(),
+        watch_id_typed,
+        request,
+        auth_snapshot,
+    )
+    .await
+    .map_err(HttpError::from_box)?;
     Ok(Json(json!(descriptor)))
+}
+
+fn auth_snapshot_from_context(auth: &AuthContext) -> AuthSnapshot {
+    AuthSnapshot::from_caller(
+        &caller_context_from_auth(auth),
+        Visibility::Internal,
+        "runtime",
+    )
+}
+
+fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
+    let auth_mode = if auth.sub == "static-bearer" {
+        AuthMode::StaticToken
+    } else {
+        AuthMode::Oauth
+    };
+    let mut caller = CallerContext {
+        caller_id: Some(auth.sub.clone()),
+        transport: TransportKind::Rest,
+        trusted_local: false,
+        scopes: auth.scopes.clone(),
+        visibility_ceiling: Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    caller.visibility_ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+    caller
 }
 
 #[utoipa::path(

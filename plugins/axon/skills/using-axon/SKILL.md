@@ -215,11 +215,11 @@ CLI: `axon summarize <url>` / `axon endpoints <url>` / `axon brand <url>` / `axo
 - **`reddit`** — a subreddit (`r/name`) or a specific thread URL.
 - **`youtube`** — a video URL (transcript ingest).
 - **`rss`** — RSS, Atom, or JSON feed URL. Each feed entry is embedded as a document.
-- **`sessions`** — local Claude/Codex/Gemini session transcripts. **CLI-only** via `axon sessions` (enqueues a local sessions ingest job). The MCP `ingest` action rejects `source_type: "sessions"`; remote callers must use the prepared-documents HTTP endpoint (`/v1/ingest/sessions/prepared`).
+- **`sessions`** — local Claude/Codex/Gemini session transcripts. Use `axon sessions` for local one-shot indexing, or submit a `SourceRequest` whose `source` is `session:<provider>:<path>` for the unified source path. The old prepared-documents HTTP endpoint has been removed.
 
 Lifecycle subactions (`status`, `cancel`, `list`, `cleanup`, `clear`, `recover`) work the same as crawl/embed/extract.
 
-CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-source`/`--no-source`, `--max-issues`, `--max-prs` (default 100; `0` = unlimited). Reddit: `--sort hot|top|new|rising`, `--time hour|…|all`, `--max-posts`, `--min-score`, `--depth`, `--scrape-links`. Use `axon sessions` for Claude/Codex/Gemini local history (enqueues a local sessions ingest job). MCP sessions ingest is rejected to avoid scanning server-local history paths — remote callers use the `/v1/ingest/sessions/prepared` HTTP endpoint instead.
+CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-source`/`--no-source`, `--max-issues`, `--max-prs` (default 100; `0` = unlimited). Reddit: `--sort hot|top|new|rising`, `--time hour|…|all`, `--max-posts`, `--min-score`, `--depth`, `--scrape-links`. Use `axon sessions` for Claude/Codex/Gemini local history, or a `session:<provider>:<path>` source selector when using the unified source path.
 
 ## Query and RAG
 

@@ -110,10 +110,7 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
 
 fn command_needs_workers(cfg: &Config, command_mode: Option<JobCommandMode<'_>>) -> bool {
     cfg.wait
-        || matches!(
-            cfg.command,
-            CommandKind::Source | CommandKind::Scrape | CommandKind::Map
-        )
+        || matches!(cfg.command, CommandKind::Source | CommandKind::Scrape)
         || matches!(
             command_mode,
             Some(JobCommandMode::Subcommand {

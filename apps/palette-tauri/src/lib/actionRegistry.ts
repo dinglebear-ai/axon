@@ -51,7 +51,6 @@ import {
   getRoute,
   githubBrowseBody,
   ingestBody,
-  ingestSessionsPreparedBody,
   mapBody,
   noBody,
   postRoute,
@@ -121,7 +120,6 @@ export type StructuredViewKey =
   | "embed"
   | "extract"
   | "ingest"
-  | "ingest-sessions-prepared"
   | "github"
   | "endpoints"
   | "brand"
@@ -435,7 +433,7 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: null,
   }),
   "watch-list": entry({
-    route: getRoute("/v1/watch"),
+    route: getRoute("/v1/watches"),
     buildBody: noBody,
     outputKind: code,
     formatText: formatWatchList,
@@ -443,7 +441,7 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "watch-list",
   }),
   "watch-create": entry({
-    route: postRoute("/v1/watch"),
+    route: postRoute("/v1/watches"),
     buildBody: watchCreateBody,
     outputKind: code,
     formatText: formatWatchCreate,
@@ -451,21 +449,13 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     structuredView: "watch-create",
   }),
   "watch-run": entry({
-    route: postRoute("/v1/watch/{id}/run"),
+    route: postRoute("/v1/watches/{id}/exec"),
     buildBody: noBody,
-    routeFor: (ctx) => postRoute(`/v1/watch/${uuid(first(ctx.words, "watch id"))}/run`),
+    routeFor: (ctx) => postRoute(`/v1/watches/${uuid(first(ctx.words, "watch id"))}/exec`),
     outputKind: code,
     formatText: formatWatchRun,
     actionIcon: HelpCircle,
     structuredView: "watch-run",
-  }),
-  "ingest-sessions-prepared": entry({
-    route: postRoute("/v1/ingest/sessions/prepared"),
-    buildBody: ingestSessionsPreparedBody,
-    outputKind: code,
-    formatText: jobStartFormatter("ingest-sessions-prepared"),
-    actionIcon: HelpCircle,
-    structuredView: "ingest-sessions-prepared",
   }),
   // Local Tauri shell action; the marker route is metadata-only.
   terminal: behavior({

@@ -146,6 +146,7 @@ pub(super) fn session_index_input(
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
     max_items: Option<u64>,
+    project_filter: Option<String>,
 ) -> SessionsSourceIndexInput {
     SessionsSourceIndexInput {
         sessions_root,
@@ -163,6 +164,7 @@ pub(super) fn session_index_input(
         auth_snapshot: auth_snapshot.cloned(),
         embed,
         max_items,
+        project_filter,
     }
 }
 

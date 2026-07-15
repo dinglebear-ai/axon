@@ -454,11 +454,14 @@ fn build_plan(
             let detail = if inv.unreachable {
                 "Qdrant unreachable — collection could not be inventoried".to_string()
             } else if inv.exists {
+                let contracts = if inv.payload_contract_versions.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    inv.payload_contract_versions.join(",")
+                };
                 format!(
-                    "{action} drop + recreate collection '{}' ({} points, min payload schema v{})",
-                    cfg.collection,
-                    inv.points,
-                    inv.min_schema_version.unwrap_or(0)
+                    "{action} drop + recreate collection '{}' ({} points, payload contracts: {})",
+                    cfg.collection, inv.points, contracts
                 )
             } else {
                 format!(

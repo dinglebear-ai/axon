@@ -342,7 +342,9 @@ pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
             );
         }
         WorkerMode::Started => {}
-        WorkerMode::Unsupported(message) => return Err(message.into()),
+        WorkerMode::Unsupported(message) => {
+            println!("{}", muted(message));
+        }
     }
     Ok(())
 }

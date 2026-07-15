@@ -20,6 +20,7 @@ use uuid::Uuid;
 /// The bridges name their removal count differently (`removed_files`,
 /// `removed_entries`, `removed_pages`, …); this collapses them to a single
 /// `removed` field so mapping is uniform.
+#[derive(Debug)]
 pub struct IndexCounts {
     pub job_id: JobId,
     pub source_id: SourceId,

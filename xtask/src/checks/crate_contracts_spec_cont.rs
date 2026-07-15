@@ -292,7 +292,6 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "search_crawl",
             "service_traits",
             "sessions",
-            "sessions_legacy",
             "sessions_target",
             "setup",
             "source",

@@ -93,7 +93,6 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   embed: ({ data }) => <JobStartView payload={data} family="embed" />,
   extract: ({ data }) => <JobStartView payload={data} family="extract" />,
   ingest: ({ data }) => <JobStartView payload={data} family="ingest" />,
-  "ingest-sessions-prepared": ({ data }) => <JobStartView payload={data} family="ingest" />,
   // GitHubView needs the WHOLE GitHubBrowseResult (ok/kind/owner/repo/branch/
   // path/rateLimit*), not the inner GitHub JSON `unwrapPayload` would leave
   // after stripping `.payload` — pass the raw payload through instead of `data`.
@@ -272,6 +271,7 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
   const result = isRecord(payload.result) ? payload.result : payload;
   const jobId = strField(result, "job_id") ?? strField(result, "id");
   const status = strField(result, "status") ?? strField(payload, "disposition") ?? "queued";
+  const statusEndpoint = strField(payload, "status_url") ?? `/v1/jobs/${jobId ?? "{job_id}"}`;
   return (
     <div className="output-body operation-view aurora-scrollbar">
       <ResultHero
@@ -288,10 +288,10 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
           {jobId ? <DetailLine label="Job ID" value={jobId} mono /> : null}
           <DetailLine
             label="Status endpoint"
-            value={strField(payload, "status_url") ?? `/v1/${family}/${jobId ?? "{job_id}"}`}
+            value={statusEndpoint}
             mono
           />
-          <DetailLine label="Next action" value={`${family}-status ${jobId ?? "<job_id>"}`} mono />
+          <DetailLine label="Next action" value={jobId ? `open job ${jobId}` : "open job <job_id>"} mono />
         </div>
       </section>
     </div>

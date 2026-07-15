@@ -234,12 +234,6 @@ pub(super) enum SetupSubcommand {
         #[command(subcommand)]
         action: SetupConfigSubcommand,
     },
-    /// Install, check, remove, or inspect the host-local session watch service.
-    #[command(name = "session-watch-service")]
-    SessionWatchService {
-        #[command(subcommand)]
-        action: SessionWatchServiceSubcommand,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -250,18 +244,6 @@ pub(super) enum SetupConfigSubcommand {
         #[arg(long, action = ArgAction::SetTrue)]
         dry_run: bool,
     },
-}
-
-#[derive(Debug, Subcommand, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SessionWatchServiceSubcommand {
-    /// Write service files, run initial ingest, and enable the user service.
-    Install,
-    /// Verify generated files and systemd state without mutating service files.
-    Check,
-    /// Disable the user service and remove generated service files.
-    Remove,
-    /// Print current user systemd status for the service.
-    Status,
 }
 
 #[derive(Debug, Args)]
@@ -784,83 +766,14 @@ pub(super) struct SessionsArgs {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum SessionsSubcommand {
-    Status {
-        job_id: String,
-    },
-    Cancel {
-        job_id: String,
-    },
-    Errors {
-        job_id: String,
-    },
+    Status { job_id: String },
+    Cancel { job_id: String },
+    Errors { job_id: String },
     List,
     Cleanup,
     Clear,
     Worker,
     Recover,
-    /// Watch local AI session exports and ingest stable changes.
-    Watch(SessionsWatchArgs),
-    /// Summarize session watch checkpoints and recent errors.
-    #[command(name = "watch-status")]
-    WatchStatus {
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-    },
-    /// Write a probe transcript and wait for the watcher to ingest it.
-    #[command(name = "smoke-watch")]
-    SmokeWatch {
-        #[arg(long, default_value_t = 30)]
-        timeout_secs: u64,
-    },
-}
-
-#[derive(Debug, Args, Clone)]
-pub(super) struct SessionsWatchArgs {
-    /// Only watch Claude session exports.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) claude: bool,
-    /// Only watch Codex session exports.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) codex: bool,
-    /// Only watch Gemini session exports.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) gemini: bool,
-    /// Filter watched session projects by substring.
-    #[arg(long, value_name = "NAME")]
-    pub(super) project: Option<String>,
-    /// Watch one transcript file or directory instead of all default provider roots.
-    #[arg(long)]
-    pub(super) path: Option<std::path::PathBuf>,
-    /// Debounce file events by this many milliseconds before checking stability.
-    #[arg(long = "debounce-ms", default_value_t = 750)]
-    pub(super) debounce_ms: u64,
-    /// Require unchanged size and mtime for this many milliseconds before ingest.
-    #[arg(long = "settle-ms", default_value_t = 500)]
-    pub(super) settle_ms: u64,
-    /// Retry parse, upload, or storage failures this many times before recording an error.
-    #[arg(long = "max-retries", default_value_t = 5)]
-    pub(super) max_retries: u8,
-    /// Maximum prepared session docs to submit in one batch.
-    #[arg(long = "max-batch-docs", default_value_t = 50)]
-    pub(super) max_batch_docs: usize,
-    /// Maximum files parsed concurrently while preparing a batch.
-    #[arg(long = "max-processing-concurrency", default_value_t = 2)]
-    pub(super) max_processing_concurrency: usize,
-    /// Minimum cooldown before another overflow/root rescan can run.
-    #[arg(long = "rescan-cooldown-ms", default_value_t = 5000)]
-    pub(super) rescan_cooldown_ms: u64,
-    /// Skip the startup full scan. The setup service uses this after its one-time initial ingest.
-    #[arg(long = "no-initial-scan")]
-    pub(super) no_initial_scan: bool,
-    /// Explicitly upload prepared docs to AXON_SERVER_URL instead of local ingest.
-    #[arg(long = "upload-to-server")]
-    pub(super) upload_to_server: bool,
-    /// Include raw local paths in JSON/log output. Default output is redacted.
-    #[arg(long = "verbose-paths")]
-    pub(super) verbose_paths: bool,
-    /// Emit newline-delimited JSON events suitable for systemd logs.
-    #[arg(long)]
-    pub(super) json: bool,
 }
 
 #[derive(Debug, Subcommand)]

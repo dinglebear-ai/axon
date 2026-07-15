@@ -10,11 +10,11 @@ import {
 describe("summarizeJob", () => {
   it("reads the server-derived progress block (phase / percent / metrics)", () => {
     const snap = summarizeJob(
-      "ingest",
+      "source",
       {
         job: { status: "running", updated_at: "2026-06-26T00:00:00Z" },
         progress: {
-          family: "ingest",
+          family: "source",
           phase: "running",
           percent: 40,
           metrics: [
@@ -37,7 +37,7 @@ describe("summarizeJob", () => {
 
   it("surfaces error from the progress block on a failed job", () => {
     const snap = summarizeJob(
-      "ingest",
+      "source",
       {
         job: { status: "failed" },
         progress: { phase: "failed", percent: null, metrics: [], error: "github_repo target not found: owner/typo" },
@@ -49,14 +49,14 @@ describe("summarizeJob", () => {
   });
 
   it("falls back to a status-only snapshot when there is no progress (202 accept response)", () => {
-    const snap = summarizeJob("embed", { job_id: "j3", status: "pending" }, { jobId: "j3", label: "notes" });
+    const snap = summarizeJob("source", { job_id: "j3", status: "pending" }, { jobId: "j3", label: "notes" });
     expect(snap.phase).toBe("pending");
     expect(snap.percent).toBeNull();
     expect(snap.metrics).toEqual([]);
   });
 
   it("fallback marks a completed status as done at 100%", () => {
-    const snap = summarizeJob("embed", { job: { status: "completed" } }, { jobId: "j4", label: "x" });
+    const snap = summarizeJob("source", { job: { status: "completed" } }, { jobId: "j4", label: "x" });
     expect(snap.phase).toBe("done");
     expect(snap.percent).toBe(100);
   });
@@ -77,7 +77,7 @@ describe("summarizeJob", () => {
 
   it("ignores a non-numeric progress.percent (renders indeterminate)", () => {
     const snap = summarizeJob(
-      "embed",
+      "source",
       {
         job: { status: "running" },
         progress: { phase: "running", percent: "lots", metrics: [], error: null },
@@ -89,7 +89,7 @@ describe("summarizeJob", () => {
 
   it("drops malformed metric entries (non-object, missing/empty label or value)", () => {
     const snap = summarizeJob(
-      "ingest",
+      "source",
       {
         job: { status: "running" },
         progress: {
@@ -113,7 +113,7 @@ describe("summarizeJob", () => {
 
   it("treats a non-array progress.metrics as empty", () => {
     const snap = summarizeJob(
-      "ingest",
+      "source",
       {
         job: { status: "running" },
         progress: { phase: "running", percent: null, metrics: { label: "x", value: "1" }, error: null },
@@ -136,10 +136,10 @@ describe("isJobPhaseTerminal", () => {
 
 describe("pendingJobSnapshot", () => {
   it("produces a pending snapshot for the given family + label", () => {
-    const snap = pendingJobSnapshot("ingest", "owner/repo");
+    const snap = pendingJobSnapshot("source", "owner/repo");
     expect(snap.phase).toBe("pending");
-    expect(snap.family).toBe("ingest");
+    expect(snap.family).toBe("source");
     expect(snap.label).toBe("owner/repo");
-    expect(jobFamilyVerb(snap.family)).toBe("Ingesting");
+    expect(jobFamilyVerb(snap.family)).toBe("Indexing");
   });
 });

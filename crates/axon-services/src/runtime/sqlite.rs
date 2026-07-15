@@ -176,6 +176,15 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
         Ok(())
     }
 
+    async fn start_worker(&self, kind: JobKind) -> RuntimeResult<WorkerMode> {
+        if !self.backend.notify_unified() {
+            return Ok(WorkerMode::Unsupported(
+                "no standalone worker in this CLI runtime; use `axon serve` or a command with `--wait true`",
+            ));
+        }
+        self.drain_jobs(kind).await
+    }
+
     async fn drain_jobs(&self, kind: JobKind) -> RuntimeResult<WorkerMode> {
         let pending_at_start = self.count_jobs(kind).await.unwrap_or(0);
         tracing::info!(?kind, pending_at_start, "draining job queue");

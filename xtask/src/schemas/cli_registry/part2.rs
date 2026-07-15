@@ -259,30 +259,6 @@ fn commands_sessions() -> Vec<CliRegistryCommand> {
             false,
             "admin",
         ),
-        c(
-            &["sessions", "watch"],
-            "Watch local AI session exports and ingest stable changes",
-            None,
-            true,
-            true,
-            "admin",
-        ),
-        c(
-            &["sessions", "watch-status"],
-            "Summarize session watch checkpoints and recent errors",
-            None,
-            false,
-            false,
-            "read",
-        ),
-        c(
-            &["sessions", "smoke-watch"],
-            "Write a probe transcript and wait for the watcher to ingest it",
-            None,
-            true,
-            false,
-            "admin",
-        ),
     ]
 }
 
