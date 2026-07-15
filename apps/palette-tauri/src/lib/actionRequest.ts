@@ -134,7 +134,7 @@ export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({
   target: first(ctx.words, "target"),
   ...ctx.collectionBody,
 });
-export const watchCreateBody: BodyBuilder = (ctx) => watchCreateRequestBody(ctx.words);
+export const watchCreateBody: BodyBuilder<Req["WatchRequest"]> = (ctx) => watchCreateRequestBody(ctx.words);
 // `github` takes a bare owner[/repo[/path...]] target (NOT a URL — see
 // `BARE_TARGET_SUBCOMMANDS`-style handling in actions.ts, though github is
 // simply absent from `acceptsDirectUrl` so no coercion ever applies). This
@@ -201,17 +201,17 @@ export function required(words: string[], field: string): string[] {
   return clean;
 }
 
-function watchCreateRequestBody(words: string[]): Record<string, unknown> {
+function watchCreateRequestBody(words: string[]): Req["WatchRequest"] {
   const url = first(words, "url");
   const seconds = words[1] ? Number(words[1]) : 3600;
-  if (!Number.isFinite(seconds) || seconds < 1) {
-    throw new Error("watch interval must be a positive number of seconds");
+  if (!Number.isFinite(seconds) || seconds < 30) {
+    throw new Error("watch interval must be at least 30 seconds");
   }
   return {
-    name: hostName(url),
-    task_type: "watch",
-    task_payload: { urls: [url], ignore_patterns: [] },
-    every_seconds: Math.floor(seconds),
+    source: url,
+    schedule: { every_seconds: Math.floor(seconds) },
+    embed: true,
+    options: { values: {} },
     enabled: true,
   };
 }
@@ -229,12 +229,4 @@ export function uuid(value: string): string {
     throw new Error("id must be a UUID");
   }
   return clean;
-}
-
-function hostName(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
 }

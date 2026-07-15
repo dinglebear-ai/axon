@@ -137,10 +137,10 @@ async fn run_single_extract(
     wcfg: ExtractWebConfig,
     engine: Arc<DeterministicExtractionEngine>,
 ) -> Result<ExtractRun, Box<dyn Error>> {
-    if cfg.enable_verticals {
+    if should_try_vertical_extractor(&cfg, &wcfg) {
         let ctx = VerticalContext::new(Arc::new(cfg));
         match tokio::time::timeout(
-            Duration::from_secs(120),
+            vertical_extractor_timeout(&ctx.cfg),
             dispatch_by_url(&wcfg.start_url, &ctx),
         )
         .await
@@ -162,6 +162,18 @@ async fn run_single_extract(
         }
     }
     run_extract_with_engine(wcfg, engine).await
+}
+
+fn should_try_vertical_extractor(cfg: &Config, wcfg: &ExtractWebConfig) -> bool {
+    cfg.enable_verticals && wcfg.prompt.trim().is_empty()
+}
+
+fn vertical_extractor_timeout(cfg: &Config) -> Duration {
+    Duration::from_millis(
+        cfg.request_timeout_ms
+            .unwrap_or(20_000)
+            .clamp(5_000, 120_000),
+    )
 }
 
 fn vertical_doc_to_extract_run(doc: ScrapedDoc) -> ExtractRun {

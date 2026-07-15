@@ -207,7 +207,8 @@ export function formatPurge(value: Record<string, unknown>): string {
 }
 
 export function formatWatchList(value: Record<string, unknown>): string {
-  return resultRows(value, "watches", (watch) => watchDefinition(watch));
+  return optionalResultRows(value, "items", (watch) => watchDefinition(watch))
+    ?? resultRows(value, "watches", (watch) => watchDefinition(watch));
 }
 
 export function formatWatchCreate(value: Record<string, unknown>): string {
@@ -285,9 +286,10 @@ function truncateTextDiff(text: string): string {
 
 function watchDefinition(value: Record<string, unknown>): string {
   const id = stringField(value, "id") ?? stringField(value, "watch_id") ?? "";
-  const name = stringField(value, "name") ?? "watch";
+  const name = stringField(value, "name") ?? stringField(value, "source_id") ?? "watch";
   const enabled = booleanField(value, "enabled");
-  const every = numberField(value, "every_seconds");
+  const schedule = recordField(value, "schedule");
+  const every = numberField(value, "every_seconds") ?? (schedule ? numberField(schedule, "every_seconds") : undefined);
   const next = stringField(value, "next_run_at");
   return [
     `${name}${id ? ` (${id})` : ""}`,

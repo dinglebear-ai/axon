@@ -56,10 +56,10 @@ fn allows_known_palette_routes() {
     assert_eq!(
         validate_axon_route(&request(
             HttpMethod::Post,
-            "/v1/watch/00000000-0000-4000-8000-000000000000/run"
+            "/v1/watches/00000000-0000-4000-8000-000000000000/exec"
         ))
         .unwrap(),
-        "/v1/watch/00000000-0000-4000-8000-000000000000/run"
+        "/v1/watches/00000000-0000-4000-8000-000000000000/exec"
     );
     assert_eq!(
         validate_axon_route(&request(HttpMethod::Post, "/v1/sources")).unwrap(),
@@ -73,12 +73,26 @@ fn allows_known_palette_routes() {
 /// must not resurrect them.
 #[test]
 fn rejects_removed_legacy_verb_routes() {
-    for path in ["/v1/scrape", "/v1/crawl", "/v1/embed", "/v1/ingest"] {
+    for path in [
+        "/v1/scrape",
+        "/v1/crawl",
+        "/v1/embed",
+        "/v1/ingest",
+        "/v1/watch",
+    ] {
         assert!(
             validate_axon_route(&request(HttpMethod::Post, path)).is_err(),
             "removed route {path} should be rejected"
         );
     }
+    assert!(
+        validate_axon_route(&request(
+            HttpMethod::Post,
+            "/v1/watch/00000000-0000-4000-8000-000000000000/run"
+        ))
+        .is_err(),
+        "removed singular watch exec route should be rejected"
+    );
 }
 
 #[test]

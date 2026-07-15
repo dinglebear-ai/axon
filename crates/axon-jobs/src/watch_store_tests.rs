@@ -114,6 +114,46 @@ async fn sqlite_watch_store_reconstructs_stored_request() {
 }
 
 #[tokio::test]
+async fn sqlite_watch_store_rejects_zero_interval_on_create() {
+    let (store, _pool, _temp) = store().await;
+    let mut request = watch_request();
+    request.schedule.every_seconds = 0;
+
+    let err = WatchStore::create(&store, request)
+        .await
+        .expect_err("zero interval should be rejected");
+
+    assert_eq!(err.code.to_string(), "watch.invalid_schedule");
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_rejects_zero_interval_on_update() {
+    let (store, _pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+
+    let err = WatchStore::update(
+        &store,
+        created.watch_id,
+        WatchUpdateRequest {
+            enabled: None,
+            schedule: Some(WatchSchedule {
+                every_seconds: 0,
+                cron: None,
+                timezone: None,
+            }),
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await
+    .expect_err("zero interval should be rejected");
+
+    assert_eq!(err.code.to_string(), "watch.invalid_schedule");
+}
+
+#[tokio::test]
 async fn sqlite_watch_store_get_returns_none_for_missing_watch() {
     let (store, _pool, _temp) = store().await;
     let missing = WatchStore::get(&store, WatchId::new("nope")).await.unwrap();

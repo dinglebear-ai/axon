@@ -1,4 +1,7 @@
-use super::{vertical_doc_to_extract_run, write_extract_summary};
+use super::{
+    build_extract_web_config, should_try_vertical_extractor, vertical_doc_to_extract_run,
+    write_extract_summary,
+};
 use axon_core::config::Config;
 use axon_extract::ScrapedDoc;
 
@@ -81,4 +84,25 @@ fn vertical_doc_becomes_extract_item() {
     assert_eq!(run.results[0]["extractor_name"], "pypi");
     assert_eq!(run.results[0]["extra"]["pkg_name"], "requests");
     assert_eq!(run.results[0]["structured"]["name"], "requests");
+}
+
+#[test]
+fn prompt_driven_extract_skips_vertical_shortcut() {
+    let cfg = Config {
+        enable_verticals: true,
+        ..Config::default()
+    };
+    let prompted = build_extract_web_config(
+        &cfg,
+        "https://pypi.org/project/requests/".to_string(),
+        "extract license metadata",
+    );
+    let unprompted = build_extract_web_config(
+        &cfg,
+        "https://pypi.org/project/requests/".to_string(),
+        "   ",
+    );
+
+    assert!(!should_try_vertical_extractor(&cfg, &prompted));
+    assert!(should_try_vertical_extractor(&cfg, &unprompted));
 }

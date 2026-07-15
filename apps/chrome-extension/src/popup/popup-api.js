@@ -31,7 +31,7 @@ async function setWatchFromCommand(arg) {
   const value = (args[0] || "").toLowerCase();
 
   if (value === "list") {
-    const result = await getAxon("/v1/watch");
+    const result = await getAxon("/v1/watches");
     const output = formatGenericResult("watch list", result);
     return {
       output,
@@ -42,7 +42,7 @@ async function setWatchFromCommand(arg) {
   }
 
   if (value === "run" && args[1]) {
-    const result = await postAxon(`/v1/watch/${encodeURIComponent(args[1])}/run`, {});
+    const result = await postAxon(`/v1/watches/${encodeURIComponent(args[1])}/exec`, {});
     const output = formatGenericResult("watch run", result);
     return {
       output,

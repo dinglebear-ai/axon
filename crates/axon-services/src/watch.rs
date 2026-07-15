@@ -19,10 +19,10 @@ pub use axon_jobs::watch::{
 // task_type/task_payload facade above (see `watch_store.rs` module docs for
 // why the two models are not unified in this slice).
 pub use axon_api::source::{
-    AdapterOptions, ExecutionMode, JobDescriptor, JobKind, SourceIntent, SourceRefreshPolicy,
-    SourceRequest, SourceWatchPolicy, WatchExecRequest, WatchHistoryRequest, WatchHistoryResult,
-    WatchId, WatchListRequest, WatchRequest, WatchResult, WatchSchedule, WatchSummary,
-    WatchUpdateRequest,
+    AdapterOptions, AuthSnapshot, ExecutionMode, JobDescriptor, JobKind, SourceIntent,
+    SourceRefreshPolicy, SourceRequest, SourceScope, SourceWatchPolicy, WatchExecRequest,
+    WatchHistoryRequest, WatchHistoryResult, WatchId, WatchListRequest, WatchRequest, WatchResult,
+    WatchSchedule, WatchSummary, WatchUpdateRequest,
 };
 pub use axon_jobs::boundary::WatchStore as SourceWatchStoreTrait;
 pub use axon_jobs::watch_store::SqliteWatchStore;
@@ -45,10 +45,16 @@ pub async fn open_source_watch_store(
 pub async fn create_source_watch(
     cfg: &Config,
     pool: Option<&SqlitePool>,
-    request: WatchRequest,
+    mut request: WatchRequest,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<WatchResult, Box<dyn Error>> {
+    let effective_scope = authorize_watch_request(&request, auth_snapshot.as_ref())?;
+    request.scope = Some(effective_scope);
     let store = open_source_watch_store(cfg, pool).await?;
-    SourceWatchStoreTrait::create(&store, request)
+    let stored_auth =
+        Some(auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("source-watch-create")));
+    store
+        .create_with_auth(request, stored_auth)
         .await
         .map_err(|err| Box::new(err) as Box<dyn Error>)
 }
@@ -58,18 +64,21 @@ pub async fn exec_source_watch(
     pool: Option<&SqlitePool>,
     watch_id: WatchId,
     request: WatchExecRequest,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<JobDescriptor, Box<dyn Error>> {
     let store = open_source_watch_store(ctx.cfg(), pool).await?;
-    let watch_request = store
-        .request(watch_id.clone())
+    let (watch_request, stored_auth) = store
+        .request_with_auth(watch_id.clone())
         .await
         .map_err(|err| Box::new(err) as Box<dyn Error>)?
         .ok_or_else(|| format!("watch {} not found", watch_id.0))?;
+    authorize_watch_request(&watch_request, auth_snapshot.as_ref())?;
     let source_request = source_request_for_watch_exec(watch_request, &request);
+    let run_auth = Some(stored_auth.unwrap_or_default());
     let job_store = ctx
         .job_store()
         .ok_or("watch exec requires a unified source job store")?;
-    let result = enqueue_watch_source(source_request, job_store.as_ref()).await?;
+    let result = enqueue_watch_source(source_request, job_store.as_ref(), run_auth).await?;
     let descriptor = result.job.ok_or_else(|| {
         let error = result
             .errors
@@ -100,10 +109,46 @@ pub async fn exec_source_watch(
 async fn enqueue_watch_source(
     request: SourceRequest,
     store: &dyn JobStore,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<axon_api::source::SourceResult, Box<dyn Error>> {
-    crate::source::enqueue::enqueue_source(request, store, None)
+    crate::source::enqueue::enqueue_source(request, store, auth_snapshot)
         .await
         .map_err(|err| format!("watch exec enqueue failed: {err}").into())
+}
+
+fn authorize_watch_request(
+    watch: &WatchRequest,
+    auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<SourceScope, Box<dyn Error>> {
+    let source_request = source_request_for_watch_create(watch);
+    let routed = crate::source::routing::resolve_source_route(&source_request)
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    crate::source::authorize::authorize_route(&routed.route)
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    crate::source::authorize::authorize_safety_class(routed.route.safety_class, auth_snapshot)
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    crate::source::security::authorize_local_source_policy(
+        source_request.source.trim(),
+        routed.kind,
+        auth_snapshot,
+    )
+    .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    if routed.kind == crate::source::classify::SourceInputKind::Unsupported {
+        return Err("watch source kind is unsupported".into());
+    }
+    Ok(routed.route.scope)
+}
+
+fn source_request_for_watch_create(watch: &WatchRequest) -> SourceRequest {
+    let mut source = SourceRequest::new(watch.source.clone());
+    source.intent = SourceIntent::Watch;
+    source.watch = SourceWatchPolicy::Enabled;
+    source.refresh = SourceRefreshPolicy::IfStale;
+    source.embed = watch.embed;
+    source.options = watch.options.clone();
+    source.scope = watch.scope;
+    source.collection = watch.collection.clone();
+    source
 }
 
 fn source_request_for_watch_exec(watch: WatchRequest, request: &WatchExecRequest) -> SourceRequest {

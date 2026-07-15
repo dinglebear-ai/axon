@@ -147,6 +147,11 @@ async fn index_source_inner(
         &request.output,
         &request.limits,
         &route,
+        request
+            .options
+            .values
+            .get("project_filter")
+            .and_then(serde_json::Value::as_str),
         &execution,
     )
     .await?;
@@ -306,6 +311,7 @@ async fn dispatch_kind(
     output: &axon_api::source::OutputPolicy,
     limits: &axon_api::source::SourceLimits,
     route: &axon_api::source::RoutePlan,
+    project_filter: Option<&str>,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
@@ -333,32 +339,9 @@ async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Feed => {
-            dispatch::dispatch_feed(
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                limits.max_items,
-            )
-            .await
-        }
-        SourceInputKind::Youtube => {
-            dispatch::dispatch_youtube(
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                limits.max_items,
-            )
-            .await
-        }
-        SourceInputKind::Reddit => {
-            dispatch::dispatch_reddit(
+        SourceInputKind::Feed | SourceInputKind::Youtube | SourceInputKind::Reddit => {
+            dispatch_item_limited_kind(
+                kind,
                 runtime,
                 input,
                 collection,
@@ -395,11 +378,13 @@ async fn dispatch_kind(
                 auth_snapshot,
                 embed,
                 limits.max_items,
+                project_filter,
             )
             .await
         }
         SourceInputKind::Registry => {
-            dispatch::dispatch_registry(
+            dispatch_item_limited_kind(
+                kind,
                 runtime,
                 input,
                 collection,
@@ -412,6 +397,72 @@ async fn dispatch_kind(
         }
         // Unsupported is handled by the caller before dispatch.
         SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_item_limited_kind(
+    kind: SourceInputKind,
+    runtime: &TargetLocalSourceRuntime,
+    input: &str,
+    collection: &str,
+    owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
+    max_items: Option<u64>,
+) -> anyhow::Result<IndexCounts> {
+    match kind {
+        SourceInputKind::Feed => {
+            dispatch::dispatch_feed(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                max_items,
+            )
+            .await
+        }
+        SourceInputKind::Youtube => {
+            dispatch::dispatch_youtube(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                max_items,
+            )
+            .await
+        }
+        SourceInputKind::Reddit => {
+            dispatch::dispatch_reddit(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                max_items,
+            )
+            .await
+        }
+        SourceInputKind::Registry => {
+            dispatch::dispatch_registry(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                max_items,
+            )
+            .await
+        }
+        _ => Err(anyhow::anyhow!(
+            "source kind does not support max-items dispatch: {kind:?}"
+        )),
     }
 }
 

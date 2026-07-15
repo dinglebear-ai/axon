@@ -115,7 +115,7 @@ describe("registry-derived shims preserve behavior", () => {
     expect(ACTION_REGISTRY["embed-cancel"].route).toEqual({ method: "POST", path: "/v1/embed/{id}/cancel" });
     expect(ACTION_REGISTRY["ingest-clear"].route).toEqual({ method: "DELETE", path: "/v1/ingest" });
     expect(ACTION_REGISTRY["extract-recover"].route).toEqual({ method: "POST", path: "/v1/extract/recover" });
-    expect(ACTION_REGISTRY["watch-run"].route).toEqual({ method: "POST", path: "/v1/watch/{id}/run" });
+    expect(ACTION_REGISTRY["watch-run"].route).toEqual({ method: "POST", path: "/v1/watches/{id}/exec" });
   });
 });
 

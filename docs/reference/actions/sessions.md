@@ -43,7 +43,7 @@ All global flags apply. Sessions-specific and key flags:
 | `--claude` | off | Include Claude sessions. Presence flag — include to enable. |
 | `--codex` | off | Include Codex sessions. Presence flag — include to enable. |
 | `--gemini` | off | Include Gemini sessions. Presence flag — include to enable. |
-| `--project <name>` | — | Case-insensitive substring filter on project name. |
+| `--project <name>` | — | Case-insensitive substring filter on export path or transcript content. Reliable for Claude project directories and Codex exports with `cwd`; Gemini only matches when the export path/content contains the token. |
 | `--wait <bool>` | `false` | Block until ingestion completes; otherwise enqueue async ingest job. |
 | `--collection <name>` | `axon` | Target Qdrant collection. |
 | `--json` | `false` | Machine-readable output. |
@@ -102,8 +102,8 @@ axon sessions
 # Sync run for Codex only
 axon sessions --codex --wait true
 
-# Claude + Gemini filtered to project name match
-axon sessions --claude --gemini --project axon --wait true
+# Claude + Codex filtered to project path/content match
+axon sessions --claude --codex --project axon --wait true
 
 # Check job status
 axon sessions status 550e8400-e29b-41d4-a716-446655440000

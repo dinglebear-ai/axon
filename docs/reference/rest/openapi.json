@@ -1453,45 +1453,6 @@
       "streaming": false
     },
     {
-      "method": "GET",
-      "mutates": false,
-      "operation_id": "watch_list",
-      "path": "/v1/watch",
-      "request_dto": null,
-      "requires_auth_scope": "read",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "500",
-        "502"
-      ],
-      "result_dto": "WatchListResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "watch_create",
-      "path": "/v1/watch",
-      "request_dto": "WatchRequest",
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "WatchResponse",
-      "streaming": false
-    },
-    {
       "method": "POST",
       "mutates": true,
       "operation_id": "watches_create",

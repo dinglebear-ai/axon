@@ -123,10 +123,10 @@ describe("executeAction", () => {
     await executeTestAction("watch-create", "https://example.com/docs 120");
 
     expect(lastRequestBody()).toEqual({
-      name: "example.com",
-      task_type: "watch",
-      task_payload: { urls: ["https://example.com/docs"], ignore_patterns: [] },
-      every_seconds: 120,
+      source: "https://example.com/docs",
+      schedule: { every_seconds: 120 },
+      embed: true,
+      options: { values: {} },
       enabled: true,
     });
   });
@@ -164,7 +164,7 @@ describe("executeAction", () => {
       ["sources", "", "GET", "/v1/sources", null],
       ["domains", "", "GET", "/v1/domains", null],
       ["stats", "", "GET", "/v1/stats", null],
-      ["watch-list", "", "GET", "/v1/watch", null],
+      ["watch-list", "", "GET", "/v1/watches", null],
       ["scrape", "https://example.com/doc", "POST", "/v1/sources", { source: "https://example.com/doc", scope: "page", collection: "docs" }],
       ["crawl", "https://example.com/docs", "POST", "/v1/sources", { source: "https://example.com/docs", scope: "site", collection: "docs" }],
       ["map", "https://example.com", "POST", "/v1/map", { url: "https://example.com" }],
@@ -190,10 +190,10 @@ describe("executeAction", () => {
         "watch-create",
         "https://example.com/docs 120",
         "POST",
-        "/v1/watch",
-        { name: "example.com", task_type: "watch", task_payload: { urls: ["https://example.com/docs"], ignore_patterns: [] }, every_seconds: 120, enabled: true },
+        "/v1/watches",
+        { source: "https://example.com/docs", schedule: { every_seconds: 120 }, embed: true, options: { values: {} }, enabled: true },
       ],
-      ["watch-run", "00000000-0000-4000-8000-000000000000", "POST", "/v1/watch/00000000-0000-4000-8000-000000000000/run", null],
+      ["watch-run", "00000000-0000-4000-8000-000000000000", "POST", "/v1/watches/00000000-0000-4000-8000-000000000000/exec", null],
     ];
 
     for (const [subcommand, arg, method, path, body] of cases) {

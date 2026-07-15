@@ -106,7 +106,9 @@ fn session_index_input_threads_embed_and_max_items() {
         None,
         false,
         Some(3),
+        Some("axon".to_string()),
     );
     assert!(!input.embed, "embed=false must not become true");
     assert_eq!(input.max_items, Some(3), "max_items must not become None");
+    assert_eq!(input.project_filter.as_deref(), Some("axon"));
 }

@@ -166,6 +166,16 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0026_remove_legacy_job_families",
         sql: include_str!("migrations/0026_remove_legacy_job_families.sql"),
     },
+    SqlMigration {
+        version: 27,
+        name: "0027_source_watch_scheduler_leases",
+        sql: include_str!("migrations/0027_source_watch_scheduler_leases.sql"),
+    },
+    SqlMigration {
+        version: 28,
+        name: "0028_drop_session_watch_tables",
+        sql: include_str!("migrations/0028_drop_session_watch_tables.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and

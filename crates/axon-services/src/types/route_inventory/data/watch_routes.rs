@@ -7,7 +7,7 @@ use super::super::{RestRouteAuth, RestRouteInfo};
 pub(crate) const WATCH_ROUTES: &[RestRouteInfo] = &[
     // Canonical source-request-backed watch surface (issue #298 WS-B REST
     // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
-    // Routes). Distinct from the legacy `/v1/watch` routes above.
+    // Routes).
     RestRouteInfo {
         method: "POST",
         path: "/v1/watches",

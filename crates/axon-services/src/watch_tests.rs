@@ -1,5 +1,6 @@
 use super::*;
 use axon_core::config::Config;
+use std::sync::Arc;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
@@ -50,6 +51,7 @@ async fn create_source_watch_writes_only_canonical_row() {
         &cfg,
         Some(&pool),
         watch_request("https://example.com/docs", 60),
+        None,
     )
     .await
     .expect("create_source_watch");
@@ -70,5 +72,50 @@ async fn create_source_watch_writes_only_canonical_row() {
     assert!(
         legacy.is_empty(),
         "canonical watch create must not dual-write legacy watch_defs"
+    );
+}
+
+#[tokio::test]
+async fn source_watch_denies_local_session_scope_without_local_auth() {
+    let (pool, _temp) = open_pool().await;
+    let cfg = Config::test_default();
+    let auth_without_local = AuthSnapshot::default();
+    let session_source = "session:claude:/tmp/axon-session-watch-local";
+
+    let err = create_source_watch(
+        &cfg,
+        Some(&pool),
+        watch_request(session_source, 60),
+        Some(auth_without_local.clone()),
+    )
+    .await
+    .expect_err("session watch create should require local scope");
+    assert!(
+        err.to_string().contains("axon:local"),
+        "unexpected create error: {err}"
+    );
+
+    let created = create_source_watch(&cfg, Some(&pool), watch_request(session_source, 60), None)
+        .await
+        .expect("trusted local create");
+    let ctx = crate::context::ServiceContext::new(Arc::new(cfg))
+        .await
+        .expect("service context");
+    let err = exec_source_watch(
+        &ctx,
+        Some(&pool),
+        created.watch_id,
+        WatchExecRequest {
+            reason: None,
+            refresh: None,
+            wait: None,
+        },
+        Some(auth_without_local),
+    )
+    .await
+    .expect_err("session watch exec should require local scope");
+    assert!(
+        err.to_string().contains("axon:local"),
+        "unexpected exec error: {err}"
     );
 }

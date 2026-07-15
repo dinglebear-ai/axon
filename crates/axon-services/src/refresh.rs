@@ -344,6 +344,14 @@ async fn payload_discovered_origins(
 ) -> Result<Vec<RefreshOrigin>, Box<dyn Error>> {
     let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
     let mut counts: BTreeMap<(String, String), (usize, Option<String>)> = BTreeMap::new();
+    let fallback_scan_default = cap.saturating_mul(20).clamp(1_000, 100_000);
+    let payload_scan_limit = env_usize_clamped(
+        "AXON_REFRESH_PAYLOAD_SCAN_LIMIT",
+        fallback_scan_default,
+        100,
+        1_000_000,
+    );
+    let mut scanned_points = 0usize;
     store
         .scroll_pages(
             &cfg.collection,
@@ -363,8 +371,23 @@ async fn payload_discovered_origins(
             512,
             |page| {
                 for point in page {
+                    scanned_points += 1;
                     if let Some((source_type, seed_url, source_id)) = payload_origin(&point.payload)
                     {
+                        let action = classify_action(&source_type, &seed_url);
+                        let filter_probe = RefreshOrigin {
+                            seed_url: seed_url.clone(),
+                            source_type: source_type.clone(),
+                            chunks: 0,
+                            action,
+                            ledger_source_id: None,
+                        };
+                        if !matches_filter(&filter_probe, filter) {
+                            if scanned_points >= payload_scan_limit {
+                                return false;
+                            }
+                            continue;
+                        }
                         let (chunks, known_source_id) =
                             counts.entry((source_type, seed_url)).or_insert((0, None));
                         *chunks += 1;
@@ -372,7 +395,7 @@ async fn payload_discovered_origins(
                             *known_source_id = source_id;
                         }
                     }
-                    if counts.len() >= cap {
+                    if counts.len() >= cap || scanned_points >= payload_scan_limit {
                         return false;
                     }
                 }
@@ -381,16 +404,21 @@ async fn payload_discovered_origins(
         )
         .await
         .map_err(|e| -> Box<dyn Error> { format!("scroll origins: {e}").into() })?;
+    if scanned_points >= payload_scan_limit && counts.len() < cap {
+        tracing::warn!(
+            scanned_points,
+            payload_scan_limit,
+            origins = counts.len(),
+            "refresh payload fallback scan hit limit before exhausting collection"
+        );
+    }
 
     let mut origins = Vec::new();
-    for ((source_type, seed_url), (chunks, payload_source_id)) in counts {
+    for ((source_type, seed_url), (chunks, _payload_source_id)) in counts {
         let action = classify_action(&source_type, &seed_url);
         let ledger_source_id = match action {
             RefreshAction::Skip(_) => None,
-            _ => match payload_source_id {
-                Some(source_id) => Some(source_id),
-                None => ledger_source_id_for(service_context, &seed_url).await,
-            },
+            _ => ledger_source_id_for(service_context, &seed_url).await,
         };
         let origin = RefreshOrigin {
             seed_url,
@@ -399,9 +427,7 @@ async fn payload_discovered_origins(
             action,
             ledger_source_id,
         };
-        if matches_filter(&origin, filter) {
-            origins.push(origin);
-        }
+        origins.push(origin);
     }
     Ok(origins)
 }
