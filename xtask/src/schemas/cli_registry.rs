@@ -75,8 +75,8 @@ pub(super) fn command_registry() -> Vec<CliRegistryCommand> {
 
 /// Top-level command groups that exist as real, dispatchable `CliCommand`
 /// variants but are excluded from generated CLI docs per
-/// `REMOVED_SURFACE_RULES` (see module docs for why `refresh`/`fresh`/
-/// `purge`/`dedupe` are listed even though they are still live).
+/// `REMOVED_SURFACE_RULES` (see module docs for why `refresh`/`fresh` are
+/// listed even though they are still live).
 #[allow(dead_code)]
 pub(super) fn excluded_top_level_groups() -> &'static [&'static str] {
     &[

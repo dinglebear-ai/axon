@@ -44,6 +44,14 @@ const RESERVED_COMMANDS: &[(&str, &str)] = &[
     ),
     ("code-search", "Use `axon <path> --scope directory`."),
     ("code-search-watch", "Use `axon <path> --watch`."),
+    (
+        "purge",
+        "Use `axon prune plan <target>` or `axon prune exec <target> --confirm`.",
+    ),
+    (
+        "dedupe",
+        "Use `axon prune plan collection:<name>` or `axon prune exec collection:<name> --confirm`.",
+    ),
 ];
 
 /// Rewrite `args` (a full argv, `args[0]` = program name) so a bare leading

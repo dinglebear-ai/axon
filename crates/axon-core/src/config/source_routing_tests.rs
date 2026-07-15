@@ -58,9 +58,16 @@ fn retained_scrape_is_a_real_subcommand() {
 }
 
 #[test]
-fn removed_embed_ingest_code_search_are_reserved() {
+fn removed_source_and_cleanup_commands_are_reserved() {
     let command = build_cli_command();
-    for removed in ["embed", "ingest", "code-search", "code-search-watch"] {
+    for removed in [
+        "embed",
+        "ingest",
+        "code-search",
+        "code-search-watch",
+        "purge",
+        "dedupe",
+    ] {
         let args = vec![
             "axon".to_string(),
             removed.to_string(),
@@ -102,8 +109,9 @@ fn subcommand_alias_is_untouched() {
 fn removed_purge_aliases_route_as_source() {
     // `delete-url` and `delete` were aliases of the removed `purge` command
     // (docs/pipeline-unification/delivery/surface-removal-contract.md). With
-    // `purge` gone, these tokens are no longer known subcommands and route as
-    // bare source arguments like any other unrecognized positional.
+    // `purge` gone and no alias compatibility layer, these tokens are no
+    // longer known subcommands and route as bare source arguments like any
+    // other unrecognized positional.
     assert_eq!(
         route(&["axon", "delete-url", "https://x"]),
         vec!["axon", "source", "delete-url", "https://x"]
