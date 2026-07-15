@@ -543,7 +543,7 @@ fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, Str
     ))
 }
 
-fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
+pub(super) fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
     Ok(normalize_local_service_url(
         global
             .qdrant_url

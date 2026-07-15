@@ -247,6 +247,7 @@ async fn handle_watch_create(
     // failure here does not fail `watch create` — the legacy watch was
     // already persisted and remains fully functional through
     // `list`/`history`/`exec`.
+    let mut source_created = None;
     if let Some(source) = first_watch_url(&created.task_payload) {
         let request = watch_svc::WatchRequest {
             source,
@@ -261,21 +262,38 @@ async fn handle_watch_create(
             collection: None,
             enabled: Some(created.enabled),
         };
-        if let Ok(store) = watch_svc::open_source_watch_store(cfg, pool).await
-            && let Err(err) = watch_svc::SourceWatchStoreTrait::create(&store, request).await
-        {
-            axon_core::logging::log_warn(&format!(
-                "watch create: dual-write to source-request-backed watch store failed: {err} \
-                 (legacy watch {} was still created; 'watch get/update/pause/resume/delete' \
-                 will not see it)",
-                created.id
-            ));
+        if let Ok(store) = watch_svc::open_source_watch_store(cfg, pool).await {
+            match watch_svc::SourceWatchStoreTrait::create(&store, request).await {
+                Ok(watch) => source_created = Some(watch),
+                Err(err) => {
+                    axon_core::logging::log_warn(&format!(
+                        "watch create: dual-write to source-request-backed watch store failed: {err} \
+                         (legacy watch {} was still created; 'watch get/update/pause/resume/delete' \
+                         will not see it)",
+                        created.id
+                    ));
+                }
+            }
         }
     }
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&created)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "legacy_watch": created,
+                "source_watch": source_created,
+            }))?
+        );
     } else {
-        println!("created watch {} ({})", created.name, created.id);
+        match source_created {
+            Some(source_watch) => {
+                println!(
+                    "created watch {} ({}) legacy={}",
+                    created.name, source_watch.watch_id.0, created.id
+                );
+            }
+            None => println!("created watch {} ({})", created.name, created.id),
+        }
     }
     Ok(())
 }
@@ -328,7 +346,7 @@ async fn handle_watch_get(
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch_id = watch_svc::WatchId::new(raw_id);
+    let watch_id = resolve_source_watch_id(cfg, pool, &store, raw_id).await?;
     let found = watch_svc::SourceWatchStoreTrait::get(&store, watch_id).await?;
     match found {
         Some(watch) => {
@@ -357,7 +375,7 @@ async fn handle_watch_update(
     request: watch_svc::WatchUpdateRequest,
 ) -> Result<(), Box<dyn Error>> {
     let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch_id = watch_svc::WatchId::new(raw_id);
+    let watch_id = resolve_source_watch_id(cfg, pool, &store, raw_id).await?;
     let updated = watch_svc::SourceWatchStoreTrait::update(&store, watch_id, request).await?;
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&updated)?);
@@ -378,7 +396,7 @@ async fn handle_watch_delete(
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
     let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch_id = watch_svc::WatchId::new(raw_id);
+    let watch_id = resolve_source_watch_id(cfg, pool, &store, raw_id).await?;
     let deleted = store.delete(watch_id).await?;
     if !deleted {
         return Err(format!("watch {raw_id} not found").into());
@@ -392,6 +410,36 @@ async fn handle_watch_delete(
         println!("deleted watch {raw_id}");
     }
     Ok(())
+}
+
+async fn resolve_source_watch_id(
+    cfg: &Config,
+    pool: Option<&SqlitePool>,
+    store: &watch_svc::SqliteWatchStore,
+    raw_id: &str,
+) -> Result<watch_svc::WatchId, Box<dyn Error>> {
+    let candidate = watch_svc::WatchId::new(raw_id);
+    if watch_svc::SourceWatchStoreTrait::get(store, candidate.clone())
+        .await?
+        .is_some()
+    {
+        return Ok(candidate);
+    }
+
+    let Ok(legacy_uuid) = Uuid::parse_str(raw_id) else {
+        return Ok(candidate);
+    };
+    let legacy = match pool {
+        Some(pool) => watch_svc::get_watch_def_with_pool(pool, legacy_uuid).await?,
+        None => watch_svc::get_watch_def(cfg, legacy_uuid).await?,
+    };
+    if let Some(legacy) = legacy
+        && let Some(source) = first_watch_url(&legacy.task_payload)
+        && let Some(source_watch) = store.get_by_source(&source).await?
+    {
+        return Ok(source_watch.watch_id);
+    }
+    Ok(candidate)
 }
 
 #[cfg(test)]

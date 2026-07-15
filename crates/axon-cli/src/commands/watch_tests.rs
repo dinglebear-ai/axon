@@ -107,6 +107,62 @@ async fn handle_watch_create_dual_writes_source_watch_store() -> Result<(), Box<
 }
 
 #[tokio::test]
+async fn legacy_watch_id_resolves_to_dual_written_source_watch() -> Result<(), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+
+    handle_watch_create(
+        &cfg,
+        None,
+        "legacy-alias".to_string(),
+        "watch".to_string(),
+        3600,
+        Some(r#"{"urls": ["https://example.com/legacy-alias"]}"#.to_string()),
+    )
+    .await?;
+
+    let legacy = watch_svc::list_watch_defs(&cfg, 10)
+        .await?
+        .into_iter()
+        .find(|watch| watch.name == "legacy-alias")
+        .expect("legacy watch row");
+    let legacy_id = legacy.id.to_string();
+
+    handle_watch_get(&cfg, None, &legacy_id).await?;
+    handle_watch_update(
+        &cfg,
+        None,
+        &legacy_id,
+        watch_svc::WatchUpdateRequest {
+            enabled: Some(false),
+            schedule: None,
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await?;
+
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let source_watch = store
+        .get_by_source("https://example.com/legacy-alias")
+        .await?
+        .expect("dual-written source watch");
+    assert!(!source_watch.enabled);
+
+    handle_watch_delete(&cfg, None, &legacy_id).await?;
+    assert!(
+        store
+            .get_by_source("https://example.com/legacy-alias")
+            .await?
+            .is_none()
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn run_watch_rejects_unknown_subcommand() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let mut cfg = Config::test_default();

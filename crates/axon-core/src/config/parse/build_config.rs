@@ -49,6 +49,59 @@ pub(super) fn into_config_with_sources(
         );
     }
 
+    if dispatched.command == CommandKind::Reset {
+        let toml = load_toml_config()?;
+        let collection = if collection_was_explicit {
+            global.collection.clone()
+        } else {
+            read_env("AXON_COLLECTION")
+                .or_else(|| toml.search.collection.clone())
+                .unwrap_or_else(|| global.collection.clone())
+        };
+        validate_collection_name(&collection)?;
+
+        let sqlite_path = read_env("AXON_SQLITE_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(default_sqlite_path);
+
+        if !output_dir_was_explicit
+            && global.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR)
+            && let Some(output_dir) = read_env("AXON_OUTPUT_DIR")
+        {
+            global.output_dir = std::path::PathBuf::from(output_dir);
+        }
+
+        let targets_vectors = dispatched.reset_stores.is_empty()
+            || dispatched
+                .reset_stores
+                .iter()
+                .any(|store| store == "vectors");
+        let qdrant_url = if targets_vectors {
+            config_literal::resolve_qdrant_url(&global, &toml)?
+        } else {
+            config_literal::resolve_qdrant_url(&global, &toml)
+                .unwrap_or_else(|_| Config::default().qdrant_url)
+        };
+
+        return Ok(Config {
+            command: dispatched.command,
+            positional: dispatched.positional,
+            fresh_action: dispatched.fresh_action,
+            json_output: global.json,
+            color_choice: global.color,
+            watch_mode: global.watch,
+            yes: global.yes,
+            collection,
+            sqlite_path,
+            output_dir: global.output_dir,
+            qdrant_url,
+            reset_stores: dispatched.reset_stores,
+            reset_dry_run: dispatched.reset_dry_run,
+            reset_plan_id: dispatched.reset_plan_id,
+            ..Config::default()
+        });
+    }
+
     // Completions and setup metadata/deploy commands do not need service URLs at
     // parse time. Return early so first-run setup works before Qdrant/TEI exist.
     // This means AXON_CONFIG_PATH parse errors and invalid collections are
@@ -63,7 +116,6 @@ pub(super) fn into_config_with_sources(
             | CommandKind::Config
             | CommandKind::Update
             | CommandKind::Palette
-            | CommandKind::Reset
     ) {
         return Ok(Config {
             command: dispatched.command,

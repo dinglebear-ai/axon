@@ -308,6 +308,29 @@ fn empty_sqlite_path_env_falls_through_to_default_jobs_db() {
 
 #[allow(unsafe_code)]
 #[test]
+fn reset_vectors_reads_qdrant_env_without_requiring_tei() {
+    let _guard = env_guard();
+    with_env_saved(&["QDRANT_URL", "TEI_URL"], || unsafe {
+        env::set_var("QDRANT_URL", "http://100.120.242.29:53333");
+        env::remove_var("TEI_URL");
+
+        let cfg = into_config(Cli::parse_from([
+            "axon",
+            "reset",
+            "--dry-run",
+            "--stores",
+            "vectors",
+        ]))
+        .expect("reset vectors should resolve Qdrant without requiring TEI");
+
+        assert_eq!(cfg.command, crate::config::types::CommandKind::Reset);
+        assert_eq!(cfg.qdrant_url, "http://100.120.242.29:53333");
+        assert_eq!(cfg.collection, "axon");
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn nonempty_output_dir_env_overrides_default() {
     let _guard = env_guard();
     with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {

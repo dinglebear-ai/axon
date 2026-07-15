@@ -1,5 +1,6 @@
-use super::write_extract_summary;
+use super::{vertical_doc_to_extract_run, write_extract_summary};
 use axon_core::config::Config;
+use axon_extract::ScrapedDoc;
 
 #[tokio::test]
 async fn extract_summary_redacts_secrets_before_writing() {
@@ -58,4 +59,26 @@ async fn extract_summary_defaults_to_managed_output_dir() {
 
     assert_eq!(path, output_root.path().join("extract-summary.json"));
     assert!(path.exists());
+}
+
+#[test]
+fn vertical_doc_becomes_extract_item() {
+    let run = vertical_doc_to_extract_run(ScrapedDoc {
+        url: "https://pypi.org/project/requests/".to_string(),
+        markdown: "# requests\n\nPython HTTP library".to_string(),
+        title: Some("requests".to_string()),
+        extractor_name: "pypi",
+        extractor_version: 3,
+        structured: Some(serde_json::json!({"name": "requests"})),
+        follow_crawl_urls: vec!["https://requests.readthedocs.io/".to_string()],
+        extra: Some(serde_json::json!({"pkg_name": "requests"})),
+    });
+
+    assert_eq!(run.pages_visited, 1);
+    assert_eq!(run.pages_with_data, 1);
+    assert_eq!(run.results.len(), 1);
+    assert_eq!(run.parser_hits.get("vertical:pypi"), Some(&1));
+    assert_eq!(run.results[0]["extractor_name"], "pypi");
+    assert_eq!(run.results[0]["extra"]["pkg_name"], "requests");
+    assert_eq!(run.results[0]["structured"]["name"], "requests");
 }

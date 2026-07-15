@@ -102,28 +102,30 @@ fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
         })
 }
 
-fn render_source_result(cfg: &Config, result: &SourceResult) {
+pub(crate) fn source_result_json(cfg: &Config, result: &SourceResult) -> serde_json::Value {
+    serde_json::json!({
+        "job_id": result.job_id.0.to_string(),
+        "source_id": result.source_id.0,
+        "canonical_uri": result.canonical_uri,
+        "source_kind": result.source_kind,
+        "adapter": result.adapter,
+        "scope": result.scope,
+        "status": result.status,
+        "generation": result.ledger.generation.0,
+        "documents_prepared": result.counts.documents_total,
+        "chunks_prepared": result.counts.chunks_total,
+        "vector_points_written": result.counts.vector_points_total,
+        "collection": cfg.collection,
+        "graph": result.graph,
+        "warnings": result.warnings,
+        "inline": &result.inline,
+        "job": &result.job,
+    })
+}
+
+pub(crate) fn render_source_result(cfg: &Config, result: &SourceResult) {
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({
-                "job_id": result.job_id.0.to_string(),
-                "source_id": result.source_id.0,
-                "canonical_uri": result.canonical_uri,
-                "source_kind": result.source_kind,
-                "adapter": result.adapter,
-                "scope": result.scope,
-                "status": result.status,
-                "generation": result.ledger.generation.0,
-                "documents_prepared": result.counts.documents_total,
-                "chunks_prepared": result.counts.chunks_total,
-                "vector_points_written": result.counts.vector_points_total,
-                "collection": cfg.collection,
-                "graph": result.graph,
-                "warnings": result.warnings,
-                "inline": &result.inline,
-            })
-        );
+        println!("{}", source_result_json(cfg, result));
         return;
     }
 

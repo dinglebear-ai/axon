@@ -1,7 +1,7 @@
 //! Qdrant side of `axon reset`: inventory (point count + payload-schema
 //! compatibility) and destructive drop + fresh named-mode recreation.
 
-use axon_api::reset::TARGET_PAYLOAD_SCHEMA_VERSION;
+use axon_api::reset::TARGET_PAYLOAD_CONTRACT_VERSION;
 use axon_core::config::Config;
 use axon_core::http::http_client;
 use reqwest::StatusCode;
@@ -23,13 +23,14 @@ pub struct QdrantInventory {
     pub exists: bool,
     /// Total points currently stored (0 when absent/unreachable).
     pub points: u64,
-    /// A point was observed carrying a `payload_schema_version` older than the
-    /// current `PAYLOAD_SCHEMA_VERSION` — the store is schema-incompatible and
-    /// must be reset before unified workers run.
+    /// A point was observed without the current `payload_contract_version` —
+    /// the store is schema-incompatible and must be reset before reuse.
     pub schema_incompatible: bool,
-    /// Lowest payload schema version observed in the sampled points (`None`
-    /// when empty/absent).
+    /// Legacy compatibility field kept for callers/renderers that still show a
+    /// numeric schema. Always `None` for current contract-version checks.
     pub min_schema_version: Option<u32>,
+    /// Distinct payload contract versions observed in the sampled points.
+    pub payload_contract_versions: Vec<String>,
     /// The collection was unreachable during planning.
     pub unreachable: bool,
 }
@@ -43,7 +44,7 @@ impl QdrantInventory {
 }
 
 /// Read-only inventory: does the collection exist, how many points, and does any
-/// sampled point carry an outdated payload schema version. Never mutates.
+/// sampled point fail the current vector payload contract version. Never mutates.
 ///
 /// Best-effort — an unreachable Qdrant yields `unreachable = true` with zeroed
 /// counts rather than an error, so planning/doctor degrade gracefully.
@@ -84,17 +85,18 @@ pub async fn inventory(cfg: &Config) -> QdrantInventory {
     }
 
     let points = collection_point_count(client, base, collection).await;
-    let (min_schema_version, schema_incompatible) = if points > 0 {
-        sample_schema_version(client, base, collection).await
+    let (payload_contract_versions, schema_incompatible) = if points > 0 {
+        sample_payload_contract_versions(client, base, collection).await
     } else {
-        (None, false)
+        (Vec::new(), false)
     };
 
     QdrantInventory {
         exists: true,
         points,
         schema_incompatible,
-        min_schema_version,
+        min_schema_version: None,
+        payload_contract_versions,
         unreachable: false,
     }
 }
@@ -113,42 +115,51 @@ async fn collection_point_count(client: &reqwest::Client, base: &str, collection
     }
 }
 
-/// Scroll a bounded sample of points and read their `payload_schema_version`.
-/// Points with no version field are implicit schema `1` (pre-versioning), which
-/// is incompatible with the current shape.
-async fn sample_schema_version(
+/// Scroll a bounded sample of points and read their
+/// `payload_contract_version`. Points with no contract version are legacy
+/// pre-unification payloads and are incompatible with the current shape.
+async fn sample_payload_contract_versions(
     client: &reqwest::Client,
     base: &str,
     collection: &str,
-) -> (Option<u32>, bool) {
+) -> (Vec<String>, bool) {
     let url = format!("{base}/collections/{collection}/points/scroll");
     let body = serde_json::json!({
         "limit": 256,
-        "with_payload": ["payload_schema_version"],
+        "with_payload": ["payload_contract_version"],
         "with_vector": false,
     });
     let page: Value = match client.post(&url).json(&body).send().await {
         Ok(resp) if resp.status().is_success() => match resp.json().await {
             Ok(v) => v,
-            Err(_) => return (None, false),
+            Err(_) => return (Vec::new(), false),
         },
-        _ => return (None, false),
+        _ => return (Vec::new(), false),
     };
     let points = match page.pointer("/result/points").and_then(Value::as_array) {
         Some(p) if !p.is_empty() => p,
-        _ => return (None, false),
+        _ => return (Vec::new(), false),
     };
-    let mut min_version: Option<u32> = None;
+    let mut versions = std::collections::BTreeSet::new();
+    let mut incompatible = false;
     for point in points {
-        let version = point
-            .pointer("/payload/payload_schema_version")
-            .and_then(Value::as_u64)
-            .map(|v| v as u32)
-            .unwrap_or(1); // absent field ⇒ implicit v1
-        min_version = Some(min_version.map_or(version, |m| m.min(version)));
+        match point
+            .pointer("/payload/payload_contract_version")
+            .and_then(Value::as_str)
+        {
+            Some(version) => {
+                versions.insert(version.to_string());
+                if version != TARGET_PAYLOAD_CONTRACT_VERSION {
+                    incompatible = true;
+                }
+            }
+            None => {
+                versions.insert("<missing>".to_string());
+                incompatible = true;
+            }
+        }
     }
-    let incompatible = min_version.is_some_and(|v| v < TARGET_PAYLOAD_SCHEMA_VERSION);
-    (min_version, incompatible)
+    (versions.into_iter().collect(), incompatible)
 }
 
 /// Best-effort embedding dimension from TEI `/info`. Returns `None` when TEI is
