@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.2](https://github.com/jmagar/axon/compare/palette-v5.14.1...palette-v5.14.2) (2026-07-15)
+
+
+### Fixed
+
+* **jobs:** remove legacy job families ([ba0b29b](https://github.com/jmagar/axon/commit/ba0b29b27119dc93de97edacbfdd6b6348d33771))
+
 ## [5.14.1](https://github.com/jmagar/axon/compare/palette-v5.14.0...palette-v5.14.1) (2026-07-14)
 
 
