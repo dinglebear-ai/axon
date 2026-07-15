@@ -70,14 +70,6 @@ async fn detached_web_source_uses_claimed_source_job_id() {
         "web source path must not create a nested Source job"
     );
     assert_eq!(jobs[0].job_id, claimed.job_id);
-    assert!(
-        harness.jobs_by_kind(JobKind::Crawl).await.is_empty(),
-        "web Source execution must not create legacy Crawl jobs"
-    );
-    assert!(
-        harness.jobs_by_kind(JobKind::Embed).await.is_empty(),
-        "web Source execution must embed inline without child Embed jobs"
-    );
 
     let ledger = harness
         .source_summary_for("https://docs.example.test/")

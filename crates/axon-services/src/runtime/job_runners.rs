@@ -9,9 +9,9 @@
 //! [`super::resolve_runtime_with_workers`] hands the registry to
 //! `SqliteJobBackend::new_with_workers_and_registry` at composition time.
 //!
-//! Registered here today: `ProviderProbe`, `Extract`, `Embed`, `Ingest`,
-//! `Source`, and `Memory`. `Crawl` is represented as detached `Source` jobs at
-//! enqueue time; `GraphMutation`/`Prune`/`Watch` are
+//! Registered here today: `ProviderProbe`, `Extract`, `Source`, and `Memory`.
+//! Source ingestion work is represented as detached `Source` jobs at enqueue
+//! time; `GraphMutation`/`Prune`/`Watch` are
 //! intentionally left unregistered: they run as sub-steps of a parent operation
 //! or have their own scheduler, and forcing them through this seam here risks a
 //! rushed, wrong implementation of the trickiest cases.
@@ -34,9 +34,7 @@ use axon_memory::sqlite::SqliteMemoryStore;
 use axon_memory::store::MemoryStore;
 use tokio_util::sync::CancellationToken;
 
-mod ingest_runner;
 mod source_runner;
-use ingest_runner::IngestRunner;
 use source_runner::SourceRunner;
 pub(crate) use source_runner::run_source_request_with_context;
 
@@ -59,18 +57,6 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
     registry.register(
         JobKind::Extract,
         Arc::new(ExtractRunner {
-            cfg: Arc::clone(cfg),
-        }),
-    );
-    registry.register(
-        JobKind::Embed,
-        Arc::new(EmbedRunner {
-            cfg: Arc::clone(cfg),
-        }),
-    );
-    registry.register(
-        JobKind::Ingest,
-        Arc::new(IngestRunner {
             cfg: Arc::clone(cfg),
         }),
     );
@@ -326,64 +312,6 @@ fn extract_error(message: impl Into<String>) -> ApiError {
     ApiError::new(
         "job_runner.extract_failed",
         ErrorStage::ParsingContent,
-        message.into(),
-    )
-}
-
-/// Runs a claimed `Embed` unified job via `crate::embed::local_write::embed_local_path`
-/// (the ledger-tracked `local_source` pipeline — `axon-document` +
-/// `axon-embedding` + `axon-vectors`).
-///
-/// `claimed.request_json` carries `{"input": "...", "config_json": "..."}`
-/// (see `embed_start_with_context` in `crates/axon-services/src/embed.rs`).
-struct EmbedRunner {
-    cfg: Arc<Config>,
-}
-
-#[async_trait]
-impl UnifiedJobRunner for EmbedRunner {
-    async fn run(
-        &self,
-        claimed: &UnifiedClaimedJob,
-        store: &SqliteUnifiedJobStore,
-        shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
-        heartbeat_running(store, claimed, PipelinePhase::Embedding).await;
-        if shutdown.is_cancelled() {
-            return Err(embed_error("embed canceled before running"));
-        }
-        let request = claimed
-            .request_json
-            .as_ref()
-            .ok_or_else(|| embed_error("embed job has no request payload"))?;
-        let input = request
-            .get("input")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| embed_error("embed job request is missing `input`"))?
-            .to_string();
-        let config_json = request
-            .get("config_json")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        let effective_cfg = apply_config_snapshot(&self.cfg, config_json).map_err(|error| {
-            ApiError::new(
-                "job_runner.invalid_config_snapshot",
-                ErrorStage::Planning,
-                error.to_string(),
-            )
-        })?;
-        let embed_fut = crate::embed::local_write::embed_local_path(&effective_cfg, &input, None);
-        tokio::select! {
-            _ = shutdown.cancelled() => Err(embed_error("embed canceled")),
-            result = embed_fut => result.map(|_output| ()).map_err(|error| embed_error(error.to_string())),
-        }
-    }
-}
-
-fn embed_error(message: impl Into<String>) -> ApiError {
-    ApiError::new(
-        "job_runner.embed_failed",
-        ErrorStage::Embedding,
         message.into(),
     )
 }

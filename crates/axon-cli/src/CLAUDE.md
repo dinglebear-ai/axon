@@ -11,16 +11,17 @@ nothing more. Full contract (owns / API / deps / tests):
 [../../../docs/pipeline-unification/surfaces/axon-help.md](../../../docs/pipeline-unification/surfaces/axon-help.md).
 
 ## Status — live crate, Phase 10 surface cutover already applied
-`embed`, `ingest`, `scrape`, `crawl`, `code-search`, and `code-search-watch`
+`embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`, `purge`, and `dedupe`
 are already **removed** from the clap tree (not aliased) — verified against
 the live binary, they do not appear in the `Command` enum in
-`crates/axon-core/src/config/cli.rs`. The clap tree today still ships
-`purge`/`dedupe` as user-facing commands, plus `refresh`/`fresh` (freshness
-scheduling). The target `axon <source>` grammar is implemented: the parser
-(`route_bare_source` in `crates/axon-core/src/config/source_routing.rs`)
-routes any first positional that is not a canonical/removed command or global
-flag to the `source` subcommand (a `SourceRequest`). Do not add back-compat
-aliases for removed commands.
+`crates/axon-core/src/config/cli.rs`. `scrape` is retained as a canonical
+one-page SourceRequest projection, and the clap tree today still ships
+`refresh`/`fresh` (freshness scheduling). The target `axon <source>` grammar is
+implemented: the parser (`route_bare_source` in
+`crates/axon-core/src/config/source_routing.rs`) routes any first positional
+that is not a canonical/removed command or global flag to the `source`
+subcommand (a `SourceRequest`). Do not add back-compat aliases for removed
+commands.
 
 ## Module map
 Current groups from `crates/axon-cli/src/`:
@@ -44,7 +45,7 @@ Current groups from `crates/axon-cli/src/`:
 - `axon <source>` is the default pipeline command; `ask`/`query`/`retrieve`/`search` keep clear, non-overlapping semantics.
 - Every command maps to exactly one service request/result path — the CLI is a transport, not the pipeline owner.
 - `--json` emits the shared `axon-api` envelope; human progress renders from shared `axon-observe` progress events.
-- No removed command (`embed`/`ingest`/`scrape`/`crawl`/`code-search`/`code-search-watch`/`purge`/`dedupe`) survives in help, completions, or the parser after the clean break.
+- No removed command (`embed`/`ingest`/`crawl`/`code-search`/`code-search-watch`/`purge`/`dedupe`) survives in help, completions, or the parser after the clean break.
 
 ## DTO ownership
 Wire DTOs (`SourceRequest`/`SourceResult`, `AskRequest`, `QueryResult`, the

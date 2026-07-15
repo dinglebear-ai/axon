@@ -121,6 +121,7 @@ fn apply_migration(
         } else if upper.starts_with("DROP TABLE") {
             if let Some(name) = parser::parse_drop_table(&normalized) {
                 schema.tables.remove(&name);
+                schema.indexes.retain(|_, index| index.table != name);
                 touched.push(name);
             }
         }
@@ -173,12 +174,7 @@ fn divergences() -> Vec<Value> {
         json!({
             "kind": "duplicate_domain_naming",
             "tables": ["axon_memory_nodes", "axon_memory_edges", "memory_records", "memory_links", "memory_reinforcement", "memory_reviews"],
-            "note": "Two independent 'memory' schemas coexist: the legacy agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision."
-        }),
-        json!({
-            "kind": "legacy_per_family_job_tables",
-            "tables": ["axon_crawl_jobs", "axon_embed_jobs", "axon_extract_jobs", "axon_ingest_jobs"],
-            "note": "Predate the unified `jobs`/`job_attempts`/`job_stages`/`job_events` tables introduced in crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql. `embed`/`ingest`/`scrape`/`crawl` CLI/MCP/REST surfaces are already removed (see xtask/src/schemas/registry.rs::REMOVED_SURFACE_RULES); the legacy tables persist for `extract` and in-flight rows and are not renamed here."
+            "note": "Two independent 'memory' schemas coexist: the earlier agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision."
         }),
         json!({
             "kind": "watch_naming_overlap",
@@ -274,10 +270,16 @@ fn build_migrations_field(schema: &DatabaseSchema) -> Vec<Value> {
         .migrations
         .iter()
         .map(|record| {
+            let live_tables_touched: Vec<&str> = record
+                .tables_touched
+                .iter()
+                .map(String::as_str)
+                .filter(|table| schema.tables.contains_key(*table))
+                .collect();
             json!({
                 "file": record.file,
                 "owner_crate": record.owner_crate,
-                "tables_touched": record.tables_touched,
+                "tables_touched": live_tables_touched,
             })
         })
         .collect()

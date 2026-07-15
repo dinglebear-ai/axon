@@ -104,4 +104,4 @@ just dev                  # Build + run full stack
 
 - [../SETUP.md](../../guides/getting-started.md) -- detailed setup guide
 - [TECH.md](tech.md) -- technology stack details
-- [../repo/RECIPES.md](../../contributing/repo/recipes.md) -- Justfile recipes
+- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes

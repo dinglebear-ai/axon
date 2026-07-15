@@ -81,7 +81,7 @@ pub(super) enum CliCommand {
     Memory(MemoryArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
     Sessions(SessionsArgs),
-    /// Index a local source path through the unified pipeline (local paths only)
+    /// Index a source through the unified pipeline
     Source(SourceArgs),
     /// Capture a full-page screenshot of one or more URLs
     Screenshot(ScrapeArgs),
@@ -280,13 +280,6 @@ pub(super) struct ResetArgs {
     /// Axon creates an invocation-local plan and binds execution to that plan.
     #[arg(long = "plan-id")]
     pub(super) plan_id: Option<String>,
-
-    /// Explicit confirmation that non-empty legacy family job tables
-    /// (detected during this reset) may be wiped. Required alongside --yes
-    /// whenever such rows are present; a dry-run always shows the blocker
-    /// without this flag.
-    #[arg(long = "confirm-legacy-wipe", action = ArgAction::SetTrue)]
-    pub(super) confirm_legacy_wipe: bool,
 }
 
 #[derive(Debug, Args)]

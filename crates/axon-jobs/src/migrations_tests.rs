@@ -67,7 +67,6 @@ async fn fresh_db_migrates_all_namespaces() {
         "leases",
         // jobs tables
         "jobs",
-        "axon_crawl_jobs",
         // observe / graph / memory
         "axon_observe_events",
         "axon_observe_provider_health",
@@ -84,6 +83,24 @@ async fn fresh_db_migrates_all_namespaces() {
         .await
         .unwrap_or_else(|e| panic!("probe {table}: {e}"));
         assert_eq!(count, 1, "table {table} should exist exactly once");
+    }
+
+    for table in [
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+        "axon_ingest_payloads",
+        "axon_job_cutover_receipts",
+    ] {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?",
+        )
+        .bind(table)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("probe {table}: {e}"));
+        assert_eq!(count, 0, "table {table} must not exist in final schema");
     }
 
     // `jobs.source_id` FK resolves against `sources(source_id)`. Foreign keys are

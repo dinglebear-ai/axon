@@ -1997,7 +1997,7 @@ fn canonical_enums_match_axon_api_schemars_output() {
         let schema = schemars::schema_for!(T);
         let value: serde_json::Value = schema.into();
         // Plain enums project as a flat `enum` array; variants carrying a doc
-        // comment (e.g. `JobKind::Embed`) make schemars emit a `oneOf` with
+        // comment can make schemars emit a `oneOf` with
         // per-variant `enum`/`const` branches instead — flatten both shapes.
         if let Some(values) = value["enum"].as_array() {
             return values

@@ -133,7 +133,7 @@ async fn healthy_runner_still_marks_job_completed() {
 /// Runner that tracks how many instances of itself are executing
 /// concurrently (peak observed), then sleeps briefly before completing —
 /// long enough that overlapping claims would show up as concurrency > 1 if
-/// the crawl-specific gate were not enforced.
+/// the source-specific gate were not enforced.
 struct ConcurrencyTrackingRunner {
     current: Arc<std::sync::atomic::AtomicUsize>,
     peak: Arc<std::sync::atomic::AtomicUsize>,
@@ -156,26 +156,26 @@ impl UnifiedJobRunner for ConcurrencyTrackingRunner {
     }
 }
 
-/// Regression test for fix 3: crawl jobs must stay bounded by
-/// `crawl_job_concurrency_limit` even when the general
-/// `unified_worker_concurrency` semaphore is set much higher — crawl jobs
-/// share exactly one Chrome instance, so letting them freely consume general
-/// worker slots (as every other job kind does) risks CDP session contention.
+/// Regression test for fix 3: source jobs must stay bounded by the
+/// source/web crawl concurrency limit even when the general
+/// `unified_worker_concurrency` semaphore is set much higher. Web source jobs
+/// share constrained browser/render resources, so letting them freely consume
+/// general worker slots risks CDP session contention.
 #[tokio::test]
-async fn crawl_jobs_stay_bounded_by_crawl_specific_limit_even_with_high_general_concurrency() {
+async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_general_concurrency() {
     let (pool, _temp) = test_pool().await;
     let pool = Arc::new(pool);
 
-    const CRAWL_JOBS: usize = 4;
-    for _ in 0..CRAWL_JOBS {
-        enqueue_test_job(&pool, UnifiedJobKind::Crawl).await;
+    const SOURCE_JOBS: usize = 4;
+    for _ in 0..SOURCE_JOBS {
+        enqueue_test_job(&pool, UnifiedJobKind::Source).await;
     }
 
     let current = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut registry = JobRunnerRegistry::new();
     registry.register(
-        UnifiedJobKind::Crawl,
+        UnifiedJobKind::Source,
         Arc::new(ConcurrencyTrackingRunner {
             current: Arc::clone(&current),
             peak: Arc::clone(&peak),
@@ -186,7 +186,7 @@ async fn crawl_jobs_stay_bounded_by_crawl_specific_limit_even_with_high_general_
     let notify = Arc::new(Notify::new());
     let shutdown = CancellationToken::new();
 
-    // High general concurrency (8), but crawl-specific limit of 1 — matching
+    // High general concurrency (8), but source-specific limit of 1 — matching
     // Config::crawl_job_concurrency_limit's default.
     let handle = tokio::spawn(unified_worker_loop_with_concurrency_limits(
         Arc::clone(&pool),
@@ -197,29 +197,28 @@ async fn crawl_jobs_stay_bounded_by_crawl_specific_limit_even_with_high_general_
         1,
     ));
 
-    // Poll until every crawl job has reached a terminal state (bounded so a
+    // Poll until every source job has reached a terminal state (bounded so a
     // regression hangs the test instead of looping forever). Re-notify on
     // every poll tick rather than relying on a single notify_one() racing the
-    // worker task's startup (ensure_no_incompatible_legacy_jobs + first
-    // select! registration) — the fallback POLL_INTERVAL is 5s, so a lost
-    // single notify would otherwise make this test flaky under load rather
-    // than a real regression.
+    // worker task's startup and first select! registration — the fallback
+    // POLL_INTERVAL is 5s, so a lost single notify would otherwise make this
+    // test flaky under load rather than a real regression.
     let store = SqliteUnifiedJobStore::new((*pool).clone());
     tokio::time::timeout(std::time::Duration::from_secs(20), async {
         loop {
             notify.notify_one();
             let page = store
                 .list(axon_api::source::JobListRequest {
-                    kind: Some(UnifiedJobKind::Crawl),
+                    kind: Some(UnifiedJobKind::Source),
                     status: None,
                     source_id: None,
                     watch_id: None,
-                    limit: Some(CRAWL_JOBS as u32),
+                    limit: Some(SOURCE_JOBS as u32),
                     cursor: None,
                 })
                 .await
                 .unwrap();
-            if page.items.len() == CRAWL_JOBS
+            if page.items.len() == SOURCE_JOBS
                 && page
                     .items
                     .iter()
@@ -231,7 +230,7 @@ async fn crawl_jobs_stay_bounded_by_crawl_specific_limit_even_with_high_general_
         }
     })
     .await
-    .expect("all crawl jobs should complete within 20s");
+    .expect("all source jobs should complete within 20s");
 
     shutdown.cancel();
     let _ = handle.await;
@@ -239,7 +238,7 @@ async fn crawl_jobs_stay_bounded_by_crawl_specific_limit_even_with_high_general_
     assert_eq!(
         peak.load(std::sync::atomic::Ordering::SeqCst),
         1,
-        "at most one crawl job should ever run concurrently despite concurrency=8"
+        "at most one source job should ever run concurrently despite concurrency=8"
     );
 }
 

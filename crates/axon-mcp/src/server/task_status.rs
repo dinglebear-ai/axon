@@ -1,5 +1,5 @@
 use super::task_id::task_id_for;
-use axon_jobs::backend::JobKind;
+use axon_api::source::JobKind;
 use axon_jobs::status::JobStatus;
 use axon_services::types::ServiceJob;
 use rmcp::model::{GetTaskPayloadResult, Task, TaskStatus};

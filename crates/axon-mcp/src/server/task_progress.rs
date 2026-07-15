@@ -1,6 +1,6 @@
 use super::AxonMcpServer;
 use super::task_id::{kind_name, task_id_for};
-use axon_jobs::backend::JobKind;
+use axon_api::source::JobKind;
 use axon_jobs::status::JobStatus;
 use axon_services::runtime::ServiceJobRuntime;
 use rmcp::model::{ProgressNotificationParam, ProgressToken};
@@ -249,35 +249,32 @@ fn map_running_progress(kind: JobKind, result_json: Option<&Value>) -> MappedPro
     };
 
     match kind {
-        JobKind::Crawl => count_progress(value, "pages_crawled", "pages_discovered", "crawling")
-            .unwrap_or(MappedProgress {
-                progress: 0.0,
-                total: None,
-                message: "crawling",
-            }),
-        JobKind::Embed => count_progress(value, "docs_embedded", "docs_total", "embedding")
-            .unwrap_or(MappedProgress {
-                progress: 0.0,
-                total: None,
-                message: "embedding",
-            }),
+        JobKind::Source => source_progress(value),
         JobKind::Extract => MappedProgress {
             progress: 0.0,
             total: None,
             message: "running",
         },
-        JobKind::Ingest => {
-            let message = allowlisted_phase(value.get("phase").and_then(Value::as_str));
-            count_progress(value, "files_done", "files_total", message)
-                .or_else(|| count_progress(value, "tasks_done", "tasks_total", message))
-                .or_else(|| count_progress(value, "chunks_embedded", "chunks_total", message))
-                .unwrap_or(MappedProgress {
-                    progress: 0.0,
-                    total: None,
-                    message,
-                })
-        }
+        _ => MappedProgress {
+            progress: 0.0,
+            total: None,
+            message: running_message(kind),
+        },
     }
+}
+
+fn source_progress(object: &serde_json::Map<String, Value>) -> MappedProgress {
+    let message = allowlisted_phase(object.get("phase").and_then(Value::as_str));
+    count_progress(object, "pages_crawled", "pages_discovered", "indexing")
+        .or_else(|| count_progress(object, "docs_embedded", "docs_total", "embedding"))
+        .or_else(|| count_progress(object, "files_done", "files_total", message))
+        .or_else(|| count_progress(object, "tasks_done", "tasks_total", message))
+        .or_else(|| count_progress(object, "chunks_embedded", "chunks_total", message))
+        .unwrap_or(MappedProgress {
+            progress: 0.0,
+            total: None,
+            message,
+        })
 }
 
 fn count_progress(
@@ -301,22 +298,31 @@ fn number(value: &Value) -> Option<f64> {
 
 fn running_message(kind: JobKind) -> &'static str {
     match kind {
-        JobKind::Crawl => "crawling",
-        JobKind::Embed => "embedding",
+        JobKind::Source => "indexing",
         JobKind::Extract => "running",
-        JobKind::Ingest => "ingesting",
+        JobKind::Watch => "watching",
+        JobKind::Map => "mapping",
+        JobKind::Research => "researching",
+        JobKind::Ask => "answering",
+        JobKind::Query => "querying",
+        JobKind::Retrieve => "retrieving",
+        JobKind::Memory => "updating memory",
+        JobKind::Graph => "graphing",
+        JobKind::Prune => "pruning",
+        JobKind::ProviderProbe => "probing",
+        JobKind::Reset => "resetting",
     }
 }
 
 fn allowlisted_phase(phase: Option<&str>) -> &'static str {
     match phase {
-        Some("cloning") => "ingesting",
-        Some("fetching") => "ingesting",
-        Some("indexing") => "ingesting",
+        Some("cloning") => "indexing",
+        Some("fetching") => "indexing",
+        Some("indexing") => "indexing",
         Some("embedding") => "embedding",
         Some("finalizing") => "finalizing",
         Some("completed") => "completed",
-        _ => "ingesting",
+        _ => "indexing",
     }
 }
 

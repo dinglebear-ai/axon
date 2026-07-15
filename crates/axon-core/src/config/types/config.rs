@@ -1,6 +1,6 @@
 use super::enums::{
-    CommandKind, ConfigValueSource, EvaluateResponsesMode, MapFallback, McpTransport,
-    PerformanceProfile, RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use crate::llm::LlmBackendKind;
 use std::path::PathBuf;
@@ -261,20 +261,6 @@ pub struct Config {
 
     /// Optional reusable plan id for destructive reset execution.
     pub reset_plan_id: Option<String>,
-
-    /// Explicit, per-invocation confirmation that `axon reset` may wipe
-    /// non-empty legacy family job tables it detected. Flag: `reset
-    /// --confirm-legacy-wipe`. **CLI-flag-only** — never settable via
-    /// `config.toml` or an environment variable (see
-    /// `reset_confirm_legacy_wipe_source`); a config-file value could be set
-    /// once and permanently defeat the distinct-confirmation guarantee this
-    /// flag exists to provide.
-    pub reset_confirm_legacy_wipe: bool,
-
-    /// Where `reset_confirm_legacy_wipe` was actually sourced from. `reset()`
-    /// refuses to honor a `true` value unless this is `ConfigValueSource::
-    /// CliFlag` — see `crates/axon-services/src/reset.rs`.
-    pub reset_confirm_legacy_wipe_source: ConfigValueSource,
 
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
@@ -769,25 +755,22 @@ pub struct Config {
 
     /// Maximum number of unified-job-store jobs the single unified worker
     /// runs concurrently (bounded via a semaphore around its claim loop).
-    /// Deliberately not auto-derived from `embed_lanes`/`ingest_lanes`: once
-    /// the crawl/embed/ingest cutover lands those fields stop being consumed
-    /// for job execution and become dead config, which a later cleanup pass
-    /// should remove.
+    /// Deliberately not auto-derived from provider-specific lane knobs: this
+    /// is the durable worker's global source/extract/watch/prune envelope.
     /// Env: `AXON_UNIFIED_WORKER_CONCURRENCY`. TOML: `workers.unified-worker-concurrency`. Clamped 1–64. Default: 8.
     pub unified_worker_concurrency: usize,
 
-    /// Maximum number of `JobKind::Crawl` jobs the unified worker runs
+    /// Maximum number of site-scope source jobs the unified worker runs
     /// concurrently, independent of `unified_worker_concurrency`.
     ///
     /// Crawl jobs share exactly one Chrome instance (`resolve_cdp_ws_url` in
     /// `axon-crawl/src/engine/runtime.rs` hits the single `axon-chrome`
     /// container's `/json/version`); running many crawls at once risks CDP
-    /// session contention and Chrome resource exhaustion. Before the durable
-    /// job-store cutover, the legacy `crawl_worker` was hard-coded to exactly
-    /// 1 concurrent job for this reason — this knob restores that safety
-    /// rail as an explicit, still-conservative-by-default limit rather than
-    /// letting crawl jobs share the general `unified_worker_concurrency`
-    /// semaphore (default 8) with every other job kind.
+    /// session contention and Chrome resource exhaustion. This knob keeps
+    /// broad crawl-like source jobs on an explicit, conservative-by-default
+    /// rail instead of letting them share the general
+    /// `unified_worker_concurrency` semaphore (default 8) with every other
+    /// job kind.
     /// Env: `AXON_CRAWL_JOB_CONCURRENCY_LIMIT`. TOML: `workers.crawl-job-concurrency-limit`. Clamped 1–64. Default: 1.
     pub crawl_job_concurrency_limit: usize,
 

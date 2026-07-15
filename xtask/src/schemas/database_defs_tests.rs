@@ -37,13 +37,7 @@ fn parses_real_migrations_and_finds_known_tables() {
     }
     // Tables renamed away by ALTER TABLE ... RENAME TO must not survive as
     // stray `_v2` entries in the final snapshot.
-    for stray in [
-        "jobs_v2",
-        "axon_crawl_jobs_v2",
-        "axon_embed_jobs_v2",
-        "axon_extract_jobs_v2",
-        "axon_ingest_jobs_v2",
-    ] {
+    for stray in ["jobs_v2"] {
         assert!(
             !schema.tables.contains_key(stray),
             "renamed-away table {stray:?} should not remain in the final snapshot"

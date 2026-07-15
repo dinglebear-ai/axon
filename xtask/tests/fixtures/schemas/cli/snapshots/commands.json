@@ -888,7 +888,7 @@
         "source"
       ],
       "requires_auth_scope": "write",
-      "summary": "Index a local source path through the unified pipeline"
+      "summary": "Index a source through the unified pipeline"
     },
     {
       "async": false,
@@ -1344,12 +1344,12 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:422c774240cf67e6b52cac57b5f75f5c97a58c536a13a72e1b62e6379d9f8f7b",
+        "checksum": "sha256:0095e14b0004c6a45b1d4d37b3756f6b7ea94527afe780571b7168fc16f2acdb",
         "kind": "rust_module",
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:817c2f9b6fa9a3d91331a3d37db94f8250b0e04d21a44c42428ee2e5ae3d3842",
+        "checksum": "sha256:48bcc8b23decdadde94a0ccccf485ec8f13922c80cbed4ad421ae36096a5c1c5",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1369,7 +1369,7 @@
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
       {
-        "checksum": "sha256:1e37cdea9758c9f8942a408284997372a5e6230367ac97e5b9ce7cd60c5fc2c2",
+        "checksum": "sha256:332a55ba1a35f8a45a100130c5495a636dad058f02978b8fd27bfcd3c27db739",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry.rs"
       },
@@ -1379,7 +1379,7 @@
         "path": "xtask/src/schemas/cli_registry/part1.rs"
       },
       {
-        "checksum": "sha256:8a3dc8487ca77926709faa2eca92b599a61a7e80eaefe9fc8581226e5d3a3cf6",
+        "checksum": "sha256:44c444983b6cb72bd9e50d3bc239e08d1ca9358ee588c90af40142cac80ef805",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part2.rs"
       },

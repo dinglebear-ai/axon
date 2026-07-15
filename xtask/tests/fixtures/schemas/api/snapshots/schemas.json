@@ -7119,7 +7119,7 @@
         },
         {
           "const": "index",
-          "description": "Initial index/acquire submission for a legacy per-family job\n(crawl/embed/ingest) that predates the unified `source` pipeline's\n`Acquire` intent.",
+          "description": "Initial source indexing submission.",
           "type": "string"
         },
         {
@@ -29042,7 +29042,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:ff2d872269803c526f15ba9de3cdb873c04ef184699b0edd8d5fdde9e7489067",
+        "checksum": "sha256:b7b052cc006cd67e140f52d68bdd9500f197b0d73ca7be937caaef5f420ff9e8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },

@@ -79,10 +79,10 @@ pub struct DebugResult {
 /// True DB-level job counts across all job types.
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StatusTotals {
-    pub crawl: i64,
+    pub source: i64,
     pub extract: i64,
-    pub embed: i64,
-    pub ingest: i64,
+    pub watch: i64,
+    pub prune: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

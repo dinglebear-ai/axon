@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Axon REST API",
-    "description": "Dedicated REST routes for Axon discovery, RAG, crawl, ingest, and watch workflows.",
+    "description": "Dedicated REST routes for Axon discovery, source indexing, RAG, memory, and watch workflows.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -2979,7 +2979,7 @@
             }
           },
           "502": {
-            "description": "Upstream crawl service unavailable",
+            "description": "Upstream source service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -9595,9 +9595,8 @@
       "JobFamily": {
         "type": "string",
         "enum": [
-          "embed",
-          "extract",
-          "ingest"
+          "source",
+          "extract"
         ]
       },
       "JobId": {
@@ -9619,10 +9618,7 @@
           "graph",
           "prune",
           "provider_probe",
-          "reset",
-          "embed",
-          "crawl",
-          "ingest"
+          "reset"
         ]
       },
       "JobMetric": {
@@ -9829,7 +9825,7 @@
         ],
         "properties": {
           "job": {
-            "description": "Raw job record in the wire-compat shape (`status`, `result_json`,\ntimestamps, …). Still `Value` because the per-family job payloads are\nheterogeneous; `progress` is the typed, cross-family projection of it."
+            "description": "Raw job record in the wire-compat shape (`status`, `result_json`,\ntimestamps, ...). Still `Value` because the job payloads are\nheterogeneous; `progress` is the typed, cross-family projection of it."
           },
           "progress": {
             "oneOf": [
@@ -9838,7 +9834,7 @@
               },
               {
                 "$ref": "#/components/schemas/JobProgress",
-                "description": "Server-derived, transport-neutral progress for the generic async\nfamilies (embed/extract/ingest). `None` for legacy crawl bridge rows,\nwhich are migration-only after the SourceRequest cutover."
+                "description": "Server-derived, transport-neutral progress for canonical async jobs."
               }
             ]
           }

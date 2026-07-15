@@ -23,9 +23,8 @@ use crate::{LocalSourceIndexInput, LocalSourceIndexOutput, LocalSourceSelectionP
 /// build the target local-source data plane, then index `input` (a local
 /// directory or file) through `local_source::index_local_source_with_job`.
 ///
-/// `pub(crate)` (not `pub(super)`) so `runtime::job_runners::EmbedRunner`
-/// (the `JobKind::Embed` unified job executor) can share this same runtime
-/// construction instead of duplicating it.
+/// `pub(crate)` (not `pub(super)`) so source-runner paths can share this same
+/// runtime construction instead of duplicating it.
 pub(crate) async fn embed_local_path(
     cfg: &Config,
     input: &str,

@@ -14,10 +14,10 @@
 //!   explicit final message — scripted callers see a clean Ok exit and a
 //!   user-readable reason.
 
+use axon_api::source::JobKind;
 use axon_core::config::Config;
 use axon_core::logging::log_warn;
 use axon_core::ui::{accent, muted, primary, status_text, symbol_for_status};
-use axon_jobs::backend::JobKind;
 use axon_services::context::ServiceContext;
 use axon_services::jobs as job_service;
 use axon_services::system::load_status_jobs;
@@ -153,11 +153,11 @@ fn is_active(job: &ServiceJob) -> bool {
 fn iter_jobs(
     jobs: &axon_services::system::StatusJobs,
 ) -> impl Iterator<Item = (JobKind, &ServiceJob)> {
-    let crawl = jobs.crawl.iter().map(|j| (JobKind::Crawl, j));
+    let source = jobs.source.iter().map(|j| (JobKind::Source, j));
     let extract = jobs.extract.iter().map(|j| (JobKind::Extract, j));
-    let embed = jobs.embed.iter().map(|j| (JobKind::Embed, j));
-    let ingest = jobs.ingest.iter().map(|j| (JobKind::Ingest, j));
-    crawl.chain(extract).chain(embed).chain(ingest)
+    let watch = jobs.watch.iter().map(|j| (JobKind::Watch, j));
+    let prune = jobs.prune.iter().map(|j| (JobKind::Prune, j));
+    source.chain(extract).chain(watch).chain(prune)
 }
 
 fn lookup_outcome(
@@ -166,10 +166,11 @@ fn lookup_outcome(
 ) -> Option<(String, String)> {
     let (kind, id) = *key;
     let pool: &[ServiceJob] = match kind {
-        JobKind::Crawl => &jobs.crawl,
+        JobKind::Source => &jobs.source,
         JobKind::Extract => &jobs.extract,
-        JobKind::Embed => &jobs.embed,
-        JobKind::Ingest => &jobs.ingest,
+        JobKind::Watch => &jobs.watch,
+        JobKind::Prune => &jobs.prune,
+        _ => &[],
     };
     pool.iter()
         .find(|j| j.id == id)
@@ -212,10 +213,19 @@ async fn resolve_stale_job(
 
 fn kind_label(kind: JobKind) -> &'static str {
     match kind {
-        JobKind::Crawl => "crawl",
+        JobKind::Source => "source",
         JobKind::Extract => "extract",
-        JobKind::Embed => "embed",
-        JobKind::Ingest => "ingest",
+        JobKind::Watch => "watch",
+        JobKind::Prune => "prune",
+        JobKind::Map => "map",
+        JobKind::Research => "research",
+        JobKind::Ask => "ask",
+        JobKind::Query => "query",
+        JobKind::Retrieve => "retrieve",
+        JobKind::Memory => "memory",
+        JobKind::Graph => "graph",
+        JobKind::ProviderProbe => "provider-probe",
+        JobKind::Reset => "reset",
     }
 }
 

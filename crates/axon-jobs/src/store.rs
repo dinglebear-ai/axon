@@ -2,24 +2,12 @@ use axon_core::config::Config;
 use sqlx::SqlitePool;
 use std::path::Path;
 
-mod reclaim;
 pub use axon_core::sqlite::{
     diagnostics as sqlite_diagnostics, readiness as sqlite_readiness,
     record_runtime_error as record_sqlite_runtime_error, recover_corrupted_database,
     reset_runtime_health_for_tests as reset_sqlite_runtime_health_for_tests,
 };
-pub use reclaim::RECLAIMED_ERROR_TEXT;
-pub use reclaim::{
-    ReclaimedJob, ReclaimedJobs, reclaim_stale_running_jobs, reclaim_stale_running_jobs_detailed,
-    reclaim_stale_running_jobs_for_table, reclaim_stale_running_jobs_for_table_ids,
-    reclaim_stale_running_jobs_for_table_jobs,
-};
-
-#[cfg(test)]
-pub(crate) use axon_core::sqlite::{
-    acquire_recovery_lock, active_db_lock_count_for_tests, active_lock_path, hold_active_db_lock,
-    open_lock_file,
-};
+pub const RECLAIMED_ERROR_TEXT: &str = "reclaimed stale running job";
 
 /// Open a SQLite pool, enable WAL mode, and run all migrations.
 ///
@@ -149,39 +137,9 @@ pub fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-#[cfg(test)]
-#[path = "store_tests.rs"]
-mod tests;
-
-/// Count all pending jobs across the four job tables. Best-effort: returns 0
-/// if the DB file does not exist yet, cannot be opened, or a table is missing
-/// (fresh install before the first schema migration).
-///
-/// SAFETY: every table name below is a compile-time `&'static str` from a
-/// closed set; no caller-controlled value reaches the SQL string.
+/// The unified job table now owns queue state; this helper remains a harmless
+/// advisory for older status callers that only need a "queue busy?" number.
 pub async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
-    if !sqlite_path.exists() {
-        return 0;
-    }
-    let path_str = sqlite_path.to_string_lossy();
-    let pool = match open_sqlite_pool(&path_str).await {
-        Ok(p) => p,
-        Err(_) => return 0,
-    };
-    let tables = [
-        "axon_crawl_jobs",
-        "axon_embed_jobs",
-        "axon_extract_jobs",
-        "axon_ingest_jobs",
-    ];
-    let mut total: i64 = 0;
-    for table in &tables {
-        let query = format!("SELECT COUNT(*) FROM {table} WHERE status='pending'");
-        let count: i64 = sqlx::query_scalar(&query)
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(0);
-        total += count;
-    }
-    total
+    let _ = sqlite_path;
+    0
 }

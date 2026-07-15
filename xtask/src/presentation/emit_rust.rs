@@ -60,7 +60,7 @@ pub fn render(src: &TokenSource) -> String {
     out.push_str("pub const ICONS: &[IconSlot] = &[\n");
     for icon in &src.icons {
         out.push_str(&format!(
-            "    IconSlot {{ intent: \"{}\", slot: \"{}\", cli_symbol: \"{}\" }},\n",
+            "    IconSlot {{\n        intent: \"{}\",\n        slot: \"{}\",\n        cli_symbol: \"{}\",\n    }},\n",
             icon.intent, icon.slot, icon.cli_symbol
         ));
     }

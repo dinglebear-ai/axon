@@ -14,6 +14,7 @@ use axon_api::mcp_schema::{
     ExtractSubaction, IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest,
     SummarizeRequest,
 };
+use axon_api::source::JobKind;
 use axon_core::config::{Config, ConfigOverrides};
 use axon_core::content::url_to_filename;
 use uuid::Uuid;
@@ -190,12 +191,7 @@ pub async fn dispatch_extract(
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
         ExtractSubaction::Status => {
-            let mut payload = job_status(
-                service_context,
-                axon_jobs::backend::JobKind::Extract,
-                req.job_id,
-            )
-            .await?;
+            let mut payload = job_status(service_context, JobKind::Extract, req.job_id).await?;
             let terminal_result = payload.get("job").and_then(|job| {
                 let status = job.get("status").and_then(serde_json::Value::as_str)?;
                 if axon_jobs::status::JobStatus::from_str(status).is_active() {
@@ -212,32 +208,13 @@ pub async fn dispatch_extract(
             }
             Ok(payload)
         }
-        ExtractSubaction::Cancel => {
-            job_cancel(
-                service_context,
-                axon_jobs::backend::JobKind::Extract,
-                req.job_id,
-            )
-            .await
-        }
+        ExtractSubaction::Cancel => job_cancel(service_context, JobKind::Extract, req.job_id).await,
         ExtractSubaction::List => {
-            job_list(
-                service_context,
-                axon_jobs::backend::JobKind::Extract,
-                req.limit,
-                req.offset,
-            )
-            .await
+            job_list(service_context, JobKind::Extract, req.limit, req.offset).await
         }
-        ExtractSubaction::Cleanup => {
-            job_cleanup(service_context, axon_jobs::backend::JobKind::Extract).await
-        }
-        ExtractSubaction::Clear => {
-            job_clear(service_context, axon_jobs::backend::JobKind::Extract).await
-        }
-        ExtractSubaction::Recover => {
-            job_recover(service_context, axon_jobs::backend::JobKind::Extract).await
-        }
+        ExtractSubaction::Cleanup => job_cleanup(service_context, JobKind::Extract).await,
+        ExtractSubaction::Clear => job_clear(service_context, JobKind::Extract).await,
+        ExtractSubaction::Recover => job_recover(service_context, JobKind::Extract).await,
     }
 }
 
@@ -283,40 +260,14 @@ pub async fn dispatch_embed(
             .map_err(internal_error)?;
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
-        EmbedSubaction::Status => {
-            job_status(
-                service_context,
-                axon_jobs::backend::JobKind::Embed,
-                req.job_id,
-            )
-            .await
-        }
-        EmbedSubaction::Cancel => {
-            job_cancel(
-                service_context,
-                axon_jobs::backend::JobKind::Embed,
-                req.job_id,
-            )
-            .await
-        }
+        EmbedSubaction::Status => job_status(service_context, JobKind::Source, req.job_id).await,
+        EmbedSubaction::Cancel => job_cancel(service_context, JobKind::Source, req.job_id).await,
         EmbedSubaction::List => {
-            job_list(
-                service_context,
-                axon_jobs::backend::JobKind::Embed,
-                req.limit,
-                req.offset,
-            )
-            .await
+            job_list(service_context, JobKind::Source, req.limit, req.offset).await
         }
-        EmbedSubaction::Cleanup => {
-            job_cleanup(service_context, axon_jobs::backend::JobKind::Embed).await
-        }
-        EmbedSubaction::Clear => {
-            job_clear(service_context, axon_jobs::backend::JobKind::Embed).await
-        }
-        EmbedSubaction::Recover => {
-            job_recover(service_context, axon_jobs::backend::JobKind::Embed).await
-        }
+        EmbedSubaction::Cleanup => job_cleanup(service_context, JobKind::Source).await,
+        EmbedSubaction::Clear => job_clear(service_context, JobKind::Source).await,
+        EmbedSubaction::Recover => job_recover(service_context, JobKind::Source).await,
     }
 }
 
@@ -354,40 +305,14 @@ pub async fn dispatch_ingest(
             .map_err(internal_error)?;
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
-        IngestSubaction::Status => {
-            job_status(
-                service_context,
-                axon_jobs::backend::JobKind::Ingest,
-                req.job_id,
-            )
-            .await
-        }
-        IngestSubaction::Cancel => {
-            job_cancel(
-                service_context,
-                axon_jobs::backend::JobKind::Ingest,
-                req.job_id,
-            )
-            .await
-        }
+        IngestSubaction::Status => job_status(service_context, JobKind::Source, req.job_id).await,
+        IngestSubaction::Cancel => job_cancel(service_context, JobKind::Source, req.job_id).await,
         IngestSubaction::List => {
-            job_list(
-                service_context,
-                axon_jobs::backend::JobKind::Ingest,
-                req.limit,
-                req.offset,
-            )
-            .await
+            job_list(service_context, JobKind::Source, req.limit, req.offset).await
         }
-        IngestSubaction::Cleanup => {
-            job_cleanup(service_context, axon_jobs::backend::JobKind::Ingest).await
-        }
-        IngestSubaction::Clear => {
-            job_clear(service_context, axon_jobs::backend::JobKind::Ingest).await
-        }
-        IngestSubaction::Recover => {
-            job_recover(service_context, axon_jobs::backend::JobKind::Ingest).await
-        }
+        IngestSubaction::Cleanup => job_cleanup(service_context, JobKind::Source).await,
+        IngestSubaction::Clear => job_clear(service_context, JobKind::Source).await,
+        IngestSubaction::Recover => job_recover(service_context, JobKind::Source).await,
     }
 }
 

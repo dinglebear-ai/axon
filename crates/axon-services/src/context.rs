@@ -11,14 +11,13 @@ use axon_adapters::providers::{
     chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
 };
-use axon_api::source::ProviderId;
+use axon_api::source::{JobKind, ProviderId};
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
 #[cfg(test)]
 use axon_embedding::reservation::ProviderReservationConfig;
 use axon_embedding::reservation::ProviderReservationManager;
-use axon_jobs::backend::JobKind;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
@@ -277,23 +276,23 @@ fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
         interval.tick().await;
         loop {
             interval.tick().await;
-            let Some(crawl) = queue_depth(&jobs, JobKind::Crawl).await else {
+            let Some(source) = queue_depth(&jobs, JobKind::Source).await else {
                 continue;
             };
             let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
                 continue;
             };
-            let Some(embed) = queue_depth(&jobs, JobKind::Embed).await else {
+            let Some(watch) = queue_depth(&jobs, JobKind::Watch).await else {
                 continue;
             };
-            let Some(ingest) = queue_depth(&jobs, JobKind::Ingest).await else {
+            let Some(prune) = queue_depth(&jobs, JobKind::Prune).await else {
                 continue;
             };
             tracing::info!(
-                crawl,
+                source,
                 extract,
-                embed,
-                ingest,
+                watch,
+                prune,
                 interval_secs = secs,
                 "job queue summary"
             );

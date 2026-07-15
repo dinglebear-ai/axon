@@ -1,10 +1,8 @@
 use axon_api::job_progress::{JobFamily, JobProgress};
 use axon_api::source::{
-    JobCancelRequest, JobCleanupRequest, JobClearRequest, JobEventListRequest,
-    JobKind as UnifiedJobKind, JobListRequest, JobRecoveryRequest, JobRetryRequest,
-    LifecycleStatus, Severity, Visibility,
+    JobCancelRequest, JobCleanupRequest, JobClearRequest, JobEventListRequest, JobKind,
+    JobListRequest, JobRecoveryRequest, JobRetryRequest, LifecycleStatus, Severity, Visibility,
 };
-use axon_jobs::backend::JobKind;
 use axon_services as services;
 use axon_services::context::ServiceContext;
 use axum::{
@@ -35,7 +33,7 @@ pub(crate) struct JobListQuery {
 #[into_params(parameter_in = Query)]
 pub(crate) struct UnifiedJobListQuery {
     status: Option<LifecycleStatus>,
-    kind: Option<UnifiedJobKind>,
+    kind: Option<JobKind>,
     limit: Option<u32>,
     cursor: Option<String>,
 }
@@ -96,12 +94,10 @@ where
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub(crate) struct JobStatusResponse {
     /// Raw job record in the wire-compat shape (`status`, `result_json`,
-    /// timestamps, …). Still `Value` because the per-family job payloads are
+    /// timestamps, ...). Still `Value` because the job payloads are
     /// heterogeneous; `progress` is the typed, cross-family projection of it.
     pub job: serde_json::Value,
-    /// Server-derived, transport-neutral progress for the generic async
-    /// families (embed/extract/ingest). `None` for legacy crawl bridge rows,
-    /// which are migration-only after the SourceRequest cutover.
+    /// Server-derived, transport-neutral progress for canonical async jobs.
     pub progress: Option<JobProgress>,
 }
 
@@ -162,10 +158,8 @@ pub(crate) async fn job_status(
             format!("job not found: {id}"),
         ));
     };
-    // Canonical, server-derived progress for the generic async families so the
-    // palette/android/CLI consume it instead of re-deriving phase/percent/metrics.
-    // Legacy crawl bridge rows are migration-only and do not expose the
-    // generic progress projection.
+    // Canonical, server-derived progress so palette/android/CLI consumers do
+    // not re-derive phase/percent/metrics independently.
     let progress = job_family(state.kind).map(|family| JobProgress::from_service_job(family, &job));
     Ok(Json(JobStatusResponse {
         job: job.wire_json_compat(),
@@ -173,14 +167,12 @@ pub(crate) async fn job_status(
     }))
 }
 
-/// Map a job-runtime `JobKind` to the generic progress family, or `None` for
-/// migration-only legacy crawl bridge rows.
+/// Map a runtime `JobKind` to the public progress family.
 fn job_family(kind: JobKind) -> Option<JobFamily> {
     match kind {
-        JobKind::Embed => Some(JobFamily::Embed),
+        JobKind::Source => Some(JobFamily::Source),
         JobKind::Extract => Some(JobFamily::Extract),
-        JobKind::Ingest => Some(JobFamily::Ingest),
-        JobKind::Crawl => None,
+        _ => None,
     }
 }
 

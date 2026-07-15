@@ -170,7 +170,3 @@ fn build_selector(cfg: &Config) -> Result<PruneSelector, Box<dyn Error>> {
         _ => PruneSelector::Source { source_id },
     })
 }
-
-#[cfg(test)]
-#[path = "prune_tests.rs"]
-mod tests;

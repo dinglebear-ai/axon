@@ -5,16 +5,10 @@ use crate::types::{
     ExecutionMode, IngestJobResult, IngestResult, IngestStartResult, JobListResult,
     JobStartOutcome, StartDisposition,
 };
-use axon_api::source::{
-    AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
-    JobStagePlan, MetadataMap, PipelinePhase,
-};
+use axon_api::source::{AuthSnapshot, JobKind, JobPriority, SourceIntent, SourceRequest};
 use axon_core::config::Config;
-use axon_jobs::backend::JobKind;
-use axon_jobs::config_snapshot::ingest_config_json;
+pub use axon_jobs::ingest::IngestSource;
 use axon_jobs::ingest::types::{source_type_label, target_label};
-pub use axon_jobs::ingest::{IngestJob, IngestSource};
-use axon_jobs::ingest::{count_ingest_jobs, get_ingest_job, list_ingest_jobs};
 use std::error::Error;
 use uuid::Uuid;
 
@@ -43,12 +37,7 @@ pub fn map_ingest_job_result(payload: serde_json::Value) -> IngestJobResult {
 
 // --- Service lifecycle wrappers ---
 
-/// Pre-flight existence check run before an ingest job is enqueued.
-///
-/// Phase 12 clean break (issue #298): the GitHub existence probe this used to
-/// run was deleted along with `axon-ingest`'s provider orchestration — every
-/// non-session `IngestSource` now fails at execution time in the legacy job
-/// runner instead, so there is nothing left to preflight here.
+/// Pre-flight existence check run before an ingest source request is enqueued.
 pub async fn preflight_ingest_source(
     _cfg: &Config,
     _source: &IngestSource,
@@ -63,62 +52,80 @@ pub async fn ingest_start_with_context(
     caller: Option<&AuthSnapshot>,
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
     preflight_ingest_source(cfg, &source).await?;
-    let source_type = source_type_label(&source).to_string();
-    let target = target_label(&source);
-    let config_json = ingest_config_json(cfg, &source)?;
+    let request = ingest_source_request(cfg, &source)?;
     let store = service_context
         .job_store()
         .ok_or("unified job store is not available for this runtime")?;
-    let descriptor = store
-        .create(JobCreateRequest {
-            request_id: None,
-            job_kind: UnifiedJobKind::Ingest,
-            job_intent: JobIntent::Index,
-            source_id: None,
-            watch_id: None,
-            parent_job_id: None,
-            root_job_id: None,
-            attempt: 1,
-            priority: JobPriority::Normal,
-            idempotency_key: None,
-            stage_plan: vec![JobStagePlan {
-                phase: PipelinePhase::Parsing,
-                required: true,
-                provider_requirements: Vec::new(),
-                estimated_items: None,
-            }],
-            request: Some(serde_json::json!({
-                "source": source,
-                "source_type": source_type,
-                "target": target,
-                "config_json": config_json,
-            })),
-            auth_snapshot: caller
-                .cloned()
-                .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
-            config_snapshot_id: None,
-            requirements: MetadataMap::new(),
-            result_schema: Some("ingest_result".to_string()),
-            warnings: Vec::new(),
-            error: None,
-            metadata: MetadataMap::new(),
-            deadline_at: None,
-        })
-        .await
-        .map_err(|e| -> Box<dyn Error> { e.message.into() })?;
+    let auth_snapshot = caller
+        .cloned()
+        .unwrap_or_else(|| AuthSnapshot::trusted_system("runtime"));
+    let source_result =
+        crate::source::enqueue::enqueue_source(request, store.as_ref(), Some(auth_snapshot))
+            .await
+            .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+    let descriptor = source_result.job.ok_or_else(|| -> Box<dyn Error> {
+        source_result
+            .errors
+            .first()
+            .map(|error| error.message.clone())
+            .unwrap_or_else(|| "failed to enqueue source-backed ingest job".to_string())
+            .into()
+    })?;
     service_context.notify_unified();
     Ok(JobStartOutcome {
         disposition: StartDisposition::Enqueued,
         execution_mode: ExecutionMode::InProcess,
-        result: map_ingest_start_result(descriptor.job_id.0.to_string()),
+        result: map_ingest_start_result(descriptor.id.0.to_string()),
     })
+}
+
+fn ingest_source_request(
+    cfg: &Config,
+    source: &IngestSource,
+) -> Result<SourceRequest, Box<dyn Error>> {
+    let source_ref = match source {
+        IngestSource::Github { repo, .. } => repo.clone(),
+        IngestSource::Gitlab { target, .. }
+        | IngestSource::Gitea { target, .. }
+        | IngestSource::GenericGit { target, .. }
+        | IngestSource::Youtube { target }
+        | IngestSource::Rss { target } => target.clone(),
+        IngestSource::Reddit { target } => {
+            if target.starts_with("r/")
+                || target.starts_with("reddit.com/")
+                || target.starts_with("https://reddit.com/")
+                || target.starts_with("https://www.reddit.com/")
+            {
+                target.clone()
+            } else {
+                format!("r/{target}")
+            }
+        }
+        IngestSource::Sessions { .. } | IngestSource::PreparedSessions { .. } => {
+            return Err("sessions ingest must use the source session selector path".into());
+        }
+    };
+    let mut request = SourceRequest::new(source_ref);
+    request.intent = SourceIntent::Acquire;
+    request.embed = true;
+    request.collection = Some(cfg.collection.clone());
+    request.execution.priority = JobPriority::Normal;
+    request.options.values.insert(
+        "ingest_source_type".to_string(),
+        serde_json::json!(source_type_label(source)),
+    );
+    request.options.values.insert(
+        "ingest_target".to_string(),
+        serde_json::json!(target_label(source)),
+    );
+    Ok(request)
 }
 
 pub async fn ingest_status(
     service_context: &ServiceContext,
     id: Uuid,
 ) -> Result<Option<IngestJobResult>, Box<dyn Error>> {
-    let job = job_service::job_status(service_context, JobKind::Ingest, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Source, id).await?;
     Ok(job.map(|value| {
         map_ingest_job_result(serde_json::to_value(value).unwrap_or(serde_json::Value::Null))
     }))
@@ -129,7 +136,7 @@ pub async fn ingest_list(
     limit: i64,
     offset: i64,
 ) -> Result<IngestResult, Box<dyn Error>> {
-    let jobs = job_service::list_jobs(service_context, JobKind::Ingest, limit, offset).await?;
+    let jobs = job_service::list_jobs(service_context, JobKind::Source, limit, offset).await?;
     Ok(map_ingest_result(serde_json::to_value(jobs)?))
 }
 
@@ -137,53 +144,24 @@ pub async fn ingest_cancel(
     service_context: &ServiceContext,
     id: Uuid,
 ) -> Result<bool, Box<dyn Error>> {
-    job_service::cancel_job(service_context, JobKind::Ingest, id).await
+    job_service::cancel_job(service_context, JobKind::Source, id).await
 }
 
 pub async fn ingest_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::cleanup_jobs(service_context, JobKind::Ingest).await
+    job_service::cleanup_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn ingest_clear(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::clear_jobs(service_context, JobKind::Ingest).await
+    job_service::clear_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn ingest_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
-    job_service::recover_jobs(service_context, JobKind::Ingest).await
-}
-
-pub async fn ingest_count(cfg: &Config) -> Result<i64, Box<dyn Error>> {
-    count_ingest_jobs(cfg).await
-}
-
-pub async fn ingest_status_raw(
-    cfg: &Config,
-    id: Uuid,
-) -> Result<Option<IngestJob>, Box<dyn Error>> {
-    get_ingest_job(cfg, id).await
-}
-
-pub async fn ingest_list_raw(
-    cfg: &Config,
-    limit: i64,
-    offset: i64,
-) -> Result<JobListResult<IngestJob>, Box<dyn Error>> {
-    let (jobs, total) = tokio::join!(
-        list_ingest_jobs(cfg, None, limit, offset),
-        count_ingest_jobs(cfg),
-    );
-    let jobs = jobs?;
-    let total = total.unwrap_or(jobs.len() as i64);
-    Ok(JobListResult::new(jobs, total, limit, offset))
+    job_service::recover_jobs(service_context, JobKind::Source).await
 }
 
 pub async fn ingest_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
-    match job_service::start_worker(service_context, JobKind::Ingest).await? {
+    match job_service::start_worker(service_context, JobKind::Source).await? {
         WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }
-
-#[cfg(test)]
-#[path = "ingest_tests.rs"]
-mod tests;

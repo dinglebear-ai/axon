@@ -33,24 +33,24 @@ provider work.
 
 ## Current Implementation Snapshot
 
-Refreshed 2026-07-14 against the crawl SourceRequest cutover worktree:
+Refreshed 2026-07-15 against the closeout-audit branch:
 
 Implemented today:
 
-- `axon-jobs` still stores family-specific legacy payloads for crawl, embed,
-  extract, ingest, and watch scheduling.
+- `axon-jobs` stores detached work in the durable `jobs` table with canonical
+  `JobKind` values. The public job families for web crawl/scrape/map, local
+  embedding, ingest-like source families, and extract are `source` or
+  `extract`; the old crawl/embed/ingest family kinds are not active runtime
+  variants.
 - Web page/site/docs acquisition, retained `scrape`, source-backed `map`,
   search/research auto-index, refresh, and URL watch now enqueue `source` jobs.
-  They do not create new `JobKind::Crawl` rows and do not hand off to child
-  Embed jobs.
+  They do not hand off to child embedding jobs.
 - REST now exposes a generic `/v1/jobs` collection
   (`handlers::jobs::unified_jobs_read_router` /
   `unified_jobs_write_router` / `unified_jobs_admin_router` in
-  `crates/axon-web/src/server/routing.rs`) alongside the still-family-specific
-  `/v1/extract` job routes — the read/write/admin split is scope-based, not
-  family-based, but the underlying job storage is still per-family
-  (`axon_crawl_jobs`, `axon_embed_jobs`, etc.), not the single `job_kind`
-  table this contract targets.
+  `crates/axon-web/src/server/routing.rs`) alongside `/v1/extract` lifecycle
+  routes. The read/write/admin split is scope-based, and job status/count/list
+  behavior reads from the durable job model.
 - The current transport-neutral job status enum is narrower:
   `pending`, `running`, `completed`, `failed`, `canceled`, plus an unknown
   fallback.
@@ -59,10 +59,9 @@ Implemented today:
 
 Planned by this contract:
 
-- Family-specific *storage* (the SQLite job tables) collapses into one job
-  model with `job_kind`, stage plan, attempts, provider reservations,
-  progress events, and typed results. The REST surface has already converged
-  on one `/v1/jobs` collection ahead of the full storage-layer unification.
+- Keep broadening stage-plan, parent/child, provider-reservation, progress
+  event, and typed-result coverage on top of the single durable job model.
+  The storage-family collapse itself is complete.
   Legacy crawl rows are migration-only and are dead-lettered as
   `legacy.crawl.removed` instead of recovered/requeued.
 
