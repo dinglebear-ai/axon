@@ -16,17 +16,6 @@
 //! pipeline-unification cleanup.
 
 use axon_api::job_dto::IngestResult;
-use axon_core::config::Config;
-use axon_core::events::{LogLevel, ServiceEvent, emit};
-use std::error::Error;
-use tokio::sync::mpsc;
-
-use crate::ingest::progress::PhaseReporter;
-
-mod sessions_prepared;
-
-pub use sessions_prepared::ingest_sessions_prepared_with_progress;
-
 pub fn map_ingest_result(payload: serde_json::Value) -> IngestResult {
     IngestResult { payload }
 }
@@ -50,41 +39,4 @@ pub fn ingest_payload(
         );
     }
     payload
-}
-
-#[must_use = "ingest_sessions returns a Result that should be handled"]
-pub async fn ingest_sessions(
-    cfg: &Config,
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<IngestResult, Box<dyn Error>> {
-    ingest_sessions_with_progress(cfg, tx, None).await
-}
-
-#[must_use = "ingest_sessions_with_progress returns a Result that should be handled"]
-pub async fn ingest_sessions_with_progress(
-    cfg: &Config,
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
-) -> Result<IngestResult, Box<dyn Error>> {
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: "ingesting session exports".to_string(),
-        },
-    )
-    .await;
-    let reporter = PhaseReporter::new(progress_tx);
-    let chunks = crate::sessions_legacy::ingest_sessions(cfg, &reporter)
-        .await
-        .map_err(|e| -> Box<dyn Error> { format!("session exports ingest failed: {e}").into() })?;
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("sessions ingest complete: {chunks} chunks"),
-        },
-    )
-    .await;
-    Ok(map_ingest_result(ingest_payload("sessions", None, chunks)))
 }

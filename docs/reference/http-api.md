@@ -1,6 +1,6 @@
 # Axon HTTP API
 
-Last Modified: 2026-06-01
+Last Modified: 2026-07-15
 
 Axon exposes direct REST routes under `/v1`. Direct REST is the canonical client/server API; the legacy `POST /v1/actions` action-envelope endpoint has been removed (it now returns `404`, as does `POST /v1/migrate`).
 
@@ -34,7 +34,8 @@ RAG routes:
 Exploration routes:
 
 - `POST /v1/sources` with a `SourceRequest`; use `"scope":"page"` for a
-  single-page scrape projection and `"scope":"site"` for site acquisition.
+  single-page scrape projection, `"scope":"site"` for site acquisition, and a
+  `session:<provider>:<path>` source for session transcript ingestion.
 - `POST /v1/summarize` with `{ "url": "..." }` or `{ "urls": ["..."] }`
 - `POST /v1/summarize/stream` streams summarization synthesis (SSE).
 - `POST /v1/map` with `{ "url": "...", "limit": 100, "offset": 0 }`
@@ -65,7 +66,6 @@ Artifact download:
 Async job routes:
 
 - `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`
-- `POST /v1/ingest/sessions/prepared`
 - `GET /v1/jobs`, `GET /v1/jobs/{id}`, `GET /v1/jobs/{id}/events`
 
 The extract family also supports:

@@ -324,11 +324,11 @@ describe("OperationResultView structured rendering", () => {
   });
 
   it("renders job-start heroes for all non-crawl async families", () => {
-    for (const subcommand of ["embed", "extract", "ingest", "ingest-sessions-prepared"]) {
+    for (const subcommand of ["embed", "extract", "ingest"]) {
       render(<OperationResultView subcommand={subcommand} payload={{ execution_mode: "async", result: { job_id: `${subcommand}-job-123`, status: "queued" } }} />);
     }
-    expect(screen.getAllByText("Status endpoint")).toHaveLength(4);
-    expect(screen.getAllByText(/job queued/i)).toHaveLength(4);
+    expect(screen.getAllByText("Status endpoint")).toHaveLength(3);
+    expect(screen.getAllByText(/job queued/i)).toHaveLength(3);
   });
 
   it("renders a job-lifecycle list view", () => {

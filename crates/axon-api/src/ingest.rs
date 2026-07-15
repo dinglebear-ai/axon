@@ -43,8 +43,6 @@ pub enum IngestSource {
         sessions_gemini: bool,
         sessions_project: Option<String>,
     },
-    #[serde(rename = "prepared_sessions")]
-    PreparedSessions {},
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +70,6 @@ pub fn source_type_label(source: &IngestSource) -> &'static str {
         IngestSource::Youtube { .. } => "youtube",
         IngestSource::Rss { .. } => "rss",
         IngestSource::Sessions { .. } => "sessions",
-        IngestSource::PreparedSessions { .. } => "prepared_sessions",
     }
 }
 
@@ -112,6 +109,5 @@ pub fn target_label(source: &IngestSource) -> String {
                 None => label,
             }
         }
-        IngestSource::PreparedSessions { .. } => "prepared_sessions".to_string(),
     }
 }

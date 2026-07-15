@@ -12,8 +12,6 @@
 //! instead of pending forever (audit gap C4-02 / bead `axon_rust-mijoc`).
 //!
 //! `claimed.request_json` carries `{"source_request": <SourceRequest JSON>}`.
-//! Prepared session uploads use `{"prepared_sessions": <request JSON>}` so
-//! remote session-sync can stay async without a sidecar table.
 //! The claimed job's own `auth_snapshot` (recorded at enqueue time — never
 //! re-derived) is threaded through to `index_source_with_auth` exactly like
 //! every other unified runner threads its auth snapshot forward.
@@ -114,19 +112,6 @@ impl UnifiedJobRunner for SourceRunner {
             .request_json
             .as_ref()
             .ok_or_else(|| source_error("source job has no request payload"))?;
-        if let Some(prepared_sessions) = request_json.get("prepared_sessions").cloned() {
-            let request = serde_json::from_value(prepared_sessions)
-                .map_err(|error| source_error(format!("malformed prepared_sessions: {error}")))?;
-            let run_fut = crate::ingest::ingest_sessions_prepared_with_progress(
-                &self.cfg, request, None, None,
-            );
-            return tokio::select! {
-                _ = shutdown.cancelled() => Err(source_error("prepared sessions source canceled")),
-                result = run_fut => result
-                    .map(|_| ())
-                    .map_err(|error| source_error(error.to_string())),
-            };
-        }
         let source_request: SourceRequest = request_json
             .get("source_request")
             .cloned()

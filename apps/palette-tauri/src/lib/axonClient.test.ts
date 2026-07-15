@@ -194,7 +194,6 @@ describe("executeAction", () => {
         { name: "example.com", task_type: "watch", task_payload: { urls: ["https://example.com/docs"], ignore_patterns: [] }, every_seconds: 120, enabled: true },
       ],
       ["watch-run", "00000000-0000-4000-8000-000000000000", "POST", "/v1/watch/00000000-0000-4000-8000-000000000000/run", null],
-      ["ingest-sessions-prepared", "{\"sessions\":[]}", "POST", "/v1/ingest/sessions/prepared", { sessions: [] }],
     ];
 
     for (const [subcommand, arg, method, path, body] of cases) {
@@ -285,7 +284,6 @@ describe("executeAction", () => {
       "dedupe",
       "purge",
       "watch-create",
-      "ingest-sessions-prepared",
       // Job lifecycle (family-operation pairs)
       "crawl-list",
       "crawl-status",

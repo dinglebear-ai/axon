@@ -64,7 +64,7 @@ pub fn source_from_mcp_request(
             Ok(IngestSource::Rss { target })
         }
         IngestSourceType::Sessions => Err(
-            "remote sessions ingest must use /v1/ingest/sessions/prepared; server-local session scanning is disabled"
+            "sessions ingest must use a canonical SourceRequest session selector such as `session:codex:/path/to/session.jsonl`"
                 .to_string(),
         ),
     }
@@ -94,7 +94,6 @@ pub fn validate_ingest_source(source: &IngestSource) -> Result<(), String> {
             validate_rss_ingest_target(target)?;
         }
         IngestSource::Sessions { .. } => {}
-        IngestSource::PreparedSessions { .. } => {}
     }
     Ok(())
 }

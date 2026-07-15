@@ -1041,56 +1041,18 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
 }
 
 #[test]
-fn parse_sessions_watch_provider_and_project_filters_are_typed() {
-    // `sessions` is not in into_config's early-return command list, so it
-    // reads AXON_COLLECTION/AXON_SQLITE_PATH/AXON_OUTPUT_DIR/AXON_CONFIG_PATH
-    // -- hold ENV_LOCK to avoid racing other tests that mutate that env.
-    let _guard = env_guard();
-    let cli = super::Cli::parse_from([
-        "axon",
-        "--tei-url",
-        "http://127.0.0.1:52000",
-        "--qdrant-url",
-        "http://127.0.0.1:53333",
-        "sessions",
-        "watch",
-        "--codex",
-        "--project",
-        "axon",
-        "--no-initial-scan",
-    ]);
-    let cfg = super::build_config::into_config(cli).expect("sessions watch should parse");
-
-    assert!(cfg.sessions_watch.is_some());
-    assert!(cfg.sessions_codex);
-    assert!(!cfg.sessions_claude);
-    assert!(!cfg.sessions_gemini);
-    assert_eq!(cfg.sessions_project.as_deref(), Some("axon"));
-    assert!(cfg.positional.is_empty());
-}
-
-#[allow(unsafe_code)]
-#[test]
-fn parse_setup_session_watch_service_actions_are_typed() {
-    let _guard = env_guard();
-    unsafe {
-        env::remove_var("TEI_URL");
-        env::remove_var("QDRANT_URL");
-    }
-
-    use crate::config::SessionWatchServiceAction;
-    for (subcommand, expected) in [
-        ("install", SessionWatchServiceAction::Install),
-        ("check", SessionWatchServiceAction::Check),
-        ("remove", SessionWatchServiceAction::Remove),
-        ("status", SessionWatchServiceAction::Status),
+fn removed_session_watch_surfaces_are_rejected_by_parser() {
+    for args in [
+        &["axon", "sessions", "watch"][..],
+        &["axon", "sessions", "watch-status"],
+        &["axon", "sessions", "smoke-watch"],
+        &["axon", "setup", "session-watch-service"],
+        &["axon", "setup", "session-watch-service", "status"],
     ] {
-        let cli = super::Cli::parse_from(["axon", "setup", "session-watch-service", subcommand]);
-        let cfg = super::build_config::into_config(cli)
-            .expect("setup session-watch-service should parse");
-
-        assert!(matches!(cfg.command, CommandKind::Setup));
-        assert_eq!(cfg.setup_session_watch_action, Some(expected));
-        assert!(cfg.positional.is_empty());
+        let parsed = super::Cli::try_parse_from(args);
+        assert!(
+            parsed.is_err(),
+            "legacy session watch surface should be rejected: {args:?}"
+        );
     }
 }

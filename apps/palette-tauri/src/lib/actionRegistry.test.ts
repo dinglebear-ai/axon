@@ -57,7 +57,6 @@ describe("ACTION_REGISTRY exhaustiveness", () => {
       embed: true,
       extract: true,
       ingest: true,
-      "ingest-sessions-prepared": true,
       github: true,
       endpoints: true,
       brand: true,

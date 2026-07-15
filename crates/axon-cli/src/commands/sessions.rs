@@ -1,13 +1,9 @@
 use crate::commands::ingest_common;
 use crate::commands::source::{render_source_result, source_result_json};
 use axon_api::source::{LifecycleStatus, ResponseMode, SourceIntent, SourceRequest, SourceScope};
-use axon_core::config::{Config, SessionsRuntimeAction};
+use axon_core::config::Config;
 use axon_services::context::ServiceContext;
-use axon_services::sessions as sessions_service;
-use axon_services::sessions_legacy::watch::{
-    SessionWatchEventSink, SessionWatchProcessEvent,
-    validate::{SessionProvider, SessionWatchRoots},
-};
+use axon_services::sessions::{SessionProvider, SessionRoots};
 use axon_services::source::enqueue::enqueue_source;
 use std::error::Error;
 use std::path::PathBuf;
@@ -16,86 +12,11 @@ pub async fn run_sessions(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    match cfg.sessions_action {
-        Some(SessionsRuntimeAction::WatchStatus { limit }) => {
-            return run_watch_status(cfg, service_context, limit).await;
-        }
-        Some(SessionsRuntimeAction::SmokeWatch { timeout_secs }) => {
-            return run_smoke_watch(cfg, service_context, timeout_secs).await;
-        }
-        _ => {}
-    }
-
-    if let Some(options) = cfg.sessions_watch.clone() {
-        if options.json {
-            return sessions_service::run_watch_with_event_sink(
-                cfg,
-                service_context,
-                options,
-                &CliSessionWatchEventSink,
-            )
-            .await
-            .map_err(|err| -> Box<dyn Error> { err.into() });
-        }
-        return sessions_service::run_watch(cfg, service_context, options)
-            .await
-            .map_err(|err| -> Box<dyn Error> { err.into() });
-    }
-
     if ingest_common::maybe_handle_ingest_subcommand(cfg, service_context, "sessions").await? {
         return Ok(());
     }
 
     run_session_sources(cfg, service_context).await
-}
-
-struct CliSessionWatchEventSink;
-
-impl SessionWatchEventSink for CliSessionWatchEventSink {
-    fn emit(&self, event: SessionWatchProcessEvent) {
-        println!(
-            "{}",
-            serde_json::json!({
-                "stage": event.stage,
-                "provider": event.provider,
-                "path_hash": event.path_hash,
-                "basename": event.basename,
-                "path": event.path,
-                "detail": event.detail,
-            })
-        );
-    }
-}
-
-async fn run_watch_status(
-    cfg: &Config,
-    service_context: &ServiceContext,
-    limit: usize,
-) -> Result<(), Box<dyn Error>> {
-    let status = sessions_service::watch_status(service_context, limit).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&status)?);
-    } else {
-        println!(
-            "session watch checkpoints={} errors={}",
-            status.checkpoint_count, status.error_count
-        );
-    }
-    Ok(())
-}
-
-async fn run_smoke_watch(
-    cfg: &Config,
-    service_context: &ServiceContext,
-    timeout_secs: u64,
-) -> Result<(), Box<dyn Error>> {
-    let report = sessions_service::smoke(cfg, service_context, timeout_secs).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        println!("session watch smoke probe ingested={}", report.ingested);
-    }
-    Ok(())
 }
 
 async fn run_session_sources(
@@ -160,7 +81,7 @@ async fn run_session_sources(
 fn selected_session_selectors(
     cfg: &Config,
 ) -> Result<Vec<(SessionProvider, PathBuf)>, Box<dyn Error>> {
-    let roots = SessionWatchRoots::from_config(cfg)?;
+    let roots = SessionRoots::from_config(cfg)?;
     let all = !cfg.sessions_claude && !cfg.sessions_codex && !cfg.sessions_gemini;
     let mut selected = Vec::new();
     if all || cfg.sessions_claude {

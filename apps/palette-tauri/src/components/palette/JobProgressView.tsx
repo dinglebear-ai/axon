@@ -14,7 +14,7 @@ interface JobProgressViewProps {
   onClose: () => void;
 }
 
-// Live status card for the generic async-job families (embed/extract/ingest).
+// Live status card for the generic async-job families (source/extract).
 // Visual sibling of `CrawlJobView` — same Aurora output-job-panel chrome — but
 // driven by the simpler `JobSnapshot` model (no page frontier / depth / log).
 export const JobProgressView = memo(function JobProgressView({

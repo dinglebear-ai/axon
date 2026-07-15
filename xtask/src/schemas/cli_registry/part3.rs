@@ -93,38 +93,6 @@ fn commands_compose_setup() -> Vec<CliRegistryCommand> {
             false,
             "admin",
         ),
-        c(
-            &["setup", "session-watch-service", "install"],
-            "Write service files, run initial ingest, and enable the user service",
-            None,
-            true,
-            false,
-            "admin",
-        ),
-        c(
-            &["setup", "session-watch-service", "check"],
-            "Verify generated files and systemd state without mutating service files",
-            None,
-            false,
-            false,
-            "admin",
-        ),
-        c(
-            &["setup", "session-watch-service", "remove"],
-            "Disable the user service and remove generated service files",
-            None,
-            true,
-            false,
-            "admin",
-        ),
-        c(
-            &["setup", "session-watch-service", "status"],
-            "Print current user systemd status for the service",
-            None,
-            false,
-            false,
-            "admin",
-        ),
     ]
 }
 

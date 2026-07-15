@@ -31,6 +31,7 @@ use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
 use self::decode::DecodedSession;
+pub use self::decode::redact_session_text;
 use self::metadata::session_source_document;
 pub use self::target::{SessionTarget, parse_session_target};
 

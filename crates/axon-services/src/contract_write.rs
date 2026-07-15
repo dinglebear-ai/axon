@@ -6,17 +6,17 @@
 //!
 //! This is the "one-shot, not source-tracked" sibling of the ledger-backed
 //! write path in [`crate::local_source`]: callers here embed content that
-//! isn't diffed/generationed across runs (a single `scrape` result, a
-//! `sessions_legacy` transcript export) — see `docs/pipeline-unification/`
-//! and issue #298 for the target-architecture split between ledger-tracked
-//! "sources" and this simpler one-shot path.
+//! isn't diffed/generationed across runs (for example, a single non-ledgered
+//! contract write) — see `docs/pipeline-unification/` and issue #298 for the
+//! target-architecture split between ledger-tracked "sources" and this simpler
+//! one-shot path.
 //!
 //! Field-name note: the vector payload contract
 //! (`axon_vectors::payload::VectorPayload`) validates every non-shared
 //! metadata field against a fixed per-`source_family` allowlist
 //! (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`). Fields the
 //! legacy `axon-vector` pipeline used to stamp freely (e.g. a bare `seed_url`,
-//! or the rich `session_*` metadata `sessions_legacy` used to attach) have no
+//! or the rich `session_*` metadata produced by the session adapter) have no
 //! slot in that allowlist and are dropped here — the same accepted limitation
 //! already documented by `sessions_source_adapter::remap_to_vector_payload_contract`.
 //! Origin tracking is instead expressed via `source_canonical_uri` /
@@ -44,13 +44,10 @@ use crate::context::build_read_stores_from_config;
 /// precedent) rather than tracking per-document partial failures within a
 /// single call — a batch either fully embeds or the call returns `Err`, so
 /// there is no `docs_failed` counter to carry (callers that need partial
-/// per-document failure tolerance, like `sessions_legacy`, track their own
-/// preparation failures before calling this and combine the two).
+/// per-document failure tolerance track their own preparation failures before
+/// calling this and combine the two).
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ContractWriteSummary {
-    pub(crate) docs_embedded: usize,
-    pub(crate) chunks_embedded: usize,
-}
+pub(crate) struct ContractWriteSummary;
 
 /// Stable, deterministic 24-hex-char token derived from `value` (sha256,
 /// first 12 bytes). Used to build stable `SourceId`/`DocumentId`/
@@ -157,7 +154,6 @@ pub(crate) async fn embed_and_upsert_documents(
         .await
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
-    let chunks_total: usize = documents.iter().map(|doc| doc.chunks.len()).sum();
     let embeddings = embed_documents(
         stores.embedding_provider.as_ref(),
         &documents,
@@ -173,10 +169,7 @@ pub(crate) async fn embed_and_upsert_documents(
         .await
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
-    Ok(ContractWriteSummary {
-        docs_embedded: documents.len(),
-        chunks_embedded: chunks_total,
-    })
+    Ok(ContractWriteSummary)
 }
 
 async fn embed_documents(

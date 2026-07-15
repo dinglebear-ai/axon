@@ -8,18 +8,16 @@ use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
     FreshSubcommand, JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs,
     PruneCliSubcommand, PruneTargetArgs, ResetArgs, ScrapeSourceArgs, ServeArgs, ServeSubcommand,
-    SessionWatchServiceSubcommand, SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode,
-    SetupConfigSubcommand, SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
+    SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode, SetupConfigSubcommand,
+    SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
-    SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
 };
 use super::super::super::types::{FreshAction, FreshnessRequest};
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
-use std::time::Duration;
 
 fn env_usize_or(var: &str, default: usize) -> usize {
     env::var(var)
@@ -58,9 +56,6 @@ pub(super) struct DispatchOutput {
     pub sessions_codex: bool,
     pub sessions_gemini: bool,
     pub sessions_project: Option<String>,
-    pub sessions_watch: Option<SessionWatchConfig>,
-    pub sessions_action: Option<SessionsRuntimeAction>,
-    pub setup_session_watch_action: Option<SessionWatchServiceAction>,
     pub mcp_transport: Option<McpTransport>,
     pub mcp_transport_default: McpTransport,
     pub map_fallback: MapFallback,
@@ -132,9 +127,6 @@ impl DispatchOutput {
             sessions_codex: false,
             sessions_gemini: false,
             sessions_project: None,
-            sessions_watch: None,
-            sessions_action: None,
-            setup_session_watch_action: None,
             mcp_transport: None,
             mcp_transport_default: McpTransport::Http,
             map_fallback: MapFallback::Structure,
@@ -598,33 +590,6 @@ fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {
     out.sessions_gemini = args.gemini;
     out.sessions_project = args.project;
     match args.action {
-        Some(SessionsSubcommand::Watch(watch)) => {
-            out.sessions_claude = watch.claude;
-            out.sessions_codex = watch.codex;
-            out.sessions_gemini = watch.gemini;
-            out.sessions_project = watch.project;
-            out.sessions_watch = Some(SessionWatchConfig {
-                path: watch.path,
-                debounce: Duration::from_millis(watch.debounce_ms),
-                settle: Duration::from_millis(watch.settle_ms),
-                max_retries: watch.max_retries,
-                max_batch_docs: watch.max_batch_docs,
-                max_processing_concurrency: watch.max_processing_concurrency,
-                rescan_cooldown: Duration::from_millis(watch.rescan_cooldown_ms),
-                initial_scan: !watch.no_initial_scan,
-                upload_to_server: watch.upload_to_server,
-                upload_server_url: None,
-                upload_token: None,
-                verbose_paths: watch.verbose_paths,
-                json: watch.json,
-            });
-        }
-        Some(SessionsSubcommand::WatchStatus { limit }) => {
-            out.sessions_action = Some(SessionsRuntimeAction::WatchStatus { limit });
-        }
-        Some(SessionsSubcommand::SmokeWatch { timeout_secs }) => {
-            out.sessions_action = Some(SessionsRuntimeAction::SmokeWatch { timeout_secs });
-        }
         Some(job) => {
             if let Some(positional) = sessions_job_positionals(job) {
                 out.positional = positional;
@@ -644,9 +609,6 @@ fn sessions_job_positionals(job: SessionsSubcommand) -> Option<Vec<String>> {
         SessionsSubcommand::Clear => Some(vec!["clear".to_string()]),
         SessionsSubcommand::Worker => Some(vec!["worker".to_string()]),
         SessionsSubcommand::Recover => Some(vec!["recover".to_string()]),
-        SessionsSubcommand::Watch(_)
-        | SessionsSubcommand::WatchStatus { .. }
-        | SessionsSubcommand::SmokeWatch { .. } => None,
     }
 }
 
@@ -792,14 +754,6 @@ fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
                 }
             }
         },
-        Some(SetupSubcommand::SessionWatchService { action }) => {
-            out.setup_session_watch_action = Some(match action {
-                SessionWatchServiceSubcommand::Install => SessionWatchServiceAction::Install,
-                SessionWatchServiceSubcommand::Check => SessionWatchServiceAction::Check,
-                SessionWatchServiceSubcommand::Remove => SessionWatchServiceAction::Remove,
-                SessionWatchServiceSubcommand::Status => SessionWatchServiceAction::Status,
-            });
-        }
     }
 }
 

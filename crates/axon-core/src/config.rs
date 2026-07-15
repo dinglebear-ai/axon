@@ -13,6 +13,6 @@ pub use types::{
     AdaptiveConcurrencyConfig, CodeSearchWatchConfig, ColorChoice, CommandKind, Config,
     ConfigOverrides, EvaluateResponsesMode, FreshAction, FreshDuration, FreshnessCommand,
     FreshnessRequest, MapFallback, McpTransport, PerformanceProfile, RedditSort, RedditTime,
-    RenderMode, ScrapeFormat, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
+    RenderMode, ScrapeFormat,
 };
 pub use validation::{CollectionNameError, validate_collection_name};

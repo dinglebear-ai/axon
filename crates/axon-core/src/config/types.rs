@@ -19,9 +19,7 @@ pub use enums::{
 };
 pub use freshness::{FreshAction, FreshDuration, FreshnessCommand, FreshnessRequest};
 pub use overrides::ConfigOverrides;
-pub use session_watch::{
-    CodeSearchWatchConfig, SessionWatchConfig, SessionWatchServiceAction, SessionsRuntimeAction,
-};
+pub use session_watch::CodeSearchWatchConfig;
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;
