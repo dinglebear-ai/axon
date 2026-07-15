@@ -50,14 +50,16 @@ pub async fn maybe_handle_ingest_subcommand(
             handle_job_errors(cfg, job, id, "ingest")?;
         }
         "list" => {
-            let source_filter = if cmd_name == "sessions" {
-                Some("sessions")
-            } else {
-                None
-            };
             let (limit, offset) = axon_services::transport::job_list_pagination(None, None);
-            let jobs = job_service::list_ingest_jobs(service_context, source_filter, limit, offset)
-                .await?;
+            let jobs = if cmd_name == "sessions" {
+                job_service::list_jobs(service_context, JobKind::Source, limit, offset)
+                    .await?
+                    .into_iter()
+                    .filter(is_session_source_job)
+                    .collect()
+            } else {
+                job_service::list_ingest_jobs(service_context, None, limit, offset).await?
+            };
             let total = jobs.len() as i64;
             render_ingest_list(cfg, jobs, total, cmd_name)?;
         }
@@ -86,6 +88,16 @@ pub async fn maybe_handle_ingest_subcommand(
     }
 
     Ok(true)
+}
+
+fn is_session_source_job(job: &ServiceJob) -> bool {
+    job.target
+        .as_deref()
+        .is_some_and(|target| target.starts_with("session:"))
+        || job
+            .source_type
+            .as_deref()
+            .is_some_and(|source_type| source_type == "sessions" || source_type == "session")
 }
 
 pub fn parse_ingest_job_id(

@@ -39,6 +39,28 @@ impl SqliteWatchStore {
         Self { pool }
     }
 
+    /// Return the newest source-watch row for an exact source/canonical URI.
+    ///
+    /// This is primarily a bridge for the CLI's legacy `axon_watch_defs` id:
+    /// `watch create` still creates a legacy scheduler row and a source-watch
+    /// row, but older output printed only the legacy UUID. Resolving that UUID
+    /// through the legacy row's first URL lets `watch get|update|pause|resume|
+    /// delete` keep working for users holding the printed id.
+    pub async fn get_by_source(&self, source: &str) -> Result<Option<WatchResult>> {
+        let row = sqlx::query(
+            "SELECT * FROM axon_source_watches \
+             WHERE source = ? OR canonical_uri = ? \
+             ORDER BY created_at DESC \
+             LIMIT 1",
+        )
+        .bind(source)
+        .bind(source)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(row.as_ref().map(row_to_result))
+    }
+
     /// Hard-delete a watch and its run history (`ON DELETE CASCADE`).
     /// Returns `true` if a row was deleted, `false` if the watch didn't exist.
     pub async fn delete(&self, watch_id: WatchId) -> Result<bool> {

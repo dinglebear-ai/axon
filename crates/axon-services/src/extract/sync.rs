@@ -10,16 +10,20 @@ use axon_api::job_dto::ExtractSyncResult;
 use axon_core::artifacts::write_configured_output;
 use axon_core::config::Config;
 use axon_core::content::{
-    DeterministicExtractionEngine, ExtractWebConfig, run_extract_with_engine,
+    DeterministicExtractionEngine, ExtractRun, ExtractWebConfig, ExtractionMetrics,
+    run_extract_with_engine,
 };
 use axon_core::http::axon_ua;
 use axon_core::logging::log_done;
 use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
+use axon_extract::{ScrapedDoc, VerticalContext, dispatch_by_url};
 use futures_util::StreamExt;
 use futures_util::stream;
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::Write;
 use std::sync::Arc;
+use std::time::Duration;
 
 const MAX_INLINE_EXTRACT_ITEMS: usize = 25;
 
@@ -82,7 +86,8 @@ async fn execute_extract_runs(
         .map(|url| {
             let engine = Arc::clone(&engine);
             let wcfg = build_extract_web_config(cfg, url, prompt);
-            async move { run_extract_with_engine(wcfg, engine).await }
+            let cfg = cfg.clone();
+            async move { run_single_extract(cfg, wcfg, engine).await }
         })
         .buffer_unordered(16);
 
@@ -125,6 +130,75 @@ async fn execute_extract_runs(
 
     items_file.flush()?;
     Ok(agg)
+}
+
+async fn run_single_extract(
+    cfg: Config,
+    wcfg: ExtractWebConfig,
+    engine: Arc<DeterministicExtractionEngine>,
+) -> Result<ExtractRun, Box<dyn Error>> {
+    if cfg.enable_verticals {
+        let ctx = VerticalContext::new(Arc::new(cfg));
+        match tokio::time::timeout(
+            Duration::from_secs(120),
+            dispatch_by_url(&wcfg.start_url, &ctx),
+        )
+        .await
+        {
+            Ok(Some(Ok(doc))) => return Ok(vertical_doc_to_extract_run(doc)),
+            Ok(Some(Err(err))) => {
+                axon_core::logging::log_warn(&format!(
+                    "vertical extractor failed for {}; falling back to generic extract: {err}",
+                    wcfg.start_url
+                ));
+            }
+            Ok(None) => {}
+            Err(_) => {
+                axon_core::logging::log_warn(&format!(
+                    "vertical extractor timed out for {}; falling back to generic extract",
+                    wcfg.start_url
+                ));
+            }
+        }
+    }
+    run_extract_with_engine(wcfg, engine).await
+}
+
+fn vertical_doc_to_extract_run(doc: ScrapedDoc) -> ExtractRun {
+    let extractor_name = doc.extractor_name;
+    let extractor_version = doc.extractor_version;
+    let markdown_chars = doc.markdown.chars().count();
+    let markdown_excerpt: String = doc.markdown.chars().take(4000).collect();
+    let mut item = serde_json::json!({
+        "url": doc.url,
+        "title": doc.title,
+        "extractor_name": extractor_name,
+        "extractor_version": extractor_version,
+        "kind": "vertical_extraction",
+        "markdown_chars": markdown_chars,
+        "markdown_excerpt": markdown_excerpt,
+        "markdown_excerpt_truncated": markdown_chars > 4000,
+        "follow_crawl_urls": doc.follow_crawl_urls,
+    });
+    if let Some(structured) = doc.structured {
+        item["structured"] = structured;
+    }
+    if let Some(extra) = doc.extra {
+        item["extra"] = extra;
+    }
+    let mut parser_hits = HashMap::new();
+    parser_hits.insert(format!("vertical:{extractor_name}"), 1);
+    ExtractRun {
+        start_url: item["url"].as_str().unwrap_or_default().to_string(),
+        pages_visited: 1,
+        pages_with_data: 1,
+        results: vec![item],
+        metrics: ExtractionMetrics {
+            deterministic_pages: 1,
+            ..ExtractionMetrics::default()
+        },
+        parser_hits,
+    }
 }
 
 fn accumulate_run(agg: &mut ExtractAggregation, run: &axon_core::content::ExtractRun) {
