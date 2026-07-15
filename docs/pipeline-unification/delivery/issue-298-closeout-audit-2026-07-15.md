@@ -13,8 +13,9 @@ gates are green. This audit also fixed two closeout drifts found during review:
 - CLI help/schema metadata now describes `source` as all-source indexing, not
   local-path-only indexing.
 
-Remaining blockers are documentation closeout and a final decision on legacy
-job-family compatibility bridges.
+Remaining blocker: remove legacy job-family compatibility bridges. The policy
+decision is now explicit: old source-family job tables and backend job kinds are
+removal targets, not compatibility surfaces.
 
 ## Live Evidence
 
@@ -100,30 +101,22 @@ Vertical extractor shape:
 
 ## Remaining Blockers
 
-### 1. Final documentation tree is incomplete
+### 1. Final documentation tree is complete
 
-`cargo xtask docs check` currently fails:
+Resolved on the closeout follow-up branch:
 
 ```text
-check-doc-links (repo-wide): 1008 broken link(s)
-docs inventory: 48 file(s) from the Final Docs Tree in docs/pipeline-unification/delivery/documentation-contract.md do not exist yet
+check-doc-links (repo-wide): 511 markdown file(s), no broken relative links.
+check-doc-contracts: 122 markdown file(s), no removed-surface references.
+docs inventory: all 110 file(s) from the Final Docs Tree exist.
+docs check: all checks passed.
 ```
 
-The missing final-doc inventory includes architecture, guide, runtime,
-source-reference, and surface-reference pages such as:
+The new final-tree docs are intentionally first-pass pages. They clear the tree
+and link contracts; deeper page expansion can continue without blocking the
+existence/link gate.
 
-- `docs/architecture/source-pipeline.md`
-- `docs/guides/quickstart.md`
-- `docs/guides/web-crawls.md`
-- `docs/reference/cli/overview.md`
-- `docs/reference/runtime/observability.md`
-- `docs/reference/sources/source-graph.md`
-- `docs/reference/surfaces/web.md`
-
-This is the hard closeout blocker because the final docs contract has a real
-green/red gate and it is still red.
-
-### 2. Legacy job-family bridges need an explicit closeout decision
+### 2. Legacy job-family bridges must be removed
 
 The old source-family crates are gone, and real source execution appears routed
 through unified source jobs. However, compatibility/status/reset code still
@@ -147,20 +140,16 @@ Representative live references are in:
 - `crates/axon-services/src/extract_tests.rs`
 - `crates/axon-services/src/reset_tests.rs`
 
-This may be acceptable as migration/reset/status compatibility for old rows,
-but it needs an explicit decision before #298 is closed:
-
-- Accept and document these as legacy-data compatibility bridges, or
-- Remove the old tables/kinds/bridges and migrate all remaining status/reset
-  behavior to the unified durable job model.
+These are not acceptable compatibility bridges in the final state. Remove the
+old tables/kinds/bridges and migrate all remaining status/reset/stat behavior
+to the unified durable job model.
 
 ## Closeout Sequence
 
 1. Land this audit branch so removed cleanup tokens and generated CLI schema
    metadata are corrected.
-2. Complete the final docs inventory and broken-link cleanup until
-   `cargo xtask docs check` passes.
-3. Decide and document the legacy job-family bridge policy.
-4. Re-run the full closeout gate set.
-5. Post the final green gate summary to issue #298, sync any stale issue-body
+2. Remove legacy family job tables/backend kinds/bridge modules from active
+   runtime and generated contracts.
+3. Re-run the full closeout gate set.
+4. Post the final green gate summary to issue #298, sync any stale issue-body
    checklist items, and close the issue.

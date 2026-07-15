@@ -44,6 +44,6 @@ Async job runtime and lifecycle management for axon's SQLite backend.
 - Recovery behavior is driven by `AXON_JOB_STALE_TIMEOUT_SECS` and `AXON_JOB_STALE_CONFIRM_SECS`.
 
 ## Related Docs
-- [Repository README](../../README.md)
-- [Architecture](../../docs/architecture/overview.md)
-- [Docs Index](../../docs/README.md)
+- [Repository README](../../../README.md)
+- [Architecture](../../../docs/architecture/overview.md)
+- [Docs Index](../../../docs/README.md)
