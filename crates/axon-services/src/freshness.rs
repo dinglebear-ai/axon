@@ -21,8 +21,6 @@ use uuid::Uuid;
 mod scheduler;
 #[cfg(test)]
 pub(crate) use scheduler::dispatch_freshness;
-#[cfg(test)]
-pub(crate) use scheduler::lease_limit_for_available_capacity;
 pub use scheduler::{run_now, spawn_freshness_scheduler};
 
 pub(crate) type FreshnessError = Box<dyn Error + Send + Sync>;

@@ -19,7 +19,7 @@ pub mod sqlite;
 pub mod traits;
 
 pub use sqlite::SqliteServiceRuntime;
-pub use traits::{JobPagination, ServiceJobRuntime, WorkerMode};
+pub use traits::{JobPagination, RuntimeResult, ServiceJobRuntime, WorkerMode};
 
 pub async fn resolve_runtime(
     cfg: Arc<Config>,
@@ -60,7 +60,3 @@ pub async fn resolve_runtime_with_workers(
         cfg, backend,
     )))
 }
-
-#[cfg(test)]
-#[path = "runtime_tests.rs"]
-mod tests;

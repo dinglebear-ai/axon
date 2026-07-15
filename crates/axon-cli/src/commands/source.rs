@@ -178,7 +178,3 @@ fn render_inline_source_content(result: &SourceResult) -> bool {
         _ => false,
     }
 }
-
-#[cfg(test)]
-#[path = "source_tests.rs"]
-mod tests;

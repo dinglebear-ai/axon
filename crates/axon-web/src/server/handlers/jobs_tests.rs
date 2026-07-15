@@ -3,16 +3,13 @@ use axon_api::job_progress::JobPhase;
 
 #[test]
 fn job_family_maps_generic_async_families() {
-    assert_eq!(job_family(JobKind::Embed), Some(JobFamily::Embed));
+    assert_eq!(job_family(JobKind::Source), Some(JobFamily::Source));
     assert_eq!(job_family(JobKind::Extract), Some(JobFamily::Extract));
-    assert_eq!(job_family(JobKind::Ingest), Some(JobFamily::Ingest));
 }
 
 #[test]
-fn job_family_returns_none_for_crawl() {
-    // Crawl carries a richer client-side snapshot, not the generic progress
-    // shape — so the status handler must omit `progress` for it.
-    assert_eq!(job_family(JobKind::Crawl), None);
+fn job_family_returns_none_for_non_progress_jobs() {
+    assert_eq!(job_family(JobKind::Watch), None);
 }
 
 #[test]
@@ -21,7 +18,7 @@ fn job_status_response_serializes_job_and_progress() {
     let resp = JobStatusResponse {
         job: json!({ "id": "abc", "status": "running" }),
         progress: Some(JobProgress::derive(
-            JobFamily::Ingest,
+            JobFamily::Source,
             "running",
             Some(&json!({ "tasks_done": 1, "tasks_total": 2 })),
             None,
@@ -29,7 +26,7 @@ fn job_status_response_serializes_job_and_progress() {
     };
     let v = serde_json::to_value(&resp).unwrap();
     assert_eq!(v["job"]["status"], "running");
-    assert_eq!(v["progress"]["family"], "ingest");
+    assert_eq!(v["progress"]["family"], "source");
     assert_eq!(v["progress"]["phase"], "running");
     assert_eq!(v["progress"]["percent"], 50.0);
 

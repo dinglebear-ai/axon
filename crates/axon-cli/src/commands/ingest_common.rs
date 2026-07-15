@@ -3,11 +3,11 @@ use crate::commands::common::{
     handle_job_list_with_rows, handle_job_recover, handle_job_status, handle_worker_mode,
 };
 use crate::commands::job_progress::ingest_progress;
+use axon_api::source::JobKind;
 use axon_core::config::Config;
 use axon_core::logging::log_done;
 use axon_core::ui::confirm_destructive;
 use axon_core::ui::{accent, muted, primary, status_text, symbol_for_status};
-use axon_jobs::backend::JobKind;
 use axon_services::context::ServiceContext;
 use axon_services::ingest::{self as ingest_service, IngestSource};
 use axon_services::jobs as job_service;
@@ -36,17 +36,17 @@ pub async fn maybe_handle_ingest_subcommand(
     match subcmd {
         "status" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "status")?;
-            let job = job_service::job_status(service_context, JobKind::Ingest, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Source, id).await?;
             render_ingest_status(cfg, job, id)?;
         }
         "cancel" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "cancel")?;
-            let canceled = job_service::cancel_job(service_context, JobKind::Ingest, id).await?;
+            let canceled = job_service::cancel_job(service_context, JobKind::Source, id).await?;
             handle_job_cancel(cfg, id, canceled, "ingest")?;
         }
         "errors" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "errors")?;
-            let job = job_service::job_status(service_context, JobKind::Ingest, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Source, id).await?;
             handle_job_errors(cfg, job, id, "ingest")?;
         }
         "list" => {
@@ -62,12 +62,12 @@ pub async fn maybe_handle_ingest_subcommand(
             render_ingest_list(cfg, jobs, total, cmd_name)?;
         }
         "cleanup" => {
-            let removed = job_service::cleanup_jobs(service_context, JobKind::Ingest).await?;
+            let removed = job_service::cleanup_jobs(service_context, JobKind::Source).await?;
             handle_job_cleanup(cfg, removed, "ingest")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all ingest jobs and purge ingest queue?")? {
-                let removed = job_service::clear_jobs(service_context, JobKind::Ingest).await?;
+                let removed = job_service::clear_jobs(service_context, JobKind::Source).await?;
                 handle_job_clear(cfg, removed, "ingest")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -76,10 +76,10 @@ pub async fn maybe_handle_ingest_subcommand(
             }
         }
         "worker" => {
-            handle_worker_mode(job_service::start_worker(service_context, JobKind::Ingest).await?)?
+            handle_worker_mode(job_service::start_worker(service_context, JobKind::Source).await?)?
         }
         "recover" => {
-            let reclaimed = job_service::recover_jobs(service_context, JobKind::Ingest).await?;
+            let reclaimed = job_service::recover_jobs(service_context, JobKind::Source).await?;
             handle_job_recover(cfg, reclaimed, "ingest")?;
         }
         _ => return Ok(false),

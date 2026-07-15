@@ -100,9 +100,6 @@ pub(super) struct DispatchOutput {
     pub prune_confirm: bool,
     /// `--plan-id` binding for `axon reset --yes`.
     pub reset_plan_id: Option<String>,
-    /// `--confirm-legacy-wipe` for `axon reset`. CLI-flag-only — see
-    /// `Config::reset_confirm_legacy_wipe`'s doc comment.
-    pub reset_confirm_legacy_wipe: bool,
 }
 
 impl DispatchOutput {
@@ -167,7 +164,6 @@ impl DispatchOutput {
             prune_generation: None,
             prune_confirm: false,
             reset_plan_id: None,
-            reset_confirm_legacy_wipe: false,
         }
     }
 }
@@ -679,7 +675,6 @@ fn apply_reset(out: &mut DispatchOutput, args: ResetArgs) {
         .collect();
     out.reset_dry_run = args.dry_run;
     out.reset_plan_id = args.plan_id;
-    out.reset_confirm_legacy_wipe = args.confirm_legacy_wipe;
 }
 
 fn apply_prune_target(out: &mut DispatchOutput, target: PruneTargetArgs) {

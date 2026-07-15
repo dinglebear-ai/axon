@@ -1,7 +1,7 @@
+use axon_api::source::JobKind;
 use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
-use axon_jobs::backend::JobKind;
 use axon_services as services;
 use axon_services::client_contract::{RestExtractMode, RestExtractRequest as ExtractStartRequest};
 use axon_services::context::ServiceContext;

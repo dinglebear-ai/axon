@@ -5,12 +5,12 @@ use crate::commands::common::{
     parse_urls,
 };
 use crate::commands::job_progress::extract_progress_summary;
+use axon_api::source::JobKind;
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status, wait_spinner_for,
 };
-use axon_jobs::backend::JobKind;
 use axon_services::context::ServiceContext;
 use axon_services::extract as extract_service;
 use axon_services::jobs as job_service;

@@ -291,7 +291,7 @@ fn commands_source_serve_prune() -> Vec<CliRegistryCommand> {
         // source (unified local-path indexing)
         c(
             &["source"],
-            "Index a local source path through the unified pipeline",
+            "Index a source through the unified pipeline",
             None,
             true,
             true,

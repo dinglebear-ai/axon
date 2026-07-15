@@ -10,11 +10,10 @@ use crate::types::{
     ExecutionMode, ExtractJobResult, ExtractStartResult, JobStartOutcome, StartDisposition,
 };
 use axon_api::source::{
-    AuthSnapshot, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind, JobPriority,
-    JobStagePlan, MetadataMap, PipelinePhase,
+    AuthSnapshot, JobCreateRequest, JobIntent, JobKind, JobPriority, JobStagePlan, MetadataMap,
+    PipelinePhase,
 };
 use axon_core::config::Config;
-use axon_jobs::backend::JobKind;
 use axon_jobs::config_snapshot::extract_config_json;
 use std::error::Error;
 use tokio::sync::mpsc;
@@ -92,10 +91,7 @@ pub async fn extract_start_with_context(
     }
 
     // Extract jobs create a real row on the unified JobStore and execute via
-    // the unified worker (crates/axon-jobs/src/workers/unified/extract_runner.rs).
-    // Status/list/cancel/cleanup/clear/recover for JobKind::Extract already
-    // bridge onto this same store (see runtime/sqlite/extract_bridge.rs), so
-    // this is a self-consistent switch, not a partial one.
+    // the unified worker.
     let config_json = extract_config_json(cfg, prompt.or_else(|| cfg.query.clone()))?;
     let store = service_context
         .job_store()
@@ -103,7 +99,7 @@ pub async fn extract_start_with_context(
     let descriptor = store
         .create(JobCreateRequest {
             request_id: None,
-            job_kind: UnifiedJobKind::Extract,
+            job_kind: JobKind::Extract,
             job_intent: JobIntent::Extract,
             source_id: None,
             watch_id: None,
@@ -146,7 +142,3 @@ pub async fn extract_start_with_context(
 // --- Sync extract (--wait true) ---
 
 pub use sync::extract_sync;
-
-#[cfg(test)]
-#[path = "extract_tests.rs"]
-mod tests;

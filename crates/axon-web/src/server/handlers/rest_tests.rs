@@ -8,10 +8,10 @@
 
 use super::router;
 use async_trait::async_trait;
+use axon_api::source::JobKind;
 use axon_authz::http::AuthPolicy;
-use axon_jobs::backend::{BackendResult, JobKind, JobPayload};
 use axon_services::context::ServiceContext;
-use axon_services::runtime::ServiceJobRuntime;
+use axon_services::runtime::{RuntimeResult, ServiceJobRuntime};
 use axon_services::types::ServiceJob;
 use axum::http::StatusCode;
 use serial_test::serial;
@@ -91,16 +91,13 @@ impl ServiceJobRuntime for EmptyRuntime {
     fn mode_name(&self) -> &'static str {
         "test"
     }
-    async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> RuntimeResult<String> {
         Err("not implemented".into())
     }
-    async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
-        Err("not implemented".into())
-    }
-    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+    async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> RuntimeResult<Option<String>> {
         Ok(None)
     }
-    async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+    async fn has_active_jobs(&self, _kind: JobKind) -> RuntimeResult<bool> {
         Ok(false)
     }
     async fn list_jobs(

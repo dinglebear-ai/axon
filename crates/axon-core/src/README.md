@@ -36,6 +36,6 @@ Each `<name>.rs` below is a module **root** with a sibling `<name>/` subdirector
 - Keep environment and flag precedence rules centralized in `config/parse.rs`.
 
 ## Related Docs
-- [Repository README](../../README.md)
-- [Architecture](../../docs/architecture/overview.md)
-- [Docs Index](../../docs/README.md)
+- [Repository README](../../../README.md)
+- [Architecture](../../../docs/architecture/overview.md)
+- [Docs Index](../../../docs/README.md)

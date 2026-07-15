@@ -176,37 +176,6 @@ async fn job_events_page_after_sequence_reads_only_next_page() {
 }
 
 #[tokio::test]
-async fn non_empty_legacy_family_rows_block_unified_workers() {
-    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
-    insert_legacy_crawl_job(&pool, "running").await;
-
-    let blocker = crate::unified::detect_incompatible_legacy_jobs(&pool)
-        .await
-        .unwrap()
-        .expect("non-empty legacy table blocks cutover");
-    assert!(
-        blocker
-            .legacy_tables
-            .contains(&"axon_crawl_jobs".to_string())
-    );
-    assert!(blocker.message.contains("axon reset"));
-}
-
-#[tokio::test]
-async fn reset_receipt_allows_fresh_unified_schema_without_importing_legacy_rows() {
-    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
-    insert_legacy_extract_job(&pool, "canceled").await;
-    write_reset_receipt(&pool, "legacy jobs cleared").await;
-
-    assert!(
-        crate::unified::detect_incompatible_legacy_jobs(&pool)
-            .await
-            .unwrap()
-            .is_none()
-    );
-}
-
-#[tokio::test]
 async fn status_update_enforces_state_machine_and_persists_progress() {
     let store = store().await;
     let job = store.create(create_request()).await.expect("create job");
@@ -1204,40 +1173,6 @@ fn progress_event(job_id: JobId, sequence: u64, visibility: Visibility) -> Sourc
         warning: None,
         error: None,
     }
-}
-
-async fn insert_legacy_crawl_job(pool: &sqlx::SqlitePool, status: &str) {
-    sqlx::query(
-        "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at)
-         VALUES ('legacy-crawl', ?, 'https://example.com', '{}', 1, 1)",
-    )
-    .bind(status)
-    .execute(pool)
-    .await
-    .expect("insert legacy crawl job");
-}
-
-async fn insert_legacy_extract_job(pool: &sqlx::SqlitePool, status: &str) {
-    sqlx::query(
-        "INSERT INTO axon_extract_jobs (id, status, urls_json, config_json, created_at, updated_at)
-         VALUES ('legacy-extract', ?, '[]', '{}', 1, 1)",
-    )
-    .bind(status)
-    .execute(pool)
-    .await
-    .expect("insert legacy extract job");
-}
-
-async fn write_reset_receipt(pool: &sqlx::SqlitePool, message: &str) {
-    sqlx::query(
-        "INSERT INTO axon_job_cutover_receipts
-            (receipt_id, receipt_kind, message, created_at)
-         VALUES ('receipt-reset', 'legacy_reset', ?, '2026-07-05T00:00:00Z')",
-    )
-    .bind(message)
-    .execute(pool)
-    .await
-    .expect("write reset receipt");
 }
 
 /// Build a store that also routes transitions into a durable

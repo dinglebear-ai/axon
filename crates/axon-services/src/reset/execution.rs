@@ -6,7 +6,6 @@ use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 pub(super) async fn execute(
     cfg: &Config,
     stores: &[String],
-    legacy_audit: Option<&axon_jobs::unified::LegacyJobStoreBlocker>,
     sqlite_inv: &SqliteInventory,
     qdrant_inv: Option<&QdrantInventory>,
     artifact_root: &std::path::Path,
@@ -23,18 +22,6 @@ pub(super) async fn execute(
             "reset sqlite wiped + re-migrated path={} schema_version={version}",
             cfg.sqlite_path.display()
         ));
-
-        // Wipe already drops any legacy job tables, but a receipt gives
-        // operators an auditable record of when/why a reset cleared them —
-        // otherwise `axon_job_cutover_receipts` (and `detect_incompatible_
-        // legacy_jobs`'s escape hatch) would be permanently dead code.
-        let message = match legacy_audit {
-            Some(blocker) => format!("reset wiped legacy job rows: {}", blocker.message),
-            None => "reset wiped + re-migrated the unified SQLite DB".to_string(),
-        };
-        if let Err(e) = sqlite::record_legacy_reset_receipt(&cfg.sqlite_path, &message).await {
-            warnings.push(format!("failed to record cutover receipt: {e}"));
-        }
     }
 
     if wants(stores, RESET_STORE_VECTORS) {

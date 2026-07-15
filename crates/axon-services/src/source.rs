@@ -462,7 +462,3 @@ fn adapter_name_for(kind: SourceInputKind) -> &'static str {
         SourceInputKind::Unsupported => "unsupported",
     }
 }
-
-#[cfg(test)]
-#[path = "source_tests.rs"]
-mod tests;

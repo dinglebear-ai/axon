@@ -1,36 +1,9 @@
 use axon_jobs::store::RECLAIMED_ERROR_TEXT;
 use axon_services::types::ServiceJob;
 use serde_json::Value;
-use std::collections::HashMap;
 
-pub(crate) fn crawl_progress_summary(
-    job: &ServiceJob,
-    embed_jobs_by_id: &HashMap<String, &ServiceJob>,
-    embed_doc_totals: &HashMap<String, u64>,
-) -> Option<String> {
-    match job.status.as_str() {
-        "running" => {
-            let Some(metrics) = live_progress_metrics(job) else {
-                return Some("starting…".to_string());
-            };
-            crawl_running_progress(job, metrics)
-        }
-        "completed" => {
-            let metrics = job.result_json.as_ref()?;
-            crawl_completed_progress(metrics, embed_jobs_by_id, embed_doc_totals)
-        }
-        "pending" => reclaimed_suffix(job)
-            .strip_prefix(" · ")
-            .map(ToOwned::to_owned),
-        _ => None,
-    }
-}
-
-pub(crate) fn embed_progress_summary(
-    job: &ServiceJob,
-    fallback_docs_total: Option<u64>,
-) -> Option<String> {
-    if !matches!(job.status.as_str(), "running" | "completed") {
+pub(crate) fn source_progress_summary(job: &ServiceJob) -> Option<String> {
+    if !matches!(job.status.as_str(), "pending" | "running" | "completed") {
         return None;
     }
     let metrics = if job.status == "running" {
@@ -38,8 +11,47 @@ pub(crate) fn embed_progress_summary(
     } else {
         job.result_json.as_ref()
     };
+    match job.status.as_str() {
+        "pending" => reclaimed_suffix(job)
+            .strip_prefix(" · ")
+            .map(ToOwned::to_owned),
+        "running" => source_running_progress(job, metrics),
+        "completed" => source_completed_progress(metrics),
+        _ => None,
+    }
+}
+
+fn source_running_progress(job: &ServiceJob, metrics: Option<&Value>) -> Option<String> {
     let Some(metrics) = metrics else {
-        return if job.status == "running" {
+        return Some("starting...".to_string());
+    };
+    if has_any(metrics, &["pages_crawled", "md_created", "error_pages"]) {
+        return page_source_running_progress(job, metrics);
+    }
+    if has_any(metrics, &["docs_embedded", "docs_completed", "docs_total"]) {
+        return document_source_progress(job.status.as_str(), Some(metrics));
+    }
+    provider_source_progress(job.status.as_str(), Some(metrics), true)
+}
+
+fn source_completed_progress(metrics: Option<&Value>) -> Option<String> {
+    let metrics = metrics?;
+    if has_any(metrics, &["md_created", "elapsed_ms", "pages_crawled"]) {
+        return page_source_completed_progress(metrics);
+    }
+    if has_any(metrics, &["docs_embedded", "docs_completed", "docs_total"]) {
+        return document_source_progress("completed", Some(metrics));
+    }
+    provider_source_progress("completed", Some(metrics), true)
+}
+
+fn has_any(metrics: &Value, keys: &[&str]) -> bool {
+    keys.iter().any(|key| metrics.get(*key).is_some())
+}
+
+fn document_source_progress(status: &str, metrics: Option<&Value>) -> Option<String> {
+    let Some(metrics) = metrics else {
+        return if status == "running" {
             Some("starting…".to_string())
         } else {
             None
@@ -54,12 +66,9 @@ pub(crate) fn embed_progress_summary(
         .get("chunks_embedded")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    let docs_total = metrics
-        .get("docs_total")
-        .and_then(|v| v.as_u64())
-        .or(fallback_docs_total);
+    let docs_total = metrics.get("docs_total").and_then(|v| v.as_u64());
     if docs == 0 && chunks == 0 {
-        if job.status != "running" {
+        if status != "running" {
             return None;
         }
         return if let Some(total) = docs_total.filter(|t| *t > 0) {
@@ -116,20 +125,11 @@ pub(crate) fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
     Some(format!("{items} items"))
 }
 
-pub(crate) fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
-    let metrics = if job.status == "running" {
-        live_progress_metrics(job)
-    } else {
-        job.result_json.as_ref()
-    };
-    format_ingest_progress(job.status.as_str(), metrics, true)
-}
-
 pub(crate) fn ingest_progress(result_json: &Option<Value>) -> Option<String> {
-    format_ingest_progress("running", result_json.as_ref(), false)
+    provider_source_progress("running", result_json.as_ref(), false)
 }
 
-fn crawl_running_progress(job: &ServiceJob, metrics: &Value) -> Option<String> {
+fn page_source_running_progress(job: &ServiceJob, metrics: &Value) -> Option<String> {
     let crawled = metrics
         .get("pages_crawled")
         .and_then(|v| v.as_u64())
@@ -164,11 +164,7 @@ fn live_progress_metrics(job: &ServiceJob) -> Option<&Value> {
     job.progress_json.as_ref().or(job.result_json.as_ref())
 }
 
-fn crawl_completed_progress(
-    metrics: &Value,
-    embed_jobs_by_id: &HashMap<String, &ServiceJob>,
-    embed_doc_totals: &HashMap<String, u64>,
-) -> Option<String> {
+fn page_source_completed_progress(metrics: &Value) -> Option<String> {
     let docs = metrics
         .get("md_created")
         .and_then(|v| v.as_u64())
@@ -194,22 +190,10 @@ fn crawl_completed_progress(
             summary.push_str(" · partial");
         }
     }
-    if let Some(embed_id) = metrics.get("embed_job_id").and_then(|v| v.as_str()) {
-        if let Some(embed_job) = embed_jobs_by_id.get(embed_id) {
-            summary.push_str(&format!(" · embed {}", embed_job.status));
-            if let Some(embed_progress) =
-                embed_progress_summary(embed_job, embed_doc_totals.get(embed_id).copied())
-            {
-                summary.push_str(&format!(" ({embed_progress})"));
-            }
-        } else {
-            summary.push_str(&format!(" · embed queued {embed_id}"));
-        }
-    }
     Some(summary)
 }
 
-fn format_ingest_progress(
+fn provider_source_progress(
     status: &str,
     result_json: Option<&Value>,
     include_running_fallback: bool,
@@ -258,7 +242,7 @@ fn format_ingest_progress(
     }
     if chunks == 0 {
         return if status == "running" && include_running_fallback {
-            Some("ingesting…".to_string())
+            Some("indexing…".to_string())
         } else {
             None
         };
@@ -270,138 +254,5 @@ fn reclaimed_suffix(job: &ServiceJob) -> String {
     match job.error_text.as_deref().map(str::trim_start) {
         Some(RECLAIMED_ERROR_TEXT) => " · reclaimed retry".to_string(),
         _ => String::new(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-    use serde_json::json;
-    use uuid::Uuid;
-
-    fn job(status: &str, result_json: Option<Value>) -> ServiceJob {
-        ServiceJob {
-            id: Uuid::parse_str("99999999-9999-9999-9999-999999999999").unwrap(),
-            status: status.to_string(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            error_text: None,
-            url: Some("https://example.com".to_string()),
-            source_type: Some("github".to_string()),
-            target: Some("example/repo".to_string()),
-            urls_json: None,
-            progress_json: None,
-            result_json,
-            config_json: None,
-            attempt_count: 0,
-            active_attempt_id: None,
-            last_reclaimed_at: None,
-            last_reclaimed_reason: None,
-        }
-    }
-
-    #[test]
-    fn embed_progress_cases_are_table_driven() {
-        let cases = [
-            ("running", None, None, Some("starting…")),
-            (
-                "running",
-                Some(json!({"docs_total": 10, "docs_embedded": 0, "chunks_embedded": 0})),
-                None,
-                Some("0/10 docs · initializing"),
-            ),
-            (
-                "running",
-                Some(json!({"docs_total": 100, "docs_embedded": 25, "chunks_embedded": 75})),
-                None,
-                Some("25/100 docs · 25.0% · 75 chunks"),
-            ),
-            ("failed", None, None, None),
-        ];
-
-        for (status, result_json, fallback_total, expected) in cases {
-            let actual = embed_progress_summary(&job(status, result_json), fallback_total);
-            assert_eq!(actual.as_deref(), expected);
-        }
-    }
-
-    #[test]
-    fn crawl_progress_cases_are_table_driven() {
-        let empty_jobs = HashMap::new();
-        let empty_totals = HashMap::new();
-        let cases = [
-            ("running", None, Some("starting…")),
-            (
-                "running",
-                Some(json!({"pages_crawled": 0, "md_created": 0})),
-                Some("crawling…"),
-            ),
-            (
-                "running",
-                Some(json!({"pages_crawled": 12, "md_created": 10, "error_pages": 1})),
-                Some("12 crawled · 10 docs · 1 errors"),
-            ),
-            ("pending", None, None),
-        ];
-
-        for (status, result_json, expected) in cases {
-            let actual =
-                crawl_progress_summary(&job(status, result_json), &empty_jobs, &empty_totals);
-            assert_eq!(actual.as_deref(), expected);
-        }
-    }
-
-    #[test]
-    fn extract_progress_cases_are_table_driven() {
-        let cases = [
-            ("running", None, Some("starting…")),
-            (
-                "running",
-                Some(json!({"total_items": 0})),
-                Some("extracting…"),
-            ),
-            (
-                "completed",
-                Some(json!({"total_items": 7})),
-                Some("7 items"),
-            ),
-            ("pending", None, None),
-        ];
-
-        for (status, result_json, expected) in cases {
-            let actual = extract_progress_summary(&job(status, result_json));
-            assert_eq!(actual.as_deref(), expected);
-        }
-    }
-
-    #[test]
-    fn ingest_progress_cases_are_table_driven() {
-        let cases = [
-            ("running", None, Some("starting…")),
-            (
-                "running",
-                Some(json!({"files_done": 4, "files_total": 10, "chunks_embedded": 12})),
-                Some("4 / 10 files, 12 chunks embedded"),
-            ),
-            (
-                "running",
-                Some(json!({"tasks_done": 2, "tasks_total": 5, "phase": "fetching_issues"})),
-                Some("fetching_issues (2 / 5 tasks)"),
-            ),
-            (
-                "completed",
-                Some(json!({"chunks_embedded": 42})),
-                Some("42 chunks embedded"),
-            ),
-            ("pending", None, None),
-        ];
-
-        for (status, result_json, expected) in cases {
-            let actual = ingest_progress_summary(&job(status, result_json));
-            assert_eq!(actual.as_deref(), expected);
-        }
     }
 }

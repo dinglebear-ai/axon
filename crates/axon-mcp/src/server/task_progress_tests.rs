@@ -1,10 +1,10 @@
 use super::*;
-use axon_jobs::backend::JobKind;
+use axon_api::source::JobKind;
 use axon_jobs::status::JobStatus;
 use serde_json::json;
 
 #[test]
-fn maps_crawl_progress_without_leaking_paths() {
+fn maps_source_page_progress_without_leaking_paths() {
     let value = json!({
         "output_dir": "/secret/path",
         "output_path": "/secret/path/markdown",
@@ -12,33 +12,33 @@ fn maps_crawl_progress_without_leaking_paths() {
         "pages_discovered": 10,
         "message": "raw worker message"
     });
-    let progress = map_job_progress(JobKind::Crawl, &JobStatus::Running, Some(&value));
+    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));
-    assert_eq!(progress.message, "crawling");
+    assert_eq!(progress.message, "indexing");
 }
 
 #[test]
-fn maps_embed_progress_with_real_total() {
+fn maps_source_document_progress_with_real_total() {
     let value = json!({"docs_embedded": 2, "docs_total": 5, "chunks_embedded": 50});
-    let progress = map_job_progress(JobKind::Embed, &JobStatus::Running, Some(&value));
+    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
     assert_eq!(progress.progress, 2.0);
     assert_eq!(progress.total, Some(5.0));
     assert_eq!(progress.message, "embedding");
 }
 
 #[test]
-fn maps_ingest_progress_with_allowlisted_message() {
+fn maps_source_provider_progress_with_allowlisted_message() {
     let value = json!({
         "phase": "cloning",
         "repo": "https://token@example.com/private/repo",
         "files_done": 7,
         "files_total": 9
     });
-    let progress = map_job_progress(JobKind::Ingest, &JobStatus::Running, Some(&value));
+    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
     assert_eq!(progress.progress, 7.0);
     assert_eq!(progress.total, Some(9.0));
-    assert_eq!(progress.message, "ingesting");
+    assert_eq!(progress.message, "indexing");
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn active_progress_prefers_progress_json_over_legacy_result_json() {
         Some(&progress_json),
         Some(&result_json),
     );
-    let progress = map_job_progress(JobKind::Crawl, &JobStatus::Running, selected);
+    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, selected);
 
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));
@@ -93,7 +93,7 @@ fn active_progress_ignores_degraded_progress_json_marker() {
         Some(&progress_json),
         Some(&result_json),
     );
-    let progress = map_job_progress(JobKind::Crawl, &JobStatus::Running, selected);
+    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, selected);
 
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));

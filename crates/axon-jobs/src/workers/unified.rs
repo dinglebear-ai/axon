@@ -9,7 +9,6 @@ use sqlx::{Row, SqlitePool};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use crate::store_inventory::detect_incompatible_legacy_jobs;
 use crate::unified::SqliteUnifiedJobStore;
 
 use super::auth_enforcement::{require_job_scope, required_scope_for_kind};
@@ -62,15 +61,13 @@ const DEFAULT_CONCURRENCY: usize = 8;
 /// `concurrency`, so one slow job (e.g. a long crawl) does not stall every
 /// other queued job behind it the way a fully serial claim loop would.
 ///
-/// `crawl_concurrency` is a *second*, independent semaphore that additionally
-/// bounds how many `JobKind::Crawl` jobs may run at once, regardless of how
-/// high `concurrency` is. Crawl jobs share exactly one Chrome instance, so
-/// letting them freely consume up to `concurrency` general worker slots (as
-/// every other job kind does) risks CDP session contention and Chrome
-/// resource exhaustion — see `Config::crawl_job_concurrency_limit`'s doc
-/// comment. The crawl-specific permit is acquired *inside* the spawned task
-/// (not in this claim loop) so a crawl job waiting for its slot never blocks
-/// the claim loop from picking up other, non-crawl work.
+/// Broad site-scope source work gets a second, independent semaphore,
+/// regardless of how high `concurrency` is. Crawl-like source jobs share
+/// exactly one Chrome instance, so letting them freely consume up to
+/// `concurrency` general worker slots risks CDP session contention and Chrome
+/// resource exhaustion. The crawl-specific permit is acquired inside the
+/// spawned task so a crawl job waiting for its slot never blocks the claim
+/// loop from picking up other work.
 pub(crate) async fn unified_worker_loop_with_concurrency(
     pool: Arc<SqlitePool>,
     notify: Arc<Notify>,
@@ -104,16 +101,8 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
     concurrency: usize,
     crawl_concurrency: usize,
 ) {
-    if let Err(error) = ensure_no_incompatible_legacy_jobs(&pool).await {
-        tracing::error!(
-            error = %error.message,
-            code = %error.code,
-            "unified worker startup blocked"
-        );
-        return;
-    }
     let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
-    let crawl_semaphore = Arc::new(tokio::sync::Semaphore::new(crawl_concurrency.max(1)));
+    let source_semaphore = Arc::new(tokio::sync::Semaphore::new(crawl_concurrency.max(1)));
     let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut wake_count: u64 = 0;
     loop {
@@ -138,20 +127,20 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
                         let pool = Arc::clone(&pool);
                         let shutdown = shutdown.clone();
                         let registry = registry.clone();
-                        let crawl_semaphore = (claimed.kind == UnifiedJobKind::Crawl)
-                            .then(|| Arc::clone(&crawl_semaphore));
+                        let source_semaphore = (claimed.kind == UnifiedJobKind::Source)
+                            .then(|| Arc::clone(&source_semaphore));
                         in_flight.push(tokio::spawn(async move {
-                            // Acquire the crawl-specific slot only for crawl
+                            // Acquire the source-specific slot only for source
                             // jobs, and only inside the spawned task — this
                             // blocks that task, not the claim loop above, so
                             // other job kinds keep being claimed and run
-                            // while a crawl job queues for its Chrome slot.
-                            let _crawl_permit = match crawl_semaphore {
+                            // while a source job queues for its acquisition slot.
+                            let _source_permit = match source_semaphore {
                                 Some(sem) => match sem.acquire_owned().await {
                                     Ok(permit) => Some(permit),
                                     Err(_) => {
                                         drop(permit);
-                                        return; // crawl semaphore closed — shutting down
+                                        return; // source semaphore closed — shutting down
                                     }
                                 },
                                 None => None,
@@ -202,7 +191,6 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
 pub(crate) async fn claim_next_unified_job(
     pool: &SqlitePool,
 ) -> Result<Option<UnifiedClaimedJob>, ApiError> {
-    ensure_no_incompatible_legacy_jobs(pool).await?;
     claim_next_unified_job_unchecked(pool).await
 }
 
@@ -239,17 +227,6 @@ pub(crate) async fn mark_job_failed_for_tests(
         Some(error),
     )
     .await
-}
-
-async fn ensure_no_incompatible_legacy_jobs(pool: &SqlitePool) -> Result<(), ApiError> {
-    if let Some(blocker) = detect_incompatible_legacy_jobs(pool).await? {
-        return Err(ApiError::new(
-            "job_store.incompatible_legacy_jobs",
-            ErrorStage::Planning,
-            blocker.message,
-        ));
-    }
-    Ok(())
 }
 
 async fn claim_next_unified_job_unchecked(

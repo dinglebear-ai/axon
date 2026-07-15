@@ -149,12 +149,12 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 
 ## Worker types
 
-| Worker | SQLite table | Description |
+| Worker | Durable kind | Description |
 |--------|--------------|-------------|
-| Crawl | `axon_crawl_jobs` | Full site crawling with sitemap backfill |
-| Extract | `axon_extract_jobs` | LLM-powered structured data extraction |
-| Embed | `axon_embed_jobs` | TEI embedding + Qdrant upsert |
-| Ingest | `axon_ingest_jobs` | GitHub/GitLab/Gitea/Git/Reddit/YouTube ingestion |
+| Source | `source` | Web page/site/docs, local files, hosted git, feeds, registry, Reddit, YouTube, sessions, and other source-family indexing |
+| Extract | `extract` | LLM-powered structured extraction |
+| Watch scheduler | `watch` | Recurring watches that enqueue Source jobs when changes are detected |
+| Prune | `prune` | Cleanup planning/execution over vectors, artifacts, and source generations |
 
 ## Source modules
 
@@ -164,7 +164,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `core` | `src/core/` | Config, HTTP client, content processing |
 | `crawl` | `src/crawl/` | Spider-based crawl engine |
 | `ingest` | `src/ingest/` | GitHub, GitLab, Gitea/Git, Reddit, YouTube, sessions ingest adapters |
-| `jobs` | `src/jobs/` | SQLite-backed job framework |
+| `jobs` | `crates/axon-jobs/` | SQLite-backed durable job framework |
 | `mcp` | `src/mcp/` | MCP server schema and handlers |
 | `services` | `src/services/` | Typed service layer (consumed by CLI, MCP, web) |
 | `vector` | `src/vector/` | Qdrant ops, TEI embedding, hybrid search |
@@ -172,12 +172,12 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 
 ## Database tables
 
-| Table | Purpose |
+| Table family | Purpose |
 |-------|---------|
-| `axon_crawl_jobs` | Crawl job metadata and results |
-| `axon_extract_jobs` | Extract job metadata and results |
-| `axon_embed_jobs` | Embed job metadata and results |
-| `axon_ingest_jobs` | Ingest job metadata and results |
+| `jobs`, `job_attempts`, `job_stages`, `job_events` | Durable job lifecycle, stage, and event state |
+| `sources`, `source_generations`, `source_manifests`, `source_items`, `document_status` | Source ledger and manifest state |
+| `provider_reservations` | Provider capacity reservation state |
+| `job_artifacts` | Artifacts attached to durable jobs |
 
 ## Scripts
 

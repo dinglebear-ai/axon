@@ -1,8 +1,8 @@
 //! Enqueue change-triggered source crawls; guard against piling up.
 //!
-//! Crawl execution now flows through detached `JobKind::Source` rows carrying
-//! `SourceRequest { scope: site }`, so watch-triggered re-crawls must enqueue
-//! that same contract instead of a legacy `JobKind::Crawl` payload.
+//! Crawl execution flows through detached `JobKind::Source` rows carrying
+//! `SourceRequest { scope: site }`, so watch-triggered re-crawls enqueue
+//! that same contract.
 
 use crate::boundary::JobStore;
 use crate::unified::SqliteUnifiedJobStore;

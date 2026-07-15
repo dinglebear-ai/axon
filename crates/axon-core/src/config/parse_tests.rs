@@ -74,7 +74,14 @@ fn help_omits_removed_source_commands() {
 fn removed_command_names_are_reserved_not_sources() {
     let _guard = env_guard();
 
-    for removed in ["embed", "ingest", "code-search", "code-search-watch"] {
+    for removed in [
+        "embed",
+        "ingest",
+        "code-search",
+        "code-search-watch",
+        "purge",
+        "dedupe",
+    ] {
         let raw = vec![
             "axon".to_string(),
             "--tei-url".to_string(),
@@ -133,15 +140,10 @@ fn scrape_projects_to_single_page_source_config() {
     assert!(!cfg.embed);
 }
 
-/// `axon dedupe` and `axon purge` were removed clap subcommands
-/// (docs/pipeline-unification/delivery/surface-removal-contract.md: replaced by
-/// `axon prune dedupe` / `axon prune ...`). With no matching clap subcommand,
-/// `route_bare_source` treats the leading token as a bare source argument and
-/// routes it through `axon source <token>` instead, exactly like any other
-/// unknown positional. This mirrors `help_omits_removed_source_commands` for
-/// the dedupe/purge removal.
+/// `axon dedupe` and `axon purge` are removed command tokens, not possible
+/// source identifiers in command position.
 #[test]
-fn removed_dedupe_purge_dispatch_as_source() {
+fn removed_dedupe_purge_are_reserved_not_sources() {
     let _guard = env_guard();
     let command = super::build_cli_command();
 
@@ -154,6 +156,10 @@ fn removed_dedupe_purge_dispatch_as_source() {
             "http://127.0.0.1:53333".to_string(),
             removed.to_string(),
         ];
+        let err = crate::config::source_routing::route_bare_source_or_error(argv.clone(), &command)
+            .expect_err("removed cleanup command should be reserved");
+        assert_eq!(err.token(), removed);
+
         let routed = crate::config::source_routing::route_bare_source(argv, &command);
         assert_eq!(
             routed,
@@ -163,17 +169,14 @@ fn removed_dedupe_purge_dispatch_as_source() {
                 "http://127.0.0.1:52000".to_string(),
                 "--qdrant-url".to_string(),
                 "http://127.0.0.1:53333".to_string(),
-                "source".to_string(),
                 removed.to_string(),
             ],
-            "removed command `{removed}` should route as a bare source token"
+            "legacy infallible routing should leave reserved token `{removed}` unchanged"
         );
-
-        let cli = super::Cli::parse_from(routed);
-        let cfg = super::build_config::into_config(cli)
-            .unwrap_or_else(|e| panic!("`{removed}` routed through source should parse: {e}"));
-        assert!(matches!(cfg.command, CommandKind::Source));
-        assert_eq!(cfg.positional, vec![removed.to_string()]);
+        assert!(
+            super::Cli::try_parse_from(&routed).is_err(),
+            "reserved cleanup token `{removed}` must not parse as a command or source"
+        );
     }
 }
 

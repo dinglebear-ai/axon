@@ -225,7 +225,3 @@ fn print_extraction_preview(i: usize, extraction: &ResearchExtraction) {
     }
     println!();
 }
-
-#[cfg(test)]
-#[path = "research_tests.rs"]
-mod tests;

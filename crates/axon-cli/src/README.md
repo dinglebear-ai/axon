@@ -9,7 +9,7 @@ CLI command routing and command handlers for the `axon` binary.
 - Provide shared command helpers for URL parsing, job control, and status output.
 
 ## Responsibilities
-- Command entrypoint modules under `commands/` (full command surface is documented in the repository [README Commands table](../../README.md#commands)).
+- Command entrypoint modules under `commands/` (full command surface is documented in the repository [README Commands table](../../../README.md#commands)).
 - Subcommand lifecycle actions for async jobs (`status`, `cancel`, `errors`, `list`, `cleanup`, `clear`, `recover`, `worker`) where applicable.
 - Shared parsing and command wiring helpers in `commands/common.rs` and `commands/job_contracts.rs`.
 
@@ -35,6 +35,6 @@ CLI command routing and command handlers for the `axon` binary.
 - Shared command behavior should be centralized in `common.rs`/`ingest_common.rs` to prevent drift across subcommands.
 
 ## Related Docs
-- [Repository README](../../README.md)
-- [Architecture](../../docs/architecture/overview.md)
-- [Docs Index](../../docs/README.md)
+- [Repository README](../../../README.md)
+- [Architecture](../../../docs/architecture/overview.md)
+- [Docs Index](../../../docs/README.md)

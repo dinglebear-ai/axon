@@ -8,12 +8,12 @@ fn migrated_mcp_handlers_do_not_import_jobs_layers_directly() {
         (
             "handlers_source.rs",
             include_str!("handlers_source.rs"),
-            &["axon_jobs::embed", "axon_jobs::ingest", "axon_jobs::crawl"][..],
+            &["axon_jobs::"][..],
         ),
         (
             "handlers_extract.rs",
             include_str!("handlers_extract.rs"),
-            &["axon_jobs::extract"][..],
+            &["axon_jobs::"][..],
         ),
         (
             "handlers_system.rs",

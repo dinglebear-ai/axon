@@ -103,7 +103,7 @@ pub(crate) async fn summarize(
     responses(
         (status = 200, description = "Discovered URLs", body = serde_json::Value),
         (status = 400, description = "Invalid map request", body = crate::server::error::ErrorBody),
-        (status = 502, description = "Upstream crawl service unavailable", body = crate::server::error::ErrorBody)
+        (status = 502, description = "Upstream source service unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "exploration"
 )]

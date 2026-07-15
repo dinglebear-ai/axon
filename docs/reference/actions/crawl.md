@@ -97,6 +97,5 @@ axon https://example.com --scope site --json
 - The old `/v1/crawl` route and MCP `crawl` action are removed.
 - Historical JSON fields named `crawl_jobs` may still appear in search/research
   output for compatibility; the queued work is Source jobs.
-- Legacy `JobKind::Crawl` rows may exist from older databases. They are
-  migration-only and are dead-lettered with `legacy.crawl.removed` instead of
-  recovered or requeued.
+- Older databases are upgraded by the terminal jobs migration; crawl-shaped
+  work is represented as Source jobs after upgrade.
