@@ -9,6 +9,7 @@ pub mod metric;
 pub mod migration;
 pub mod phase;
 pub mod progress;
+pub mod redaction;
 pub mod reservation;
 pub mod schema_registry;
 pub mod security_audit;

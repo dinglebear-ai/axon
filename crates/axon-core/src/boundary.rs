@@ -7,6 +7,10 @@ use axon_api::source::*;
 use base64::Engine as _;
 use tokio::sync::Mutex;
 
+use crate::redact::{
+    DefaultRedactor, RedactionContext, redact_metadata_checked, stamp_redaction_metadata,
+};
+
 mod file_artifact_store;
 pub use file_artifact_store::FileArtifactStore;
 
@@ -43,6 +47,13 @@ pub trait ArtifactStore: Send + Sync {
     async fn delete(&self, handle: ArtifactHandle) -> Result<()>;
     async fn reset(&self) -> Result<()>;
     async fn capabilities(&self) -> Result<ArtifactStoreCapability>;
+}
+
+#[allow(clippy::result_large_err)]
+fn redact_artifact_metadata(metadata: MetadataMap) -> Result<MetadataMap> {
+    let context = RedactionContext::artifact_metadata();
+    let (redacted, report) = redact_metadata_checked(metadata, &context, &DefaultRedactor::new())?;
+    Ok(stamp_redaction_metadata(redacted, &report))
 }
 
 #[async_trait]
@@ -211,6 +222,7 @@ impl Default for FakeCoreBoundaries {
 #[async_trait]
 impl ArtifactStore for FakeCoreBoundaries {
     async fn put(&self, artifact: ArtifactWriteRequest) -> Result<ArtifactHandle> {
+        let metadata = redact_artifact_metadata(artifact.metadata)?;
         let mut counter = self.artifact_counter.lock().await;
         *counter += 1;
         let artifact_id = ArtifactId::new(format!(
@@ -230,7 +242,7 @@ impl ArtifactStore for FakeCoreBoundaries {
                 handle: handle.clone(),
                 content_type: artifact.content_type,
                 content: Some(artifact.content),
-                metadata: artifact.metadata,
+                metadata,
             },
         );
         Ok(handle)

@@ -9,6 +9,7 @@ use axon_api::source::{JobHeartbeat, SourceProgressEvent};
 
 use crate::collector::{ObservabilitySink, Result};
 use crate::metric::MetricSample;
+use crate::redaction::redact_event;
 use crate::sequence::SequenceRegistry;
 use crate::span::SpanFieldSet;
 
@@ -39,6 +40,8 @@ impl TracingObservabilitySink {
 #[async_trait]
 impl ObservabilitySink for TracingObservabilitySink {
     async fn emit(&self, mut event: SourceProgressEvent) -> Result<()> {
+        let write = redact_event(event)?;
+        event = write.payload;
         event.sequence = self.sequences.next(event.job_id);
         // Bounded identifier/count/severity fields come from the shared
         // `SpanFieldSet` convention (see `crate::span`) instead of being
@@ -58,6 +61,11 @@ impl ObservabilitySink for TracingObservabilitySink {
             error_code = fields.error_code.unwrap_or_default(),
             event_id = %event.event_id,
             message = %event.message,
+            redaction_status = ?write.redaction.redaction_status,
+            redaction_version = %write.redaction.redaction_version,
+            redacted_field_count = write.redaction.redacted_field_count,
+            dropped_field_count = write.redaction.dropped_field_count,
+            detector_count = write.redaction.detector_count,
             "observe.event"
         );
         Ok(())

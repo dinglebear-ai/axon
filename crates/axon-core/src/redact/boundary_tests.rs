@@ -1,4 +1,5 @@
 use super::*;
+use axon_api::source::ErrorStage;
 use serde_json::json;
 
 fn ctx() -> RedactionContext {
@@ -156,6 +157,21 @@ fn redact_text_scrubs_secrets_and_local_paths() {
 }
 
 #[test]
+fn structured_event_text_scrubs_local_paths_unless_explicitly_allowed() {
+    let value = json!({"message": "read /home/jmagar/.ssh/id_ed25519 next"});
+    let (redacted, report) =
+        DefaultRedactor::new().redact_json(value.clone(), &RedactionContext::job_event());
+    assert_eq!(redacted["message"], REDACTION_PLACEHOLDER);
+    assert_eq!(report.detectors_triggered, ["local_path"]);
+
+    let mut allowed = RedactionContext::job_event();
+    allowed.allow_internal_paths = true;
+    let (preserved, report) = DefaultRedactor::new().redact_json(value.clone(), &allowed);
+    assert_eq!(preserved, value);
+    assert_eq!(report.status(), RedactionStatus::Clean);
+}
+
+#[test]
 fn cli_json_output_secret_fixture_fails_before_render() {
     // Fail-closed contract for the CLI JSON surface: a secret-bearing result
     // payload must be scrubbed (never passed through unmodified) before it
@@ -256,4 +272,126 @@ fn redact_metadata_roundtrips_map() {
     assert!(out.get("web_title").is_some());
     assert!(out.get("access_token").is_none());
     assert_eq!(report.status(), RedactionStatus::Redacted);
+}
+
+#[test]
+fn stamp_redaction_metadata_records_status_version_and_counts() {
+    let mut map = MetadataMap::default();
+    map.insert(
+        "note".to_string(),
+        json!("authorization: bearer abcdef0123456789abcdef"),
+    );
+
+    let (map, report) = redact_metadata(map, &ctx(), &DefaultRedactor::new());
+    let stamped = stamp_redaction_metadata(map, &report);
+
+    assert_eq!(stamped["redaction_status"], json!("redacted"));
+    assert_eq!(stamped["redaction_version"], json!(REDACTION_VERSION));
+    assert_eq!(stamped["redacted_field_count"], json!(1));
+    assert_eq!(stamped["dropped_field_count"], json!(0));
+    assert_eq!(stamped["detector_count"], json!(1));
+    assert_eq!(stamped["detector_names"], json!(["secret_value"]));
+    assert_eq!(stamped["visibility"], json!("internal"));
+}
+
+#[test]
+fn public_write_rejects_forbidden_fields_before_returning_payload() {
+    let error = redact_public_write(
+        json!({"authorization": "Bearer definitely-secret"}),
+        &ctx(),
+        &DefaultRedactor::new(),
+    )
+    .expect_err("forbidden auth field must fail closed");
+
+    assert_eq!(error.code.0, "redaction.failed");
+    assert_eq!(error.stage, ErrorStage::Authorizing);
+}
+
+#[test]
+fn public_write_rejects_oversized_text_before_redaction() {
+    let error = redact_public_write(
+        json!({"message": "x".repeat(MAX_REDACTABLE_TEXT_BYTES + 1)}),
+        &ctx(),
+        &DefaultRedactor::new(),
+    )
+    .expect_err("oversized text must fail closed");
+
+    assert_eq!(error.code.0, "redaction.failed");
+    assert_eq!(error.stage, ErrorStage::Authorizing);
+}
+
+#[test]
+fn public_write_returns_bounded_contract_report() {
+    let write = redact_public_write(
+        json!({"message": "authorization: bearer abcdef0123456789abcdef"}),
+        &ctx(),
+        &DefaultRedactor::new(),
+    )
+    .expect("ordinary secret text is scrubbed");
+
+    assert_eq!(write.payload["message"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(write.redaction.redaction_status, RedactionStatus::Redacted);
+    assert_eq!(write.redaction.redaction_version, REDACTION_VERSION);
+    assert_eq!(write.redaction.redacted_field_count, 1);
+    assert_eq!(write.redaction.dropped_field_count, 0);
+    assert_eq!(write.redaction.detector_count, 1);
+    assert_eq!(write.redaction.detector_names, ["secret_value"]);
+}
+
+#[test]
+fn every_public_write_surface_produces_redaction_provenance() {
+    let surfaces = [
+        RedactionSurface::Logs,
+        RedactionSurface::JobEvents,
+        RedactionSurface::VectorPayload,
+        RedactionSurface::GraphEvidence,
+        RedactionSurface::MemoryRecords,
+        RedactionSurface::Artifacts,
+        RedactionSurface::CliJson,
+        RedactionSurface::McpResponse,
+        RedactionSurface::RestResponse,
+    ];
+
+    for surface in surfaces {
+        let context = RedactionContext {
+            visibility_ceiling: Visibility::Public,
+            surface,
+            source_kind: None,
+            allow_internal_paths: false,
+        };
+        let write = redact_public_write(
+            json!({"message": "authorization: bearer abcdef0123456789abcdef"}),
+            &context,
+            &DefaultRedactor::new(),
+        )
+        .expect("surface redacts");
+
+        assert_eq!(write.redaction.redaction_status, RedactionStatus::Redacted);
+        assert_eq!(write.redaction.redaction_version, REDACTION_VERSION);
+        assert_eq!(write.redaction.visibility, Visibility::Public);
+    }
+}
+
+#[test]
+fn report_field_and_detector_counts_are_bounded() {
+    let mut fields = serde_json::Map::new();
+    for index in 0..400 {
+        fields.insert(
+            format!("field_{index}"),
+            json!("authorization: bearer abcdef0123456789abcdef"),
+        );
+        fields.insert(format!("field_{index}_token"), json!("opaque"));
+    }
+
+    let write = redact_public_write(
+        serde_json::Value::Object(fields),
+        &ctx(),
+        &DefaultRedactor::new(),
+    )
+    .expect("bounded report succeeds");
+
+    assert_eq!(write.redaction.redacted_field_count, 256);
+    assert_eq!(write.redaction.dropped_field_count, 256);
+    assert_eq!(write.redaction.detector_count, 2);
+    assert_eq!(write.redaction.detector_names.len(), 2);
 }

@@ -62,6 +62,62 @@ fn redaction_failure_projects_to_degraded_severity() {
     assert_eq!(progress.job_id, JobId::default());
 }
 
+#[test]
+fn every_security_audit_kind_has_an_explicit_projection() {
+    let cases = [
+        (SecurityAuditEventKind::AuthDenied, LifecycleStatus::Failed),
+        (SecurityAuditEventKind::SsrfDenied, LifecycleStatus::Failed),
+        (
+            SecurityAuditEventKind::LocalPathDenied,
+            LifecycleStatus::Failed,
+        ),
+        (
+            SecurityAuditEventKind::ToolExecutionDenied,
+            LifecycleStatus::Failed,
+        ),
+        (
+            SecurityAuditEventKind::RedactionFailure,
+            LifecycleStatus::CompletedDegraded,
+        ),
+        (
+            SecurityAuditEventKind::SecretDetectedDropped,
+            LifecycleStatus::CompletedDegraded,
+        ),
+        (
+            SecurityAuditEventKind::ArtifactTraversalAttempt,
+            LifecycleStatus::Failed,
+        ),
+        (
+            SecurityAuditEventKind::DestructivePruneAction,
+            LifecycleStatus::Completed,
+        ),
+        (
+            SecurityAuditEventKind::CredentialDegraded,
+            LifecycleStatus::CompletedDegraded,
+        ),
+    ];
+
+    assert_eq!(cases.len(), 9);
+    for (kind, expected_status) in cases {
+        let progress = to_progress_event(&SecurityAuditEvent::new(kind, "safe reason"));
+        assert_eq!(progress.status, expected_status, "kind={kind:?}");
+    }
+}
+
+#[test]
+fn allowed_ssrf_decision_projects_as_completed_info() {
+    let mut audit = denied_ssrf_event();
+    let detail = audit.ssrf.as_mut().expect("ssrf detail");
+    detail.policy_decision = SecurityPolicyDecision::Allow;
+    audit.reason = "ssrf policy check passed".to_string();
+
+    let progress = to_progress_event(&audit);
+
+    assert_eq!(progress.status, LifecycleStatus::Completed);
+    assert_eq!(progress.severity, Severity::Info);
+    assert!(progress.message.starts_with("ssrf_allowed:"));
+}
+
 #[tokio::test]
 async fn emit_security_audit_forwards_to_sink() {
     let sink = NoopObservabilitySink;

@@ -36,6 +36,50 @@ async fn emit_persists_event_and_reads_back() {
 }
 
 #[tokio::test]
+async fn event_is_redacted_and_stamped_before_sqlite_persistence() {
+    let sink = sink().await;
+    let job = JobId(uuid::Uuid::new_v4());
+    let mut event = event(job, PipelinePhase::Authorizing);
+    event.message = "authorization: bearer abcdef0123456789abcdef".to_string();
+
+    sink.emit(event).await.expect("redacted event persists");
+
+    let row: String =
+        sqlx::query_scalar("SELECT event_json FROM axon_observe_events WHERE job_id = ?")
+            .bind(job.0.to_string())
+            .fetch_one(&sink.pool)
+            .await
+            .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&row).unwrap();
+    assert_eq!(value["message"], "[REDACTED]");
+    assert_eq!(value["redaction_status"], "redacted");
+    assert!(value["redaction_version"].is_string());
+    assert_eq!(value["redacted_field_count"], 1);
+    assert_eq!(value["dropped_field_count"], 0);
+    assert_eq!(value["detector_count"], 1);
+}
+
+#[tokio::test]
+async fn redaction_failure_creates_no_event_row_or_sequence() {
+    let sink = sink().await;
+    let job = JobId(uuid::Uuid::new_v4());
+    let mut event = event(job, PipelinePhase::Authorizing);
+    event.error = Some(
+        ApiError::new("policy.denied", ErrorStage::Authorizing, "denied")
+            .with_context("authorization", "Bearer definitely-secret"),
+    );
+
+    let error = sink.emit(event).await.expect_err("write must fail closed");
+    assert_eq!(error.code.0, "redaction.failed");
+    assert_eq!(sink.sequences().last(job), None);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_observe_events")
+        .fetch_one(&sink.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
 async fn sequence_strictly_increases_across_n_emits() {
     let sink = sink().await;
     let job = JobId(uuid::Uuid::new_v4());
